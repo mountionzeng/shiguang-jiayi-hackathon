@@ -31,14 +31,13 @@ function silenceExpectedWarnings(): () => void {
 }
 
 function stateWithConfirmedMemory() {
-  const state = createInitialRoomState();
-  return {
-    ...state,
-    contributions: [
-      reviewContribution(state.contributions[0], "confirmed", "elder"),
-      state.contributions[1],
-    ],
-  };
+  return createInitialRoomState();
+}
+
+function ownerOf(state: ReturnType<typeof stateWithConfirmedMemory>) {
+  const owner = state.members.find((member) => member.id === "owner");
+  assert.ok(owner);
+  return owner;
 }
 
 test("cloud disabled uses a transparent local draft", async (context) => {
@@ -59,14 +58,15 @@ test("cloud disabled uses a transparent local draft", async (context) => {
     restoreGetApp();
   });
 
-  const draft = await generateBiography(stateWithConfirmedMemory());
+  const state = stateWithConfirmedMemory();
+  const draft = await generateBiography(state, ownerOf(state));
 
   assert.equal(draft.generationMode, "local-demo");
   assert.equal(draft.sourceCount, 1);
   assert.equal(cloudCallCount, 0);
 });
 
-test("cloud generation receives only confirmed family-visible memories", async (context) => {
+test("cloud generation receives only the current user's personal stories", async (context) => {
   let requestData: unknown;
   const restoreGetApp = installGlobal("getApp", () => ({
     globalData: { cloudReady: true },
@@ -93,27 +93,22 @@ test("cloud generation receives only confirmed family-visible memories", async (
   });
 
   const state = stateWithConfirmedMemory();
-  state.contributions.push(
-    reviewContribution(
-      createContribution({
-        id: "private-source",
-        authorMemberId: "owner",
-        authorName: "林岚",
-        relation: "外孙女",
-        text: "这条属实但没有同意公开。",
-        visibility: "private",
-        now: new Date("2026-08-28T05:02:00.000Z"),
-      }),
-      "confirmed",
-      "elder",
-    ),
-  );
+  state.contributions.push(createContribution({
+    id: "someone-elses-personal-story",
+    authorMemberId: "member-1",
+    authorName: "林秋",
+    relation: "女儿",
+    text: "这是另一个家庭成员自己的故事。",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-08-28T05:02:00.000Z"),
+  }));
 
-  const draft = await generateBiography(state);
+  const draft = await generateBiography(state, ownerOf(state));
   const memories = (requestData as { memories: Array<{ id: string }> }).memories;
 
   assert.equal(draft.generationMode, "cloud-ai");
-  assert.deepEqual(memories.map((memory) => memory.id), ["demo-memory-rain"]);
+  assert.deepEqual(memories.map((memory) => memory.id), ["demo-personal-rain"]);
 });
 
 test("cloud failure falls back instead of breaking chapter generation", async (context) => {
@@ -134,7 +129,8 @@ test("cloud failure falls back instead of breaking chapter generation", async (c
     restoreGetApp();
   });
 
-  const draft = await generateBiography(stateWithConfirmedMemory());
+  const state = stateWithConfirmedMemory();
+  const draft = await generateBiography(state, ownerOf(state));
 
   assert.equal(draft.generationMode, "local-demo");
   assert.equal(draft.sourceCount, 1);
@@ -156,7 +152,8 @@ test("malformed cloud output also falls back to the local draft", async (context
     restoreGetApp();
   });
 
-  const draft = await generateBiography(stateWithConfirmedMemory());
+  const state = stateWithConfirmedMemory();
+  const draft = await generateBiography(state, ownerOf(state));
 
   assert.equal(draft.generationMode, "local-demo");
   assert.equal(draft.sourceCount, 1);

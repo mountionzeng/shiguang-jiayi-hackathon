@@ -1,197 +1,226 @@
-.review-description {
-  margin-top: 24rpx;
-  color: #756a5d;
-  font-size: 27rpx;
-  line-height: 1.8;
-}
-.authority-line {
-  display: flex;
-  align-items: center;
-  margin-top: 42rpx;
-  padding: 22rpx;
-  border: 2rpx solid #c9bca9;
-  border-radius: 24rpx;
+/* 老人确认：一次只核对一条 */
+
+/* ---- 非老人身份的解释 ---- */
+
+.block-card {
+  margin-top: 40rpx;
+  padding: 48rpx 36rpx;
+  border-radius: 30rpx;
+  border: 2rpx solid var(--line);
 }
 
-.authority-avatar {
+.block-title {
+  position: relative;
+  z-index: 1;
+  font-size: 42rpx;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.block-note {
+  position: relative;
+  z-index: 1;
+  margin-top: 20rpx;
+  font-size: 30rpx;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+
+.block-me {
+  position: relative;
+  z-index: 1;
+  margin-top: 24rpx;
+  font-size: 26rpx;
+  color: var(--ink-faint);
+}
+
+.block-back {
+  margin-top: 40rpx;
+}
+
+/* ---- 抬头 ---- */
+
+.review-head {
+  padding: 8rpx 0 28rpx;
+}
+
+.review-title {
+  font-size: 44rpx;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.review-sub {
+  margin-top: 12rpx;
+  font-size: 28rpx;
+  color: var(--ink-soft);
+}
+
+/* ---- 聚焦卡片 ---- */
+
+.focus-card {
+  padding: 32rpx;
+  border-radius: 30rpx;
+  background: var(--paper-card);
+  border: 2rpx solid var(--line);
+}
+
+.focus-source {
+  display: flex;
+  align-items: center;
+}
+
+.focus-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  background: #6a705c;
-  color: #fffaf0;
-  font-size: 27rpx;
+  flex-shrink: 0;
+  width: 64rpx;
+  height: 64rpx;
+  margin-right: 16rpx;
+  border-radius: 32rpx;
+  background: var(--lake);
+  color: #fbfdfc;
+  font-size: 28rpx;
 }
 
-.authority-copy {
+.focus-who {
   display: flex;
   flex-direction: column;
-  margin-left: 20rpx;
+  min-width: 0;
 }
 
-.authority-name {
-  font-size: 25rpx;
+.focus-author {
+  font-size: 30rpx;
   font-weight: 600;
+  color: var(--ink);
 }
 
-.authority-note {
-  margin-top: 6rpx;
-  color: #877c6f;
-  font-size: 20rpx;
+.focus-date {
+  margin-top: 4rpx;
+  font-size: 25rpx;
+  color: var(--ink-faint);
 }
+
+/* 事实原文：本页最大、对比度最高的元素，背后不放任何肌理 */
+.focus-text {
+  margin-top: 28rpx;
+  font-size: 44rpx;
+  line-height: 1.85;
+  color: var(--ink);
+}
+
+.focus-scope {
+  margin-top: 28rpx;
+}
+
+.focus-scope-note {
+  margin-top: 14rpx;
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.focus-ask {
+  margin: 40rpx 0 24rpx;
+  text-align: center;
+  font-size: 34rpx;
+  color: var(--ink-soft);
+}
+
+.action-confirm {
+  min-height: 116rpx;
+  font-size: 38rpx;
+}
+
+.action-conflict,
+.action-reject {
+  min-height: 104rpx;
+  margin-top: 20rpx;
+  font-size: 34rpx;
+}
+
+.focus-hint {
+  margin-top: 28rpx;
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: var(--ink-faint);
+}
+
+/* ---- 完成 ---- */
+
+.done-card {
+  margin-top: 20rpx;
+  padding: 56rpx 36rpx;
+  border-radius: 30rpx;
+  border: 2rpx solid var(--line);
+  text-align: center;
+}
+
+.done-mark {
+  position: relative;
+  z-index: 1;
+  font-size: 72rpx;
+  line-height: 1;
+  color: var(--jade);
+}
+
+.done-title {
+  position: relative;
+  z-index: 1;
+  margin-top: 24rpx;
+  font-size: 40rpx;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.done-note {
+  position: relative;
+  z-index: 1;
+  margin-top: 12rpx;
+  font-size: 28rpx;
+  color: var(--ink-soft);
+}
+
+/* ---- 进度 ---- */
 
 .review-progress {
   display: flex;
-  align-items: center;
-  justify-content: space-around;
-  margin-top: 38rpx;
-  padding: 30rpx 8rpx;
-  border-top: 2rpx solid #d1c5b5;
-  border-bottom: 2rpx solid #d1c5b5;
+  align-items: stretch;
+  margin-top: 44rpx;
+  padding: 24rpx 0;
+  border-radius: 26rpx;
+  background: var(--paper-sunk);
 }
 
 .progress-item {
-  display: flex;
   flex: 1;
+  display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.progress-value {
-  color: #9b563c;
-  font-size: 43rpx;
+.progress-num {
+  font-size: 42rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
 }
 
 .progress-label {
   margin-top: 4rpx;
-  color: #827668;
-  font-size: 20rpx;
-}
-
-.progress-divider {
-  width: 2rpx;
-  height: 48rpx;
-  background: #c9bcaa;
-}
-
-.pending-list {
-  margin-top: 40rpx;
-}
-
-.review-card {
-  margin-bottom: 30rpx;
-  padding: 34rpx;
-  border-radius: 8rpx 34rpx 8rpx 34rpx;
-  background: #fffaf0;
-  box-shadow: 0 18rpx 46rpx rgba(70, 57, 42, 0.09);
-}
-
-.card-source {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: #7a6f62;
-  font-size: 22rpx;
-}
-
-.source-name {
-  color: #4b4339;
-  font-weight: 600;
-}
-
-.source-visibility {
-  color: #9b563c;
-}
-
-.memory-text {
-  margin-top: 28rpx;
-  font-size: 33rpx;
-  font-weight: 600;
-  line-height: 1.72;
-}
-
-.review-question {
-  margin-top: 30rpx;
-  padding-top: 24rpx;
-  border-top: 2rpx solid #e4dacb;
-  color: #7e7264;
-  font-size: 23rpx;
-}
-
-.confirm-action,
-.conflict-action,
-.reject-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 18rpx;
   font-size: 24rpx;
-  font-weight: 600;
+  color: var(--ink-soft);
 }
 
-.confirm-action {
-  min-height: 82rpx;
-  margin-top: 20rpx;
-  background: #6a705c;
-  color: #fffaf0;
+.progress-line {
+  width: 2rpx;
+  margin: 8rpx 0;
+  background: var(--line);
 }
 
-.secondary-actions {
-  display: flex;
-  gap: 16rpx;
-  margin-top: 14rpx;
-}
-
-.conflict-action,
-.reject-action {
-  flex: 1;
-  min-height: 72rpx;
-  border: 2rpx solid #d3c7b8;
-  background: transparent;
-  color: #776b5f;
-}
-
-.confirm-action:active,
-.conflict-action:active,
-.reject-action:active {
-  transform: scale(0.98);
-  opacity: 0.86;
-}
-
-.empty-review {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-top: 42rpx;
-  padding: 56rpx 30rpx;
-  border: 2rpx dashed #c6b8a5;
-}
-
-.empty-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 82rpx;
-  height: 82rpx;
-  border-radius: 50%;
-  background: #6a705c;
-  color: #fffaf0;
-  font-size: 35rpx;
-}
-
-.empty-title {
-  margin-top: 24rpx;
-  font-size: 33rpx;
-}
-
-.empty-note {
-  margin-top: 12rpx;
-  color: #8b8073;
-  font-size: 22rpx;
-}
-
-.book-button {
-  margin-top: 38rpx;
+.book-btn {
+  margin-top: 36rpx;
 }

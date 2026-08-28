@@ -1,14 +1,48 @@
+/**
+ * 拾光 · 全局视觉变量与基础组件
+ * 视觉方向：明亮国画、朦胧彩铅、点彩颗粒、大面积留白。
+ * 约束：肌理只服务封面与氛围区；正文、事实原文和操作区必须保持高对比与大触控。
+ */
 page {
+  /* 纸与墨 */
+  --paper: #fbf8f2;
+  --paper-sunk: #f4efe4;
+  --paper-card: #ffffff;
+  --ink: #1f3a34;
+  --ink-soft: #4c6159;
+  --ink-faint: #7c8b84;
+  --line: #e5dfd2;
+
+  /* 玉石绿：已确认、完成、品牌 */
+  --jade: #176b54;
+  --jade-soft: #e3f0ea;
+
+  /* 湖水蓝：封面氛围与家庭共享 */
+  --lake: #2f6e8f;
+  --lake-soft: #e2edf3;
+
+  /* 杏黄：今日问题、提示与温暖记忆 */
+  --apricot: #a56f14;
+  --apricot-soft: #fbeecd;
+
+  /* 珊瑚红：主要行动与提醒 */
+  --coral: #c7452e;
+  --coral-soft: #fae3dd;
+
   min-height: 100%;
-  background: #f3eee4;
-  color: #29251f;
-  font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif;
-  font-size: 30rpx;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "PingFang SC", "Heiti SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  font-size: 32rpx;
+  line-height: 1.6;
 }
+
 view,
 text,
 button,
-textarea {
+textarea,
+input,
+scroll-view {
   box-sizing: border-box;
 }
 
@@ -16,97 +50,226 @@ button {
   margin: 0;
   padding: 0;
   border-radius: 0;
+  background: transparent;
   font-size: inherit;
-  line-height: 1.4;
+  line-height: inherit;
+  color: inherit;
 }
 
 button::after {
   border: 0;
 }
 
-.page-shell {
-  min-height: 100vh;
-  padding: 36rpx 38rpx calc(48rpx + env(safe-area-inset-bottom));
+.serif {
+  font-family: "Songti SC", STSong, "Noto Serif CJK SC", serif;
 }
 
-.page-enter {
-  animation: page-rise 420ms ease-out both;
+/* ---------- 版面 ---------- */
+
+.shell {
+  min-height: 100vh;
+  padding: 24rpx 32rpx 48rpx;
+}
+
+.shell-with-bar {
+  padding-bottom: calc(210rpx + env(safe-area-inset-bottom));
+}
+
+.stack-l > view + view,
+.stack-l > button + view,
+.stack-l > view + button {
+  margin-top: 32rpx;
 }
 
 .eyebrow {
-  color: #9b563c;
-  font-size: 22rpx;
+  color: var(--ink-faint);
+  font-size: 24rpx;
+  letter-spacing: 6rpx;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.section-title {
+  font-size: 36rpx;
   font-weight: 600;
-  letter-spacing: 5rpx;
+  color: var(--ink);
 }
 
-.serif {
-  font-family: "Songti SC", STSong, serif;
+.section-more {
+  font-size: 26rpx;
+  color: var(--lake);
 }
 
-.primary-button,
-.secondary-button,
-.quiet-button {
+.muted {
+  color: var(--ink-soft);
+}
+
+.faint {
+  color: var(--ink-faint);
+  font-size: 26rpx;
+}
+
+/* ---------- 肌理：仅用于封面与氛围区 ---------- */
+
+.wash {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--paper-card);
+  background-image:
+    radial-gradient(circle at 14% 16%, rgba(47, 110, 143, 0.30), transparent 44%),
+    radial-gradient(circle at 88% 6%, rgba(23, 107, 84, 0.26), transparent 40%),
+    radial-gradient(circle at 74% 94%, rgba(199, 69, 46, 0.20), transparent 46%),
+    radial-gradient(circle at 34% 78%, rgba(165, 111, 20, 0.22), transparent 48%),
+    radial-gradient(circle at 58% 44%, rgba(255, 255, 255, 0.55), transparent 58%);
+}
+
+.wash::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(31, 58, 52, 0.085) 1.5rpx, transparent 1.5rpx);
+  background-size: 11rpx 11rpx;
+}
+
+/* ---------- 卡片 ---------- */
+
+.card {
+  padding: 32rpx;
+  border-radius: 28rpx;
+  background: var(--paper-card);
+  border: 2rpx solid var(--line);
+}
+
+.card-flat {
+  padding: 32rpx;
+  border-radius: 28rpx;
+  background: var(--paper-sunk);
+}
+
+/* ---------- 按钮：老人友好触控 ---------- */
+
+.btn {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 96rpx;
-  border-radius: 24rpx;
+  padding: 0 32rpx;
+  border-radius: 26rpx;
+  font-size: 34rpx;
   font-weight: 600;
 }
 
-.primary-button {
-  background: #9b563c;
-  color: #fffaf0;
-  box-shadow: 0 16rpx 34rpx rgba(93, 50, 34, 0.18);
+.btn-primary {
+  background: var(--coral);
+  color: #fffdfb;
 }
 
-.secondary-button {
-  border: 2rpx solid #b9aa96;
-  background: transparent;
-  color: #393228;
+.btn-jade {
+  background: var(--jade);
+  color: #fbfdfc;
 }
 
-.quiet-button {
-  min-height: 72rpx;
-  color: #756b5e;
-  font-size: 26rpx;
+.btn-ghost {
+  border: 2rpx solid var(--ink-faint);
+  color: var(--ink);
 }
 
-.primary-button:active,
-.secondary-button:active,
-.quiet-button:active {
-  transform: scale(0.98);
-  opacity: 0.86;
+.btn-quiet {
+  min-height: 80rpx;
+  color: var(--ink-soft);
+  font-size: 28rpx;
+  font-weight: 400;
 }
 
-.section-title {
-  margin-top: 18rpx;
-  font-family: "Songti SC", STSong, serif;
-  font-size: 50rpx;
-  font-weight: 600;
-  line-height: 1.25;
+.btn:active {
+  opacity: 0.82;
+  transform: scale(0.985);
 }
 
-.muted {
-  color: #756b5e;
+.btn[disabled],
+.btn-disabled {
+  opacity: 0.45;
 }
 
-.status-pill {
+/* ---------- 状态标签：颜色之外必须有图标或文字 ---------- */
+
+.tag {
   display: inline-flex;
   align-items: center;
-  min-height: 48rpx;
-  padding: 0 18rpx;
+  min-height: 44rpx;
+  padding: 0 16rpx;
   border-radius: 999rpx;
-  background: #e7ded0;
-  color: #6f6254;
-  font-size: 22rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
 }
 
-@keyframes page-rise {
+.tag-mark {
+  margin-right: 8rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.tag-jade {
+  background: var(--jade-soft);
+  color: var(--jade);
+}
+
+.tag-lake {
+  background: var(--lake-soft);
+  color: var(--lake);
+}
+
+.tag-apricot {
+  background: var(--apricot-soft);
+  color: var(--apricot);
+}
+
+.tag-coral {
+  background: var(--coral-soft);
+  color: var(--coral);
+}
+
+.tag-muted {
+  background: var(--paper-sunk);
+  color: var(--ink-soft);
+}
+
+/* ---------- 品牌标志：双鸟相伴 ---------- */
+/* 以 SVG data URI 内联，运行包里不放二进制图片资源，主包不因此变大。 */
+
+.brand-mark {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IuaLvuWFiSDlj4zpuJ/nm7jkvLTmoIflv5ciPiA8IS0tIOWkp+m4n++8iOeOieefs+e7v++8ie+8muWktOWkp+OAgei6q+aUtu+8jOWwj+WwuuWvuOS4i+mdoOWchuWktOiupOWHuuaYr+m4nyAtLT4gPGcgZmlsbD0iIzE3NmI1NCI+IDxjaXJjbGUgY3g9IjIyIiBjeT0iMTciIHI9IjkiLz4gPHBhdGggZD0iTTMwLjUgMTMuOCBMMzkgMTcgTDMwLjUgMjAuMiBaIi8+IDxwYXRoIGQ9Ik0xOSAyNS41IEMyNS41IDI3LjUgMjkuNSAzNCAyOC41IDQyIEMyNy41IDQ5LjUgMjIuNSA1NSAxNSA1NyBDMTIuNSA0OCAxMy41IDMzIDE5IDI1LjUgWiIvPiA8L2c+IDwhLS0g5bCP6bif77yI5rmW5rC06JOd77yJ77ya5ZCR5bem5Zue5pyb77yM5LiO5aSn6bif55u45ZCR5L6d5YGOIC0tPiA8ZyBmaWxsPSIjMmY2ZThmIj4gPGNpcmNsZSBjeD0iNDYiIGN5PSIyOCIgcj0iNyIvPiA8cGF0aCBkPSJNMzkuNCAyNS42IEwzMiAyOCBMMzkuNCAzMC40IFoiLz4gPHBhdGggZD0iTTQ4LjUgMzQuNSBDNDMuNSAzNi41IDQwLjUgNDEuNSA0MS41IDQ4IEM0Mi4zIDUzLjUgNDUuNSA1Ny41IDUwLjUgNTkgQzUzIDUxLjUgNTIgNDAuNSA0OC41IDM0LjUgWiIvPiA8L2c+IDwvc3ZnPg==");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.brand-mark-mono {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IuaLvuWFiSDlj4zpuJ/nm7jkvLTmoIflv5cg5Y2V6ImyIj4gPCEtLSDlpKfpuJ/vvIjnjonnn7Pnu7/vvInvvJrlpLTlpKfjgIHouqvmlLbvvIzlsI/lsLrlr7jkuIvpnaDlnIblpLTorqTlh7rmmK/puJ8gLS0+IDxnIGZpbGw9IiMxZjNhMzQiPiA8Y2lyY2xlIGN4PSIyMiIgY3k9IjE3IiByPSI5Ii8+IDxwYXRoIGQ9Ik0zMC41IDEzLjggTDM5IDE3IEwzMC41IDIwLjIgWiIvPiA8cGF0aCBkPSJNMTkgMjUuNSBDMjUuNSAyNy41IDI5LjUgMzQgMjguNSA0MiBDMjcuNSA0OS41IDIyLjUgNTUgMTUgNTcgQzEyLjUgNDggMTMuNSAzMyAxOSAyNS41IFoiLz4gPC9nPiA8IS0tIOWwj+m4n++8iOa5luawtOiTne+8ie+8muWQkeW3puWbnuacm++8jOS4juWkp+m4n+ebuOWQkeS+neWBjiAtLT4gPGcgZmlsbD0iIzFmM2EzNCI+IDxjaXJjbGUgY3g9IjQ2IiBjeT0iMjgiIHI9IjciLz4gPHBhdGggZD0iTTM5LjQgMjUuNiBMMzIgMjggTDM5LjQgMzAuNCBaIi8+IDxwYXRoIGQ9Ik00OC41IDM0LjUgQzQzLjUgMzYuNSA0MC41IDQxLjUgNDEuNSA0OCBDNDIuMyA1My41IDQ1LjUgNTcuNSA1MC41IDU5IEM1MyA1MS41IDUyIDQwLjUgNDguNSAzNC41IFoiLz4gPC9nPiA8L3N2Zz4=");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+/* ---------- 进入动画：极轻的弥散 ---------- */
+
+.page-enter {
+  animation: rise 380ms ease-out both;
+}
+
+@keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(18rpx);
+    transform: translateY(16rpx);
   }
   to {
     opacity: 1;

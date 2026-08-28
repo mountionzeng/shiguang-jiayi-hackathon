@@ -1,0 +1,235 @@
+<view class="interview-page" style="bottom: {{keyboardHeight}}px">
+
+  <view class="who-bar">
+    <view class="who-copy">
+      <text class="who-name">{{memberName}} · {{memberRelation}}</text>
+      <text class="who-note">AI 记忆访谈 · 先讲，不急着分类</text>
+    </view>
+    <text class="tag tag-apricot">
+      <text class="tag-mark">聊</text>正在倾听
+    </text>
+  </view>
+
+  <!-- ============ 对话 ============ -->
+  <block wx:if="{{stage === 'chat'}}">
+    <scroll-view
+      class="chat-scroll"
+      scroll-y
+      scroll-with-animation
+      scroll-into-view="{{scrollIntoView}}"
+    >
+      <view class="chat-inner">
+        <view class="source-note" wx:if="{{localDemoOnly}}">
+          未连云端，以下追问来自本地提问规则，不是 AI 生成。
+        </view>
+
+        <block wx:for="{{messages}}" wx:key="id">
+          <!-- 追问：单独的卡片，和普通气泡区分开 -->
+          <view class="ask-card" wx:if="{{item.kind === 'followup'}}" id="{{item.id}}">
+            <text class="ask-label">{{item.label}}</text>
+            <view class="ask-text serif">{{item.text}}</view>
+          </view>
+
+          <view class="row row-me" wx:elif="{{item.kind === 'answer'}}" id="{{item.id}}">
+            <view class="bubble bubble-me serif">{{item.text}}</view>
+          </view>
+
+          <view class="row row-ai" wx:else id="{{item.id}}">
+            <view class="ai-mark serif">问</view>
+            <view class="bubble bubble-ai serif">{{item.text}}</view>
+          </view>
+        </block>
+
+        <view class="row row-ai" wx:if="{{asking}}">
+          <view class="ai-mark serif">问</view>
+          <view class="bubble bubble-ai typing">
+            <text class="dot"></text><text class="dot"></text><text class="dot"></text>
+          </view>
+        </view>
+
+        <view class="scroll-tail"></view>
+      </view>
+    </scroll-view>
+
+    <view class="composer">
+      <view class="input-row">
+        <textarea
+          class="input-field"
+          value="{{inputText}}"
+          placeholder="想到什么说什么"
+          placeholder-class="input-placeholder"
+          maxlength="{{-1}}"
+          auto-height
+          fixed="{{true}}"
+          adjust-position="{{false}}"
+          show-confirm-bar="{{false}}"
+          cursor-spacing="24"
+          bindinput="onInput"
+          bindkeyboardheightchange="onKeyboardHeightChange"
+        ></textarea>
+        <view class="send-btn" bindtap="send">
+          <text class="send-arrow">→</text>
+        </view>
+      </view>
+
+      <view class="tool-row">
+        <view class="tool-chip tool-chip-off" bindtap="notYet">照片 · 赛后接入</view>
+        <view class="tool-chip tool-chip-off" bindtap="notYet">语音 · 赛后接入</view>
+        <view class="tool-spacer"></view>
+        <view
+          class="tidy-btn {{answers.length === 0 ? 'tidy-btn-off' : ''}}"
+          bindtap="finish"
+        >整理成片段</view>
+      </view>
+    </view>
+  </block>
+
+  <!-- ============ 整理与保存 ============ -->
+  <block wx:else>
+    <scroll-view class="chat-scroll" scroll-y>
+      <view class="chat-inner">
+        <text class="tidy-label">
+          {{localDemoOnly ? '本地演示整理 · 保留你说的原话' : 'AI 云整理 · 需要复核'}}
+        </text>
+
+        <textarea
+          class="draft-title serif"
+          value="{{draftTitle}}"
+          placeholder="给这段起个名字"
+          placeholder-class="input-placeholder"
+          auto-height
+          fixed="{{true}}"
+          adjust-position="{{false}}"
+          show-confirm-bar="{{false}}"
+          bindinput="onTitleInput"
+          bindkeyboardheightchange="onKeyboardHeightChange"
+        ></textarea>
+
+        <view class="draft-meta">
+          <text class="meta-date">{{dateLabel}}</text>
+          <text class="meta-chip" wx:for="{{coveredChips}}" wx:key="*this" wx:for-item="chip">{{chip}}</text>
+        </view>
+
+        <view class="draft-rule"></view>
+
+        <textarea
+          class="draft-field serif"
+          value="{{draftText}}"
+          auto-height
+          fixed="{{true}}"
+          adjust-position="{{false}}"
+          show-confirm-bar="{{false}}"
+          cursor-spacing="24"
+          bindinput="onDraftInput"
+          bindkeyboardheightchange="onKeyboardHeightChange"
+        ></textarea>
+        <view class="draft-count {{tooLong ? 'draft-count-over' : ''}}">
+          {{draftLength}} / 500 字{{tooLong ? '　超出部分请先删掉' : ''}}
+        </view>
+
+        <view class="organize-section">
+          <view class="organize-title serif">要收进哪个故事？</view>
+          <view class="organize-note">不必现在想好。留空就会安全地放进“未整理片段”。</view>
+
+          <view
+            class="story-choice {{storyTitle === '' ? 'choice-on' : ''}}"
+            bindtap="chooseFragment"
+          >
+            <view class="choice-mark serif">片</view>
+            <view class="choice-copy">
+              <text class="choice-title">先存为未整理片段</text>
+              <text class="choice-note">以后想清楚了，再把它放进某个故事</text>
+            </view>
+            <text class="choice-check">{{storyTitle === '' ? '✓' : ''}}</text>
+          </view>
+
+          <view class="story-list" wx:if="{{storyOptions.length > 0}}">
+            <view
+              class="story-chip {{item.selected ? 'story-chip-on' : ''}}"
+              wx:for="{{storyOptions}}"
+              wx:key="title"
+              data-title="{{item.title}}"
+              bindtap="chooseStory"
+            >{{item.title}} · {{item.count}}段</view>
+          </view>
+
+          <input
+            class="story-input"
+            value="{{storyTitle}}"
+            placeholder="或输入一个新故事名，例如：我和外公的雨天"
+            placeholder-class="input-placeholder"
+            maxlength="30"
+            bindinput="onStoryTitleInput"
+          />
+        </view>
+
+        <view class="organize-section">
+          <view class="organize-title serif">这段和谁有关？</view>
+          <view class="organize-note">可多选亲友，只用于整理故事，不等于他们能看到。</view>
+          <view class="people-grid">
+            <view
+              class="person-choice {{item.selected ? 'choice-on' : ''}}"
+              wx:for="{{relatedOptions}}"
+              wx:key="id"
+              data-id="{{item.id}}"
+              bindtap="toggleRelatedMember"
+            >
+              <view class="person-avatar serif">{{item.avatarText}}</view>
+              <view class="person-copy">
+                <text class="person-name">{{item.name}}</text>
+                <text class="person-relation">{{item.relation}}</text>
+              </view>
+              <text class="choice-check">{{item.selected ? '✓' : ''}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="organize-section">
+          <view class="organize-title serif">谁可以看？</view>
+          <view class="organize-note">每一段记忆单独设置阅读权，可以多选，也可以只留给自己。</view>
+
+          <view
+            class="person-choice {{audienceMemberIds.length === 0 ? 'choice-on' : ''}}"
+            bindtap="choosePrivate"
+          >
+            <view class="person-avatar person-avatar-private serif">私</view>
+            <view class="person-copy">
+              <text class="person-name">仅自己</text>
+              <text class="person-relation">暂时不分享给任何人</text>
+            </view>
+            <text class="choice-check">{{audienceMemberIds.length === 0 ? '✓' : ''}}</text>
+          </view>
+
+          <view class="people-grid">
+            <view
+              class="person-choice {{item.selected ? 'choice-on' : ''}}"
+              wx:for="{{audienceOptions}}"
+              wx:key="id"
+              data-id="{{item.id}}"
+              bindtap="toggleAudienceMember"
+            >
+              <view class="person-avatar serif">{{item.avatarText}}</view>
+              <view class="person-copy">
+                <text class="person-name">{{item.name}}</text>
+                <text class="person-relation">{{item.relation}} · 可阅读</text>
+              </view>
+              <text class="choice-check">{{item.selected ? '✓' : ''}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="scroll-tail"></view>
+      </view>
+    </scroll-view>
+
+    <view class="composer">
+      <view class="save-row">
+        <button class="btn btn-ghost save-back" bindtap="backToChat">继续编辑</button>
+        <button
+          class="btn btn-primary save-go {{(saving || tooLong) ? 'btn-disabled' : ''}}"
+          bindtap="save"
+        >{{saving ? '正在保存…' : '保存这段记忆'}}</button>
+      </view>
+    </view>
+  </block>
+</view>

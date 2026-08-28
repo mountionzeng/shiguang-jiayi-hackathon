@@ -2,7 +2,7 @@
   "name": "shiguang-jiayi-hackathon",
   "version": "0.1.0",
   "private": true,
-  "description": "拾光家忆：家庭共同讲述、老人确认的微信人物传记 MVP",
+  "description": "拾光家忆：先倾听、再整理并按亲友权限分享的微信小程序文字 MVP",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts tests/*.test.js",

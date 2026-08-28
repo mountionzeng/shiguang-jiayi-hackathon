@@ -1,0 +1,518 @@
+/* 回忆采访：单一入口的独立采访对话 */
+
+.interview-page {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+
+/* ---- 抬头 ---- */
+
+.who-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 20rpx 32rpx;
+  border-bottom: 2rpx solid var(--line);
+  background: var(--paper);
+}
+
+.who-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-right: 16rpx;
+}
+
+.who-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.who-note {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: var(--ink-faint);
+}
+
+/* ---- 对话区 ---- */
+
+.chat-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-inner {
+  padding: 28rpx 32rpx 0;
+}
+
+.source-note {
+  margin-bottom: 28rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 16rpx;
+  background: var(--paper-sunk);
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--ink-faint);
+}
+
+.row {
+  display: flex;
+  margin-bottom: 28rpx;
+}
+
+.row-ai {
+  justify-content: flex-start;
+}
+
+.row-me {
+  justify-content: flex-end;
+}
+
+/* 追问：从普通气泡里独立出来的一张卡片 */
+.ask-card {
+  margin: 0 0 28rpx 0;
+  padding: 22rpx 24rpx;
+  border-left: 6rpx solid var(--apricot);
+  border-radius: 0 22rpx 22rpx 0;
+  background: var(--apricot-soft);
+}
+
+.ask-label {
+  font-size: 23rpx;
+  font-weight: 600;
+  letter-spacing: 3rpx;
+  color: var(--apricot);
+}
+
+.ask-text {
+  margin-top: 10rpx;
+  font-size: 34rpx;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.ai-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 56rpx;
+  height: 56rpx;
+  margin-right: 16rpx;
+  border-radius: 28rpx;
+  background: var(--jade);
+  color: #fbfdfc;
+  font-size: 26rpx;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 26rpx 28rpx;
+  border-radius: 26rpx;
+  font-size: 36rpx;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble-ai {
+  background: var(--paper-card);
+  border: 2rpx solid var(--line);
+  color: var(--ink);
+  border-top-left-radius: 8rpx;
+}
+
+.bubble-me {
+  background: var(--jade);
+  color: #fbfdfc;
+  border-bottom-right-radius: 8rpx;
+}
+
+.typing {
+  display: flex;
+  align-items: center;
+  min-height: 88rpx;
+}
+
+.dot {
+  width: 12rpx;
+  height: 12rpx;
+  margin-right: 10rpx;
+  border-radius: 6rpx;
+  background: var(--ink-faint);
+  animation: blink 1.1s infinite ease-in-out;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 0.28; }
+  50% { opacity: 1; }
+}
+
+.scroll-tail {
+  height: 24rpx;
+}
+
+/* ---- 底部操作区 ---- */
+
+.composer {
+  flex-shrink: 0;
+  padding: 20rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
+  border-top: 2rpx solid var(--line);
+  background: var(--paper);
+}
+
+.finish-wrap {
+  margin-bottom: 20rpx;
+}
+
+.finish-count {
+  display: block;
+  margin-bottom: 10rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--ink-faint);
+}
+
+.input-row {
+  display: flex;
+  align-items: flex-end;
+}
+
+.input-field {
+  flex: 1;
+  min-height: 96rpx;
+  max-height: 320rpx;
+  padding: 24rpx 22rpx;
+  margin-right: 14rpx;
+  border-radius: 24rpx;
+  background: var(--paper-card);
+  border: 2rpx solid var(--line);
+  font-size: 34rpx;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.input-placeholder {
+  color: var(--ink-faint);
+}
+
+.send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 48rpx;
+  background: var(--coral);
+}
+
+.send-btn:active {
+  opacity: 0.84;
+}
+
+.send-arrow {
+  color: #fffdfb;
+  font-size: 44rpx;
+  line-height: 1;
+  font-weight: 600;
+}
+
+/* ---- 工具条 ---- */
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  margin-top: 18rpx;
+}
+
+.tool-chip {
+  min-height: 60rpx;
+  padding: 12rpx 18rpx;
+  margin-right: 12rpx;
+  border-radius: 18rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.tool-chip-off {
+  background: var(--paper-sunk);
+  color: var(--ink-faint);
+}
+
+.tool-spacer {
+  flex: 1;
+}
+
+.tidy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 76rpx;
+  padding: 0 26rpx;
+  border-radius: 22rpx;
+  border: 2rpx solid var(--coral);
+  color: var(--coral);
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.tidy-btn:active {
+  opacity: 0.8;
+}
+
+.tidy-btn-off {
+  border-color: var(--line);
+  color: var(--ink-faint);
+}
+
+/* ---- 保存阶段 ---- */
+
+.tidy-label {
+  display: block;
+  font-size: 24rpx;
+  letter-spacing: 2rpx;
+  color: var(--jade);
+}
+
+.draft-title {
+  width: 100%;
+  margin-top: 16rpx;
+  font-size: 46rpx;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.draft-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 16rpx;
+}
+
+.meta-date {
+  margin-right: 14rpx;
+  font-size: 24rpx;
+  color: var(--ink-faint);
+}
+
+.meta-type {
+  margin: 4rpx 10rpx 4rpx 0;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid var(--line);
+  color: var(--ink-faint);
+  font-size: 24rpx;
+}
+
+.meta-type-on {
+  border-color: var(--jade);
+  background: var(--jade-soft);
+  color: var(--jade);
+  font-weight: 600;
+}
+
+.meta-chip {
+  margin: 4rpx 10rpx 4rpx 0;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: var(--jade-soft);
+  color: var(--jade);
+  font-size: 23rpx;
+}
+
+.draft-rule {
+  width: 100%;
+  height: 2rpx;
+  margin: 24rpx 0 4rpx;
+  background: var(--line);
+}
+
+.draft-hint {
+  margin-top: 22rpx;
+  font-size: 25rpx;
+  color: var(--ink-faint);
+}
+
+.draft-field {
+  width: 100%;
+  min-height: 190rpx;
+  margin-top: 20rpx;
+  font-size: 34rpx;
+  line-height: 1.95;
+  color: var(--ink);
+}
+
+.draft-count {
+  margin-top: 12rpx;
+  text-align: right;
+  font-size: 24rpx;
+  color: var(--ink-faint);
+}
+
+.draft-count-over {
+  color: var(--coral);
+  font-weight: 600;
+}
+
+
+/* ---- 保存阶段底部双按钮 ---- */
+
+.save-row {
+  display: flex;
+  align-items: center;
+}
+
+.save-back {
+  flex: 1;
+  margin-right: 16rpx;
+}
+
+.save-go {
+  flex: 1.6;
+}
+
+/* ---- 聊完后再整理：故事、相关人物、阅读权限彼此独立 ---- */
+
+.organize-section {
+  margin-top: 30rpx;
+  padding-top: 28rpx;
+  border-top: 2rpx solid var(--line);
+}
+
+.organize-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.organize-note {
+  margin-top: 8rpx;
+  font-size: 25rpx;
+  line-height: 1.65;
+  color: var(--ink-faint);
+}
+
+.story-choice,
+.person-choice {
+  display: flex;
+  align-items: center;
+  min-height: 112rpx;
+  margin-top: 18rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 24rpx;
+  border: 2rpx solid var(--line);
+  background: var(--paper-card);
+}
+
+.choice-on {
+  border-color: var(--jade);
+  background: var(--jade-soft);
+}
+
+.choice-mark,
+.person-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 68rpx;
+  height: 68rpx;
+  margin-right: 18rpx;
+  border-radius: 34rpx;
+  background: var(--jade);
+  color: #fffdfb;
+  font-size: 27rpx;
+}
+
+.person-avatar-private {
+  background: #87948f;
+}
+
+.choice-copy,
+.person-copy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.choice-title,
+.person-name {
+  font-size: 29rpx;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.choice-note,
+.person-relation {
+  margin-top: 5rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.choice-check {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  color: var(--jade);
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.story-list {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 14rpx;
+}
+
+.story-chip {
+  margin: 8rpx 12rpx 0 0;
+  padding: 12rpx 18rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid var(--line);
+  background: var(--paper-card);
+  color: var(--ink-soft);
+  font-size: 24rpx;
+}
+
+.story-chip-on {
+  border-color: var(--jade);
+  background: var(--jade-soft);
+  color: var(--jade);
+  font-weight: 600;
+}
+
+.story-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 92rpx;
+  margin-top: 18rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid var(--line);
+  border-radius: 22rpx;
+  background: var(--paper-card);
+  color: var(--ink);
+  font-size: 28rpx;
+}
+
+.people-grid {
+  width: 100%;
+}

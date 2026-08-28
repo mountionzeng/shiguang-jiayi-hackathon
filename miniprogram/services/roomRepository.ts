@@ -1,5 +1,10 @@
 import type { ShiguangAppOptions } from "../app";
-import { BiographyDraft, FamilyRoomState, MemoryContribution } from "../domain/biography";
+import {
+  BiographyDraft,
+  FamilyMember,
+  FamilyRoomState,
+  MemoryContribution,
+} from "../domain/biography";
 import { CLOUD_DATABASE_ENABLED } from "../config/runtime";
 import {
   appendCloudContribution,
@@ -7,13 +12,19 @@ import {
   replaceCloudContribution,
   resetCloudDemoRoom,
   saveCloudDraftIfSourcesUnchanged,
+  saveCloudPersonalDraftIfSourcesUnchanged,
+  updateCloudPersonalShareTargets,
 } from "./cloudRoomStorage";
 import {
   appendContribution,
+  loadCurrentMember,
+  saveCurrentMemberId,
   loadRoomState,
   replaceContribution,
   resetDemoRoom,
   saveDraftIfSourcesUnchanged,
+  savePersonalDraftIfSourcesUnchanged,
+  updatePersonalShareTargets,
 } from "./roomStorage";
 
 function shouldUseCloudDatabase(): boolean {
@@ -36,6 +47,16 @@ export async function loadRoomStateRemoteFirst(): Promise<FamilyRoomState> {
   }
 
   return loadRoomState();
+}
+
+export async function loadCurrentMemberRemoteFirst(
+  state?: FamilyRoomState,
+): Promise<FamilyMember> {
+  return loadCurrentMember(state ?? (await loadRoomStateRemoteFirst()));
+}
+
+export function saveCurrentMemberIdLocal(memberId: string): void {
+  saveCurrentMemberId(memberId);
 }
 
 export async function appendContributionRemoteFirst(
@@ -79,6 +100,43 @@ export async function saveDraftIfSourcesUnchangedRemoteFirst(
   }
 
   return saveDraftIfSourcesUnchanged(draft, sourceFingerprint, loadRoomState());
+}
+
+export async function savePersonalDraftIfSourcesUnchangedRemoteFirst(
+  draft: BiographyDraft,
+  sourceFingerprint: string,
+  memberId: string,
+): Promise<FamilyRoomState | undefined> {
+  if (shouldUseCloudDatabase()) {
+    try {
+      return await saveCloudPersonalDraftIfSourcesUnchanged(draft, sourceFingerprint, memberId);
+    } catch (error) {
+      console.warn("云端个人书稿保存失败，将临时保存到本地", error);
+    }
+  }
+
+  return savePersonalDraftIfSourcesUnchanged(
+    draft,
+    sourceFingerprint,
+    memberId,
+    loadRoomState(),
+  );
+}
+
+export async function updatePersonalShareTargetsRemoteFirst(
+  contributionId: string,
+  actor: FamilyMember,
+  targetMemberIds: string[],
+): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) {
+    try {
+      return await updateCloudPersonalShareTargets(contributionId, actor, targetMemberIds);
+    } catch (error) {
+      console.warn("云端阅读权限更新失败，将临时保存到本地", error);
+    }
+  }
+
+  return updatePersonalShareTargets(contributionId, actor, targetMemberIds);
 }
 
 export async function resetDemoRoomRemoteFirst(): Promise<FamilyRoomState> {

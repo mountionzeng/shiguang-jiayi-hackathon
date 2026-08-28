@@ -1,122 +1,252 @@
 import {
-  createContribution,
+  biographySourceContributions,
+  contributionScope,
+  contributionRelatedMemberIds,
+  contributionStoryTitle,
   FamilyMember,
+  MEMORY_TYPE_LABELS,
   FamilyRoomState,
-  MAX_MEMORY_LENGTH,
   MemoryContribution,
-  ReviewStatus,
-  VISIBILITY_LABELS,
-  Visibility,
-  visibleContributionsForMember,
+  pendingContributionsFor,
+  personalShareTargetMemberIds,
+  revokeFamilyVisibility,
 } from "../../domain/biography";
 import {
-  appendContributionRemoteFirst,
-  loadRoomStateRemoteFirst,
-  roomDataModeLabel,
-} from "../../services/roomRepository";
+  loadCurrentMember,
+  loadRoomState,
+  replaceContribution,
+  updatePersonalShareTargets,
+} from "../../services/roomStorage";
 
-interface ContributionView extends MemoryContribution {
+interface TimelineItem {
+  id: string;
+  text: string;
+  authorName: string;
+  relation: string;
   avatarText: string;
-  visibilityLabel: string;
-  statusLabel: string;
+  dateLabel: string;
+  timeLabel: string;
+  isMine: boolean;
+  title: string;
+  typeLabel: string;
+  storyLabel: string;
+  accessLabel: string;
+  isPersonal: boolean;
 }
 
-const reviewStatusLabels: Record<ReviewStatus, string> = {
-  pending: "待本人核对",
-  confirmed: "本人已确认",
-  conflict: "保留不同说法",
-  rejected: "本人未采纳",
-};
+interface MemberFilter {
+  id: string;
+  name: string;
+  avatarText: string;
+  count: number;
+  isElder: boolean;
+}
 
-const CURRENT_MEMBER_ID = "owner";
+const ALL = "all";
 
-function toContributionViews(
-  contributions: MemoryContribution[],
-  members: FamilyMember[],
-): ContributionView[] {
-  const avatarByMemberId = new Map(
-    members.map((member) => [member.id, member.avatarText]),
+function memoryMatchesMember(
+  memory: MemoryContribution,
+  memberId: string,
+): boolean {
+  return (
+    memory.authorMemberId === memberId ||
+    contributionRelatedMemberIds(memory).includes(memberId)
   );
+}
 
-  return contributions.map((contribution) => ({
-    ...contribution,
-    avatarText:
-      avatarByMemberId.get(contribution.authorMemberId) ?? contribution.authorName.slice(0, 1),
-    visibilityLabel: VISIBILITY_LABELS[contribution.visibility],
-    statusLabel:
-      contribution.visibility === "private" && contribution.reviewStatus === "confirmed"
-        ? "本人已确认 · 仍为私密，不进入传记"
-        : reviewStatusLabels[contribution.reviewStatus],
-  }));
+function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function formatTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const hh = `${date.getHours()}`.padStart(2, "0");
+  const mm = `${date.getMinutes()}`.padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 Page({
   data: {
     roomName: "",
     protagonistName: "",
-    members: [] as FamilyMember[],
-    contributions: [] as ContributionView[],
-    inputText: "",
-    visibility: "family" as Visibility,
-    maxLength: MAX_MEMORY_LENGTH,
-    remaining: MAX_MEMORY_LENGTH,
-    dataModeLabel: "",
+    viewerId: "",
+    viewerName: "",
+
+    filters: [] as MemberFilter[],
+    activeFilter: ALL,
+    totalCount: 0,
+
+    timeline: [] as TimelineItem[],
+    hasAnyQualified: false,
+
+    myPendingCount: 0,
+    pendingCount: 0,
+    canReview: false,
+
+    detail: null as TimelineItem | null,
   },
 
-  async onShow() {
-    await this.refresh();
-  },
-
-  async refresh(state?: FamilyRoomState) {
-    const roomState = state ?? (await loadRoomStateRemoteFirst());
-    const currentRoomMember = roomState.members.find((member) => member.id === CURRENT_MEMBER_ID);
-    const visibleContributions = currentRoomMember
-      ? visibleContributionsForMember(roomState.contributions, currentRoomMember)
-      : roomState.contributions.filter((contribution) => contribution.visibility === "family");
-
-    this.setData({
-      roomName: roomState.roomName,
-      protagonistName: roomState.protagonistName,
-      members: roomState.members,
-      contributions: toContributionViews(visibleContributions, roomState.members),
-      dataModeLabel: roomDataModeLabel(),
-    });
-  },
-
-  onInput(event: { detail: { value: string } }) {
-    const inputText = event.detail.value;
-    this.setData({
-      inputText,
-      remaining: Math.max(0, MAX_MEMORY_LENGTH - inputText.length),
-    });
-  },
-
-  chooseVisibility(event: { currentTarget: { dataset: { visibility: Visibility } } }) {
-    this.setData({ visibility: event.currentTarget.dataset.visibility });
-  },
-
-  async submitMemory() {
-    try {
-      const contribution = createContribution({
-        authorMemberId: CURRENT_MEMBER_ID,
-        authorName: "林岚",
-        relation: "外孙女",
-        text: this.data.inputText,
-        visibility: this.data.visibility,
-      });
-      const nextState = await appendContributionRemoteFirst(contribution);
-      this.setData({ inputText: "", remaining: MAX_MEMORY_LENGTH });
-      await this.refresh(nextState);
-      wx.showToast({ title: "已交给外公核对", icon: "none" });
-    } catch (error) {
-      wx.showToast({
-        title: error instanceof Error ? error.message : "暂时无法保存",
-        icon: "none",
-      });
+  onShow() {
+    const tabBar = (this as unknown as { getTabBar?: () => { setData: (d: object) => void } | undefined })
+      .getTabBar;
+    if (typeof tabBar === "function") {
+      const bar = tabBar.call(this);
+      if (bar) bar.setData({ selected: 1 });
     }
+    this.refresh();
   },
 
-  goToReview() {
+  refresh(state: FamilyRoomState = loadRoomState()) {
+    const viewer = loadCurrentMember(state);
+
+    // 新记录按每段故事的阅读名单进入记忆之家；旧版家庭时间线继续兼容。
+    // 仅自己可见的记录和未确认的旧家庭投稿都不会出现在这里。
+    const legacyFamilyMemories = biographySourceContributions(state.contributions);
+    const permissionedMemories = state.contributions.filter((memory) => {
+      if (contributionScope(memory) !== "personal") return false;
+      const readers = personalShareTargetMemberIds(memory);
+      return readers.includes(viewer.id) || (
+        memory.authorMemberId === viewer.id && readers.length > 0
+      );
+    });
+    const qualified = legacyFamilyMemories.concat(permissionedMemories);
+    const avatarByMember = new Map(
+      state.members.map((member) => [member.id, member.avatarText]),
+    );
+
+    const filters: MemberFilter[] = [
+      { id: ALL, name: "全部", avatarText: "全", count: qualified.length, isElder: false },
+      ...state.members.map((member: FamilyMember) => ({
+        id: member.id,
+        name: member.name,
+        avatarText: member.avatarText,
+        count: qualified.filter((item) => memoryMatchesMember(item, member.id)).length,
+        isElder: member.role === "elder",
+      })),
+    ];
+
+    const activeFilter = filters.some((filter) => filter.id === this.data.activeFilter)
+      ? this.data.activeFilter
+      : ALL;
+
+    const shown =
+      activeFilter === ALL
+        ? qualified
+        : qualified.filter((item) => memoryMatchesMember(item, activeFilter));
+
+    const timeline: TimelineItem[] = shown
+      .slice()
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .map((item: MemoryContribution) => ({
+        id: item.id,
+        text: item.text,
+        title: item.title ?? "",
+        typeLabel: MEMORY_TYPE_LABELS[item.memoryType ?? "note"],
+        storyLabel: contributionStoryTitle(item) || "未整理片段",
+        accessLabel: contributionScope(item) === "personal"
+          ? `指定 ${personalShareTargetMemberIds(item).length} 人可看`
+          : "旧版家庭可见",
+        isPersonal: contributionScope(item) === "personal",
+        authorName: item.authorName,
+        relation: item.relation,
+        avatarText: avatarByMember.get(item.authorMemberId) ?? item.authorName.slice(0, 1),
+        dateLabel: formatDate(item.createdAt),
+        timeLabel: formatTime(item.createdAt),
+        isMine: item.authorMemberId === viewer.id,
+      }));
+
+    this.setData({
+      roomName: state.roomName,
+      protagonistName: state.protagonistName,
+      viewerId: viewer.id,
+      viewerName: viewer.name,
+      filters,
+      activeFilter,
+      totalCount: qualified.length,
+      timeline,
+      hasAnyQualified: qualified.length > 0,
+      myPendingCount: pendingContributionsFor(state.contributions, viewer).length,
+      pendingCount: state.contributions.filter(
+        (item) => item.scope !== "personal" && item.reviewStatus === "pending",
+      ).length,
+      canReview: viewer.role === "elder",
+      detail: this.data.detail
+        ? timeline.find((item) => item.id === this.data.detail!.id) ?? null
+        : null,
+    });
+  },
+
+  chooseFilter(event: { currentTarget: { dataset: { id: string } } }) {
+    this.setData({ activeFilter: event.currentTarget.dataset.id });
+    this.refresh();
+  },
+
+  openDetail(event: { currentTarget: { dataset: { id: string } } }) {
+    const detail = this.data.timeline.find(
+      (item) => item.id === event.currentTarget.dataset.id,
+    );
+    if (detail) this.setData({ detail });
+  },
+
+  closeDetail() {
+    this.setData({ detail: null });
+  },
+
+  copyDetail() {
+    if (!this.data.detail) return;
+    wx.setClipboardData({ data: this.data.detail.text });
+  },
+
+  /** 新故事清空阅读名单；旧版家庭记忆沿用撤下家庭时间线的兼容逻辑。 */
+  revokeSharing() {
+    const detail = this.data.detail;
+    if (!detail) return;
+
+    wx.showModal({
+      title: "停止分享这段故事",
+      content: "已授权的亲友将不再看到这一段。原始记录仍会留在你的故事或未整理片段里。",
+      confirmText: "撤下",
+      cancelText: "再想想",
+      success: (result) => {
+        if (!result.confirm) return;
+
+        const state = loadRoomState();
+        const target = state.contributions.find((item) => item.id === detail.id);
+        const viewer = loadCurrentMember(state);
+        if (!target) {
+          wx.showToast({ title: "没有找到这一段", icon: "none" });
+          return;
+        }
+
+        try {
+          const nextState = contributionScope(target) === "personal"
+            ? updatePersonalShareTargets(target.id, viewer, [])
+            : replaceContribution(revokeFamilyVisibility(target, viewer), state);
+          this.setData({ detail: null });
+          this.refresh(nextState);
+          wx.showToast({ title: "已停止分享", icon: "none", duration: 2200 });
+        } catch (error) {
+          wx.showToast({
+            title: error instanceof Error ? error.message : "暂时无法撤下",
+            icon: "none",
+          });
+        }
+      },
+    });
+  },
+
+  startInterview() {
+    wx.navigateTo({ url: "/pages/interview/interview" });
+  },
+
+  openReview() {
     wx.navigateTo({ url: "/pages/review/review" });
+  },
+
+  goHome() {
+    wx.switchTab({ url: "/pages/index/index" });
   },
 });

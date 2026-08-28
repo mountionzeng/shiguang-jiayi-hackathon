@@ -22,6 +22,7 @@ test("a frontend contribution maps to a backend source record with provenance", 
     authorName: "林秋",
     relation: "女儿",
     text: "父亲年轻时喜欢修收音机。",
+    scope: "family",
     visibility: "family",
     now: fixedNow,
   });
@@ -44,6 +45,7 @@ test("a frontend contribution maps to a backend memory review state", () => {
       authorName: "林岚",
       relation: "外孙女",
       text: "外公会在雨天等我放学。",
+      scope: "family",
       visibility: "private",
       now: fixedNow,
     }),
@@ -61,9 +63,13 @@ test("a frontend contribution maps to a backend memory review state", () => {
 
 test("biography generation uses only confirmed family-visible contribution ids", () => {
   const state = createInitialRoomState();
+  const publicFamilyMemory = state.contributions.find((memory) => memory.id === "demo-memory-rain");
+  assert.ok(publicFamilyMemory);
+  const pendingFamilyMemory = state.contributions.find((memory) => memory.id === "demo-memory-radio");
+  assert.ok(pendingFamilyMemory);
   state.contributions = [
-    reviewContribution(state.contributions[0], "confirmed", "elder"),
-    reviewContribution({ ...state.contributions[1], id: "conflict" }, "conflict", "elder"),
+    publicFamilyMemory,
+    reviewContribution({ ...pendingFamilyMemory, id: "conflict" }, "conflict", "elder"),
     reviewContribution(
       createContribution({
         id: "private-confirmed",
@@ -71,6 +77,7 @@ test("biography generation uses only confirmed family-visible contribution ids",
         authorName: "林岚",
         relation: "外孙女",
         text: "这条属实但仍然私密。",
+        scope: "family",
         visibility: "private",
         now: fixedNow,
       }),

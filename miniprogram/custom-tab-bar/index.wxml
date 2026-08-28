@@ -1,0 +1,13 @@
+<view class="bar">
+  <view
+    class="item {{selected === 0 ? 'item-on' : ''}}"
+    data-index="0"
+    bindtap="switchTab"
+  >人生之书</view>
+
+  <view
+    class="item {{selected === 1 ? 'item-on' : ''}}"
+    data-index="1"
+    bindtap="switchTab"
+  >记忆之家</view>
+</view>

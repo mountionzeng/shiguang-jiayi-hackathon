@@ -1,39 +1,186 @@
-<view class="page-shell home-page page-enter">
-  <view class="brand-lockup">
-    <view class="brand-seal serif">忆</view>
-    <view class="brand-copy">
-      <text class="brand-name serif">拾光家忆</text>
-      <text class="brand-note">家庭共同讲述的文字传记</text>
+<view class="shell shell-with-bar page-enter">
+
+  <view class="wordmark">
+    <view class="brand-mark wordmark-icon"></view>
+    <text class="wordmark-text serif">拾光</text>
+  </view>
+
+  <!-- 身份条：黑客松阶段的演示身份，不伪装成真实微信成员系统 -->
+  <view class="identity-row" bindtap="toggleIdentityPicker">
+    <view class="identity-avatar serif">{{identity.avatarText}}</view>
+    <view class="identity-copy">
+      <text class="identity-name">{{identity.name}} · {{identity.relation}}</text>
+      <text class="identity-role">{{identity.roleLabel}}｜演示身份，点此切换</text>
+    </view>
+    <text class="identity-arrow">{{showIdentityPicker ? '收起' : '切换'}}</text>
+  </view>
+
+  <view class="identity-picker" wx:if="{{showIdentityPicker}}">
+    <view
+      class="identity-option"
+      wx:for="{{identityOptions}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="chooseIdentity"
+    >
+      <view class="identity-avatar identity-avatar-sm serif">{{item.avatarText}}</view>
+      <view class="identity-copy">
+        <text class="identity-name">{{item.name}} · {{item.relation}}</text>
+        <text class="identity-role">{{item.roleLabel}}</text>
+      </view>
+      <text class="identity-check" wx:if="{{item.id === identity.id}}">当前</text>
     </view>
   </view>
 
-  <view class="hero-copy">
-    <text class="eyebrow">为仍能亲口讲述的人</text>
-    <view class="hero-title serif">把一家人的记忆，\n写成他的一生。</view>
-    <view class="hero-description">
-      亲人负责记起，老人负责确认。AI 只整理已经说清楚的事，不替任何人编造人生。
+  <!-- 人生之书只属于当前身份本人，不混入家人的共同记忆 -->
+  <view class="cover wash">
+    <view class="cover-tap" bindtap="openBook">
+      <text class="cover-label">只写我亲自经历的故事</text>
+      <view class="cover-title serif">{{protagonistName}}的人生之书</view>
+      <view class="cover-sub" wx:if="{{hasFragments}}">{{chapterLabel}}</view>
+      <view class="cover-sub" wx:else>还没有写下第一段，从一件小事开始就好</view>
+    </view>
+
+    <view class="cover-stats">
+      <view class="cover-stat">
+        <text class="cover-stat-num serif">{{fragmentCount}}</text>
+        <text class="cover-stat-label">未整理片段</text>
+      </view>
+      <view class="cover-stat-line"></view>
+      <view class="cover-stat" bindtap="openBook">
+        <text class="cover-stat-num serif">{{storyCount}}</text>
+        <text class="cover-stat-label">个故事</text>
+      </view>
+      <view class="cover-stat-line"></view>
+      <view class="cover-stat" bindtap="openMemoryHome">
+        <text class="cover-stat-num serif">{{memberCount}}</text>
+        <text class="cover-stat-label">位亲友</text>
+      </view>
     </view>
   </view>
 
-  <view class="memory-window">
-    <view class="window-grain"></view>
-    <view class="quote-mark serif">“</view>
-    <view class="memory-quote serif">
-      每次下雨，他都会站在巷口，手里多带一把小伞。
+  <!-- 全站唯一的记录入口：只进入同一个 AI 对话，不先让用户分类。 -->
+  <view class="capture-card" bindtap="startInterview">
+    <view class="capture-plus serif">聊</view>
+    <view class="capture-copy">
+      <text class="capture-kicker">今天，可以从这里说起</text>
+      <text class="capture-title serif">{{todayQuestion.text}}</text>
+      <text class="capture-note">想到什么就说什么，聊完再决定放进哪个故事、谁可以看</text>
     </view>
-    <view class="memory-source">林岚 · 外孙女的回忆</view>
-    <view class="verification-stamp serif">待本人确认</view>
+    <text class="capture-arrow">和 AI 聊聊</text>
   </view>
 
-  <view class="story-steps">
-    <view class="story-step" wx:for="{{steps}}" wx:key="number">
-      <text class="step-number">{{item.number}}</text>
-      <text class="step-label">{{item.label}}</text>
+  <!-- 有内容：最近确认的片段 -->
+  <view class="fragments" wx:if="{{hasFragments}}">
+    <view class="section-head">
+      <text class="section-title">我的故事与片段</text>
+      <text class="section-more">共 {{memoryCount}} 条</text>
+    </view>
+
+    <view class="fragment-card" wx:for="{{recentFragments}}" wx:key="id" bindtap="openBook">
+      <view class="fragment-text serif">{{item.text}}</view>
+      <view class="fragment-foot">
+        <text class="tag tag-jade"><text class="tag-mark">故</text>{{item.storyLabel}}</text>
+        <text class="fragment-byline">{{item.dateLabel}}</text>
+      </view>
+      <view class="fragment-share-row">
+        <text class="fragment-share-state">{{item.shareLabel}}</text>
+        <button
+          class="fragment-share-btn"
+          data-id="{{item.id}}"
+          catchtap="changeShareTarget"
+        >更改分享</button>
+      </view>
     </view>
   </view>
 
-  <button class="primary-button" bindtap="enterRoom">进入林家的拾光房间</button>
-  <button class="quiet-button" bindtap="resetDemo">重置演示内容</button>
+  <!-- 空状态：只引导用户讲自己的亲历 -->
+  <view class="empty-block wash" wx:else>
+    <view class="brand-mark empty-mark"></view>
+    <view class="empty-title serif">这本书还是空的</view>
+    <view class="empty-desc">
+      这里不替任何家人作传，只收下你亲自经历、亲口讲出的故事。
+    </view>
+    <view class="empty-steps">
+      <view class="empty-step"><text class="empty-step-num">1</text>回答一个关于自己的问题</view>
+      <view class="empty-step"><text class="empty-step-num">2</text>整理并保留自己的原话</view>
+      <view class="empty-step"><text class="empty-step-num">3</text>把片段慢慢写成我的书</view>
+    </view>
+  </view>
 
-  <view class="demo-note">黑客松演示使用虚构家庭资料 · {{dataModeLabel}}</view>
+  <!-- 被定向分享的个人故事只在接收者首页出现，不进入其人生之书。 -->
+  <view class="shared-section" wx:if="{{hasSharedStories}}">
+    <view class="section-head">
+      <text class="section-title">亲友分享给我的</text>
+      <text class="section-more">只读 · 不进入我的书</text>
+    </view>
+    <view
+      class="shared-card"
+      wx:for="{{sharedStories}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="showSharedStory"
+    >
+      <view class="shared-from">
+        <text class="tag tag-lake"><text class="tag-mark">阅</text>定向分享</text>
+        <text class="shared-author">{{item.authorName}} · {{item.relation}}</text>
+      </view>
+      <view class="shared-text serif">{{item.text}}</view>
+      <view class="shared-foot">{{item.typeLabel}} · {{item.dateLabel}}　点开阅读全文</view>
+    </view>
+  </view>
+
+  <view class="demo-note" wx:if="{{localDemoOnly}}">
+    当前未连云端，个人采访与章节整理均为本地演示逻辑，不是 AI 生成。
+  </view>
+  <button class="btn btn-quiet" bindtap="resetDemo">重置演示内容</button>
+</view>
+
+<!-- 自定义成员面板不受 wx.showActionSheet 六项左右的数量限制。 -->
+<view
+  class="share-picker-mask"
+  wx:if="{{showSharePicker}}"
+  catchtap="closeSharePicker"
+>
+  <view class="share-picker-panel" catchtap="stopSharePickerTap">
+    <view class="share-picker-handle"></view>
+    <view class="share-picker-head">
+      <view class="share-picker-title serif">谁可以看这段故事？</view>
+      <view class="share-picker-note">可以多选。每一段故事的阅读权限都单独保存。</view>
+    </view>
+
+    <scroll-view class="share-picker-list" scroll-y show-scrollbar="{{false}}">
+      <view
+        class="share-target {{sharePickerSelectedMemberIds.length === 0 ? 'share-target-on' : ''}}"
+        bindtap="choosePrivateShare"
+      >
+        <view class="share-target-avatar share-target-private serif">私</view>
+        <view class="share-target-copy">
+          <text class="share-target-name">仅自己</text>
+          <text class="share-target-relation">取消已有分享，故事仍只属于我</text>
+        </view>
+        <text class="share-target-check">{{sharePickerSelectedMemberIds.length === 0 ? '✓' : ''}}</text>
+      </view>
+
+      <view
+        class="share-target {{item.selected ? 'share-target-on' : ''}}"
+        wx:for="{{sharePickerOptions}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="toggleShareTarget"
+      >
+        <view class="share-target-avatar serif">{{item.avatarText}}</view>
+        <view class="share-target-copy">
+          <text class="share-target-name">{{item.name}}</text>
+          <text class="share-target-relation">{{item.relation}} · 授予阅读权限</text>
+        </view>
+        <text class="share-target-check">{{item.selected ? '✓' : ''}}</text>
+      </view>
+    </scroll-view>
+
+    <view class="share-picker-actions">
+      <button class="share-picker-cancel" bindtap="closeSharePicker">先不修改</button>
+      <button class="share-picker-confirm" bindtap="confirmShareTargets">确认权限</button>
+    </view>
+  </view>
 </view>

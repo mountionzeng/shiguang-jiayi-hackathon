@@ -1,8 +1,9 @@
 import {
-  biographySourceContributions,
   BiographyDraft,
-  buildLocalBiographyDraft,
+  buildLocalPersonalBiographyDraft,
+  FamilyMember,
   FamilyRoomState,
+  personalBookContributions,
 } from "../domain/biography";
 import type { ShiguangAppOptions } from "../app";
 
@@ -27,10 +28,13 @@ function isCloudBiographyResult(value: unknown): value is BiographyDraft {
   );
 }
 
-export async function generateBiography(state: FamilyRoomState): Promise<BiographyDraft> {
-  const confirmed = biographySourceContributions(state.contributions);
-  if (confirmed.length === 0) {
-    throw new Error("至少确认一段回忆后才能生成章节");
+export async function generateBiography(
+  state: FamilyRoomState,
+  member: FamilyMember,
+): Promise<BiographyDraft> {
+  const personal = personalBookContributions(state.contributions, member.id);
+  if (personal.length === 0) {
+    throw new Error("至少写下一段自己的经历后才能生成章节");
   }
 
   const app = getApp<ShiguangAppOptions>();
@@ -39,11 +43,11 @@ export async function generateBiography(state: FamilyRoomState): Promise<Biograp
       const response = await wx.cloud.callFunction({
         name: "generateBiography",
         data: {
-          protagonistName: state.protagonistName,
-          memories: confirmed.map((memory) => ({
+          protagonistName: member.name,
+          memories: personal.map((memory) => ({
             id: memory.id,
             authorName: memory.authorName,
-            relation: memory.relation,
+            relation: "本人",
             text: memory.text,
           })),
         },
@@ -59,5 +63,9 @@ export async function generateBiography(state: FamilyRoomState): Promise<Biograp
     }
   }
 
-  return buildLocalBiographyDraft(state.protagonistName, state.contributions);
+  return buildLocalPersonalBiographyDraft(
+    member.name,
+    member.id,
+    state.contributions,
+  );
 }
