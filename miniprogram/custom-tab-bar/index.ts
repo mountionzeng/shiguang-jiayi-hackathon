@@ -11,10 +11,5 @@ Component({
       if (index === this.data.selected) return;
       wx.switchTab({ url: TAB_PAGES[index] });
     },
-
-    startInterview() {
-      const mode = this.data.selected === 0 ? "personal" : "family";
-      wx.navigateTo({ url: `/pages/interview/interview?mode=${mode}` });
-    },
   },
 });

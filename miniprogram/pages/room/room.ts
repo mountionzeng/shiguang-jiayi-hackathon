@@ -1,16 +1,21 @@
 import {
   biographySourceContributions,
+  contributionScope,
+  contributionRelatedMemberIds,
+  contributionStoryTitle,
   FamilyMember,
   MEMORY_TYPE_LABELS,
   FamilyRoomState,
   MemoryContribution,
   pendingContributionsFor,
+  personalShareTargetMemberIds,
   revokeFamilyVisibility,
 } from "../../domain/biography";
 import {
   loadCurrentMember,
   loadRoomState,
   replaceContribution,
+  updatePersonalShareTargets,
 } from "../../services/roomStorage";
 
 interface TimelineItem {
@@ -24,6 +29,9 @@ interface TimelineItem {
   isMine: boolean;
   title: string;
   typeLabel: string;
+  storyLabel: string;
+  accessLabel: string;
+  isPersonal: boolean;
 }
 
 interface MemberFilter {
@@ -35,6 +43,16 @@ interface MemberFilter {
 }
 
 const ALL = "all";
+
+function memoryMatchesMember(
+  memory: MemoryContribution,
+  memberId: string,
+): boolean {
+  return (
+    memory.authorMemberId === memberId ||
+    contributionRelatedMemberIds(memory).includes(memberId)
+  );
+}
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -84,10 +102,17 @@ Page({
   refresh(state: FamilyRoomState = loadRoomState()) {
     const viewer = loadCurrentMember(state);
 
-    // 记忆之家只呈现"家庭故事 + 已确认 + 家庭可见"的片段。
-    // personal 作用域的内容永远只留在各自的人生之书。
-    // 待确认、拒绝、冲突和私密投稿一律不进入这条时间线。
-    const qualified = biographySourceContributions(state.contributions);
+    // 新记录按每段故事的阅读名单进入记忆之家；旧版家庭时间线继续兼容。
+    // 仅自己可见的记录和未确认的旧家庭投稿都不会出现在这里。
+    const legacyFamilyMemories = biographySourceContributions(state.contributions);
+    const permissionedMemories = state.contributions.filter((memory) => {
+      if (contributionScope(memory) !== "personal") return false;
+      const readers = personalShareTargetMemberIds(memory);
+      return readers.includes(viewer.id) || (
+        memory.authorMemberId === viewer.id && readers.length > 0
+      );
+    });
+    const qualified = legacyFamilyMemories.concat(permissionedMemories);
     const avatarByMember = new Map(
       state.members.map((member) => [member.id, member.avatarText]),
     );
@@ -98,7 +123,7 @@ Page({
         id: member.id,
         name: member.name,
         avatarText: member.avatarText,
-        count: qualified.filter((item) => item.authorMemberId === member.id).length,
+        count: qualified.filter((item) => memoryMatchesMember(item, member.id)).length,
         isElder: member.role === "elder",
       })),
     ];
@@ -110,7 +135,7 @@ Page({
     const shown =
       activeFilter === ALL
         ? qualified
-        : qualified.filter((item) => item.authorMemberId === activeFilter);
+        : qualified.filter((item) => memoryMatchesMember(item, activeFilter));
 
     const timeline: TimelineItem[] = shown
       .slice()
@@ -120,6 +145,11 @@ Page({
         text: item.text,
         title: item.title ?? "",
         typeLabel: MEMORY_TYPE_LABELS[item.memoryType ?? "note"],
+        storyLabel: contributionStoryTitle(item) || "未整理片段",
+        accessLabel: contributionScope(item) === "personal"
+          ? `指定 ${personalShareTargetMemberIds(item).length} 人可看`
+          : "旧版家庭可见",
+        isPersonal: contributionScope(item) === "personal",
         authorName: item.authorName,
         relation: item.relation,
         avatarText: avatarByMember.get(item.authorMemberId) ?? item.authorName.slice(0, 1),
@@ -170,14 +200,14 @@ Page({
     wx.setClipboardData({ data: this.data.detail.text });
   },
 
-  /** 撤下只解除家庭可见，不会误塞进任何人的人生之书。 */
+  /** 新故事清空阅读名单；旧版家庭记忆沿用撤下家庭时间线的兼容逻辑。 */
   revokeSharing() {
     const detail = this.data.detail;
     if (!detail) return;
 
     wx.showModal({
-      title: "从记忆之家撤下",
-      content: "其他家人将不再看到这一段。它不会进入任何人的人生之书，原始记录仍由你保留。",
+      title: "停止分享这段故事",
+      content: "已授权的亲友将不再看到这一段。原始记录仍会留在你的故事或未整理片段里。",
       confirmText: "撤下",
       cancelText: "再想想",
       success: (result) => {
@@ -192,13 +222,12 @@ Page({
         }
 
         try {
-          const nextState = replaceContribution(
-            revokeFamilyVisibility(target, viewer),
-            state,
-          );
+          const nextState = contributionScope(target) === "personal"
+            ? updatePersonalShareTargets(target.id, viewer, [])
+            : replaceContribution(revokeFamilyVisibility(target, viewer), state);
           this.setData({ detail: null });
           this.refresh(nextState);
-          wx.showToast({ title: "已从记忆之家撤下", icon: "none", duration: 2200 });
+          wx.showToast({ title: "已停止分享", icon: "none", duration: 2200 });
         } catch (error) {
           wx.showToast({
             title: error instanceof Error ? error.message : "暂时无法撤下",
@@ -210,7 +239,7 @@ Page({
   },
 
   startInterview() {
-    wx.navigateTo({ url: "/pages/interview/interview?mode=family" });
+    wx.navigateTo({ url: "/pages/interview/interview" });
   },
 
   openReview() {

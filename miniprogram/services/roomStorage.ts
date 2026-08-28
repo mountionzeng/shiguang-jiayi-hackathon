@@ -1,16 +1,19 @@
 import {
   BiographyDraft,
   biographySourceFingerprint,
+  contributionRelatedMemberIds,
   contributionScope,
   createInitialRoomState,
   FamilyMember,
   FamilyRoomState,
   MemoryContribution,
+  personalShareTargetMemberIds,
   personalBookSourceFingerprint,
-  setPersonalShareTarget,
+  setPersonalShareTargets,
 } from "../domain/biography";
 
-const STORAGE_KEY = "shiguang-family-room-v3";
+const STORAGE_KEY = "shiguang-family-room-v4";
+const V3_STORAGE_KEY = "shiguang-family-room-v3";
 const LEGACY_STORAGE_KEY = "shiguang-family-room-v2";
 
 function readStoredRoom(key: string): FamilyRoomState | undefined {
@@ -25,6 +28,34 @@ export function loadRoomState(): FamilyRoomState {
   try {
     const current = readStoredRoom(STORAGE_KEY);
     if (current) return current;
+
+    const previous = readStoredRoom(V3_STORAGE_KEY);
+    if (previous) {
+      const knownMemberIds = new Set(previous.members.map((member) => member.id));
+      const migrated: FamilyRoomState = {
+        ...previous,
+        contributions: previous.contributions.map((contribution) => {
+          const storedTargets: unknown = contribution.sharedWithMemberIds;
+          const normalizedTargets = Array.isArray(storedTargets) &&
+            storedTargets.every((memberId) => typeof memberId === "string")
+            ? Array.from(new Set(storedTargets))
+                .filter((memberId) => memberId !== contribution.authorMemberId)
+                .filter((memberId) => knownMemberIds.has(memberId))
+            : [];
+
+          return {
+            ...contribution,
+            scope: contributionScope(contribution),
+            // v3 只允许一位阅读者；多人数组在旧版属于异常缓存，迁移时继续失败关闭。
+            sharedWithMemberIds:
+              normalizedTargets.length === 1 ? normalizedTargets : undefined,
+          };
+        }),
+        personalDrafts: previous.personalDrafts ?? {},
+      };
+      saveRoomState(migrated);
+      return migrated;
+    }
 
     const legacy = readStoredRoom(LEGACY_STORAGE_KEY);
     if (legacy) {
@@ -94,6 +125,17 @@ export function appendContribution(
   contribution: MemoryContribution,
   state = loadRoomState(),
 ): FamilyRoomState {
+  const memberIds = new Set(state.members.map((member) => member.id));
+  if (!memberIds.has(contribution.authorMemberId)) {
+    throw new Error("讲述者已不在当前亲友空间");
+  }
+  const referencedMemberIds = contributionRelatedMemberIds(contribution).concat(
+    personalShareTargetMemberIds(contribution),
+  );
+  if (referencedMemberIds.some((memberId) => !memberIds.has(memberId))) {
+    throw new Error("故事中包含已离开空间的亲友");
+  }
+
   const personalDrafts = { ...(state.personalDrafts ?? {}) };
   if (contributionScope(contribution) === "personal") {
     delete personalDrafts[contribution.authorMemberId];
@@ -128,19 +170,30 @@ export function replaceContribution(
  * 只更新个人故事的定向阅读者。
  * 分享权限不是书稿来源的一部分，因此不应让个人章节或家庭章节失效。
  */
-export function updatePersonalShareTarget(
+/**
+ * 更新一段故事的阅读名单。提交时重新读取成员和故事，避免旧页面快照覆盖新数据。
+ */
+export function updatePersonalShareTargets(
   contributionId: string,
   actor: FamilyMember,
-  targetMemberId?: string,
+  targetMemberIds: string[],
 ): FamilyRoomState {
-  // 选择面板可能打开很久；提交时必须重新读取，不能让旧页面快照覆盖新故事或新章节。
   const state = loadRoomState();
   const currentActor = state.members.find((member) => member.id === actor.id);
   if (!currentActor) {
-    throw new Error("当前身份已不在这个家庭房间");
+    throw new Error("当前身份已不在这个亲友空间");
   }
-  if (targetMemberId && !state.members.some((member) => member.id === targetMemberId)) {
-    throw new Error("请选择房间里的家庭成员");
+
+  const uniqueTargetIds = Array.from(new Set(targetMemberIds));
+  if (
+    uniqueTargetIds.length !== targetMemberIds.length ||
+    uniqueTargetIds.some(
+      (memberId) =>
+        memberId === currentActor.id ||
+        !state.members.some((member) => member.id === memberId),
+    )
+  ) {
+    throw new Error("请选择仍在空间里的亲友");
   }
 
   const contribution = state.contributions.find((item) => item.id === contributionId);
@@ -148,7 +201,11 @@ export function updatePersonalShareTarget(
     throw new Error("没有找到这段故事");
   }
 
-  const updated = setPersonalShareTarget(contribution, currentActor, targetMemberId);
+  const updated = setPersonalShareTargets(
+    contribution,
+    currentActor,
+    uniqueTargetIds,
+  );
   const next = {
     ...state,
     contributions: state.contributions.map((item) =>

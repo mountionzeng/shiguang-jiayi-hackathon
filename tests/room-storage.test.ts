@@ -15,7 +15,7 @@ import {
   savePersonalDraftIfSourcesUnchanged,
   saveDraftIfSourcesUnchanged,
   saveRoomState,
-  updatePersonalShareTarget,
+  updatePersonalShareTargets,
 } from "../miniprogram/services/roomStorage";
 
 function installVersionedStorageMock(initial: Record<string, unknown> = {}) {
@@ -67,7 +67,7 @@ const draft: BiographyDraft = {
   generationMode: "local-demo",
 };
 
-test("v2 rooms migrate to v3 without becoming personal stories", (context) => {
+test("v2 rooms migrate to v4 without becoming personal stories", (context) => {
   const legacy = createInitialRoomState();
   const scopeLess = legacy.contributions.map(({ scope: _scope, ...memory }) => memory);
   const storage = installVersionedStorageMock({
@@ -80,7 +80,7 @@ test("v2 rooms migrate to v3 without becoming personal stories", (context) => {
   context.after(storage.restore);
 
   const migrated = loadRoomState();
-  const persisted = storage.read("shiguang-family-room-v3") as typeof migrated;
+  const persisted = storage.read("shiguang-family-room-v4") as typeof migrated;
 
   assert.deepEqual(
     migrated.contributions.map((memory) => memory.id),
@@ -89,6 +89,50 @@ test("v2 rooms migrate to v3 without becoming personal stories", (context) => {
   assert.ok(migrated.contributions.every((memory) => memory.scope === "family"));
   assert.equal(migrated.draft, undefined);
   assert.deepEqual(persisted, migrated);
+});
+
+test("v3 migration preserves one reader but keeps old multi-reader corruption closed", (context) => {
+  const previous = createInitialRoomState();
+  const singleReader = createContribution({
+    id: "v3-single-reader",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "旧版合法的单人授权应当继续保留。",
+    scope: "personal",
+    visibility: "private",
+    sharedWithMemberIds: ["member-1"],
+    now: new Date("2026-08-28T05:00:00.000Z"),
+  });
+  const corruptedMultiReader = {
+    ...singleReader,
+    id: "v3-corrupted-multi-reader",
+    sharedWithMemberIds: ["member-1", "member-2"],
+  };
+  const storage = installVersionedStorageMock({
+    "shiguang-family-room-v3": {
+      ...previous,
+      contributions: previous.contributions.concat(
+        singleReader,
+        corruptedMultiReader,
+      ),
+    },
+  });
+  context.after(storage.restore);
+
+  const migrated = loadRoomState();
+  assert.deepEqual(
+    migrated.contributions.find((memory) => memory.id === singleReader.id)
+      ?.sharedWithMemberIds,
+    ["member-1"],
+  );
+  assert.equal(
+    migrated.contributions.find(
+      (memory) => memory.id === corruptedMultiReader.id,
+    )?.sharedWithMemberIds,
+    undefined,
+  );
+  assert.deepEqual(storage.read("shiguang-family-room-v4"), migrated);
 });
 
 test("a late generation keeps unrelated newer room changes", (context) => {
@@ -275,10 +319,10 @@ test("changing a targeted reader preserves both personal and family drafts", (co
   const beforeFingerprint = personalBookSourceFingerprint(withDrafts, author.id);
   saveRoomState(withDrafts);
 
-  const shared = updatePersonalShareTarget(
+  const shared = updatePersonalShareTargets(
     "demo-personal-rain",
     author,
-    "member-1",
+    ["member-1"],
   );
 
   assert.deepEqual(
@@ -296,11 +340,11 @@ test("changing a targeted reader preserves both personal and family drafts", (co
   assert.equal(shared.draft?.title, draft.title);
   assert.equal(personalBookSourceFingerprint(shared, author.id), beforeFingerprint);
   assert.throws(
-    () => updatePersonalShareTarget("demo-personal-rain", author, "unknown"),
-    /家庭成员/,
+    () => updatePersonalShareTargets("demo-personal-rain", author, ["unknown"]),
+    /亲友/,
   );
 
-  updatePersonalShareTarget("demo-personal-rain", author, undefined);
+  updatePersonalShareTargets("demo-personal-rain", author, []);
   assert.equal(
     loadRoomState().contributions.find(
       (memory) => memory.id === "demo-personal-rain",
@@ -338,10 +382,10 @@ test("changing a share target keeps stories and chapters saved after the picker 
     },
   });
 
-  const shared = updatePersonalShareTarget(
+  const shared = updatePersonalShareTargets(
     "demo-personal-rain",
     author,
-    "member-2",
+    ["member-2"],
   );
 
   assert.ok(shared.contributions.some((memory) => memory.id === newerStory.id));
@@ -381,10 +425,10 @@ test("the oldest personal story remains shareable after more than three stories"
     ).concat(extraStories),
   });
 
-  const updated = updatePersonalShareTarget(
+  const updated = updatePersonalShareTargets(
     "demo-personal-rain",
     author,
-    undefined,
+    [],
   );
 
   const oldest = updated.contributions.find(
@@ -395,5 +439,45 @@ test("the oldest personal story remains shareable after more than three stories"
     updated.contributions.filter(
       (memory) => memory.scope === "personal" && memory.authorMemberId === author.id,
     ).length > 3,
+  );
+});
+
+test("the persistence boundary rejects unknown authors, related people, and readers", (context) => {
+  const restoreWx = installStorageMock();
+  context.after(restoreWx);
+  const state = createInitialRoomState();
+  saveRoomState(state);
+
+  const baseInput = {
+    id: "unknown-member-reference",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "成员引用必须在真正写入时再次校验。",
+    scope: "personal" as const,
+    visibility: "private" as const,
+    now: new Date("2026-08-28T09:00:00.000Z"),
+  };
+
+  assert.throws(
+    () => appendContribution(createContribution({
+      ...baseInput,
+      authorMemberId: "removed-author",
+    }), state),
+    /讲述者已不在/,
+  );
+  assert.throws(
+    () => appendContribution(createContribution({
+      ...baseInput,
+      relatedMemberIds: ["removed-related"],
+    }), state),
+    /已离开空间的亲友/,
+  );
+  assert.throws(
+    () => appendContribution(createContribution({
+      ...baseInput,
+      sharedWithMemberIds: ["removed-reader"],
+    }), state),
+    /已离开空间的亲友/,
   );
 });

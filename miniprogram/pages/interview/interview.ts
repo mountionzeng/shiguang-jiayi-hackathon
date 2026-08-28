@@ -1,9 +1,11 @@
 import {
   createContribution,
-  MemoryScope,
+  contributionScope,
+  contributionStoryTitle,
+  FamilyMember,
   MAX_MEMORY_LENGTH,
   MemoryType,
-  Visibility,
+  normalizeMemoryText,
 } from "../../domain/biography";
 import {
   detectCoveredDimensions,
@@ -11,7 +13,6 @@ import {
   DIMENSION_LABELS,
   draftTitleFromAnswers,
   InterviewDimension,
-  InterviewMode,
   nextInterviewPrompt,
   pickInterviewQuestion,
   sharedQuestionSeed,
@@ -30,6 +31,20 @@ interface MessageView {
   label: string;
 }
 
+interface StoryOptionView {
+  title: string;
+  count: number;
+  selected: boolean;
+}
+
+interface MemberOptionView {
+  id: string;
+  name: string;
+  relation: string;
+  avatarText: string;
+  selected: boolean;
+}
+
 const THINKING_DELAY_MS = 420;
 
 function today(): string {
@@ -37,14 +52,64 @@ function today(): string {
   return `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
 }
 
+function storyOptionsFor(
+  memories: ReturnType<typeof loadRoomState>["contributions"],
+  memberId: string,
+  selectedTitle: string,
+): StoryOptionView[] {
+  const counts = new Map<string, number>();
+  memories.forEach((memory) => {
+    const title = contributionStoryTitle(memory);
+    if (
+      memory.authorMemberId === memberId &&
+      contributionScope(memory) === "personal" &&
+      title
+    ) {
+      counts.set(title, (counts.get(title) ?? 0) + 1);
+    }
+  });
+  return Array.from(counts.entries()).map(([title, count]) => ({
+    title,
+    count,
+    selected: title === selectedTitle,
+  }));
+}
+
+function memberOptionsFor(
+  members: FamilyMember[],
+  currentMemberId: string,
+  selectedIds: string[] = [],
+): MemberOptionView[] {
+  return members
+    .filter((member) => member.id !== currentMemberId)
+    .map((member) => ({
+      id: member.id,
+      name: member.name,
+      relation: member.relation,
+      avatarText: member.avatarText,
+      selected: selectedIds.includes(member.id),
+    }));
+}
+
+/** 按 Unicode 码点分片，避免在 500 字边界把 emoji 的代理项拆成乱码。 */
+function splitRecoverableText(text: string): string[] {
+  const chunks: string[] = [];
+  let chunk = "";
+  for (const symbol of text) {
+    if (chunk && chunk.length + symbol.length > MAX_MEMORY_LENGTH) {
+      chunks.push(chunk);
+      chunk = "";
+    }
+    chunk += symbol;
+  }
+  if (chunk) chunks.push(chunk);
+  return chunks;
+}
+
 Page({
   data: {
-    mode: "personal" as InterviewMode,
-    isPersonal: true,
-    protagonistName: "",
     memberName: "",
     memberRelation: "",
-    isElder: false,
 
     messages: [] as MessageView[],
     askedDimensions: [] as InterviewDimension[],
@@ -64,6 +129,12 @@ Page({
 
     // 「随手记 / 回忆录」沿用原型的说法，在整理时才选，入口仍然只有一个。
     memoryType: "note" as MemoryType,
+    storyTitle: "",
+    storyOptions: [] as StoryOptionView[],
+    relatedMemberIds: [] as string[],
+    relatedOptions: [] as MemberOptionView[],
+    audienceMemberIds: [] as string[],
+    audienceOptions: [] as MemberOptionView[],
     saving: false,
     saved: false,
 
@@ -73,55 +144,61 @@ Page({
 
   messageSeq: 0,
 
-  onLoad(options: { mode?: string }) {
+  onLoad() {
     const state = loadRoomState();
     const member = loadCurrentMember(state);
-    const isElder = member.role === "elder";
-    const mode: InterviewMode = options.mode === "family" ? "family" : "personal";
-    const question = pickInterviewQuestion(sharedQuestionSeed(), mode);
+    const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");
 
     this.setData({
-      mode,
-      isPersonal: mode === "personal",
-      protagonistName: mode === "personal" ? member.name : state.protagonistName,
       memberName: member.name,
       memberRelation: member.relation,
-      isElder,
       dateLabel: today(),
+      storyOptions: storyOptionsFor(state.contributions, member.id, ""),
+      relatedOptions: memberOptionsFor(state.members, member.id),
+      audienceOptions: memberOptionsFor(state.members, member.id),
     });
 
     this.pushMessage(
       "opening",
-      mode === "personal"
-        ? `${question.text}\n（这段只写进你自己的人生之书，请用“我”来讲。）`
-        : `${question.text}\n（讲一段你和家人共同经历的事，请用“我们”来讲。）`,
+      `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`,
     );
   },
 
   /**
    * 没点「整理成片段」就直接退出时，聊天记录不能白讲。
-   * 个人采访自动存回自己书里；家庭采访保存为待确认的家庭记忆。
+   * 未完成归档时先存为只有自己可见的片段，避免强迫用户过早分类。
    */
   onUnload() {
     wx.disableAlertBeforeUnload();
-    if (this.data.saved || this.data.answers.length === 0) return;
+    const unsentText = this.data.inputText.trim();
+    const rawAnswers = this.data.answers.concat(unsentText ? [unsentText] : []);
+    if (this.data.saved || rawAnswers.length === 0) return;
 
     try {
-      const state = loadRoomState();
+      let state = loadRoomState();
       const member = loadCurrentMember(state);
-      appendContribution(
-        createContribution({
+      const recoverableText = normalizeMemoryText(
+        this.data.stage === "save" && this.data.draftText
+          ? this.data.draftText
+          : rawAnswers.join(" ")
+      );
+      const chunks = splitRecoverableText(recoverableText);
+
+      chunks.forEach((text, index) => {
+        state = appendContribution(createContribution({
           authorMemberId: member.id,
           authorName: member.name,
           relation: member.relation,
-          text: this.data.answers.join(" ").slice(0, MAX_MEMORY_LENGTH),
-          title: draftTitleFromAnswers(this.data.answers),
+          text,
+          title: chunks.length === 1
+            ? this.data.draftTitle || draftTitleFromAnswers(rawAnswers)
+            : draftTitleFromAnswers([text]),
           memoryType: "note",
-          scope: this.data.mode as MemoryScope,
-          visibility: this.data.isPersonal ? "private" : "family",
-        }),
-        state,
-      );
+          preserveNormalizedText: true,
+          scope: "personal",
+          visibility: "private",
+        }), state);
+      });
     } catch (error) {
       console.warn("退出时自动保存失败", error);
     }
@@ -137,7 +214,15 @@ Page({
   },
 
   onInput(event: { detail: { value: string } }) {
-    this.setData({ inputText: event.detail.value });
+    const inputText = event.detail.value;
+    this.setData({ inputText });
+    if (inputText.trim()) {
+      wx.enableAlertBeforeUnload({
+        message: "现在离开的话，尚未发送的文字也会先存进未整理片段，仅你可见。",
+      });
+    } else if (this.data.answers.length === 0) {
+      wx.disableAlertBeforeUnload();
+    }
   },
 
   onKeyboardHeightChange(event: { detail: { height: number } }) {
@@ -156,16 +241,14 @@ Page({
     this.setData({ answers, inputText: "", asking: true });
 
     wx.enableAlertBeforeUnload({
-      message: this.data.isPersonal
-        ? "现在离开的话，以上聊天记录会先保存到你自己的人生之书。"
-        : "现在离开的话，以上聊天记录会先保存为待确认的家庭记忆。",
+      message: "现在离开的话，以上聊天会先存进你的未整理片段，仅你可见。",
     });
 
     // 本地规则引擎：每轮只挑一个还没问过的方向，且不连着问同一个。
     const prompt = nextInterviewPrompt({
       answer,
       askedDimensions: this.data.askedDimensions,
-      mode: this.data.mode,
+      mode: "personal",
     });
 
     setTimeout(() => {
@@ -178,18 +261,22 @@ Page({
   },
 
   finish() {
-    if (this.data.answers.length === 0) {
+    const unsentText = this.data.inputText.trim();
+    const answers = this.data.answers.concat(unsentText ? [unsentText] : []);
+    if (answers.length === 0) {
       wx.showToast({ title: "还没有讲述内容", icon: "none" });
       return;
     }
 
     // 本地演示整理只做原话拼接，不改写、不补写，界面上如实说明。
-    const draftText = this.data.answers.join(" ");
+    const draftText = answers.join(" ");
     const covered = detectCoveredDimensions(draftText);
 
     this.setData({
       stage: "save",
-      draftTitle: draftTitleFromAnswers(this.data.answers),
+      answers,
+      inputText: "",
+      draftTitle: draftTitleFromAnswers(answers),
       draftText,
       draftLength: draftText.length,
       tooLong: draftText.length > MAX_MEMORY_LENGTH,
@@ -218,6 +305,76 @@ Page({
     this.setData({ memoryType: event.currentTarget.dataset.type });
   },
 
+  chooseFragment() {
+    this.setData({
+      storyTitle: "",
+      storyOptions: this.data.storyOptions.map((option) => ({
+        ...option,
+        selected: false,
+      })),
+    });
+  },
+
+  chooseStory(event: { currentTarget: { dataset: { title: string } } }) {
+    const storyTitle = event.currentTarget.dataset.title;
+    this.setData({
+      storyTitle,
+      storyOptions: this.data.storyOptions.map((option) => ({
+        ...option,
+        selected: option.title === storyTitle,
+      })),
+    });
+  },
+
+  onStoryTitleInput(event: { detail: { value: string } }) {
+    const storyTitle = event.detail.value;
+    this.setData({
+      storyTitle,
+      storyOptions: this.data.storyOptions.map((option) => ({
+        ...option,
+        selected: option.title === storyTitle.trim(),
+      })),
+    });
+  },
+
+  toggleRelatedMember(event: { currentTarget: { dataset: { id: string } } }) {
+    const memberId = event.currentTarget.dataset.id;
+    const relatedMemberIds = this.data.relatedMemberIds.includes(memberId)
+      ? this.data.relatedMemberIds.filter((id) => id !== memberId)
+      : this.data.relatedMemberIds.concat(memberId);
+    this.setData({
+      relatedMemberIds,
+      relatedOptions: this.data.relatedOptions.map((option) => ({
+        ...option,
+        selected: relatedMemberIds.includes(option.id),
+      })),
+    });
+  },
+
+  choosePrivate() {
+    this.setData({
+      audienceMemberIds: [],
+      audienceOptions: this.data.audienceOptions.map((option) => ({
+        ...option,
+        selected: false,
+      })),
+    });
+  },
+
+  toggleAudienceMember(event: { currentTarget: { dataset: { id: string } } }) {
+    const memberId = event.currentTarget.dataset.id;
+    const audienceMemberIds = this.data.audienceMemberIds.includes(memberId)
+      ? this.data.audienceMemberIds.filter((id) => id !== memberId)
+      : this.data.audienceMemberIds.concat(memberId);
+    this.setData({
+      audienceMemberIds,
+      audienceOptions: this.data.audienceOptions.map((option) => ({
+        ...option,
+        selected: audienceMemberIds.includes(option.id),
+      })),
+    });
+  },
+
   notYet() {
     wx.showToast({ title: "照片和语音赛后接入", icon: "none" });
   },
@@ -229,7 +386,17 @@ Page({
     try {
       const state = loadRoomState();
       const member = loadCurrentMember(state);
-      const visibility: Visibility = this.data.isPersonal ? "private" : "family";
+      const availableMemberIds = new Set(
+        state.members
+          .filter((candidate) => candidate.id !== member.id)
+          .map((candidate) => candidate.id),
+      );
+      const selectedMemberIds = this.data.relatedMemberIds.concat(
+        this.data.audienceMemberIds,
+      );
+      if (selectedMemberIds.some((memberId) => !availableMemberIds.has(memberId))) {
+        throw new Error("有亲友已不在当前空间，请重新选择");
+      }
       appendContribution(
         createContribution({
           authorMemberId: member.id,
@@ -238,8 +405,11 @@ Page({
           text: this.data.draftText,
           title: this.data.draftTitle,
           memoryType: this.data.memoryType,
-          scope: this.data.mode as MemoryScope,
-          visibility,
+          storyTitle: this.data.storyTitle,
+          relatedMemberIds: this.data.relatedMemberIds,
+          sharedWithMemberIds: this.data.audienceMemberIds,
+          scope: "personal",
+          visibility: "private",
         }),
         state,
       );
@@ -247,9 +417,9 @@ Page({
       this.setData({ saved: true });
       wx.disableAlertBeforeUnload();
       wx.showToast({
-        title: this.data.isPersonal
-          ? "已存进我的人生之书"
-          : "已存进记忆之家，等待确认",
+        title: this.data.storyTitle.trim()
+          ? `已放进「${this.data.storyTitle.trim()}」`
+          : "已存入未整理片段",
         icon: "none",
         duration: 2400,
       });

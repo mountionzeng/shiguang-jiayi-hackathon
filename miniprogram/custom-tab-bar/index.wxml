@@ -5,11 +5,6 @@
     bindtap="switchTab"
   >人生之书</view>
 
-  <view class="plus" bindtap="startInterview">
-    <text class="plus-sign">＋</text>
-    <text class="plus-text">{{selected === 0 ? '写我的故事' : '记共同回忆'}}</text>
-  </view>
-
   <view
     class="item {{selected === 1 ? 'item-on' : ''}}"
     data-index="1"

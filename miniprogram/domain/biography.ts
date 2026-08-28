@@ -28,6 +28,13 @@ export interface MemoryContribution {
   title?: string;
   memoryType?: MemoryType;
   /**
+   * 可选的故事名称。没有名称时，它仍是一条完整保存的「未整理片段」。
+   * 故事名称与阅读权限彼此独立：归入同一故事不等于自动向任何人公开。
+   */
+  storyTitle?: string;
+  /** 这段记忆里涉及的亲友；仅用于整理与筛选，不自动授予阅读权。 */
+  relatedMemberIds?: string[];
+  /**
    * personal：讲述人自己的亲历，只进入他/她的人生之书。
    * family：与家人的共同记忆，只在确认后进入记忆之家。
    *
@@ -36,9 +43,9 @@ export interface MemoryContribution {
   scope?: MemoryScope;
   visibility: Visibility;
   /**
-   * 个人故事可额外授权给指定家人阅读。
+   * 作者可额外授权给指定亲友阅读。
    * 这只是阅读权限，不改变故事归属，也不会让内容进入记忆之家或他人的人生之书。
-   * 当前版本只允许零或一位接收者；数组形态仅用于缓存兼容，多个不同 ID 会失败关闭。
+   * 可以选择多人；每一段故事各自保存权限，互不继承。
    */
   sharedWithMemberIds?: string[];
   reviewStatus: ReviewStatus;
@@ -70,9 +77,15 @@ export interface CreateContributionInput {
   text: string;
   title?: string;
   memoryType?: MemoryType;
+  storyTitle?: string;
+  relatedMemberIds?: string[];
   scope?: MemoryScope;
   visibility: Visibility;
+  sharedWithMemberIds?: string[];
+  /** @deprecated 兼容旧调用方；新界面使用 sharedWithMemberIds。 */
   sharedWithMemberId?: string;
+  /** 仅供退出恢复分片使用：输入已经整体规范化，需保留片段边界字符。 */
+  preserveNormalizedText?: boolean;
   now?: Date;
   id?: string;
 }
@@ -91,11 +104,34 @@ export function contributionScope(contribution: MemoryContribution): MemoryScope
   return contribution.scope ?? "family";
 }
 
-function normalizeMemoryText(text: string): string {
+/** 旧缓存可能被手工写坏；展示和分组时只接受真正的字符串故事名。 */
+export function contributionStoryTitle(
+  contribution: MemoryContribution,
+): string {
+  return typeof contribution.storyTitle === "string"
+    ? contribution.storyTitle.trim()
+    : "";
+}
+
+/** 对相关人物缓存做失败关闭读取；损坏字段只会失去标签，不会扩大权限。 */
+export function contributionRelatedMemberIds(
+  contribution: MemoryContribution,
+): string[] {
+  const storedIds: unknown = contribution.relatedMemberIds;
+  if (
+    !Array.isArray(storedIds) ||
+    !storedIds.every((memberId) => typeof memberId === "string")
+  ) {
+    return [];
+  }
+  return normalizeMemberIds(storedIds, contribution.authorMemberId);
+}
+
+export function normalizeMemoryText(text: string): string {
   return text.trim().replace(/\s+/g, " ");
 }
 
-function normalizeShareTargets(memberIds: unknown, authorMemberId: string): string[] {
+function normalizeMemberIds(memberIds: unknown, excludedMemberId?: string): string[] {
   if (!Array.isArray(memberIds)) return [];
   return Array.from(
     new Set(
@@ -104,13 +140,15 @@ function normalizeShareTargets(memberIds: unknown, authorMemberId: string): stri
         .map((memberId) => memberId.trim())
         .filter(Boolean),
     ),
-  ).filter((memberId) => memberId !== authorMemberId);
+  ).filter((memberId) => memberId !== excludedMemberId);
 }
 
 export function createContribution(input: CreateContributionInput): MemoryContribution {
-  const text = normalizeMemoryText(input.text);
+  const text = input.preserveNormalizedText
+    ? input.text
+    : normalizeMemoryText(input.text);
 
-  if (!text) {
+  if (!text.trim()) {
     throw new Error("请先写下一段回忆");
   }
 
@@ -121,10 +159,16 @@ export function createContribution(input: CreateContributionInput): MemoryContri
   const now = input.now ?? new Date();
   const id = input.id ?? `memory-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
   const scope = input.scope ?? "family";
-  const shareTargets =
-    scope === "personal"
-      ? normalizeShareTargets([input.sharedWithMemberId], input.authorMemberId)
-      : [];
+  const shareTargets = scope === "personal"
+    ? normalizeMemberIds(
+        input.sharedWithMemberIds ?? [input.sharedWithMemberId],
+        input.authorMemberId,
+      )
+    : [];
+  const relatedMemberIds = normalizeMemberIds(
+    input.relatedMemberIds,
+    input.authorMemberId,
+  );
 
   return {
     id,
@@ -134,6 +178,8 @@ export function createContribution(input: CreateContributionInput): MemoryContri
     text,
     title: input.title?.trim() || undefined,
     memoryType: input.memoryType ?? "note",
+    storyTitle: input.storyTitle?.trim() || undefined,
+    relatedMemberIds: relatedMemberIds.length > 0 ? relatedMemberIds : undefined,
     scope,
     visibility: scope === "personal" ? "private" : input.visibility,
     sharedWithMemberIds: shareTargets.length > 0 ? shareTargets : undefined,
@@ -211,11 +257,11 @@ export function personalShareTargetMemberIds(
     return [];
   }
 
-  const normalizedTargets = normalizeShareTargets(
+  const normalizedTargets = normalizeMemberIds(
     storedTargets,
     contribution.authorMemberId,
   );
-  return normalizedTargets.length <= 1 ? normalizedTargets : [];
+  return normalizedTargets;
 }
 
 /** 指定家人收到的个人故事：只授予阅读权，不会成为对方的人生之书素材。 */
@@ -231,11 +277,11 @@ export function sharedPersonalContributionsForMember(
   );
 }
 
-/** 个人故事的主人可以指定一位家人阅读，传 undefined 即取消定向分享。 */
-export function setPersonalShareTarget(
+/** 个人故事的主人可以指定多位亲友阅读；每段故事的权限彼此独立。 */
+export function setPersonalShareTargets(
   contribution: MemoryContribution,
   actor: FamilyMember,
-  targetMemberId?: string,
+  targetMemberIds: string[],
 ): MemoryContribution {
   if (contributionScope(contribution) !== "personal") {
     throw new Error("只有个人故事可以定向分享");
@@ -244,14 +290,14 @@ export function setPersonalShareTarget(
     throw new Error("只有故事的主人可以更改分享对象");
   }
 
-  const target = targetMemberId?.trim();
-  if (target === actor.id) {
-    throw new Error("不能分享给自己");
+  const targets = normalizeMemberIds(targetMemberIds, actor.id);
+  if (targets.length !== targetMemberIds.length) {
+    throw new Error("分享对象中包含无效成员");
   }
 
   return {
     ...contribution,
-    sharedWithMemberIds: target ? [target] : undefined,
+    sharedWithMemberIds: targets.length > 0 ? targets : undefined,
   };
 }
 
@@ -387,6 +433,7 @@ export function createInitialRoomState(): FamilyRoomState {
       { id: "owner", name: "林岚", relation: "外孙女", avatarText: "岚", role: "owner" },
       { id: "member-1", name: "林秋", relation: "女儿", avatarText: "秋", role: "contributor" },
       { id: "member-2", name: "陈野", relation: "女婿", avatarText: "野", role: "contributor" },
+      { id: "friend-1", name: "周明", relation: "多年好友", avatarText: "明", role: "contributor" },
     ],
     contributions: [
       createContribution({

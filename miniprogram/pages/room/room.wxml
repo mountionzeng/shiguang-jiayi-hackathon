@@ -1,9 +1,9 @@
 <view class="shell shell-with-bar page-enter">
 
   <view class="room-head">
-    <view class="eyebrow">我和家人的共同故事</view>
+    <view class="eyebrow">我与亲友选择彼此看见的故事</view>
     <view class="room-title serif">{{roomName}}</view>
-    <view class="room-sub">这里收着我们一起经历、愿意彼此看见的记忆，不会混进任何人的人生之书。</view>
+    <view class="room-sub">每段故事的阅读权限彼此独立。家人和朋友只有被你选中，才能看到对应内容。</view>
   </view>
 
   <view class="elder-task" wx:if="{{canReview && pendingCount > 0}}" bindtap="openReview">
@@ -48,8 +48,8 @@
           <view class="tl-title serif" wx:if="{{item.title}}">{{item.title}}</view>
           <view class="tl-text serif">{{item.text}}</view>
           <view class="tl-foot">
-            <text class="tag tag-jade"><text class="tag-mark">家</text>共同记忆</text>
-            <text class="tl-type">{{item.typeLabel}}</text>
+            <text class="tag tag-jade"><text class="tag-mark">故</text>{{item.storyLabel}}</text>
+            <text class="tl-type">{{item.accessLabel}}</text>
             <text class="tl-date">{{item.dateLabel}}</text>
           </view>
         </view>
@@ -59,25 +59,25 @@
 
   <!-- 该成员没有合格片段 -->
   <view class="empty-filter" wx:elif="{{hasAnyQualified}}">
-    <view class="empty-filter-title">这位家人还没有公开的共同记忆</view>
-    <view class="empty-filter-note">个人经历只在他/她自己的人生之书里，不会出现在这里。</view>
+    <view class="empty-filter-title">这里还没有与这位亲友共享的故事</view>
+    <view class="empty-filter-note">只有被单独授予阅读权限的内容，才会出现在记忆之家。</view>
   </view>
 
   <!-- 整个记忆之家还没有合格片段 -->
   <view class="empty-room wash" wx:else>
-    <view class="empty-room-title serif">还没有我们的共同记忆</view>
+    <view class="empty-room-title serif">还没有彼此分享的故事</view>
     <view class="empty-room-note">
-      从一次团圆、一段同行或一件家里的小事开始。这里讲的是“我们”，不是某一个人的传记。
+      先和 AI 聊一段记忆。聊完后可以关联家人或朋友，再单独决定谁能看到。
     </view>
-    <button class="btn btn-primary empty-room-btn" bindtap="startInterview">去讲一段</button>
+    <button class="btn btn-primary empty-room-btn" bindtap="startInterview">和 AI 聊聊</button>
   </view>
 
   <view class="mine-note" wx:if="{{myPendingCount > 0}}">
-    你有 {{myPendingCount}} 段共同记忆还在等待确认，确认前不会向其他家人公开。
+    你有 {{myPendingCount}} 段旧版共同记忆还在等待确认，确认前不会向其他人公开。
   </view>
 
   <view class="invite-note">
-    真实的微信邀请和跨设备家庭空间还没有接入，当前成员和共同记忆是本地演示数据。
+    真实的微信邀请和跨设备权限还没有接入，当前亲友与阅读范围是本地演示数据。
   </view>
 </view>
 
@@ -97,19 +97,19 @@
   <view class="sheet-text serif">{{detail.text}}</view>
 
   <view class="sheet-status">
-    <text class="tag tag-jade"><text class="tag-mark">家</text>共同记忆</text>
-    <text class="tag tag-lake"><text class="tag-mark">家</text>家庭可见</text>
+    <text class="tag tag-jade"><text class="tag-mark">故</text>{{detail.storyLabel}}</text>
+    <text class="tag tag-lake"><text class="tag-mark">阅</text>{{detail.accessLabel}}</text>
     <text class="tag tag-muted"><text class="tag-mark">记</text>{{detail.typeLabel}}</text>
   </view>
 
   <view class="sheet-actions">
     <button class="btn btn-ghost" bindtap="copyDetail">复制这段话</button>
     <button class="btn btn-ghost sheet-revoke" wx:if="{{detail.isMine}}" bindtap="revokeSharing">
-      从记忆之家撤下
+      停止分享
     </button>
   </view>
   <view class="sheet-hint" wx:if="{{detail.isMine}}">
-    撤下只解除家庭可见，不会影响你自己的人生之书。
+    停止分享不会删除原始记录，它仍留在你的故事或未整理片段里。
   </view>
   <button class="btn btn-quiet" bindtap="closeDetail">关闭</button>
 </view>

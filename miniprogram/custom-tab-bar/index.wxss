@@ -1,4 +1,4 @@
-/* 三段式底部导航：人生之书 · 回忆采访 · 记忆之家 */
+/* 两个内容视图；记录入口只留在首页，避免同一动作出现三个红色入口。 */
 
 .bar {
   position: fixed;
@@ -32,33 +32,4 @@
   background: #e3f0ea;
   color: #176b54;
   font-weight: 600;
-}
-
-.plus {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 132rpx;
-  min-height: 96rpx;
-  margin: 0 8rpx;
-  border-radius: 40rpx;
-  background: #c7452e;
-  color: #fffdfb;
-}
-
-.plus:active {
-  opacity: 0.86;
-}
-
-.plus-sign {
-  font-size: 40rpx;
-  line-height: 1;
-  font-weight: 600;
-}
-
-.plus-text {
-  margin-top: 4rpx;
-  font-size: 20rpx;
-  letter-spacing: 2rpx;
 }

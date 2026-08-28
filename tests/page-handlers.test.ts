@@ -7,7 +7,7 @@ import {
   FamilyRoomState,
 } from "../miniprogram/domain/biography";
 
-const ROOM_KEY = "shiguang-family-room-v3";
+const ROOM_KEY = "shiguang-family-room-v4";
 const CURRENT_MEMBER_KEY = "shiguang-current-member-v1";
 
 interface TestPageDefinition {
@@ -22,7 +22,7 @@ interface TestPageInstance extends TestPageDefinition {
 
 const definitions = new Map<string, TestPageDefinition>();
 
-async function pageDefinition(name: "index" | "quick-note"): Promise<TestPageDefinition> {
+async function pageDefinition(name: "index" | "interview" | "room"): Promise<TestPageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
 
@@ -39,8 +39,10 @@ async function pageDefinition(name: "index" | "quick-note"): Promise<TestPageDef
   try {
     if (name === "index") {
       await import("../miniprogram/pages/index/index");
+    } else if (name === "interview") {
+      await import("../miniprogram/pages/interview/interview");
     } else {
-      await import("../miniprogram/pages/quick-note/quick-note");
+      await import("../miniprogram/pages/room/room");
     }
   } finally {
     if (previous) Object.defineProperty(globalThis, "Page", previous);
@@ -88,7 +90,8 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
       enableAlertBeforeUnload: () => undefined,
       disableAlertBeforeUnload: () => undefined,
       showToast: ({ title }: { title: string }) => toasts.push(title),
-      showModal: () => undefined,
+      showModal: ({ success }: { success?: (result: { confirm: boolean; cancel: boolean }) => void }) =>
+        success?.({ confirm: true, cancel: false }),
       navigateBack: () => undefined,
       navigateTo: () => undefined,
       switchTab: () => undefined,
@@ -123,71 +126,303 @@ function last<T>(items: T[]): T | undefined {
   return items[items.length - 1];
 }
 
-test("quick note maps destination and one reader into the persisted story", async (context) => {
+test("one interview can stay a fragment or join a named story with independent people and readers", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
-  const definition = await pageDefinition("quick-note");
+  const definition = await pageDefinition("interview");
   const page = instantiate(definition);
   callPage(page, "onLoad");
 
   page.setData({
-    text: "今天忽然很想念小时候放学回家的路。",
-    textLength: 18,
-    destination: "personal",
-    shareTargetId: "member-1",
+    stage: "save",
+    answers: ["今天忽然很想念小时候放学回家的路。"],
+    draftText: "今天忽然很想念小时候放学回家的路。",
+    draftTitle: "放学回家的路",
+    storyTitle: "外公接我放学",
+    relatedMemberIds: ["elder", "member-1"],
+    audienceMemberIds: ["elder", "member-2"],
   });
   withImmediateTimeouts(() => callPage(page, "save"));
 
   const savedPersonal = last(storage.roomState().contributions);
   assert.equal(savedPersonal?.scope, "personal");
   assert.equal(savedPersonal?.authorMemberId, "owner");
-  assert.deepEqual(savedPersonal?.sharedWithMemberIds, ["member-1"]);
+  assert.equal(savedPersonal?.storyTitle, "外公接我放学");
+  assert.deepEqual(savedPersonal?.relatedMemberIds, ["elder", "member-1"]);
+  assert.deepEqual(savedPersonal?.sharedWithMemberIds, ["elder", "member-2"]);
   const countAfterFirstSave = storage.roomState().contributions.length;
   callPage(page, "save");
   assert.equal(storage.roomState().contributions.length, countAfterFirstSave);
 
-  const familyPage = instantiate(definition);
-  callPage(familyPage, "onLoad");
-  familyPage.setData({
-    text: "去年春节，我们全家一起包了很多饺子。",
-    textLength: 19,
+  const fragmentPage = instantiate(definition);
+  callPage(fragmentPage, "onLoad");
+  fragmentPage.setData({
+    stage: "save",
+    answers: ["只是突然想到一句话，还不知道属于哪个故事。"],
+    draftText: "只是突然想到一句话，还不知道属于哪个故事。",
+    draftTitle: "突然想到一句话",
+    storyTitle: "",
+    relatedMemberIds: [],
+    audienceMemberIds: [],
   });
-  callPage(familyPage, "chooseDestination", {
-    currentTarget: { dataset: { scope: "family" } },
-  });
-  withImmediateTimeouts(() => callPage(familyPage, "save"));
+  withImmediateTimeouts(() => callPage(fragmentPage, "save"));
 
-  const savedFamily = last(storage.roomState().contributions);
-  assert.equal(savedFamily?.scope, "family");
-  assert.equal(savedFamily?.reviewStatus, "pending");
-  assert.equal(savedFamily?.sharedWithMemberIds, undefined);
+  const savedFragment = last(storage.roomState().contributions);
+  assert.equal(savedFragment?.scope, "personal");
+  assert.equal(savedFragment?.storyTitle, undefined);
+  assert.equal(savedFragment?.relatedMemberIds, undefined);
+  assert.equal(savedFragment?.sharedWithMemberIds, undefined);
+  assert.equal(savedFragment?.reviewStatus, "confirmed");
 });
 
-test("quick note rejects invalid destinations and removed share targets", async (context) => {
+test("interview rejects related people or readers removed before save", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
-  const definition = await pageDefinition("quick-note");
+  const definition = await pageDefinition("interview");
   const page = instantiate(definition);
   callPage(page, "onLoad");
 
-  callPage(page, "chooseDestination", {
-    currentTarget: { dataset: { scope: "unexpected" } },
-  });
-  assert.equal(page.data.destination, "personal");
-  assert.equal(last(storage.toasts), "请选择故事归属");
-
   const beforeCount = storage.roomState().contributions.length;
   page.setData({
-    text: "这段不能写给已经离开房间的成员。",
-    textLength: 16,
-    destination: "personal",
-    shareTargetId: "removed-member",
+    stage: "save",
+    answers: ["这段不能分享给已经离开空间的成员。"],
+    draftText: "这段不能分享给已经离开空间的成员。",
+    draftTitle: "权限校验",
+    audienceMemberIds: ["removed-member"],
   });
   callPage(page, "save");
 
   assert.equal(storage.roomState().contributions.length, beforeCount);
   assert.equal(page.data.saving, false);
-  assert.match(last(storage.toasts) ?? "", /不在当前房间/);
+  assert.match(last(storage.toasts) ?? "", /已不在当前空间/);
+});
+
+test("leaving chat preserves unsent text as a private unorganized fragment", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  callPage(page, "onLoad");
+
+  callPage(page, "onInput", {
+    detail: { value: "这句话还没有按发送，但也不应该丢失。" },
+  });
+  callPage(page, "onUnload");
+
+  const saved = last(storage.roomState().contributions);
+  assert.equal(saved?.text, "这句话还没有按发送，但也不应该丢失。");
+  assert.equal(saved?.scope, "personal");
+  assert.equal(saved?.storyTitle, undefined);
+  assert.equal(saved?.sharedWithMemberIds, undefined);
+});
+
+test("tidying includes text still sitting in the composer", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  callPage(page, "onLoad");
+  page.setData({
+    answers: ["我已经发送了第一句话。"],
+    inputText: "这一句还在输入框里。",
+  });
+
+  callPage(page, "finish");
+  assert.equal(page.data.stage, "save");
+  assert.equal(page.data.inputText, "");
+  assert.equal(page.data.draftText, "我已经发送了第一句话。 这一句还在输入框里。");
+  withImmediateTimeouts(() => callPage(page, "save"));
+  assert.equal(
+    last(storage.roomState().contributions)?.text,
+    "我已经发送了第一句话。 这一句还在输入框里。",
+  );
+});
+
+test("returning from organize and continuing chat unloads the newest transcript", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  callPage(page, "onLoad");
+  page.setData({ answers: ["第一段已经讲完。"] });
+  callPage(page, "finish");
+  callPage(page, "backToChat");
+  page.setData({ inputText: "回到聊天后又想起的一句。" });
+  callPage(page, "onUnload");
+
+  assert.equal(
+    last(storage.roomState().contributions)?.text,
+    "第一段已经讲完。 回到聊天后又想起的一句。",
+  );
+});
+
+test("unload splits a long transcript into private fragments without truncation", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  callPage(page, "onLoad");
+  const longText = "光".repeat(620);
+  page.setData({ inputText: longText });
+  const beforeCount = storage.roomState().contributions.length;
+  callPage(page, "onUnload");
+
+  const saved = storage.roomState().contributions.slice(beforeCount);
+  assert.equal(saved.length, 2);
+  assert.equal(saved.map((memory) => memory.text).join(""), longText);
+  assert.ok(saved.every((memory) => memory.scope === "personal"));
+  assert.ok(saved.every((memory) => memory.sharedWithMemberIds === undefined));
+});
+
+test("unload never cuts an emoji into invalid surrogate fragments", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  callPage(page, "onLoad");
+  const longText = `${"光".repeat(499)}🌧️雨天`;
+  page.setData({ inputText: longText });
+  const beforeCount = storage.roomState().contributions.length;
+  callPage(page, "onUnload");
+
+  const saved = storage.roomState().contributions.slice(beforeCount);
+  assert.equal(saved.map((memory) => memory.text).join(""), longText);
+  assert.ok(saved.every((memory) => memory.text.length <= 500));
+  assert.ok(saved.every((memory) => !/[\uD800-\uDFFF]/u.test(
+    memory.text.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/gu, ""),
+  )));
+});
+
+test("unload preserves a normalized space that lands on a fragment boundary", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  callPage(page, "onLoad");
+  const longText = `${"光".repeat(499)} 雨天`;
+  page.setData({ inputText: longText });
+  const beforeCount = storage.roomState().contributions.length;
+  callPage(page, "onUnload");
+
+  const saved = storage.roomState().contributions.slice(beforeCount);
+  assert.equal(saved.map((memory) => memory.text).join(""), longText);
+  assert.equal(saved[0]?.text.endsWith(" "), true);
+});
+
+test("malformed cached story names do not block the home or interview", async (context) => {
+  const initial = createInitialRoomState();
+  const corrupted = {
+    ...initial,
+    contributions: initial.contributions.map((memory, index) =>
+      index === 0
+        ? { ...memory, storyTitle: { broken: true } }
+        : memory,
+    ),
+  } as unknown as FamilyRoomState;
+  const storage = installWxMock(corrupted);
+  context.after(storage.restore);
+
+  const interview = instantiate(await pageDefinition("interview"));
+  assert.doesNotThrow(() => callPage(interview, "onLoad"));
+  const home = instantiate(await pageDefinition("index"));
+  assert.doesNotThrow(() => callPage(home, "refresh", corrupted));
+  assert.equal(home.data.fragmentCount, 1);
+});
+
+test("home share picker persists multiple readers and can return to private", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+  callPage(page, "refresh", storage.roomState());
+
+  callPage(page, "changeShareTarget", {
+    currentTarget: { dataset: { id: "demo-personal-rain" } },
+  });
+  callPage(page, "toggleShareTarget", {
+    currentTarget: { dataset: { id: "member-1" } },
+  });
+  callPage(page, "toggleShareTarget", {
+    currentTarget: { dataset: { id: "member-2" } },
+  });
+  callPage(page, "confirmShareTargets");
+
+  let story = storage.roomState().contributions.find(
+    (memory) => memory.id === "demo-personal-rain",
+  );
+  assert.deepEqual(story?.sharedWithMemberIds, ["member-1", "member-2"]);
+  assert.equal(last(storage.toasts), "已允许 2 位亲友阅读");
+
+  callPage(page, "changeShareTarget", {
+    currentTarget: { dataset: { id: "demo-personal-rain" } },
+  });
+  callPage(page, "choosePrivateShare");
+  callPage(page, "confirmShareTargets");
+  story = storage.roomState().contributions.find(
+    (memory) => memory.id === "demo-personal-rain",
+  );
+  assert.equal(story?.sharedWithMemberIds, undefined);
+  assert.equal(last(storage.toasts), "已改为仅自己可见");
+});
+
+test("Memory Home shows only permissioned stories and revocation removes them", async (context) => {
+  const initial = createInitialRoomState();
+  const sharedStory = createContribution({
+    id: "permissioned-story",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "这是只让外公和陈野看到的一段记忆。",
+    storyTitle: "雨天与老屋",
+    relatedMemberIds: ["member-1"],
+    sharedWithMemberIds: ["elder", "member-2"],
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-08-28T08:00:00.000Z"),
+  });
+  const state = {
+    ...initial,
+    contributions: initial.contributions.concat(sharedStory),
+  };
+  const storage = installWxMock(state, "member-2");
+  context.after(storage.restore);
+  const room = instantiate(await pageDefinition("room"));
+  callPage(room, "refresh", state);
+
+  assert.ok(
+    (room.data.timeline as Array<{ id: string }>).some(
+      (memory) => memory.id === sharedStory.id,
+    ),
+  );
+  const relatedFilter = (room.data.filters as Array<{ id: string; count: number }>).find(
+    (filter) => filter.id === "member-1",
+  );
+  assert.equal(relatedFilter?.count, 1);
+
+  const unauthorized = instantiate(await pageDefinition("room"));
+  const unauthorizedStorage = installWxMock(state, "member-1");
+  context.after(unauthorizedStorage.restore);
+  callPage(unauthorized, "refresh", state);
+  assert.ok(
+    !(unauthorized.data.timeline as Array<{ id: string }>).some(
+      (memory) => memory.id === sharedStory.id,
+    ),
+  );
+
+  const authorStorage = installWxMock(state, "owner");
+  context.after(authorStorage.restore);
+  const authorRoom = instantiate(await pageDefinition("room"));
+  callPage(authorRoom, "refresh", state);
+  const detail = (authorRoom.data.timeline as Array<{ id: string }>).find(
+    (memory) => memory.id === sharedStory.id,
+  );
+  assert.ok(detail);
+  authorRoom.setData({ detail });
+  callPage(authorRoom, "revokeSharing");
+  assert.equal(
+    authorStorage.roomState().contributions.find(
+      (memory) => memory.id === sharedStory.id,
+    )?.sharedWithMemberIds,
+    undefined,
+  );
+  assert.ok(
+    !(authorRoom.data.timeline as Array<{ id: string }>).some(
+      (memory) => memory.id === sharedStory.id,
+    ),
+  );
 });
 
 test("switching demo identity refreshes owned and received stories", async (context) => {

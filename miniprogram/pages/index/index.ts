@@ -3,6 +3,7 @@ import {
   FamilyRoomState,
   MEMORY_TYPE_LABELS,
   MemoryContribution,
+  contributionStoryTitle,
   personalBookContributions,
   personalShareTargetMemberIds,
   sharedPersonalContributionsForMember,
@@ -18,7 +19,7 @@ import {
   loadRoomState,
   resetDemoRoom,
   saveCurrentMemberId,
-  updatePersonalShareTarget,
+  updatePersonalShareTargets,
 } from "../../services/roomStorage";
 
 interface FragmentView {
@@ -27,6 +28,7 @@ interface FragmentView {
   typeLabel: string;
   dateLabel: string;
   shareLabel: string;
+  storyLabel: string;
 }
 
 interface SharedStoryView {
@@ -43,6 +45,7 @@ interface ShareTargetView {
   name: string;
   relation: string;
   avatarText: string;
+  selected: boolean;
 }
 
 interface IdentityView {
@@ -69,15 +72,19 @@ function toFragmentViews(
     .slice()
     .reverse()
     .map((contribution) => {
-      const targetMemberId = personalShareTargetMemberIds(contribution)[0];
+      const targetMemberIds = personalShareTargetMemberIds(contribution);
+      const targetNames = targetMemberIds.map(
+        (memberId) => memberNames.get(memberId) ?? "一位亲友",
+      );
       return {
         id: contribution.id,
         text: contribution.text,
         typeLabel: MEMORY_TYPE_LABELS[contribution.memoryType ?? "note"],
         dateLabel: formatDate(contribution.createdAt),
-        shareLabel: targetMemberId
-          ? `分享给${memberNames.get(targetMemberId) ?? "一位家人"}`
-          : "仅自己",
+        shareLabel: targetNames.length > 0
+          ? `可见：${targetNames.join("、")}`
+          : "仅自己可见",
+        storyLabel: contributionStoryTitle(contribution) || "未整理片段",
       };
     });
 }
@@ -114,6 +121,7 @@ function toShareTargetView(member: FamilyMember): ShareTargetView {
     name: member.name,
     relation: member.relation,
     avatarText: member.avatarText,
+    selected: false,
   };
 }
 
@@ -124,7 +132,9 @@ Page({
     identityOptions: [] as IdentityView[],
     showIdentityPicker: false,
 
+    memoryCount: 0,
     fragmentCount: 0,
+    storyCount: 0,
     memberCount: 0,
     hasFragments: false,
 
@@ -135,7 +145,7 @@ Page({
 
     showSharePicker: false,
     sharePickerStoryId: "",
-    sharePickerSelectedMemberId: "",
+    sharePickerSelectedMemberIds: [] as string[],
     sharePickerOptions: [] as ShareTargetView[],
 
     chapterReady: false,
@@ -159,6 +169,10 @@ Page({
     const member = loadCurrentMember(state);
     const identity = toIdentityView(member);
     const personal = personalBookContributions(state.contributions, member.id);
+    const storyTitles = new Set(
+      personal.map(contributionStoryTitle).filter(Boolean),
+    );
+    const looseFragments = personal.filter((memory) => !contributionStoryTitle(memory));
     const sharedWithMe = sharedPersonalContributionsForMember(
       state.contributions,
       member.id,
@@ -169,7 +183,9 @@ Page({
       protagonistName: member.name,
       identity,
       identityOptions: state.members.map(toIdentityView),
-      fragmentCount: personal.length,
+      memoryCount: personal.length,
+      fragmentCount: looseFragments.length,
+      storyCount: storyTitles.size,
       memberCount: state.members.length,
       hasFragments: personal.length > 0,
       recentFragments: toFragmentViews(personal, state.members),
@@ -183,11 +199,7 @@ Page({
   },
 
   startInterview() {
-    wx.navigateTo({ url: "/pages/interview/interview?mode=personal" });
-  },
-
-  quickCapture() {
-    wx.navigateTo({ url: "/pages/quick-note/quick-note" });
+    wx.navigateTo({ url: "/pages/interview/interview" });
   },
 
   changeShareTarget(event: { currentTarget: { dataset: { id: string } } }) {
@@ -205,11 +217,13 @@ Page({
     this.setData({
       showSharePicker: true,
       sharePickerStoryId: story.id,
-      sharePickerSelectedMemberId:
-        personalShareTargetMemberIds(story)[0] ?? "",
+      sharePickerSelectedMemberIds: personalShareTargetMemberIds(story),
       sharePickerOptions: state.members
         .filter((candidate) => candidate.id !== member.id)
-        .map(toShareTargetView),
+        .map((candidate) => ({
+          ...toShareTargetView(candidate),
+          selected: personalShareTargetMemberIds(story).includes(candidate.id),
+        })),
     });
   },
 
@@ -217,7 +231,7 @@ Page({
     this.setData({
       showSharePicker: false,
       sharePickerStoryId: "",
-      sharePickerSelectedMemberId: "",
+      sharePickerSelectedMemberIds: [],
       sharePickerOptions: [],
     });
   },
@@ -226,25 +240,49 @@ Page({
     // 阻止点击面板内容时触发遮罩关闭。
   },
 
-  chooseShareTarget(event: { currentTarget: { dataset: { id?: string } } }) {
+  choosePrivateShare() {
+    this.setData({
+      sharePickerSelectedMemberIds: [],
+      sharePickerOptions: this.data.sharePickerOptions.map((option) => ({
+        ...option,
+        selected: false,
+      })),
+    });
+  },
+
+  toggleShareTarget(event: { currentTarget: { dataset: { id: string } } }) {
+    const memberId = event.currentTarget.dataset.id;
+    const selected = this.data.sharePickerSelectedMemberIds;
+    const sharePickerSelectedMemberIds = selected.includes(memberId)
+      ? selected.filter((id) => id !== memberId)
+      : selected.concat(memberId);
+    this.setData({
+      sharePickerSelectedMemberIds,
+      sharePickerOptions: this.data.sharePickerOptions.map((option) => ({
+        ...option,
+        selected: sharePickerSelectedMemberIds.includes(option.id),
+      })),
+    });
+  },
+
+  confirmShareTargets() {
     const storyId = this.data.sharePickerStoryId;
-    const targetMemberId = event.currentTarget.dataset.id || undefined;
     if (!storyId) return;
 
     try {
       const latestState = loadRoomState();
       const latestMember = loadCurrentMember(latestState);
-      const target = targetMemberId
-        ? latestState.members.find((member) => member.id === targetMemberId)
-        : undefined;
-      const next = updatePersonalShareTarget(
+      const next = updatePersonalShareTargets(
         storyId,
         latestMember,
-        targetMemberId,
+        this.data.sharePickerSelectedMemberIds,
       );
+      const selectedCount = this.data.sharePickerSelectedMemberIds.length;
       this.closeSharePicker();
       wx.showToast({
-        title: target ? `已分享给${target.name}` : "已改为仅自己可见",
+        title: selectedCount > 0
+          ? `已允许 ${selectedCount} 位亲友阅读`
+          : "已改为仅自己可见",
         icon: "none",
       });
       this.refresh(next);

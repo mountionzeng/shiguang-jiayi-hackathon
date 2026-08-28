@@ -389,48 +389,130 @@
   flex: 1.6;
 }
 
-/* ---- 也分享到记忆之家 ---- */
+/* ---- 聊完后再整理：故事、相关人物、阅读权限彼此独立 ---- */
 
-.share-row {
-  display: flex;
-  align-items: center;
-  min-height: 128rpx;
-  margin-top: 24rpx;
-  padding: 24rpx 26rpx;
-  border-radius: 26rpx;
-  border: 2rpx solid var(--line);
-  background: var(--paper-card);
+.organize-section {
+  margin-top: 30rpx;
+  padding-top: 28rpx;
+  border-top: 2rpx solid var(--line);
 }
 
-.share-row-on {
-  border-color: var(--jade);
-  background: var(--jade-soft);
-}
-
-.share-copy {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding-right: 18rpx;
-}
-
-.share-title {
-  font-size: 32rpx;
+.organize-title {
+  font-size: 36rpx;
   font-weight: 600;
   color: var(--ink);
 }
 
-.share-note {
+.organize-note {
   margin-top: 8rpx;
-  font-size: 26rpx;
+  font-size: 25rpx;
   line-height: 1.65;
-  color: var(--ink-soft);
+  color: var(--ink-faint);
 }
 
-.share-action {
+.story-choice,
+.person-choice {
+  display: flex;
+  align-items: center;
+  min-height: 112rpx;
+  margin-top: 18rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 24rpx;
+  border: 2rpx solid var(--line);
+  background: var(--paper-card);
+}
+
+.choice-on {
+  border-color: var(--jade);
+  background: var(--jade-soft);
+}
+
+.choice-mark,
+.person-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  font-size: 28rpx;
+  width: 68rpx;
+  height: 68rpx;
+  margin-right: 18rpx;
+  border-radius: 34rpx;
+  background: var(--jade);
+  color: #fffdfb;
+  font-size: 27rpx;
+}
+
+.person-avatar-private {
+  background: #87948f;
+}
+
+.choice-copy,
+.person-copy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.choice-title,
+.person-name {
+  font-size: 29rpx;
   font-weight: 600;
+  color: var(--ink);
+}
+
+.choice-note,
+.person-relation {
+  margin-top: 5rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.choice-check {
+  flex-shrink: 0;
+  margin-left: 16rpx;
   color: var(--jade);
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.story-list {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 14rpx;
+}
+
+.story-chip {
+  margin: 8rpx 12rpx 0 0;
+  padding: 12rpx 18rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid var(--line);
+  background: var(--paper-card);
+  color: var(--ink-soft);
+  font-size: 24rpx;
+}
+
+.story-chip-on {
+  border-color: var(--jade);
+  background: var(--jade-soft);
+  color: var(--jade);
+  font-weight: 600;
+}
+
+.story-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 92rpx;
+  margin-top: 18rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid var(--line);
+  border-radius: 22rpx;
+  background: var(--paper-card);
+  color: var(--ink);
+  font-size: 28rpx;
+}
+
+.people-grid {
+  width: 100%;
 }
