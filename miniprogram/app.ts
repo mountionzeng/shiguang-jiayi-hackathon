@@ -1,4 +1,4 @@
-import { CLOUD_AI_ENABLED } from "./config/runtime";
+import { CLOUD_AI_ENABLED, CLOUD_ENV_ID } from "./config/runtime";
 
 export interface ShiguangAppOptions {
   globalData: {
@@ -23,7 +23,7 @@ App<ShiguangAppOptions>({
     }
 
     try {
-      wx.cloud.init({ traceUser: true });
+      wx.cloud.init({ env: CLOUD_ENV_ID, traceUser: true });
       this.globalData.cloudReady = true;
     } catch (error) {
       console.warn("微信云开发初始化失败，将使用本地演示草稿", error);
