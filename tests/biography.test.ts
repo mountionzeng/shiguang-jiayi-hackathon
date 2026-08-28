@@ -7,7 +7,9 @@ import {
   confirmedContributions,
   createContribution,
   createInitialRoomState,
+  pendingContributionsFor,
   reviewContribution,
+  revokeFamilyVisibility,
   visibleContributionsForMember,
 } from "../miniprogram/domain/biography";
 
@@ -194,4 +196,115 @@ test("a chapter cannot be generated without confirmed material", () => {
     () => buildLocalBiographyDraft("林致远", [pending], fixedNow),
     /至少确认一段/,
   );
+});
+
+test("a family-visible memory stays hidden from other relatives until the elder confirms it", () => {
+  const state = createInitialRoomState();
+  const pendingFamilyMemory = createContribution({
+    id: "pending-family",
+    authorMemberId: "member-1",
+    authorName: "林秋",
+    relation: "女儿",
+    text: "父亲当年是厂里第一个学会修机器的。",
+    visibility: "family",
+    now: fixedNow,
+  });
+  const contributions = [pendingFamilyMemory];
+
+  const author = state.members.find((member) => member.id === "member-1");
+  const otherFamilyMember = state.members.find((member) => member.id === "owner");
+  const elder = state.members.find((member) => member.id === "elder");
+  assert.ok(author && otherFamilyMember && elder);
+
+  // 投稿人和老人看得到；其他家人在确认之前看不到。
+  assert.ok(visibleContributionsForMember(contributions, author).includes(pendingFamilyMemory));
+  assert.ok(visibleContributionsForMember(contributions, elder).includes(pendingFamilyMemory));
+  assert.ok(
+    !visibleContributionsForMember(contributions, otherFamilyMember).includes(pendingFamilyMemory),
+  );
+
+  // 老人确认之后才对其他家人公开。
+  const confirmed = reviewContribution(pendingFamilyMemory, "confirmed", "elder");
+  assert.ok(visibleContributionsForMember([confirmed], otherFamilyMember).includes(confirmed));
+
+  // 被拒绝或存在冲突的说法始终不对其他家人公开。
+  const rejected = reviewContribution(pendingFamilyMemory, "rejected", "elder");
+  const conflict = reviewContribution(pendingFamilyMemory, "conflict", "elder");
+  assert.ok(!visibleContributionsForMember([rejected], otherFamilyMember).includes(rejected));
+  assert.ok(!visibleContributionsForMember([conflict], otherFamilyMember).includes(conflict));
+});
+
+test("the pending entry point shows the elder every open item and a relative only their own", () => {
+  const state = createInitialRoomState();
+  const mine = createContribution({
+    id: "mine-pending",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "我记得他总在巷口等我。",
+    visibility: "family",
+    now: fixedNow,
+  });
+  const theirs = createContribution({
+    id: "theirs-pending",
+    authorMemberId: "member-1",
+    authorName: "林秋",
+    relation: "女儿",
+    text: "父亲喜欢修收音机。",
+    visibility: "family",
+    now: fixedNow,
+  });
+  const contributions = [mine, theirs];
+
+  const owner = state.members.find((member) => member.id === "owner");
+  const elder = state.members.find((member) => member.id === "elder");
+  assert.ok(owner && elder);
+
+  assert.deepEqual(
+    pendingContributionsFor(contributions, elder).map((item) => item.id),
+    ["mine-pending", "theirs-pending"],
+  );
+  assert.deepEqual(
+    pendingContributionsFor(contributions, owner).map((item) => item.id),
+    ["mine-pending"],
+  );
+});
+
+test("taking a memory off the family timeline only revokes family visibility", () => {
+  const state = createInitialRoomState();
+  const author = state.members.find((member) => member.id === "owner");
+  const someoneElse = state.members.find((member) => member.id === "member-1");
+  const elder = state.members.find((member) => member.id === "elder");
+  assert.ok(author && someoneElse && elder);
+
+  const shared = reviewContribution(
+    createContribution({
+      id: "shared",
+      authorMemberId: "owner",
+      authorName: "林岚",
+      relation: "外孙女",
+      text: "外公总在巷口等我放学。",
+      visibility: "family",
+      now: fixedNow,
+    }),
+    "confirmed",
+    "elder",
+  );
+
+  assert.throws(() => revokeFamilyVisibility(shared, someoneElse), /只有讲述/);
+
+  const revoked = revokeFamilyVisibility(shared, author);
+
+  // 撤下之后：不再进入公开时间线与章节来源。
+  assert.ok(!biographySourceContributions([revoked]).includes(revoked));
+  assert.ok(!visibleContributionsForMember([revoked], someoneElse).includes(revoked));
+
+  // 但原始内容仍然留在人生之书里，确认结论不变。
+  assert.equal(revoked.text, shared.text);
+  assert.equal(revoked.reviewStatus, "confirmed");
+  assert.ok(visibleContributionsForMember([revoked], author).includes(revoked));
+  assert.ok(visibleContributionsForMember([revoked], elder).includes(revoked));
+
+  // 已经是私密的片段再撤一次不会有副作用。
+  assert.equal(revokeFamilyVisibility(revoked, author), revoked);
 });

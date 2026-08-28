@@ -111,16 +111,37 @@ export function biographySourceContributions(
   );
 }
 
+/**
+ * 家人视角能看到的原始片段。
+ *
+ * 规则来源：共享人生之书需求 R9。
+ * - 老人拥有确认权，因此看得到全部原始片段。
+ * - 其他家人只看得到自己投稿的内容，以及"已确认且家庭可见"的内容。
+ * - 未经确认的家庭可见投稿不再对其他家人公开，避免未核实说法提前影响家人记忆。
+ */
 export function visibleContributionsForMember(
   contributions: MemoryContribution[],
   viewer: FamilyMember,
 ): MemoryContribution[] {
   if (viewer.role === "elder") return contributions;
 
-  return contributions.filter(
-    (contribution) =>
-      contribution.visibility === "family" || contribution.authorMemberId === viewer.id,
-  );
+  return contributions.filter((contribution) => {
+    if (contribution.authorMemberId === viewer.id) return true;
+    return contribution.visibility === "family" && contribution.reviewStatus === "confirmed";
+  });
+}
+
+/**
+ * "待确认"入口在不同身份下指向不同的集合：
+ * 老人看到需要自己处理的全部待确认片段，家人只看到自己投稿的等待状态。
+ */
+export function pendingContributionsFor(
+  contributions: MemoryContribution[],
+  viewer: FamilyMember,
+): MemoryContribution[] {
+  const pending = contributions.filter((contribution) => contribution.reviewStatus === "pending");
+  if (viewer.role === "elder") return pending;
+  return pending.filter((contribution) => contribution.authorMemberId === viewer.id);
 }
 
 export function biographySourceFingerprint(state: FamilyRoomState): string {
@@ -197,4 +218,24 @@ export function createInitialRoomState(): FamilyRoomState {
       }),
     ],
   };
+}
+
+/**
+ * 从记忆之家撤下自己的片段。
+ *
+ * 规则来源：交接文档「取消分享／从记忆之家删除」。
+ * 只撤销"家庭可见"这一件事：原始内容继续留在人生之书，投稿人和老人依然看得到，
+ * 老人的确认结论也不受影响。真正的删除是另一个动作，必须由本人另行明确执行。
+ */
+export function revokeFamilyVisibility(
+  contribution: MemoryContribution,
+  actor: FamilyMember,
+): MemoryContribution {
+  if (contribution.authorMemberId !== actor.id) {
+    throw new Error("只有讲述这段回忆的人可以把它撤下");
+  }
+
+  if (contribution.visibility === "private") return contribution;
+
+  return { ...contribution, visibility: "private" };
 }
