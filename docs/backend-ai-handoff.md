@@ -2,6 +2,8 @@
 
 本文档记录 `dev_backend` 分支对后端、云开发和 AI 生成能力的协作边界，方便前端、产品和后端并行开发。
 
+前端对接建议见 `docs/handoff/frontend-backend-integration-notes.md`。当前原则是尊重 `main` 分支的页面和 UI，后端分支只在确有必要时提出前端改动建议。
+
 ## 当前前端数据结构
 
 当前小程序已经实现文字 MVP，核心数据在 `miniprogram/domain/biography.ts`：
