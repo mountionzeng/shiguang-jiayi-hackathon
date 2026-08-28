@@ -3,6 +3,13 @@ export type ReviewStatus = "pending" | "confirmed" | "rejected" | "conflict";
 export type ReviewerRole = "elder" | "owner" | "contributor";
 export type GenerationMode = "local-demo" | "cloud-ai";
 
+/**
+ * 片段类型，沿用队友原型的「随手记 / 回忆录」两种写法。
+ * 它只是给内容贴的标签，不再像原型那样在入口处分成两条路径：
+ * 采访入口仍然只有一个，类型在整理时才选。
+ */
+export type MemoryType = "note" | "memoir";
+
 export interface FamilyMember {
   id: string;
   name: string;
@@ -17,6 +24,8 @@ export interface MemoryContribution {
   authorName: string;
   relation: string;
   text: string;
+  title?: string;
+  memoryType?: MemoryType;
   visibility: Visibility;
   reviewStatus: ReviewStatus;
   createdAt: string;
@@ -43,12 +52,18 @@ export interface CreateContributionInput {
   authorName: string;
   relation: string;
   text: string;
+  title?: string;
+  memoryType?: MemoryType;
   visibility: Visibility;
   now?: Date;
   id?: string;
 }
 
 export const MAX_MEMORY_LENGTH = 500;
+export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
+  note: "随手记",
+  memoir: "回忆录",
+};
 export const VISIBILITY_LABELS: Record<Visibility, string> = {
   family: "家庭可见",
   private: "私密提交 · 仅本人和老人可见",
@@ -78,6 +93,8 @@ export function createContribution(input: CreateContributionInput): MemoryContri
     authorName: input.authorName,
     relation: input.relation,
     text,
+    title: input.title?.trim() || undefined,
+    memoryType: input.memoryType ?? "note",
     visibility: input.visibility,
     reviewStatus: "pending",
     createdAt: now.toISOString(),

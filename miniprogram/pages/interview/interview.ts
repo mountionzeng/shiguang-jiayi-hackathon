@@ -1,6 +1,7 @@
 import {
   createContribution,
   MAX_MEMORY_LENGTH,
+  MemoryType,
   Visibility,
 } from "../../domain/biography";
 import {
@@ -57,7 +58,10 @@ Page({
     dateLabel: "",
     coveredChips: [] as string[],
 
-    visibility: "family" as Visibility,
+    // 「随手记 / 回忆录」沿用原型的说法，在整理时才选，入口仍然只有一个。
+    memoryType: "note" as MemoryType,
+    // 原型的「也分享到记忆之家？」= 把这段设为家庭可见。
+    shareToMemoryHome: false,
     saving: false,
     saved: false,
 
@@ -107,6 +111,8 @@ Page({
           authorName: member.name,
           relation: member.relation,
           text: this.data.answers.join(" ").slice(0, MAX_MEMORY_LENGTH),
+          title: draftTitleFromAnswers(this.data.answers),
+          memoryType: "note",
           visibility: "private",
         }),
         state,
@@ -200,8 +206,12 @@ Page({
     });
   },
 
-  chooseVisibility(event: { currentTarget: { dataset: { visibility: Visibility } } }) {
-    this.setData({ visibility: event.currentTarget.dataset.visibility });
+  chooseType(event: { currentTarget: { dataset: { type: MemoryType } } }) {
+    this.setData({ memoryType: event.currentTarget.dataset.type });
+  },
+
+  toggleShare() {
+    this.setData({ shareToMemoryHome: !this.data.shareToMemoryHome });
   },
 
   notYet() {
@@ -215,13 +225,17 @@ Page({
     try {
       const state = loadRoomState();
       const member = loadCurrentMember(state);
+      // 没有点「分享到记忆之家」就只留在自己的人生之书里。
+      const visibility: Visibility = this.data.shareToMemoryHome ? "family" : "private";
       appendContribution(
         createContribution({
           authorMemberId: member.id,
           authorName: member.name,
           relation: member.relation,
           text: this.data.draftText,
-          visibility: this.data.visibility,
+          title: this.data.draftTitle,
+          memoryType: this.data.memoryType,
+          visibility,
         }),
         state,
       );
@@ -230,9 +244,9 @@ Page({
       wx.disableAlertBeforeUnload();
       wx.showToast({
         title:
-          this.data.visibility === "private"
-            ? `已保存，只有${state.protagonistName}看得到`
-            : `已保存，等${state.protagonistName}确认后家人才看得到`,
+          visibility === "private"
+            ? `已存进人生之书，只有${state.protagonistName}看得到`
+            : `已分享，等${state.protagonistName}确认后家人才看得到`,
         icon: "none",
         duration: 2400,
       });

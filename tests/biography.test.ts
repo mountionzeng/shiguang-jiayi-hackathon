@@ -7,6 +7,7 @@ import {
   confirmedContributions,
   createContribution,
   createInitialRoomState,
+  MEMORY_TYPE_LABELS,
   pendingContributionsFor,
   reviewContribution,
   revokeFamilyVisibility,
@@ -307,4 +308,56 @@ test("taking a memory off the family timeline only revokes family visibility", (
 
   // 已经是私密的片段再撤一次不会有副作用。
   assert.equal(revokeFamilyVisibility(revoked, author), revoked);
+});
+
+test("a fragment carries its prototype type label and keeps a note as the default", () => {
+  const memoir = createContribution({
+    id: "memoir",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "外婆家门口有一口老井。",
+    title: "  外婆家的那口老井  ",
+    memoryType: "memoir",
+    visibility: "family",
+    now: fixedNow,
+  });
+  assert.equal(memoir.memoryType, "memoir");
+  assert.equal(memoir.title, "外婆家的那口老井");
+  assert.equal(MEMORY_TYPE_LABELS[memoir.memoryType!], "回忆录");
+
+  const untyped = createContribution({
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "今天想起他了。",
+    visibility: "private",
+    now: fixedNow,
+  });
+  assert.equal(untyped.memoryType, "note");
+  assert.equal(untyped.title, undefined);
+});
+
+test("choosing not to share keeps a fragment out of the memory home entirely", () => {
+  const state = createInitialRoomState();
+  const otherFamilyMember = state.members.find((member) => member.id === "member-1");
+  assert.ok(otherFamilyMember);
+
+  // 整理页上没有点「也分享到记忆之家」＝ 只留在人生之书。
+  const notShared = reviewContribution(
+    createContribution({
+      id: "not-shared",
+      authorMemberId: "owner",
+      authorName: "林岚",
+      relation: "外孙女",
+      text: "这段我暂时不想给别人看。",
+      visibility: "private",
+      now: fixedNow,
+    }),
+    "confirmed",
+    "elder",
+  );
+
+  assert.ok(!biographySourceContributions([notShared]).includes(notShared));
+  assert.ok(!visibleContributionsForMember([notShared], otherFamilyMember).includes(notShared));
 });

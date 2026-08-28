@@ -106,7 +106,16 @@
 
         <view class="draft-meta">
           <text class="meta-date">{{dateLabel}}</text>
-          <text class="meta-chip">回忆片段</text>
+          <text
+            class="meta-type {{memoryType === 'note' ? 'meta-type-on' : ''}}"
+            data-type="note"
+            bindtap="chooseType"
+          >随手记</text>
+          <text
+            class="meta-type {{memoryType === 'memoir' ? 'meta-type-on' : ''}}"
+            data-type="memoir"
+            bindtap="chooseType"
+          >回忆录</text>
           <text class="meta-chip" wx:for="{{coveredChips}}" wx:key="*this" wx:for-item="chip">{{chip}}</text>
         </view>
 
@@ -127,36 +136,23 @@
           {{draftLength}} / 500 字{{tooLong ? '　超出部分请先删掉' : ''}}
         </view>
 
+        <view class="draft-rule"></view>
         <view class="draft-hint">
-          保存后放进 {{protagonistName}} 的人生之书 · 回忆片段
+          保存后放进 {{protagonistName}} 的人生之书 · {{memoryType === 'note' ? '随手记' : '回忆录'}}
         </view>
 
-        <view class="scope-block">
-          <view class="scope-title">这段给谁看？</view>
-
-          <view
-            class="scope-option {{visibility === 'family' ? 'scope-option-on' : ''}}"
-            data-visibility="family"
-            bindtap="chooseVisibility"
-          >
-            <text class="scope-check">{{visibility === 'family' ? '✓' : '○'}}</text>
-            <view class="scope-copy">
-              <text class="scope-name">家庭可见</text>
-              <text class="scope-desc">{{protagonistName}} 确认属实后，其他家人才看得到，也才会写进章节。</text>
-            </view>
+        <!-- 原型的「也分享到记忆之家？」：打开即设为家庭可见 -->
+        <view class="share-row {{shareToMemoryHome ? 'share-row-on' : ''}}" bindtap="toggleShare">
+          <view class="share-copy">
+            <text class="share-title">也分享到记忆之家？</text>
+            <text class="share-note" wx:if="{{shareToMemoryHome}}">
+              等 {{protagonistName}} 确认属实后，家人就能在记忆之家看到。
+            </text>
+            <text class="share-note" wx:else>
+              不分享的话，这段只留在人生之书，只有你和 {{protagonistName}} 看得到。
+            </text>
           </view>
-
-          <view
-            class="scope-option {{visibility === 'private' ? 'scope-option-on' : ''}}"
-            data-visibility="private"
-            bindtap="chooseVisibility"
-          >
-            <text class="scope-check">{{visibility === 'private' ? '✓' : '○'}}</text>
-            <view class="scope-copy">
-              <text class="scope-name">只给 {{protagonistName}}</text>
-              <text class="scope-desc">别的家人永远看不到，也不会进入家庭时间线、章节或模型请求。</text>
-            </view>
-          </view>
+          <text class="share-action">{{shareToMemoryHome ? '已选择分享 ✓' : '分享 →'}}</text>
         </view>
 
         <view class="scroll-tail"></view>
@@ -165,7 +161,7 @@
 
     <view class="composer">
       <view class="save-row">
-        <button class="btn btn-ghost save-back" bindtap="backToChat">继续讲</button>
+        <button class="btn btn-ghost save-back" bindtap="backToChat">继续编辑</button>
         <button
           class="btn btn-primary save-go {{(saving || tooLong) ? 'btn-disabled' : ''}}"
           bindtap="save"

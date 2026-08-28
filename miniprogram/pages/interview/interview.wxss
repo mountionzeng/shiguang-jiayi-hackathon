@@ -313,6 +313,22 @@
   color: var(--ink-faint);
 }
 
+.meta-type {
+  margin: 4rpx 10rpx 4rpx 0;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid var(--line);
+  color: var(--ink-faint);
+  font-size: 24rpx;
+}
+
+.meta-type-on {
+  border-color: var(--jade);
+  background: var(--jade-soft);
+  color: var(--jade);
+  font-weight: 600;
+}
+
 .meta-chip {
   margin: 4rpx 10rpx 4rpx 0;
   padding: 4rpx 14rpx;
@@ -356,63 +372,6 @@
   font-weight: 600;
 }
 
-.scope-block {
-  margin-top: 30rpx;
-}
-
-.scope-title {
-  margin-bottom: 20rpx;
-  font-size: 34rpx;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.scope-option {
-  display: flex;
-  align-items: flex-start;
-  min-height: 128rpx;
-  margin-bottom: 20rpx;
-  padding: 28rpx;
-  border-radius: 26rpx;
-  border: 2rpx solid var(--line);
-  background: var(--paper-card);
-}
-
-.scope-option-on {
-  border-color: var(--jade);
-  background: var(--jade-soft);
-}
-
-.scope-check {
-  flex-shrink: 0;
-  width: 48rpx;
-  margin-right: 16rpx;
-  font-size: 36rpx;
-  font-weight: 700;
-  line-height: 1.5;
-  color: var(--jade);
-}
-
-.scope-copy {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.scope-name {
-  font-size: 34rpx;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.scope-desc {
-  margin-top: 8rpx;
-  font-size: 27rpx;
-  line-height: 1.65;
-  color: var(--ink-soft);
-}
-
 
 /* ---- 保存阶段底部双按钮 ---- */
 
@@ -428,4 +387,50 @@
 
 .save-go {
   flex: 1.6;
+}
+
+/* ---- 也分享到记忆之家 ---- */
+
+.share-row {
+  display: flex;
+  align-items: center;
+  min-height: 128rpx;
+  margin-top: 24rpx;
+  padding: 24rpx 26rpx;
+  border-radius: 26rpx;
+  border: 2rpx solid var(--line);
+  background: var(--paper-card);
+}
+
+.share-row-on {
+  border-color: var(--jade);
+  background: var(--jade-soft);
+}
+
+.share-copy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-right: 18rpx;
+}
+
+.share-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.share-note {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+.share-action {
+  flex-shrink: 0;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--jade);
 }

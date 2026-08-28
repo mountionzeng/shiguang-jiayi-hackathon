@@ -159,8 +159,15 @@
   font-size: 22rpx;
 }
 
-.tl-text {
+.tl-title {
   margin-top: 18rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tl-text {
+  margin-top: 12rpx;
   font-size: 34rpx;
   line-height: 1.75;
   color: var(--ink);
@@ -171,6 +178,16 @@
   align-items: center;
   justify-content: space-between;
   margin-top: 20rpx;
+}
+
+.tl-type {
+  margin-left: auto;
+  margin-right: 14rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: var(--paper-sunk);
+  color: var(--ink-soft);
+  font-size: 22rpx;
 }
 
 .tl-date {
@@ -314,8 +331,16 @@
   color: var(--ink-faint);
 }
 
+.sheet-title {
+  margin-top: 26rpx;
+  font-size: 38rpx;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
 .sheet-text {
-  margin-top: 28rpx;
+  margin-top: 18rpx;
   padding: 28rpx;
   border-radius: 26rpx;
   background: var(--paper-card);

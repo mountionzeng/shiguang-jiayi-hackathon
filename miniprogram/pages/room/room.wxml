@@ -36,9 +36,11 @@
             <text class="tl-author">{{item.authorName}} · {{item.relation}}</text>
             <text class="tl-mine" wx:if="{{item.isMine}}">我讲的</text>
           </view>
+          <view class="tl-title serif" wx:if="{{item.title}}">{{item.title}}</view>
           <view class="tl-text serif">{{item.text}}</view>
           <view class="tl-foot">
             <text class="tag tag-jade"><text class="tag-mark">✓</text>{{protagonistName}} 已确认</text>
+            <text class="tl-type">{{item.typeLabel}}</text>
             <text class="tl-date">{{item.dateLabel}}</text>
           </view>
         </view>
@@ -82,11 +84,13 @@
     </view>
   </view>
 
+  <view class="sheet-title serif" wx:if="{{detail.title}}">{{detail.title}}</view>
   <view class="sheet-text serif">{{detail.text}}</view>
 
   <view class="sheet-status">
     <text class="tag tag-jade"><text class="tag-mark">✓</text>{{protagonistName}} 确认属实</text>
     <text class="tag tag-lake"><text class="tag-mark">家</text>家庭可见</text>
+    <text class="tag tag-muted"><text class="tag-mark">记</text>{{detail.typeLabel}}</text>
   </view>
 
   <view class="sheet-actions">

@@ -1,6 +1,7 @@
 import {
   biographySourceContributions,
   FamilyMember,
+  MEMORY_TYPE_LABELS,
   FamilyRoomState,
   MemoryContribution,
   pendingContributionsFor,
@@ -21,6 +22,8 @@ interface TimelineItem {
   dateLabel: string;
   timeLabel: string;
   isMine: boolean;
+  title: string;
+  typeLabel: string;
 }
 
 interface MemberFilter {
@@ -105,6 +108,8 @@ Page({
       .map((item: MemoryContribution) => ({
         id: item.id,
         text: item.text,
+        title: item.title ?? "",
+        typeLabel: MEMORY_TYPE_LABELS[item.memoryType ?? "note"],
         authorName: item.authorName,
         relation: item.relation,
         avatarText: avatarByMember.get(item.authorMemberId) ?? item.authorName.slice(0, 1),
