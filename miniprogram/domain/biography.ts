@@ -442,6 +442,7 @@ export function createInitialRoomState(): FamilyRoomState {
         authorName: "林岚",
         relation: "外孙女",
         text: "我小时候最喜欢下雨天，因为放学走到巷口时，总能看见外公带着两把伞在那里等我。",
+        storyTitle: "外公接我放学",
         scope: "personal",
         visibility: "private",
         now: new Date("2026-08-28T02:05:00.000Z"),

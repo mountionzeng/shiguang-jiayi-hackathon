@@ -108,7 +108,11 @@ Page({
     }
   },
 
-  goBack() {
-    wx.navigateBack();
+  startInterview() {
+    wx.navigateTo({ url: "/pages/interview/interview" });
+  },
+
+  goHome() {
+    wx.reLaunch({ url: "/pages/index/index" });
   },
 });

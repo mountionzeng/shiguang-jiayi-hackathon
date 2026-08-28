@@ -45,7 +45,20 @@ interface MemberOptionView {
   selected: boolean;
 }
 
+interface InterviewLoadOptions {
+  sourceId?: string;
+  storyTitle?: string;
+}
+
 const THINKING_DELAY_MS = 420;
+
+function decodeQueryValue(value = ""): string {
+  try {
+    return decodeURIComponent(value).trim();
+  } catch {
+    return "";
+  }
+}
 
 function today(): string {
   const now = new Date();
@@ -144,24 +157,39 @@ Page({
 
   messageSeq: 0,
 
-  onLoad() {
+  onLoad(options: InterviewLoadOptions = {}) {
     const state = loadRoomState();
     const member = loadCurrentMember(state);
     const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");
+    const requestedStoryTitle = decodeQueryValue(options.storyTitle);
+    const requestedSourceId = decodeQueryValue(options.sourceId);
+    const source = state.contributions.find((memory) => (
+      memory.id === requestedSourceId &&
+      memory.authorMemberId === member.id &&
+      contributionScope(memory) === "personal"
+    ));
+    const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
+    const storyTitle = sourceStoryTitle || requestedStoryTitle;
+    const sourcePreview = source
+      ? `${source.text.slice(0, 72)}${source.text.length > 72 ? "……" : ""}`
+      : "";
+    const opening = source
+      ? storyTitle
+        ? `我们继续聊「${storyTitle}」吧。\n上次你讲到：“${sourcePreview}”\n这一次，你还想补充什么？`
+        : `我们接着这段往下聊吧。\n上次你讲到：“${sourcePreview}”\n后来你又想起了什么？`
+      : `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`;
 
     this.setData({
       memberName: member.name,
       memberRelation: member.relation,
       dateLabel: today(),
-      storyOptions: storyOptionsFor(state.contributions, member.id, ""),
+      storyTitle,
+      storyOptions: storyOptionsFor(state.contributions, member.id, storyTitle),
       relatedOptions: memberOptionsFor(state.members, member.id),
       audienceOptions: memberOptionsFor(state.members, member.id),
     });
 
-    this.pushMessage(
-      "opening",
-      `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`,
-    );
+    this.pushMessage("opening", opening);
   },
 
   /**

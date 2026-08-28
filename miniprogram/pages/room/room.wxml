@@ -1,4 +1,8 @@
-<view class="shell shell-with-bar page-enter">
+<view class="shell page-enter">
+
+  <view class="branch-bar">
+    <button class="branch-exit" bindtap="goHome">退出</button>
+  </view>
 
   <view class="room-head">
     <view class="eyebrow">我与亲友选择彼此看见的故事</view>
@@ -69,7 +73,7 @@
     <view class="empty-room-note">
       先和 AI 聊一段记忆。聊完后可以关联家人或朋友，再单独决定谁能看到。
     </view>
-    <button class="btn btn-primary empty-room-btn" bindtap="startInterview">和 AI 聊聊</button>
+    <button class="btn btn-jade empty-room-btn" bindtap="startInterview">开始聊聊</button>
   </view>
 
   <view class="mine-note" wx:if="{{myPendingCount > 0}}">
