@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拾光 · 人生之书 原型</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, 'PingFang SC', sans-serif;
+  background: #e5ddd4;
+  padding: 40px 20px;
+  min-height: 100vh;
+}
+
+.page-title {
+  text-align: center;
+  font-size: 12px;
+  color: #a89880;
+  letter-spacing: 3px;
+  margin-bottom: 6px;
+}
+.page-subtitle {
+  text-align: center;
+  font-size: 11px;
+  color: #c4b5a8;
+  margin-bottom: 40px;
+}
+
+.section { margin-bottom: 56px; }
+.section-title {
+  text-align: center;
+  font-size: 11px;
+  color: #a89880;
+  letter-spacing: 2px;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+}
+
+.phones-row {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.phone-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.phone-label {
+  font-size: 11px;
+  color: #a89880;
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.phone {
+  width: 320px;
+  height: 693px;
+  background: #faf7f2;
+  border-radius: 36px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.13), 0 0 0 1px rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* 微信固定胶囊 */
+.wx-capsule {
+  position: absolute;
+  top: 10px; right: 8px;
+  width: 80px; height: 26px;
+  background: rgba(0,0,0,0.07);
+  border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; z-index: 100;
+  border: 0.5px solid rgba(0,0,0,0.08);
+  pointer-events: none;
+}
+.wx-dot { width: 14px; height: 14px; border-radius: 50%; background: rgba(0,0,0,0.1); }
+.wx-line { width: 0.5px; height: 14px; background: rgba(0,0,0,0.08); }
+
+/* 状态栏 */
+.status-bar {
+  height: 44px;
+  padding: 14px 16px 0;
+  display: flex; align-items: center;
+  flex-shrink: 0;
+  background: #faf7f2;
+}
+.status-time { font-size: 13px; font-weight: 600; color: #3d2b1f; }
+
+/* 方案B导航栏 */
+.nav-bar {
+  height: 48px;
+  padding: 0 16px;
+  display: flex; align-items: center;
+  background: #faf7f2;
+  flex-shrink: 0;
+  border-bottom: 1px solid #f0e8de;
+  position: relative;
+}
+.nav-mine-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8b6347, #c4a882);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: #faf7f2;
+  font-weight: 500; flex-shrink: 0; cursor: pointer;
+}
+.nav-archive-center {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 5px;
+  background: #f5ede0;
+  padding: 5px 12px 5px 8px;
+  border-radius: 18px; cursor: pointer;
+}
+.nav-archive-name { font-size: 12px; color: #3d2b1f; font-weight: 500; }
+.nav-archive-arrow { font-size: 9px; color: #8b6347; }
+
+/* 页面主体 */
+.page-body {
+  flex: 1; overflow: hidden;
+  display: flex; flex-direction: column;
+  position: relative;
+}
+
+.scroll-area {
+  flex: 1; overflow-y: auto;
+  padding: 14px 16px 0;
+}
+
+/* 胶囊Tab */
+.capsule-tab-wrap {
+  padding: 8px 16px 28px;
+  flex-shrink: 0;
+  background: #faf7f2;
+}
+.capsule-tab {
+  background: #fff;
+  border-radius: 32px; height: 52px;
+  display: flex; align-items: center;
+  padding: 4px;
+  box-shadow: 0 2px 14px rgba(139,99,71,0.1);
+}
+.cap-item {
+  flex: 1; height: 44px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 2px; border-radius: 26px; cursor: pointer;
+}
+.cap-item.active { background: #f5ede0; }
+.cap-label { font-size: 10px; color: #c4b5a8; }
+.cap-item.active .cap-label { color: #8b6347; }
+.cap-plus {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, #8b6347, #c4a882);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 10px rgba(139,99,71,0.3);
+  flex-shrink: 0;
+}
+
+/* ===== 书封面卡片 ===== */
+.book-cover {
+  background: linear-gradient(145deg, #5c3d2e, #8b6347);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 12px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+.book-cover::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0; width: 6px;
+  background: rgba(0,0,0,0.18);
+  border-radius: 0 16px 16px 0;
+}
+.book-cover::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0; width: 3px;
+  background: rgba(255,255,255,0.08);
+}
+.bc-label { font-size: 10px; color: rgba(245,237,224,0.45); letter-spacing: 2px; margin-bottom: 6px; }
+.bc-title { font-size: 20px; color: #f5ede0; font-weight: 400; letter-spacing: 1px; margin-bottom: 3px; }
+.bc-sub { font-size: 11px; color: rgba(245,237,224,0.4); margin-bottom: 18px; }
+.bc-stats {
+  display: flex; gap: 0;
+  background: rgba(0,0,0,0.12);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.bc-stat {
+  flex: 1; padding: 10px 8px; text-align: center;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  position: relative;
+}
+.bc-stat:last-child { border-right: none; }
+.bc-stat:active { background: rgba(255,255,255,0.08); }
+.bc-stat-num { font-size: 16px; color: #f5ede0; font-weight: 300; }
+.bc-stat-label { font-size: 10px; color: rgba(245,237,224,0.5); margin-top: 2px; line-height: 1.3; }
+.bc-stat-tap {
+  position: absolute;
+  bottom: 4px; right: 4px;
+  width: 12px; height: 12px;
+  opacity: 0.3;
+}
+
+/* AI今日提问 */
+.ai-card {
+  background: linear-gradient(135deg, #fdf5ec, #f5ede0);
+  border-radius: 12px;
+  padding: 13px 14px;
+  margin-bottom: 12px;
+  border: 1px solid #e8dfd4;
+}
+.ai-card-label { font-size: 10px; color: #c4a882; letter-spacing: 1px; margin-bottom: 5px; }
+.ai-card-text { font-size: 13px; color: #5c3d2e; line-height: 1.65; margin-bottom: 10px; }
+.ai-card-footer { display: flex; align-items: center; justify-content: space-between; }
+.ai-card-btn {
+  font-size: 12px; color: #8b6347;
+  padding: 5px 14px;
+  border: 1px solid #c4a882;
+  border-radius: 14px;
+  display: inline-block;
+}
+.ai-card-skip { font-size: 11px; color: #c4b5a8; }
+
+/* 章节标签 */
+.section-label {
+  font-size: 10px; color: #b8a898;
+  letter-spacing: 1.5px;
+  margin: 4px 0 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-label::after {
+  content: '';
+  flex: 1; height: 1px;
+  background: #f0e8de;
+}
+
+/* 记忆卡片 */
+.mem-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 13px 14px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 8px rgba(139,99,71,0.06);
+  position: relative;
+  cursor: pointer;
+}
+.mem-card:active { background: #fdf5ec; }
+.mem-tag {
+  display: inline-block;
+  font-size: 10px; color: #8b6347;
+  background: #f5ede0;
+  padding: 2px 7px; border-radius: 8px;
+  margin-bottom: 5px;
+}
+.mem-tag.huiyilu { background: #f0f5e8; color: #6b8b47; }
+.mem-shared {
+  position: absolute; top: 13px; right: 13px;
+  font-size: 10px; color: #c4a882;
+  background: #fdf5ec;
+  padding: 2px 7px; border-radius: 8px;
+}
+.mem-title { font-size: 13px; color: #3d2b1f; font-weight: 500; margin-bottom: 4px; }
+.mem-preview {
+  font-size: 11px; color: #8b7060; line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
+.mem-date { font-size: 10px; color: #c4b5a8; margin-top: 6px; }
+.mem-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+
+/* 详情页 */
+.detail-nav {
+  height: 48px; padding: 0 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid #f0e8de;
+  flex-shrink: 0; background: #faf7f2;
+}
+.detail-back {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.detail-nav-title { font-size: 15px; color: #3d2b1f; font-weight: 500; }
+.detail-more {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; color: #8b6347;
+}
+
+.detail-scroll { flex: 1; overflow-y: auto; padding: 16px; }
+.detail-tag-row { display: flex; gap: 6px; margin-bottom: 10px; }
+.detail-tag {
+  font-size: 10px; color: #8b6347;
+  background: #f5ede0;
+  padding: 3px 9px; border-radius: 10px;
+}
+.detail-tag.green { background: #f0f5e8; color: #6b8b47; }
+.detail-title { font-size: 19px; color: #3d2b1f; font-weight: 500; line-height: 1.4; margin-bottom: 8px; }
+.detail-meta { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
+.detail-date { font-size: 11px; color: #b8a898; }
+.detail-body {
+  font-size: 14px; color: #3d2b1f; line-height: 1.95;
+  margin-bottom: 20px;
+}
+.detail-divider { height: 1px; background: #f0e8de; margin: 16px 0; }
+.detail-photo {
+  width: 100%; height: 120px;
+  background: #f0e8de;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: #b8a898;
+  overflow: hidden;
+}
+.detail-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.detail-btn-sec {
+  flex: 1; padding: 11px;
+  background: #fff; border: 1px solid #e8dfd4;
+  border-radius: 50px; font-size: 12px; color: #8b7060; text-align: center;
+}
+.detail-btn-pri {
+  flex: 1; padding: 11px;
+  background: #8b6347; border-radius: 50px;
+  font-size: 12px; color: #faf7f2; text-align: center;
+}
+.detail-share-bar {
+  background: #f5ede0; border-radius: 10px;
+  padding: 11px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.detail-share-text { font-size: 12px; color: #8b7060; }
+.detail-share-btn { font-size: 12px; color: #8b6347; font-weight: 500; }
+
+/* 写入底部面板 */
+.write-sheet {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: #fff;
+  border-radius: 24px 24px 0 0;
+  padding: 18px 20px 40px;
+  box-shadow: 0 -8px 40px rgba(0,0,0,0.12);
+  z-index: 10;
+}
+.sheet-handle {
+  width: 36px; height: 4px;
+  background: #e8dfd4; border-radius: 2px;
+  margin: 0 auto 18px;
+}
+.sheet-title { font-size: 15px; color: #3d2b1f; font-weight: 500; margin-bottom: 4px; }
+.sheet-sub { font-size: 12px; color: #b8a898; margin-bottom: 18px; }
+.sheet-options { display: flex; gap: 10px; }
+.sheet-opt {
+  flex: 1; background: #faf7f2;
+  border: 1.5px solid #e8dfd4;
+  border-radius: 14px; padding: 16px 12px;
+  text-align: center; cursor: pointer;
+}
+.sheet-opt.primary {
+  background: linear-gradient(145deg, #5c3d2e, #8b6347);
+  border-color: transparent;
+}
+.sheet-opt-icon { font-size: 26px; margin-bottom: 7px; }
+.sheet-opt-title { font-size: 13px; color: #3d2b1f; font-weight: 500; margin-bottom: 3px; }
+.sheet-opt.primary .sheet-opt-title { color: #f5ede0; }
+.sheet-opt-desc { font-size: 11px; color: #b8a898; line-height: 1.5; }
+.sheet-opt.primary .sheet-opt-desc { color: rgba(245,237,224,0.55); }
+
+/* AI对话 */
+.chat-nav {
+  height: 48px; padding: 0 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid #f0e8de;
+  flex-shrink: 0; background: #faf7f2;
+}
+.chat-back {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.chat-nav-title { font-size: 15px; color: #3d2b1f; font-weight: 500; }
+.chat-tag {
+  font-size: 11px; color: #c4a882;
+  background: #fdf5ec;
+  padding: 3px 10px; border-radius: 10px;
+}
+.chat-tag.green { background: #f0f5e8; color: #6b8b47; }
+
+.chat-messages {
+  flex: 1; overflow-y: auto;
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 11px;
+}
+.ai-row { display: flex; align-items: flex-start; gap: 7px; }
+.ai-av {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: linear-gradient(135deg, #8b6347, #c4a882);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: #faf7f2; font-weight: 500; flex-shrink: 0;
+}
+.ai-bubble {
+  background: #fff;
+  border-radius: 3px 13px 13px 13px;
+  padding: 10px 12px; max-width: 215px;
+  box-shadow: 0 2px 8px rgba(139,99,71,0.07);
+}
+.ai-bubble p { font-size: 13px; color: #3d2b1f; line-height: 1.7; }
+.user-row { display: flex; justify-content: flex-end; }
+.user-bubble {
+  background: #8b6347;
+  border-radius: 13px 3px 13px 13px;
+  padding: 10px 12px; max-width: 205px;
+}
+.user-bubble p { font-size: 13px; color: #faf7f2; line-height: 1.65; }
+.followup-card {
+  background: #fdf5ec; border-radius: 10px;
+  padding: 8px 12px;
+  border-left: 2px solid #c4a882;
+  margin: 2px 0 2px 33px;
+}
+.followup-card p { font-size: 11px; color: #8b6347; line-height: 1.6; }
+.followup-card.green { background: #f0f5e8; border-left-color: #8bb47a; }
+.followup-card.green p { color: #6b8b47; }
+
+.chat-input-wrap {
+  padding: 10px 16px 28px;
+  border-top: 1px solid #f0e8de;
+  flex-shrink: 0; background: #faf7f2;
+}
+.chat-input-row { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.chat-input-field {
+  flex: 1; background: #f5ede0;
+  border-radius: 20px; padding: 9px 13px;
+  font-size: 13px; color: #3d2b1f;
+  border: none; outline: none;
+}
+.chat-input-field::placeholder { color: #c4b5a8; }
+.voice-btn, .send-btn {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; cursor: pointer;
+}
+.voice-btn { background: #f0e8de; }
+.send-btn { background: #8b6347; }
+.chat-tools { display: flex; gap: 7px; align-items: center; }
+.tool-btn {
+  font-size: 11px; color: #b8a898;
+  padding: 4px 10px;
+  border: 1px solid #e8dfd4;
+  border-radius: 14px; background: #fff;
+}
+.end-btn {
+  margin-left: auto;
+  font-size: 11px; color: #8b6347;
+  padding: 4px 12px;
+  border: 1px solid #c4a882;
+  border-radius: 14px; background: #fdf5ec;
+}
+
+/* 叙事生成 */
+.narrative-wrap { flex: 1; overflow-y: auto; padding: 16px; }
+.narrative-gen-label { font-size: 10px; color: #c4a882; letter-spacing: 1px; margin-bottom: 6px; }
+.narrative-title {
+  font-size: 18px; color: #3d2b1f; font-weight: 500;
+  border-bottom: 1px dashed #e8dfd4;
+  padding-bottom: 8px; margin-bottom: 10px;
+}
+.narrative-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.narrative-date { font-size: 11px; color: #b8a898; }
+.narrative-chip {
+  font-size: 10px; color: #8b6347;
+  background: #f5ede0; padding: 2px 7px; border-radius: 8px;
+}
+.narrative-chip.green { background: #f0f5e8; color: #6b8b47; }
+.narrative-body { font-size: 13px; color: #3d2b1f; line-height: 1.9; margin-bottom: 18px; }
+.narrative-divider { height: 1px; background: #f0e8de; margin: 14px 0; }
+.narrative-hint { font-size: 11px; color: #b8a898; margin-bottom: 12px; }
+.narrative-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.btn-sec {
+  flex: 1; padding: 11px;
+  background: #fff; border: 1px solid #e8dfd4;
+  border-radius: 50px; font-size: 12px; color: #8b7060; text-align: center;
+}
+.btn-pri {
+  flex: 1; padding: 11px;
+  background: #8b6347; border-radius: 50px;
+  font-size: 12px; color: #faf7f2; text-align: center;
+}
+.share-hint {
+  background: #f5ede0; border-radius: 10px;
+  padding: 11px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.share-hint-text { font-size: 12px; color: #8b7060; }
+.share-hint-btn { font-size: 12px; color: #8b6347; font-weight: 500; }
+
+/* 遮罩 */
+.overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.38); z-index: 8;
+}
+
+/* 分割线 */
+.divider {
+  width: 100%; height: 1px;
+  background: linear-gradient(90deg, transparent, #c4b5a8, transparent);
+  margin: 48px 0;
+}
+
+/* 打字动画 */
+.typing { display: flex; gap: 4px; align-items: center; padding: 2px 0; }
+.typing span {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: #c4a882; animation: td 1.2s infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes td {
+  0%,60%,100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* 长按菜单 */
+.longpress-menu {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(30,20,10,0.88);
+  border-radius: 14px;
+  padding: 6px;
+  z-index: 20;
+  display: flex; gap: 0;
+  backdrop-filter: blur(10px);
+}
+.lp-item {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 4px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+.lp-item:last-child { border-right: none; }
+.lp-icon { font-size: 20px; }
+.lp-label { font-size: 10px; color: rgba(255,255,255,0.8); }
+
+/* 空状态 */
+.empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 40px 20px; text-align: center;
+}
+.empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.5; }
+.empty-title { font-size: 14px; color: #8b7060; margin-bottom: 6px; }
+.empty-desc { font-size: 12px; color: #b8a898; line-height: 1.6; }
+
+</style>
+</head>
+<body>
+
+<div class="page-title">拾光 · 人生之书 完整原型</div>
+<div class="page-subtitle">微信小程序 · 人生之书模块全流程</div>
+
+<!-- ========== Section 1: 主页面 ========== -->
+<div class="section">
+  <div class="section-title">主页面</div>
+  <div class="phones-row">
+
+    <!-- 屏01 人生之书主页（有内容） -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="nav-bar">
+          <div class="nav-mine-btn">我</div>
+          <div class="nav-archive-center">
+            <span style="font-size:14px;">👩</span>
+            <span class="nav-archive-name">我的档案</span>
+            <span class="nav-archive-arrow">▾</span>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="scroll-area">
+            <!-- 书封面卡片 -->
+            <div class="book-cover">
+              <div class="bc-label">人生之书</div>
+              <div class="bc-title">我的故事</div>
+              <div class="bc-sub">2024年3月 · 开始记录</div>
+              <div class="bc-stats">
+                <div class="bc-stat">
+                  <div class="bc-stat-num">23</div>
+                  <div class="bc-stat-label">篇记忆</div>
+                  <svg class="bc-stat-tap" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>
+                </div>
+                <div class="bc-stat">
+                  <div class="bc-stat-num">8</div>
+                  <div class="bc-stat-label">篇回忆录</div>
+                  <svg class="bc-stat-tap" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>
+                </div>
+                <div class="bc-stat">
+                  <div class="bc-stat-num">3</div>
+                  <div class="bc-stat-label">位家庭成员</div>
+                  <svg class="bc-stat-tap" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>
+                </div>
+              </div>
+            </div>
+            <!-- AI今日提问 -->
+            <div class="ai-card">
+              <div class="ai-card-label">格 · 今日提问</div>
+              <div class="ai-card-text">你上次提到和爸妈一起看房，后来有没有找到合适的？那天发生了什么有意思的事？</div>
+              <div class="ai-card-footer">
+                <div class="ai-card-btn">开始聊聊 →</div>
+                <div class="ai-card-skip">换一个问题</div>
+              </div>
+            </div>
+            <!-- 最近记录 -->
+            <div class="section-label">最近记录</div>
+            <div class="mem-card">
+              <div class="mem-tag">随手记</div>
+              <div class="mem-shared">已分享</div>
+              <div class="mem-title">今天和妈妈打了很久的电话</div>
+              <div class="mem-preview">她说最近身体还好，就是有点想我。我突然有点鼻酸，不知道为什么...</div>
+              <div class="mem-date">2025年6月12日</div>
+            </div>
+            <div class="mem-card">
+              <div class="mem-tag huiyilu">回忆录</div>
+              <div class="mem-title">外婆家的那口老井</div>
+              <div class="mem-preview">小时候每年暑假都去外婆家，村口有一口老井，水特别凉，夏天用来冰西瓜...</div>
+              <div class="mem-date">2025年6月8日</div>
+            </div>
+            <div class="mem-card">
+              <div class="mem-tag">随手记</div>
+              <div class="mem-title">今天下班路上突然下雨了</div>
+              <div class="mem-preview">没带伞，躲在便利店门口等雨停，旁边站了个老爷爷，我们聊了很久...</div>
+              <div class="mem-date">2025年6月5日</div>
+            </div>
+            <div style="height:16px;"></div>
+          </div>
+          <div class="capsule-tab-wrap">
+            <div class="capsule-tab">
+              <div class="cap-item active">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#8b6347" stroke-width="1.8"/></svg>
+                <span class="cap-label" style="color:#8b6347">人生之书</span>
+              </div>
+              <div class="cap-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#faf7f2" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+              <div class="cap-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#c4b5a8" stroke-width="1.8"/><path d="M9 22V12h6v10" stroke="#c4b5a8" stroke-width="1.8"/></svg><span class="cap-label">记忆之家</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏01 · 人生之书主页（有内容）</div>
+    </div>
+
+    <!-- 屏02 人生之书主页（空状态） -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="nav-bar">
+          <div class="nav-mine-btn">我</div>
+          <div class="nav-archive-center">
+            <span style="font-size:14px;">👩</span>
+            <span class="nav-archive-name">我的档案</span>
+            <span class="nav-archive-arrow">▾</span>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="scroll-area">
+            <!-- 书封面（空状态） -->
+            <div class="book-cover" style="opacity:0.85;">
+              <div class="bc-label">人生之书</div>
+              <div class="bc-title">我的故事</div>
+              <div class="bc-sub">刚刚开始 · 第一篇记忆等你写下</div>
+              <div class="bc-stats">
+                <div class="bc-stat">
+                  <div class="bc-stat-num">0</div>
+                  <div class="bc-stat-label">篇记忆</div>
+                </div>
+                <div class="bc-stat">
+                  <div class="bc-stat-num">0</div>
+                  <div class="bc-stat-label">篇回忆录</div>
+                </div>
+                <div class="bc-stat">
+                  <div class="bc-stat-num">0</div>
+                  <div class="bc-stat-label">位家庭成员</div>
+                </div>
+              </div>
+            </div>
+            <!-- AI首次提问（onboarding后的第一个问题） -->
+            <div class="ai-card" style="border:1.5px solid #c4a882;">
+              <div class="ai-card-label">格 · 你好，我们开始吧</div>
+              <div class="ai-card-text">你说最近在考虑买房，这件事家里是怎么讨论的？爸妈有参与意见吗？</div>
+              <div class="ai-card-footer">
+                <div class="ai-card-btn" style="background:#8b6347;color:#faf7f2;border-color:#8b6347;">开始第一篇记忆</div>
+              </div>
+            </div>
+            <!-- 空状态引导 -->
+            <div class="empty-state">
+              <div class="empty-icon">📖</div>
+              <div class="empty-title">你的人生之书还是空的</div>
+              <div class="empty-desc">每一次和格聊天<br>都会变成书里的一页</div>
+            </div>
+          </div>
+          <div class="capsule-tab-wrap">
+            <div class="capsule-tab">
+              <div class="cap-item active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#8b6347" stroke-width="1.8"/></svg><span class="cap-label" style="color:#8b6347">人生之书</span></div>
+              <div class="cap-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#faf7f2" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+              <div class="cap-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#c4b5a8" stroke-width="1.8"/><path d="M9 22V12h6v10" stroke="#c4b5a8" stroke-width="1.8"/></svg><span class="cap-label">记忆之家</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏02 · 人生之书主页（空状态）</div>
+    </div>
+
+    <!-- 屏03 写入底部面板 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="nav-bar">
+          <div class="nav-mine-btn">我</div>
+          <div class="nav-archive-center"><span style="font-size:14px;">👩</span><span class="nav-archive-name">我的档案</span><span class="nav-archive-arrow">▾</span></div>
+        </div>
+        <div class="page-body" style="position:relative;">
+          <div class="overlay"></div>
+          <div class="write-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-title">今天想记录什么？</div>
+            <div class="sheet-sub">选择一种方式，格会陪你一起聊</div>
+            <div class="sheet-options">
+              <div class="sheet-opt">
+                <div class="sheet-opt-icon">✏️</div>
+                <div class="sheet-opt-title">随手记</div>
+                <div class="sheet-opt-desc">记录此刻的感受和今天发生的事</div>
+              </div>
+              <div class="sheet-opt primary">
+                <div class="sheet-opt-icon">📖</div>
+                <div class="sheet-opt-title">回忆录</div>
+                <div class="sheet-opt-desc">回溯一段过去的故事和记忆</div>
+              </div>
+            </div>
+          </div>
+          <div class="scroll-area" style="filter:blur(2px);">
+            <div class="book-cover"><div class="bc-label">人生之书</div><div class="bc-title">我的故事</div></div>
+          </div>
+          <div class="capsule-tab-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:5;">
+            <div class="capsule-tab">
+              <div class="cap-item active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#8b6347" stroke-width="1.8"/></svg><span class="cap-label" style="color:#8b6347">人生之书</span></div>
+              <div class="cap-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#faf7f2" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+              <div class="cap-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#c4b5a8" stroke-width="1.8"/><path d="M9 22V12h6v10" stroke="#c4b5a8" stroke-width="1.8"/></svg><span class="cap-label">记忆之家</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏03 · 写入底部面板</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== Section 2: AI对话流程 ========== -->
+<div class="section">
+  <div class="section-title">AI对话流程</div>
+  <div class="phones-row">
+
+    <!-- 屏04 随手记对话 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div style="display:flex;flex-direction:column;height:100%;">
+            <div class="chat-nav">
+              <div class="chat-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <span class="chat-nav-title">和格聊聊</span>
+              <span class="chat-tag">随手记</span>
+            </div>
+            <div class="chat-messages">
+              <div class="ai-row">
+                <div class="ai-av">格</div>
+                <div class="ai-bubble"><p>今天发生了什么让你想记下来的事？</p></div>
+              </div>
+              <div class="user-row">
+                <div class="user-bubble"><p>今天和妈妈打电话，她说有点想我</p></div>
+              </div>
+              <div class="ai-row">
+                <div class="ai-av">格</div>
+                <div class="ai-bubble"><p>听到她说想你，你当时心里是什么感觉？</p></div>
+              </div>
+              <div class="followup-card"><p>追问：你们上次见面是什么时候？</p></div>
+              <div class="user-row">
+                <div class="user-bubble"><p>有点鼻酸，上次回家已经三个月前了</p></div>
+              </div>
+              <div class="ai-row">
+                <div class="ai-av">格</div>
+                <div class="ai-bubble"><p>三个月，对你来说是长还是短？你们平时怎么保持联系的？</p></div>
+              </div>
+              <div class="followup-card"><p>追问：这次电话里，她还说了什么别的吗？</p></div>
+              <div class="ai-row">
+                <div class="ai-av">格</div>
+                <div class="ai-bubble"><div class="typing"><span></span><span></span><span></span></div></div>
+              </div>
+            </div>
+            <div class="chat-input-wrap">
+              <div class="chat-input-row">
+                <div class="voice-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke="#8b6347" stroke-width="1.8"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+                <input class="chat-input-field" placeholder="说说你的感受..." />
+                <div class="send-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z" stroke="#faf7f2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              </div>
+              <div class="chat-tools">
+                <div class="tool-btn">📷 照片</div>
+                <div class="tool-btn">🎤 语音</div>
+                <div class="end-btn">整理成文章</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏04 · 随手记 AI对话</div>
+    </div>
+
+    <!-- 屏05 回忆录对话 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div style="display:flex;flex-direction:column;height:100%;">
+            <div class="chat-nav">
+              <div class="chat-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <span class="chat-nav-title">和格聊聊</span>
+              <span class="chat-tag green">回忆录</span>
+            </div>
+            <div class="chat-messages">
+              <div class="ai-row">
+                <div class="ai-av">格</div>
+                <div class="ai-bubble"><p>你想回忆哪段故事？可以是一个人、一个地方、或者一件印象深刻的事。</p></div>
+              </div>
+              <div class="user-row">
+                <div class="user-bubble"><p>我想记录外婆家的事，小时候每年暑假都去</p></div>
+              </div>
+              <div class="ai-row">
+                <div class="ai-av">格</div>
+                <div class="ai-bubble"><p>外婆家在哪里？你大概几岁开始去，一直去到什么时候？</p></div>
+              </div>
+              <div class="followup-card green"><p>追问人物：外婆当时多大年纪？家里还有其他人吗？</p></div>
+              <div class="user-row">
+                <div class="user-bubble"><p>湖南农村，大概5岁到15岁，外婆那时候60多岁，还有舅舅一家住在那里</p></div>
+              </div>
+              <div class="ai-row">
+                <div class="ai-av">格</div>
+                <div class="ai-bubble"><p>那段时光里，有没有一个特别具体的场景，是你现在还记得很清楚的？</p></div>
+              </div>
+              <div class="followup-card green"><p>追问地点：村子里有什么让你印象深刻的地方？</p></div>
+              <div class="ai-row">
+                <div class="ai-av">格</div>
+                <div class="ai-bubble"><div class="typing"><span></span><span></span><span></span></div></div>
+              </div>
+            </div>
+            <div class="chat-input-wrap">
+              <div class="chat-input-row">
+                <div class="voice-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke="#8b6347" stroke-width="1.8"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+                <input class="chat-input-field" placeholder="继续讲..." />
+                <div class="send-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z" stroke="#faf7f2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              </div>
+              <div class="chat-tools">
+                <div class="tool-btn">📷 照片</div>
+                <div class="tool-btn">🎤 语音</div>
+                <div class="end-btn">整理成文章</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏05 · 回忆录 AI对话（追问人物/地点）</div>
+    </div>
+
+    <!-- 屏06 叙事生成与编辑 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div style="display:flex;flex-direction:column;height:100%;">
+            <div class="chat-nav">
+              <div class="chat-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <span class="chat-nav-title">整理记忆</span>
+              <span class="chat-tag" style="background:transparent;border:1px solid #e8dfd4;color:#c4a882;">可编辑</span>
+            </div>
+            <div class="narrative-wrap">
+              <div class="narrative-gen-label">格 · 为你整理</div>
+              <div class="narrative-title">今天和妈妈打了很久的电话</div>
+              <div class="narrative-meta">
+                <span class="narrative-date">2025年6月12日</span>
+                <span class="narrative-chip">随手记</span>
+                <span class="narrative-chip">妈妈</span>
+              </div>
+              <div class="narrative-body">
+                今天傍晚，接到了妈妈的电话。她的声音很平静，说身体还好，只是最近有点想我。<br><br>
+                我不知道为什么，听到这句话的时候，鼻子突然有点酸。可能是因为已经三个月没有回家了，可能是因为她说"想我"这两个字的方式，轻描淡写，却让我心里一紧。<br><br>
+                她没有抱怨，也没有催我。只是说，想我了。
+              </div>
+              <div class="narrative-divider"></div>
+              <div class="narrative-hint">保存后放入你的人生之书 · 随手记</div>
+              <div class="narrative-actions">
+                <div class="btn-sec">继续编辑</div>
+                <div class="btn-pri">保存到书里</div>
+              </div>
+              <div class="share-hint">
+                <div class="share-hint-text">也分享到记忆之家？</div>
+                <div class="share-hint-btn">分享 →</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏06 · 叙事生成与编辑</div>
+    </div>
+
+    <!-- 屏07 叙事生成（回忆录） -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div style="display:flex;flex-direction:column;height:100%;">
+            <div class="chat-nav">
+              <div class="chat-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <span class="chat-nav-title">整理记忆</span>
+              <span class="chat-tag green">回忆录</span>
+            </div>
+            <div class="narrative-wrap">
+              <div class="narrative-gen-label">格 · 为你整理</div>
+              <div class="narrative-title">外婆家的那口老井</div>
+              <div class="narrative-meta">
+                <span class="narrative-date">约1998年夏天</span>
+                <span class="narrative-chip green">回忆录</span>
+                <span class="narrative-chip green">外婆</span>
+                <span class="narrative-chip green">湖南</span>
+              </div>
+              <div class="narrative-body">
+                那时候大概五六岁，每年暑假都会被送到湖南外婆家住上一个月。<br><br>
+                村口有一口老井，井沿的石头被磨得光滑发亮。外婆每天清晨都会去打水，我喜欢趴在井沿往下看，能看到自己的脸，也能感受到从井底升上来的那股凉意。<br><br>
+                夏天最热的时候，外婆会把西瓜放在竹篮里，用绳子吊进井里冰着。傍晚收工，一家人坐在院子里，外婆用菜刀劈开西瓜，那个声音和那股甜味，是我对那些夏天最深的记忆。
+              </div>
+              <div class="narrative-divider"></div>
+              <div class="narrative-hint">保存后放入你的人生之书 · 回忆录</div>
+              <div class="narrative-actions">
+                <div class="btn-sec">继续编辑</div>
+                <div class="btn-pri">保存到书里</div>
+              </div>
+              <div class="share-hint">
+                <div class="share-hint-text">也分享到记忆之家？</div>
+                <div class="share-hint-btn">分享 →</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏07 · 叙事生成（回忆录，含时间地点标签）</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== Section 3: 记忆详情与管理 ========== -->
+<div class="section">
+  <div class="section-title">记忆详情与管理</div>
+  <div class="phones-row">
+
+    <!-- 屏08 记忆详情页 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div style="display:flex;flex-direction:column;height:100%;">
+            <div class="detail-nav">
+              <div class="detail-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <span class="detail-nav-title">记忆详情</span>
+              <div class="detail-more">···</div>
+            </div>
+            <div class="detail-scroll">
+              <div class="detail-tag-row">
+                <div class="detail-tag">随手记</div>
+                <div class="detail-tag">妈妈</div>
+                <div class="detail-tag">思念</div>
+              </div>
+              <div class="detail-title">今天和妈妈打了很久的电话</div>
+              <div class="detail-meta">
+                <span class="detail-date">2025年6月12日 · 傍晚</span>
+              </div>
+              <div class="detail-body">
+                今天傍晚，接到了妈妈的电话。她的声音很平静，说身体还好，只是最近有点想我。<br><br>
+                我不知道为什么，听到这句话的时候，鼻子突然有点酸。可能是因为已经三个月没有回家了，可能是因为她说"想我"这两个字的方式，轻描淡写，却让我心里一紧。<br><br>
+                她没有抱怨，也没有催我。只是说，想我了。
+              </div>
+              <div class="detail-photo">📷 相关照片（可添加）</div>
+              <div class="detail-divider"></div>
+              <div class="detail-actions">
+                <div class="detail-btn-sec">编辑</div>
+                <div class="detail-btn-pri">分享到记忆之家</div>
+              </div>
+              <div class="detail-share-bar" style="margin-top:8px;">
+                <div class="detail-share-text">已分享到记忆之家</div>
+                <div class="detail-share-btn" style="color:#b8a898;">取消分享</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏08 · 记忆详情页（已分享状态）</div>
+    </div>
+
+    <!-- 屏09 记忆卡片长按菜单 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="nav-bar">
+          <div class="nav-mine-btn">我</div>
+          <div class="nav-archive-center"><span style="font-size:14px;">👩</span><span class="nav-archive-name">我的档案</span><span class="nav-archive-arrow">▾</span></div>
+        </div>
+        <div class="page-body" style="position:relative;">
+          <div class="overlay" style="border-radius:0 0 36px 36px;"></div>
+          <!-- 长按菜单 -->
+          <div class="longpress-menu">
+            <div class="lp-item">
+              <div class="lp-icon">✏️</div>
+              <div class="lp-label">编辑</div>
+            </div>
+            <div class="lp-item">
+              <div class="lp-icon">🏠</div>
+              <div class="lp-label">分享</div>
+            </div>
+            <div class="lp-item">
+              <div class="lp-icon">🔗</div>
+              <div class="lp-label">复制</div>
+            </div>
+            <div class="lp-item">
+              <div class="lp-icon" style="color:#ff6b6b;">🗑️</div>
+              <div class="lp-label" style="color:rgba(255,100,100,0.8);">删除</div>
+            </div>
+          </div>
+          <div class="scroll-area" style="filter:blur(2px);">
+            <div class="book-cover"><div class="bc-label">人生之书</div><div class="bc-title">我的故事</div></div>
+            <div style="height:12px;"></div>
+            <div class="mem-card" style="opacity:0.6;">
+              <div class="mem-tag">随手记</div>
+              <div class="mem-title">今天和妈妈打了很久的电话</div>
+              <div class="mem-preview">她说最近身体还好，就是有点想我...</div>
+              <div class="mem-date">2025年6月12日</div>
+            </div>
+          </div>
+          <div class="capsule-tab-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:5;">
+            <div class="capsule-tab">
+              <div class="cap-item active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#8b6347" stroke-width="1.8"/></svg><span class="cap-label" style="color:#8b6347">人生之书</span></div>
+              <div class="cap-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#faf7f2" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+              <div class="cap-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#c4b5a8" stroke-width="1.8"/><path d="M9 22V12h6v10" stroke="#c4b5a8" stroke-width="1.8"/></svg><span class="cap-label">记忆之家</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏09 · 记忆卡片长按菜单</div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -80,7 +80,7 @@
 
 完整项目说明见 [docs/project-document.md](docs/project-document.md)，演示视频脚本见 [docs/demo-script.md](docs/demo-script.md)。
 
-界面重设计请先阅读 [微信小程序前端重设计交接](docs/handoff/2026-08-28-mini-program-ui-redesign-handoff.md)，不要把 Web/React 实现方式直接搬进原生小程序。
+界面重设计请先阅读 [共享老人人生之书重设计需求](docs/brainstorms/2026-08-28-shared-elder-life-book-redesign-requirements.md) 和 [微信小程序前端重设计交接](docs/handoff/2026-08-28-mini-program-ui-redesign-handoff.md)。队友原型已原样保存在 [docs/references/team-prototypes/](docs/references/team-prototypes/)，实现时复用其结构与跳转思路，但不要把 Web/React 方式或静态 HTML 直接搬进原生小程序。
 
 ## 提交提醒
 
