@@ -84,6 +84,8 @@
 
 后续接真实微信身份和家庭邀请后，再把固定 `demo-family` 替换成真实家庭 ID、用户 openid 和权限规则。
 
+体验版试用步骤见 `docs/cloud-demo-test-guide.md`。
+
 ## 前端需要注意的改动
 
 - 继续保留 `authorMemberId`、`authorName`、`relation`，不要只保存纯文本。
