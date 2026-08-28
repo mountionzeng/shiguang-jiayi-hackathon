@@ -62,11 +62,27 @@
 
 ## 云数据库集合
 
-请在微信云开发控制台确认存在集合：
+请在微信云开发控制台确认存在这些集合：
 
-- `family_rooms`
+- `families`
+- `family_members`
+- `source_records`
+- `memories`
+- `biography_drafts`
+- `generated_artifacts`
+- `assets`
+- `ai_tasks`
 
-当前黑客松体验版会使用固定文档 `demo-room` 保存演示房间状态。后续接真实微信身份和家庭邀请后，再把它拆成按家庭 ID、用户 openid 和权限规则保存。
+当前黑客松体验版会使用固定家庭 ID `demo-family` 保存演示数据：
+
+- 房间信息保存到 `families`
+- 家庭成员保存到 `family_members`
+- 用户原始文字投稿保存到 `source_records`
+- 可审核、可生成的记忆条目保存到 `memories`
+- 当前章节草稿保存到 `biography_drafts`
+- 每次生成结果追加保存到 `generated_artifacts`
+
+后续接真实微信身份和家庭邀请后，再把固定 `demo-family` 替换成真实家庭 ID、用户 openid 和权限规则。
 
 ## 前端需要注意的改动
 
