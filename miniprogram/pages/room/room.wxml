@@ -1,83 +1,111 @@
-<view class="page-shell room-page page-enter">
-  <view class="room-heading">
-    <view>
-      <text class="eyebrow">01 · 家人讲述</text>
-      <view class="section-title">{{roomName}}</view>
-    </view>
-    <view class="room-count">{{members.length}} 人</view>
+<view class="shell shell-with-bar page-enter">
+
+  <view class="room-head">
+    <view class="room-title serif">记忆之家</view>
+    <view class="room-sub">{{protagonistName}} 已经确认、并且家人都看得到的片段</view>
   </view>
 
-  <scroll-view class="member-strip" scroll-x enhanced show-scrollbar="{{false}}">
-    <view class="member-row">
-      <view class="member" wx:for="{{members}}" wx:key="id">
-        <view class="member-avatar {{item.role === 'elder' ? 'elder-avatar' : ''}} serif">{{item.avatarText}}</view>
-        <text class="member-name">{{item.name}}</text>
-        <text class="member-relation">{{item.relation}}</text>
-      </view>
-      <view class="member invite-member">
-        <view class="member-avatar invite-avatar">＋</view>
-        <text class="member-name">邀请家人</text>
-        <text class="member-relation">赛后接入</text>
+  <!-- 成员横向筛选 -->
+  <scroll-view class="filter-strip" scroll-x enhanced show-scrollbar="{{false}}">
+    <view class="filter-row">
+      <view
+        class="filter {{activeFilter === item.id ? 'filter-on' : ''}}"
+        wx:for="{{filters}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="chooseFilter"
+      >
+        <view class="filter-avatar {{item.isElder ? 'filter-avatar-elder' : ''}} serif">{{item.avatarText}}</view>
+        <text class="filter-name">{{item.name}}</text>
+        <text class="filter-count">{{item.count}}</text>
       </view>
     </view>
   </scroll-view>
 
-  <view class="ai-prompt">
-    <view class="ai-mark serif">问</view>
-    <view class="ai-copy">
-      <text class="ai-label">AI 采访者 · 一次只问一件事</text>
-      <text class="ai-question serif">你第一次意识到外公很爱这个家，是在什么时候？</text>
-      <text class="ai-hint">不知道年份也没关系，可以直接说“记不清”。</text>
-    </view>
-  </view>
-
-  <view class="conversation">
-    <view class="memory-message" wx:for="{{contributions}}" wx:key="id">
-      <view class="message-avatar serif">{{item.avatarText}}</view>
-      <view class="message-main">
-        <view class="message-meta">
-          <text>{{item.authorName}} · {{item.relation}}</text>
-          <text class="message-scope">{{item.visibilityLabel}}</text>
+  <!-- 时间线 -->
+  <block wx:if="{{timeline.length > 0}}">
+    <view class="timeline">
+      <view class="tl-item" wx:for="{{timeline}}" wx:key="id" data-id="{{item.id}}" bindtap="openDetail">
+        <view class="tl-rail">
+          <view class="tl-dot"></view>
+          <view class="tl-line"></view>
         </view>
-        <view class="message-bubble">{{item.text}}</view>
-        <view class="message-status">{{item.statusLabel}}</view>
+        <view class="tl-body">
+          <view class="tl-meta">
+            <view class="tl-avatar serif">{{item.avatarText}}</view>
+            <text class="tl-author">{{item.authorName}} · {{item.relation}}</text>
+            <text class="tl-mine" wx:if="{{item.isMine}}">我讲的</text>
+          </view>
+          <view class="tl-text serif">{{item.text}}</view>
+          <view class="tl-foot">
+            <text class="tag tag-jade"><text class="tag-mark">✓</text>{{protagonistName}} 已确认</text>
+            <text class="tl-date">{{item.dateLabel}}</text>
+          </view>
+        </view>
       </view>
+    </view>
+  </block>
+
+  <!-- 该成员没有合格片段 -->
+  <view class="empty-filter" wx:elif="{{hasAnyQualified}}">
+    <view class="empty-filter-title">这位家人还没有已确认的公开片段</view>
+    <view class="empty-filter-note">讲过、但还没被确认的内容不会出现在这里。</view>
+  </view>
+
+  <!-- 整个记忆之家还没有合格片段 -->
+  <view class="empty-room wash" wx:else>
+    <view class="empty-room-title serif">还没有可以公开的片段</view>
+    <view class="empty-room-note">
+      家人讲过的内容，要等 {{protagonistName}} 逐条确认属实、并且是「家庭可见」，才会出现在这条时间线上。
+    </view>
+    <button class="btn btn-primary empty-room-btn" bindtap="startInterview">去讲一段</button>
+  </view>
+
+  <view class="mine-note" wx:if="{{myPendingCount > 0}}">
+    你有 {{myPendingCount}} 段还在等 {{protagonistName}} 确认，确认之前只有你和他看得到。
+  </view>
+
+  <view class="invite-note">
+    真实的微信邀请和跨设备家庭空间还没有接入，当前家庭成员是本地演示数据。
+  </view>
+</view>
+
+<!-- 详情面板 -->
+<view class="sheet-mask" wx:if="{{detail}}" bindtap="closeDetail"></view>
+<view class="sheet" wx:if="{{detail}}">
+  <view class="sheet-grip"></view>
+  <view class="sheet-meta">
+    <view class="tl-avatar serif">{{detail.avatarText}}</view>
+    <view class="sheet-who">
+      <text class="sheet-author">{{detail.authorName}} · {{detail.relation}}</text>
+      <text class="sheet-time">{{detail.dateLabel}} {{detail.timeLabel}} 讲述</text>
     </view>
   </view>
 
-  <view class="composer">
-    <textarea
-      class="memory-input"
-      value="{{inputText}}"
-      maxlength="{{maxLength}}"
-      auto-height
-      placeholder="写下一件你记得的小事……"
-      placeholder-class="memory-placeholder"
-      bindinput="onInput"
-    />
-    <view class="composer-meta">
-      <view class="visibility-options">
-        <view
-          class="visibility-option {{visibility === 'family' ? 'active' : ''}}"
-          data-visibility="family"
-          bindtap="chooseVisibility"
-        >家庭可见</view>
-        <view
-          class="visibility-option {{visibility === 'private' ? 'active' : ''}}"
-          data-visibility="private"
-          bindtap="chooseVisibility"
-        >私密提交</view>
-      </view>
-      <text class="character-count">{{remaining}}</text>
-    </view>
-    <button class="primary-button submit-button" bindtap="submitMemory">把这段回忆交给外公</button>
+  <view class="sheet-text serif">{{detail.text}}</view>
+
+  <view class="sheet-status">
+    <text class="tag tag-jade"><text class="tag-mark">✓</text>{{protagonistName}} 确认属实</text>
+    <text class="tag tag-lake"><text class="tag-mark">家</text>家庭可见</text>
   </view>
 
-  <view class="next-step">
-    <view>
-      <text class="next-label">下一步</text>
-      <text class="next-title serif">请林致远亲自核对</text>
-    </view>
-    <button class="next-arrow" bindtap="goToReview">→</button>
+  <view class="sheet-actions">
+    <button class="btn btn-ghost" bindtap="copyDetail">复制这段话</button>
+    <button class="btn btn-ghost sheet-revoke" wx:if="{{detail.isMine}}" bindtap="revokeSharing">
+      从记忆之家撤下
+    </button>
   </view>
+  <view class="sheet-hint" wx:if="{{detail.isMine}}">
+    撤下只解除家庭可见，原文继续留在人生之书。
+  </view>
+  <button class="btn btn-quiet" bindtap="closeDetail">关闭</button>
+</view>
+
+<view class="capsule-bar">
+  <view class="capsule-item" bindtap="goHome">人生之书</view>
+  <view class="capsule-plus" bindtap="startInterview">
+    <text class="capsule-plus-sign">＋</text>
+    <text class="capsule-plus-text">回忆采访</text>
+  </view>
+  <view class="capsule-item capsule-item-active">记忆之家</view>
 </view>

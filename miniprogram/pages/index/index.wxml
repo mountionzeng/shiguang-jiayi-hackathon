@@ -1,39 +1,122 @@
-<view class="page-shell home-page page-enter">
-  <view class="brand-lockup">
-    <view class="brand-seal serif">忆</view>
-    <view class="brand-copy">
-      <text class="brand-name serif">拾光家忆</text>
-      <text class="brand-note">家庭共同讲述的文字传记</text>
+<view class="shell shell-with-bar page-enter">
+
+  <!-- 身份条：黑客松阶段的演示身份，不伪装成真实微信成员系统 -->
+  <view class="identity-row" bindtap="toggleIdentityPicker">
+    <view class="identity-avatar serif">{{identity.avatarText}}</view>
+    <view class="identity-copy">
+      <text class="identity-name">{{identity.name}} · {{identity.relation}}</text>
+      <text class="identity-role">{{identity.roleLabel}}｜演示身份，点此切换</text>
+    </view>
+    <text class="identity-arrow">{{showIdentityPicker ? '收起' : '切换'}}</text>
+  </view>
+
+  <view class="identity-picker" wx:if="{{showIdentityPicker}}">
+    <view
+      class="identity-option"
+      wx:for="{{identityOptions}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="chooseIdentity"
+    >
+      <view class="identity-avatar identity-avatar-sm serif">{{item.avatarText}}</view>
+      <view class="identity-copy">
+        <text class="identity-name">{{item.name}} · {{item.relation}}</text>
+        <text class="identity-role">{{item.roleLabel}}</text>
+      </view>
+      <text class="identity-check" wx:if="{{item.id === identity.id}}">当前</text>
     </view>
   </view>
 
-  <view class="hero-copy">
-    <text class="eyebrow">为仍能亲口讲述的人</text>
-    <view class="hero-title serif">把一家人的记忆，\n写成他的一生。</view>
-    <view class="hero-description">
-      亲人负责记起，老人负责确认。AI 只整理已经说清楚的事，不替任何人编造人生。
+  <!-- 书封面：点整张进阅读，三个数据点各自跳转 -->
+  <view class="cover wash">
+    <view class="cover-tap" bindtap="openBook">
+      <text class="cover-label">全家一起写的人生之书</text>
+      <view class="cover-title serif">{{protagonistName}}</view>
+      <view class="cover-sub" wx:if="{{hasFragments}}">{{chapterLabel}}</view>
+      <view class="cover-sub" wx:else>还没有人写下第一段，等你开个头</view>
+    </view>
+
+    <view class="cover-stats">
+      <view class="cover-stat" bindtap="openFragments">
+        <text class="cover-stat-num serif">{{fragmentCount}}</text>
+        <text class="cover-stat-label">回忆片段</text>
+      </view>
+      <view class="cover-stat-line"></view>
+      <view class="cover-stat" bindtap="openPending">
+        <text class="cover-stat-num serif">{{pendingCount}}</text>
+        <text class="cover-stat-label">待确认</text>
+      </view>
+      <view class="cover-stat-line"></view>
+      <view class="cover-stat" bindtap="openMemoryHome">
+        <text class="cover-stat-num serif">{{memberCount}}</text>
+        <text class="cover-stat-label">参与家人</text>
+      </view>
     </view>
   </view>
 
-  <view class="memory-window">
-    <view class="window-grain"></view>
-    <view class="quote-mark serif">“</view>
-    <view class="memory-quote serif">
-      每次下雨，他都会站在巷口，手里多带一把小伞。
+  <!-- 老人身份：待确认任务优先 -->
+  <view class="elder-task" wx:if="{{identity.isElder && pendingCount > 0}}" bindtap="openPending">
+    <view class="elder-task-copy">
+      <view class="elder-task-title">有 {{pendingCount}} 条家人的说法，等你亲自核对</view>
+      <text class="elder-task-note">一次只看一条，确认之后才会写进书里</text>
     </view>
-    <view class="memory-source">林岚 · 外孙女的回忆</view>
-    <view class="verification-stamp serif">待本人确认</view>
+    <text class="elder-task-go">去核对</text>
   </view>
 
-  <view class="story-steps">
-    <view class="story-step" wx:for="{{steps}}" wx:key="number">
-      <text class="step-number">{{item.number}}</text>
-      <text class="step-label">{{item.label}}</text>
+  <!-- 今日共享问题 -->
+  <view class="question-card">
+    <view class="question-head">
+      <text class="tag tag-apricot"><text class="tag-mark">问</text>今天全家的同一个问题</text>
+      <text class="question-date">每个人分开回答</text>
+    </view>
+    <view class="question-text serif">{{todayQuestion.text}}</view>
+    <view class="question-hint">{{todayQuestion.hint}}</view>
+    <button class="btn btn-primary question-btn" bindtap="startInterview">
+      {{identity.isElder ? '讲讲我自己' : '说说我记得的'}}
+    </button>
+  </view>
+
+  <!-- 有内容：最近确认的片段 -->
+  <view class="fragments" wx:if="{{hasFragments}}">
+    <view class="section-head">
+      <text class="section-title">已经确认的片段</text>
+      <text class="section-more" bindtap="openFragments">全部 {{fragmentCount}} 条</text>
+    </view>
+
+    <view class="fragment-card" wx:for="{{recentFragments}}" wx:key="id" bindtap="openFragments">
+      <view class="fragment-text serif">{{item.text}}</view>
+      <view class="fragment-foot">
+        <text class="tag tag-jade"><text class="tag-mark">✓</text>本人已确认</text>
+        <text class="fragment-byline">{{item.byline}} · {{item.dateLabel}}</text>
+      </view>
     </view>
   </view>
 
-  <button class="primary-button" bindtap="enterRoom">进入林家的拾光房间</button>
-  <button class="quiet-button" bindtap="resetDemo">重置演示内容</button>
+  <!-- 空状态：引导全家完成第一段采访 -->
+  <view class="empty-block wash" wx:else>
+    <view class="empty-title serif">这本书还是空的</view>
+    <view class="empty-desc">
+      先由任意一位家人回答上面的问题。老人确认之后，第一段回忆就会出现在这里。
+    </view>
+    <view class="empty-steps">
+      <view class="empty-step"><text class="empty-step-num">1</text>家人分头回答同一个问题</view>
+      <view class="empty-step"><text class="empty-step-num">2</text>{{protagonistName}} 逐条确认是不是这样</view>
+      <view class="empty-step"><text class="empty-step-num">3</text>确认过的片段整理成章节</view>
+    </view>
+  </view>
 
-  <view class="demo-note">黑客松演示使用虚构家庭资料</view>
+  <view class="demo-note" wx:if="{{localDemoOnly}}">
+    当前未连云端，采访提问与章节整理均为本地演示逻辑，不是 AI 生成。
+  </view>
+  <button class="btn btn-quiet" bindtap="resetDemo">重置演示内容</button>
+</view>
+
+<!-- 三段式底部导航：人生之书 · 回忆采访 · 记忆之家 -->
+<view class="capsule-bar">
+  <view class="capsule-item capsule-item-active">人生之书</view>
+  <view class="capsule-plus" bindtap="startInterview">
+    <text class="capsule-plus-sign">＋</text>
+    <text class="capsule-plus-text">回忆采访</text>
+  </view>
+  <view class="capsule-item" bindtap="openMemoryHome">记忆之家</view>
 </view>

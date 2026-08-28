@@ -1,77 +1,88 @@
-<view class="page-shell review-page page-enter">
-  <view class="review-intro">
-    <text class="eyebrow">02 · 老人确认</text>
-    <view class="section-title serif">{{protagonistName}}，请亲自说清楚。</view>
-    <view class="review-description">
-      家人记得的事不一定完全准确。只有你确认过、且家庭可见的内容，才会进入正式传记。
-    </view>
-  </view>
+<view class="shell page-enter">
 
-  <view class="authority-line">
-    <view class="authority-avatar serif">远</view>
-    <view class="authority-copy">
-      <text class="authority-name">当前核对人 · {{protagonistName}}</text>
-      <text class="authority-note">Story 发起者和其他亲人不能代为确认</text>
+  <!-- 不是老人本人：只解释，不给操作 -->
+  <block wx:if="{{!isElder}}">
+    <view class="block-card wash">
+      <view class="block-title serif">只有 {{protagonistName}} 本人能确认</view>
+      <view class="block-note">
+        家人记得的事不一定完全准确。谁讲的由谁负责，是不是这样，只由 {{protagonistName}} 说了算——发起人、其他家人和 AI 都不能代替。
+      </view>
+      <view class="block-me">你现在的身份是 {{viewerName}}。</view>
     </view>
-  </view>
+    <button class="btn btn-ghost block-back" bindtap="goBack">回到人生之书</button>
+  </block>
 
-  <view class="review-progress">
-    <view class="progress-item">
-      <text class="progress-value serif">{{pending.length}}</text>
-      <text class="progress-label">待核对</text>
+  <block wx:else>
+    <view class="review-head">
+      <view class="review-title serif">{{protagonistName}}，这些是家人记得的事</view>
+      <view class="review-sub" wx:if="{{pendingCount > 0}}">{{positionLabel}}</view>
     </view>
-    <view class="progress-divider"></view>
-    <view class="progress-item">
-      <text class="progress-value serif">{{confirmedCount}}</text>
-      <text class="progress-label">可写入传记</text>
-    </view>
-    <view class="progress-divider"></view>
-    <view class="progress-item">
-      <text class="progress-value serif">{{handledCount}}</text>
-      <text class="progress-label">已处理</text>
-    </view>
-  </view>
 
-  <view class="pending-list" wx:if="{{pending.length > 0}}">
-    <view class="review-card" wx:for="{{pending}}" wx:key="id">
-      <view class="card-source">
-        <view>
-          <text class="source-name">{{item.authorName}}</text>
-          <text class="source-relation"> · {{item.relation}}</text>
+    <!-- 一次只聚焦一条 -->
+    <block wx:if="{{focus}}">
+      <view class="focus-card">
+        <view class="focus-source">
+          <view class="focus-avatar serif">{{focus.avatarText}}</view>
+          <view class="focus-who">
+            <text class="focus-author">{{focus.authorName}} · {{focus.relation}}</text>
+            <text class="focus-date">{{focus.dateLabel}} 讲的</text>
+          </view>
         </view>
-        <text class="source-visibility">{{item.visibilityLabel}}</text>
+
+        <view class="focus-text serif">{{focus.text}}</view>
+
+        <view class="focus-scope">
+          <text class="tag {{focus.isPrivate ? 'tag-muted' : 'tag-lake'}}">
+            <text class="tag-mark">{{focus.isPrivate ? '私' : '家'}}</text>{{focus.visibilityLabel}}
+          </text>
+        </view>
+        <view class="focus-scope-note" wx:if="{{focus.isPrivate}}">
+          这一条只有讲述人和你看得到。就算你确认属实，它也不会进入记忆之家或传记章节。
+        </view>
       </view>
-      <view class="memory-text serif">{{item.text}}</view>
-      <view class="review-question">{{item.reviewQuestion}}</view>
-      <button
-        class="confirm-action"
-        data-id="{{item.id}}"
-        data-status="confirmed"
-        bindtap="reviewMemory"
-      >{{item.confirmLabel}}</button>
-      <view class="secondary-actions">
-        <button
-          class="conflict-action"
-          data-id="{{item.id}}"
-          data-status="conflict"
-          bindtap="reviewMemory"
-        >说法不一致</button>
-        <button
-          class="reject-action"
-          data-id="{{item.id}}"
-          data-status="rejected"
-          bindtap="reviewMemory"
-        >不是这样</button>
+
+      <view class="focus-ask">是这样吗？</view>
+
+      <button class="btn btn-jade action-confirm" data-status="confirmed" bindtap="reviewMemory">
+        {{focus.confirmLabel}}
+      </button>
+      <button class="btn btn-ghost action-conflict" data-status="conflict" bindtap="reviewMemory">
+        大致是，但有出入
+      </button>
+      <button class="btn btn-ghost action-reject" data-status="rejected" bindtap="reviewMemory">
+        不是这样
+      </button>
+
+      <view class="focus-hint">
+        选「大致是」和「不是这样」都不会删掉家人的话，只是不写进书里。
+      </view>
+    </block>
+
+    <!-- 全部处理完成 -->
+    <view class="done-card wash" wx:else>
+      <view class="done-mark serif">✓</view>
+      <view class="done-title serif">这一轮都核对完了</view>
+      <view class="done-note">家人再讲新的，还会来请你确认。</view>
+    </view>
+
+    <view class="review-progress">
+      <view class="progress-item">
+        <text class="progress-num serif">{{pendingCount}}</text>
+        <text class="progress-label">还没核对</text>
+      </view>
+      <view class="progress-line"></view>
+      <view class="progress-item">
+        <text class="progress-num serif">{{handledCount}}</text>
+        <text class="progress-label">已经处理</text>
+      </view>
+      <view class="progress-line"></view>
+      <view class="progress-item">
+        <text class="progress-num serif">{{confirmedCount}}</text>
+        <text class="progress-label">能写进书</text>
       </view>
     </view>
-  </view>
 
-  <view class="empty-review" wx:else>
-    <view class="empty-mark serif">✓</view>
-    <view class="empty-title serif">这一轮已经核对完成</view>
-    <view class="empty-note">新回忆进来后，还会再次请你确认。</view>
-  </view>
-
-  <button class="primary-button book-button" bindtap="goToBook">查看传记第一章</button>
-  <button class="quiet-button" bindtap="goBackToRoom">返回家庭房间继续讲述</button>
+    <button class="btn btn-primary book-btn" bindtap="goToBook">看看写成了什么</button>
+    <button class="btn btn-quiet" bindtap="goBack">先回去</button>
+  </block>
 </view>

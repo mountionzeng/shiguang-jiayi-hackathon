@@ -1,0 +1,141 @@
+<view class="interview-page" style="bottom: {{keyboardHeight}}px">
+
+  <!-- 采访抬头：谁在讲，讲给谁 -->
+  <view class="who-bar">
+    <view class="who-copy">
+      <text class="who-name">{{memberName}} · {{memberRelation}}</text>
+      <text class="who-note" wx:if="{{isElder}}">你在讲自己的往事</text>
+      <text class="who-note" wx:else>你在讲你记得的 {{protagonistName}}</text>
+    </view>
+    <text class="tag tag-lake"><text class="tag-mark">独</text>独立采访</text>
+  </view>
+
+  <!-- ============ 对话阶段 ============ -->
+  <block wx:if="{{stage === 'chat'}}">
+    <scroll-view
+      class="chat-scroll"
+      scroll-y
+      scroll-with-animation
+      scroll-into-view="{{scrollIntoView}}"
+    >
+      <view class="chat-inner">
+        <view class="source-note" wx:if="{{localDemoOnly}}">
+          未连云端，以下追问来自本地提问规则，不是 AI 生成。
+        </view>
+
+        <view
+          class="{{item.role === 'interviewer' ? 'row row-ai' : 'row row-me'}}"
+          wx:for="{{messages}}"
+          wx:key="id"
+          id="{{item.id}}"
+        >
+          <view class="bubble-wrap">
+            <text class="bubble-label" wx:if="{{item.dimensionLabel}}">{{item.dimensionLabel}}</text>
+            <view class="{{item.role === 'interviewer' ? 'bubble bubble-ai serif' : 'bubble bubble-me serif'}}">{{item.text}}</view>
+          </view>
+        </view>
+
+        <view class="row row-ai" wx:if="{{asking}}">
+          <view class="bubble-wrap">
+            <view class="bubble bubble-ai typing">
+              <text class="dot"></text><text class="dot"></text><text class="dot"></text>
+            </view>
+          </view>
+        </view>
+
+        <view class="scroll-tail"></view>
+      </view>
+    </scroll-view>
+
+    <view class="composer">
+      <view class="finish-wrap" wx:if="{{answers.length > 0}}">
+        <text class="finish-count">已经讲了 {{answers.length}} 段</text>
+        <button class="btn btn-ghost finish-btn" bindtap="finish">说完了，去保存</button>
+      </view>
+
+      <view class="input-row">
+        <textarea
+          class="input-field"
+          value="{{inputText}}"
+          placeholder="想到什么说什么"
+          placeholder-class="input-placeholder"
+          maxlength="{{-1}}"
+          auto-height
+          fixed="{{true}}"
+          adjust-position="{{false}}"
+          show-confirm-bar="{{false}}"
+          cursor-spacing="24"
+          bindinput="onInput"
+          bindkeyboardheightchange="onKeyboardHeightChange"
+        ></textarea>
+        <button class="send-btn" bindtap="send">说完这句</button>
+      </view>
+    </view>
+  </block>
+
+  <!-- ============ 保存阶段 ============ -->
+  <block wx:else>
+    <scroll-view class="chat-scroll" scroll-y>
+      <view class="chat-inner">
+        <view class="save-head">
+          <text class="tag tag-muted" wx:if="{{localDemoOnly}}"><text class="tag-mark">本</text>本地演示整理</text>
+          <view class="save-title serif">这段先按你说的原话存下来</view>
+          <view class="save-note">没有改写、没有补写。确认之后才会用来整理章节。</view>
+        </view>
+
+        <textarea
+          class="draft-field serif"
+          value="{{draftText}}"
+          auto-height
+          fixed="{{true}}"
+          adjust-position="{{false}}"
+          show-confirm-bar="{{false}}"
+          cursor-spacing="24"
+          bindinput="onDraftInput"
+          bindkeyboardheightchange="onKeyboardHeightChange"
+        ></textarea>
+        <view class="draft-count {{tooLong ? 'draft-count-over' : ''}}">
+          {{draftLength}} / 500 字{{tooLong ? '　超出部分请先删掉' : ''}}
+        </view>
+
+        <view class="scope-block">
+          <view class="scope-title">这段给谁看？</view>
+
+          <view
+            class="scope-option {{visibility === 'family' ? 'scope-option-on' : ''}}"
+            data-visibility="family"
+            bindtap="chooseVisibility"
+          >
+            <text class="scope-check">{{visibility === 'family' ? '✓' : '○'}}</text>
+            <view class="scope-copy">
+              <text class="scope-name">家庭可见</text>
+              <text class="scope-desc">{{protagonistName}} 确认属实后，其他家人才看得到，也才会写进章节。</text>
+            </view>
+          </view>
+
+          <view
+            class="scope-option {{visibility === 'private' ? 'scope-option-on' : ''}}"
+            data-visibility="private"
+            bindtap="chooseVisibility"
+          >
+            <text class="scope-check">{{visibility === 'private' ? '✓' : '○'}}</text>
+            <view class="scope-copy">
+              <text class="scope-name">只给 {{protagonistName}}</text>
+              <text class="scope-desc">别的家人永远看不到，也不会进入家庭时间线、章节或模型请求。</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="scroll-tail"></view>
+      </view>
+    </scroll-view>
+
+    <view class="composer">
+      <button
+        class="btn btn-primary {{(saving || tooLong) ? 'btn-disabled' : ''}}"
+        bindtap="save"
+      >{{saving ? '正在保存…' : '保存这段回忆'}}</button>
+      <button class="btn btn-quiet" bindtap="backToChat">再补几句</button>
+    </view>
+  </block>
+</view>
