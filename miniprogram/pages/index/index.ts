@@ -86,6 +86,13 @@ Page({
   },
 
   onShow() {
+    // custom-tab-bar 是独立组件，切回本页时要自己同步选中态。
+    const tabBar = (this as unknown as { getTabBar?: () => { setData: (d: object) => void } | undefined })
+      .getTabBar;
+    if (typeof tabBar === "function") {
+      const bar = tabBar.call(this);
+      if (bar) bar.setData({ selected: 0 });
+    }
     this.refresh();
   },
 
@@ -123,7 +130,7 @@ Page({
   },
 
   openFragments() {
-    wx.navigateTo({ url: "/pages/room/room" });
+    wx.switchTab({ url: "/pages/room/room" });
   },
 
   openPending() {
@@ -136,11 +143,11 @@ Page({
       icon: "none",
       duration: 2200,
     });
-    wx.navigateTo({ url: "/pages/room/room" });
+    wx.switchTab({ url: "/pages/room/room" });
   },
 
   openMemoryHome() {
-    wx.navigateTo({ url: "/pages/room/room" });
+    wx.switchTab({ url: "/pages/room/room" });
   },
 
   toggleIdentityPicker() {

@@ -243,68 +243,21 @@ button::after {
   color: var(--ink-soft);
 }
 
-/* ---------- 底部三段式胶囊导航 ---------- */
+/* ---------- 品牌标志：双鸟相伴 ---------- */
+/* 以 SVG data URI 内联，运行包里不放二进制图片资源，主包不因此变大。 */
 
-.capsule-bar {
-  position: fixed;
-  left: 32rpx;
-  right: 32rpx;
-  bottom: calc(24rpx + env(safe-area-inset-bottom));
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  height: 116rpx;
-  padding: 0 16rpx;
-  border-radius: 58rpx;
-  background: #ffffff;
-  border: 2rpx solid var(--line);
-  box-shadow: 0 8rpx 40rpx rgba(31, 58, 52, 0.16);
+.brand-mark {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IuaLvuWFiSDlj4zpuJ/nm7jkvLTmoIflv5ciPiA8IS0tIOWkp+m4n++8iOeOieefs+e7v++8ie+8muWktOWkp+OAgei6q+aUtu+8jOWwj+WwuuWvuOS4i+mdoOWchuWktOiupOWHuuaYr+m4nyAtLT4gPGcgZmlsbD0iIzE3NmI1NCI+IDxjaXJjbGUgY3g9IjIyIiBjeT0iMTciIHI9IjkiLz4gPHBhdGggZD0iTTMwLjUgMTMuOCBMMzkgMTcgTDMwLjUgMjAuMiBaIi8+IDxwYXRoIGQ9Ik0xOSAyNS41IEMyNS41IDI3LjUgMjkuNSAzNCAyOC41IDQyIEMyNy41IDQ5LjUgMjIuNSA1NSAxNSA1NyBDMTIuNSA0OCAxMy41IDMzIDE5IDI1LjUgWiIvPiA8L2c+IDwhLS0g5bCP6bif77yI5rmW5rC06JOd77yJ77ya5ZCR5bem5Zue5pyb77yM5LiO5aSn6bif55u45ZCR5L6d5YGOIC0tPiA8ZyBmaWxsPSIjMmY2ZThmIj4gPGNpcmNsZSBjeD0iNDYiIGN5PSIyOCIgcj0iNyIvPiA8cGF0aCBkPSJNMzkuNCAyNS42IEwzMiAyOCBMMzkuNCAzMC40IFoiLz4gPHBhdGggZD0iTTQ4LjUgMzQuNSBDNDMuNSAzNi41IDQwLjUgNDEuNSA0MS41IDQ4IEM0Mi4zIDUzLjUgNDUuNSA1Ny41IDUwLjUgNTkgQzUzIDUxLjUgNTIgNDAuNSA0OC41IDM0LjUgWiIvPiA8L2c+IDwvc3ZnPg==");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
 }
 
-.capsule-item {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 92rpx;
-  border-radius: 46rpx;
-  font-size: 28rpx;
-  color: var(--ink-soft);
-}
-
-.capsule-item-active {
-  background: var(--jade-soft);
-  color: var(--jade);
-  font-weight: 600;
-}
-
-.capsule-plus {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 132rpx;
-  min-height: 96rpx;
-  margin: 0 8rpx;
-  border-radius: 40rpx;
-  background: var(--coral);
-  color: #fffdfb;
-}
-
-.capsule-plus:active {
-  opacity: 0.86;
-}
-
-.capsule-plus-sign {
-  font-size: 40rpx;
-  line-height: 1;
-  font-weight: 600;
-}
-
-.capsule-plus-text {
-  margin-top: 4rpx;
-  font-size: 20rpx;
-  letter-spacing: 2rpx;
+.brand-mark-mono {
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IuaLvuWFiSDlj4zpuJ/nm7jkvLTmoIflv5cg5Y2V6ImyIj4gPCEtLSDlpKfpuJ/vvIjnjonnn7Pnu7/vvInvvJrlpLTlpKfjgIHouqvmlLbvvIzlsI/lsLrlr7jkuIvpnaDlnIblpLTorqTlh7rmmK/puJ8gLS0+IDxnIGZpbGw9IiMxZjNhMzQiPiA8Y2lyY2xlIGN4PSIyMiIgY3k9IjE3IiByPSI5Ii8+IDxwYXRoIGQ9Ik0zMC41IDEzLjggTDM5IDE3IEwzMC41IDIwLjIgWiIvPiA8cGF0aCBkPSJNMTkgMjUuNSBDMjUuNSAyNy41IDI5LjUgMzQgMjguNSA0MiBDMjcuNSA0OS41IDIyLjUgNTUgMTUgNTcgQzEyLjUgNDggMTMuNSAzMyAxOSAyNS41IFoiLz4gPC9nPiA8IS0tIOWwj+m4n++8iOa5luawtOiTne+8ie+8muWQkeW3puWbnuacm++8jOS4juWkp+m4n+ebuOWQkeS+neWBjiAtLT4gPGcgZmlsbD0iIzFmM2EzNCI+IDxjaXJjbGUgY3g9IjQ2IiBjeT0iMjgiIHI9IjciLz4gPHBhdGggZD0iTTM5LjQgMjUuNiBMMzIgMjggTDM5LjQgMzAuNCBaIi8+IDxwYXRoIGQ9Ik00OC41IDM0LjUgQzQzLjUgMzYuNSA0MC41IDQxLjUgNDEuNSA0OCBDNDIuMyA1My41IDQ1LjUgNTcuNSA1MC41IDU5IEM1MyA1MS41IDUyIDQwLjUgNDguNSAzNC41IFoiLz4gPC9nPiA8L3N2Zz4=");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
 }
 
 /* ---------- 进入动画：极轻的弥散 ---------- */

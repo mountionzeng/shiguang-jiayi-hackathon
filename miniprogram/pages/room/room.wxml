@@ -105,11 +105,3 @@
   <button class="btn btn-quiet" bindtap="closeDetail">关闭</button>
 </view>
 
-<view class="capsule-bar">
-  <view class="capsule-item" bindtap="goHome">人生之书</view>
-  <view class="capsule-plus" bindtap="startInterview">
-    <text class="capsule-plus-sign">＋</text>
-    <text class="capsule-plus-text">回忆采访</text>
-  </view>
-  <view class="capsule-item capsule-item-active">记忆之家</view>
-</view>

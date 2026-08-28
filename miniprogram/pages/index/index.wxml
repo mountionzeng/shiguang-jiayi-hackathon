@@ -1,5 +1,10 @@
 <view class="shell shell-with-bar page-enter">
 
+  <view class="wordmark">
+    <view class="brand-mark wordmark-icon"></view>
+    <text class="wordmark-text serif">拾光</text>
+  </view>
+
   <!-- 身份条：黑客松阶段的演示身份，不伪装成真实微信成员系统 -->
   <view class="identity-row" bindtap="toggleIdentityPicker">
     <view class="identity-avatar serif">{{identity.avatarText}}</view>
@@ -94,6 +99,7 @@
 
   <!-- 空状态：引导全家完成第一段采访 -->
   <view class="empty-block wash" wx:else>
+    <view class="brand-mark empty-mark"></view>
     <view class="empty-title serif">这本书还是空的</view>
     <view class="empty-desc">
       先由任意一位家人回答上面的问题。老人确认之后，第一段回忆就会出现在这里。
@@ -111,12 +117,3 @@
   <button class="btn btn-quiet" bindtap="resetDemo">重置演示内容</button>
 </view>
 
-<!-- 三段式底部导航：人生之书 · 回忆采访 · 记忆之家 -->
-<view class="capsule-bar">
-  <view class="capsule-item capsule-item-active">人生之书</view>
-  <view class="capsule-plus" bindtap="startInterview">
-    <text class="capsule-plus-sign">＋</text>
-    <text class="capsule-plus-text">回忆采访</text>
-  </view>
-  <view class="capsule-item" bindtap="openMemoryHome">记忆之家</view>
-</view>

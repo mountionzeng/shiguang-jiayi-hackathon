@@ -15,5 +15,22 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
-  "lazyCodeLoading": "requiredComponents"
+  "lazyCodeLoading": "requiredComponents",
+  "tabBar": {
+    "custom": true,
+    "color": "#4c6159",
+    "selectedColor": "#176b54",
+    "backgroundColor": "#fbf8f2",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "人生之书"
+      },
+      {
+        "pagePath": "pages/room/room",
+        "text": "记忆之家"
+      }
+    ]
+  }
 }

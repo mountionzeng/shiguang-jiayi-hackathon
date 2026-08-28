@@ -1,3 +1,23 @@
+/* 字标：图形标与中文名称并排组合 */
+.wordmark {
+  display: flex;
+  align-items: center;
+  padding: 4rpx 0 20rpx;
+}
+
+.wordmark-icon {
+  width: 46rpx;
+  height: 46rpx;
+  margin-right: 14rpx;
+}
+
+.wordmark-text {
+  font-size: 34rpx;
+  font-weight: 600;
+  letter-spacing: 8rpx;
+  color: var(--ink);
+}
+
 /* 人生之书首页 */
 
 /* ---- 演示身份 ---- */
@@ -283,6 +303,15 @@
   padding: 44rpx 36rpx;
   border-radius: 30rpx;
   border: 2rpx solid var(--line);
+}
+
+.empty-mark {
+  position: relative;
+  z-index: 1;
+  width: 128rpx;
+  height: 128rpx;
+  margin-bottom: 20rpx;
+  opacity: 0.9;
 }
 
 .empty-title {
