@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拾光 · 记忆之家 完整原型</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, 'PingFang SC', sans-serif;
+  background: #e5ddd4;
+  padding: 40px 20px;
+  min-height: 100vh;
+}
+
+.page-title {
+  text-align: center;
+  font-size: 12px;
+  color: #a89880;
+  letter-spacing: 3px;
+  margin-bottom: 6px;
+}
+.page-subtitle {
+  text-align: center;
+  font-size: 11px;
+  color: #c4b5a8;
+  margin-bottom: 40px;
+}
+
+.section { margin-bottom: 56px; }
+.section-title {
+  text-align: center;
+  font-size: 11px;
+  color: #a89880;
+  letter-spacing: 2px;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+}
+
+.phones-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.phone-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.phone-label {
+  font-size: 11px;
+  color: #a89880;
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.phone {
+  width: 320px;
+  height: 693px;
+  background: #faf7f2;
+  border-radius: 36px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.13), 0 0 0 1px rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.wx-capsule {
+  position: absolute;
+  top: 10px; right: 8px;
+  width: 80px; height: 26px;
+  background: rgba(0,0,0,0.07);
+  border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; z-index: 100;
+  border: 0.5px solid rgba(0,0,0,0.08);
+  pointer-events: none;
+}
+.wx-dot { width: 14px; height: 14px; border-radius: 50%; background: rgba(0,0,0,0.1); }
+.wx-line { width: 0.5px; height: 14px; background: rgba(0,0,0,0.08); }
+
+.status-bar {
+  height: 44px; padding: 14px 16px 0;
+  display: flex; align-items: center;
+  flex-shrink: 0; background: #faf7f2;
+}
+.status-time { font-size: 13px; font-weight: 600; color: #3d2b1f; }
+
+.nav-bar {
+  height: 48px; padding: 0 16px;
+  display: flex; align-items: center;
+  background: #faf7f2; flex-shrink: 0;
+  border-bottom: 1px solid #f0e8de;
+  position: relative;
+}
+.nav-mine-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #8b6347, #c4a882);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: #faf7f2; font-weight: 500; flex-shrink: 0;
+}
+.nav-archive-center {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 5px;
+  background: #f5ede0; padding: 5px 12px 5px 8px;
+  border-radius: 18px;
+}
+.nav-archive-name { font-size: 12px; color: #3d2b1f; font-weight: 500; }
+.nav-archive-arrow { font-size: 9px; color: #8b6347; }
+
+.page-body {
+  flex: 1; overflow: hidden;
+  display: flex; flex-direction: column;
+  position: relative;
+}
+
+.capsule-tab-wrap {
+  padding: 8px 16px 28px;
+  flex-shrink: 0; background: #faf7f2;
+}
+.capsule-tab {
+  background: #fff; border-radius: 32px; height: 52px;
+  display: flex; align-items: center; padding: 4px;
+  box-shadow: 0 2px 14px rgba(139,99,71,0.1);
+}
+.cap-item {
+  flex: 1; height: 44px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 2px; border-radius: 26px;
+}
+.cap-item.active { background: #f5ede0; }
+.cap-label { font-size: 10px; color: #c4b5a8; }
+.cap-item.active .cap-label { color: #8b6347; }
+.cap-plus {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, #8b6347, #c4a882);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 10px rgba(139,99,71,0.3); flex-shrink: 0;
+}
+
+/* tab图标 */
+.icon-book { display: flex; align-items: center; justify-content: center; }
+.icon-home { display: flex; align-items: center; justify-content: center; }
+
+/* 记忆之家主页 */
+.home-scroll { flex: 1; overflow-y: auto; }
+.home-header { padding: 14px 16px 10px; }
+.home-title { font-size: 20px; color: #3d2b1f; font-weight: 500; margin-bottom: 12px; }
+
+.members-filter {
+  display: flex; gap: 10px;
+  overflow-x: auto; padding-bottom: 4px;
+}
+.members-filter::-webkit-scrollbar { display: none; }
+
+.filter-item {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 4px; flex-shrink: 0;
+  cursor: pointer;
+}
+
+.filter-all-btn {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600;
+  transition: all 0.2s;
+}
+.filter-all-btn.active {
+  background: #8b6347; color: #faf7f2;
+  border: 2px solid #8b6347;
+  box-shadow: 0 2px 10px rgba(139,99,71,0.3);
+}
+.filter-all-btn.inactive {
+  background: #f0e8de; color: #b8a898;
+  border: 2px solid #e8dfd4;
+}
+
+.filter-av {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: #f0e8de;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; border: 2px solid transparent;
+  box-shadow: 0 2px 8px rgba(139,99,71,0.08);
+}
+.filter-av.active {
+  border-color: #8b6347;
+  box-shadow: 0 2px 12px rgba(139,99,71,0.25);
+}
+
+.filter-name { font-size: 10px; color: #8b7060; }
+.filter-name.active { color: #8b6347; font-weight: 500; }
+
+.invite-circle {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: #f5ede0; border: 1.5px dashed #c4a882;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: #c4a882;
+}
+
+/* 时间轴 */
+.timeline-wrap { padding: 12px 16px 0; }
+
+.tl-date-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.tl-date-text { font-size: 11px; color: #b8a898; letter-spacing: 1px; flex-shrink: 0; }
+.tl-date-line { flex: 1; height: 1px; background: #f0e8de; }
+
+.tl-item { display: flex; gap: 10px; margin-bottom: 12px; }
+.tl-dot-col {
+  display: flex; flex-direction: column;
+  align-items: center; flex-shrink: 0; padding-top: 5px;
+}
+.tl-dot { width: 8px; height: 8px; border-radius: 50%; background: #c4a882; flex-shrink: 0; }
+.tl-dot.me { background: #8b6347; }
+.tl-line { width: 1px; flex: 1; background: #e8dfd4; margin-top: 4px; }
+
+.tl-card {
+  flex: 1; background: #fff; border-radius: 12px;
+  padding: 12px 13px; box-shadow: 0 2px 8px rgba(139,99,71,0.06);
+  cursor: pointer;
+}
+.tl-card:active { background: #fdf5ec; }
+
+.tl-card-header {
+  display: flex; align-items: center; gap: 5px; margin-bottom: 5px;
+}
+.tl-member-av {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #f0e8de; display: flex; align-items: center;
+  justify-content: center; font-size: 9px; flex-shrink: 0;
+}
+.tl-member-name { font-size: 10px; color: #b8a898; }
+
+.tl-card-title { font-size: 13px; color: #3d2b1f; font-weight: 500; margin-bottom: 3px; }
+.tl-card-preview {
+  font-size: 11px; color: #8b7060; line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
+.tl-card-footer {
+  display: flex; align-items: center;
+  justify-content: space-between; margin-top: 7px;
+}
+.tl-date { font-size: 10px; color: #c4b5a8; }
+.tl-reactions { display: flex; gap: 8px; }
+.tl-reaction { font-size: 10px; color: #b8a898; display: flex; align-items: center; gap: 2px; }
+
+/* 筛选提示条 */
+.filter-hint {
+  margin: 0 16px 10px;
+  background: #f5ede0; border-radius: 10px;
+  padding: 8px 12px;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #8b6347;
+}
+
+/* 详情页 */
+.detail-nav {
+  height: 48px; padding: 0 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid #f0e8de;
+  flex-shrink: 0; background: #faf7f2;
+}
+.detail-back {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.detail-nav-title { font-size: 15px; color: #3d2b1f; font-weight: 500; }
+.detail-more {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; color: #8b6347; letter-spacing: -1px;
+}
+
+.detail-scroll { flex: 1; overflow-y: auto; padding: 16px; }
+
+.detail-author-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+}
+.detail-author-av {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: #f0e8de; display: flex; align-items: center;
+  justify-content: center; font-size: 16px; flex-shrink: 0;
+}
+.detail-author-info { flex: 1; }
+.detail-author-name { font-size: 13px; color: #3d2b1f; font-weight: 500; }
+.detail-author-time { font-size: 11px; color: #b8a898; margin-top: 1px; }
+
+.detail-tag-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.detail-tag {
+  font-size: 10px; color: #8b6347;
+  background: #f5ede0; padding: 3px 9px; border-radius: 10px;
+}
+
+.detail-title { font-size: 19px; color: #3d2b1f; font-weight: 500; line-height: 1.4; margin-bottom: 14px; }
+.detail-body { font-size: 14px; color: #3d2b1f; line-height: 1.95; margin-bottom: 20px; }
+
+.detail-photo {
+  width: 100%; height: 110px;
+  background: #f0e8de; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: #b8a898; margin-bottom: 16px;
+}
+
+.detail-divider { height: 1px; background: #f0e8de; margin: 14px 0; }
+
+/* 互动区 */
+.reaction-bar {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+}
+.reaction-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 7px 14px;
+  background: #fff; border: 1px solid #e8dfd4;
+  border-radius: 20px; cursor: pointer;
+  font-size: 12px; color: #8b7060;
+}
+.reaction-btn.active {
+  background: #fdf5ec; border-color: #c4a882; color: #8b6347;
+}
+
+/* 留言区 */
+.comment-section { margin-top: 4px; }
+.comment-label {
+  font-size: 11px; color: #b8a898;
+  letter-spacing: 1px; margin-bottom: 10px;
+}
+.comment-item {
+  display: flex; gap: 8px; margin-bottom: 10px;
+}
+.comment-av {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: #f0e8de; display: flex; align-items: center;
+  justify-content: center; font-size: 13px; flex-shrink: 0;
+}
+.comment-content { flex: 1; }
+.comment-name { font-size: 11px; color: #8b6347; font-weight: 500; margin-bottom: 2px; }
+.comment-text { font-size: 12px; color: #3d2b1f; line-height: 1.6; }
+.comment-time { font-size: 10px; color: #c4b5a8; margin-top: 3px; }
+
+.comment-input-bar {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: #faf7f2; border-top: 1px solid #f0e8de;
+  padding: 10px 16px 28px;
+  display: flex; align-items: center; gap: 8px;
+}
+.comment-input {
+  flex: 1; background: #f5ede0; border-radius: 20px;
+  padding: 9px 13px; font-size: 13px; color: #3d2b1f;
+  border: none; outline: none;
+}
+.comment-input::placeholder { color: #c4b5a8; }
+.comment-send {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #8b6347; display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0;
+}
+
+/* 空状态 */
+.empty-screen {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 40px 32px; text-align: center;
+}
+.empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+.empty-title { font-size: 16px; color: #3d2b1f; font-weight: 400; margin-bottom: 8px; }
+.empty-desc { font-size: 13px; color: #b8a898; line-height: 1.7; margin-bottom: 28px; }
+.empty-btn {
+  padding: 12px 28px;
+  background: #8b6347; border-radius: 50px;
+  font-size: 14px; color: #faf7f2; letter-spacing: 1px;
+}
+
+/* 创建记忆之家流程 */
+.create-screen {
+  flex: 1; display: flex; flex-direction: column;
+  padding: 24px 20px 0;
+}
+.create-step-label {
+  font-size: 10px; color: #b8a898;
+  letter-spacing: 1.5px; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 6px;
+}
+.step-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #e8dfd4;
+}
+.step-dot.active { background: #8b6347; }
+
+.create-title { font-size: 20px; color: #3d2b1f; font-weight: 400; line-height: 1.5; margin-bottom: 8px; }
+.create-desc { font-size: 13px; color: #b8a898; line-height: 1.7; margin-bottom: 28px; }
+
+.member-input-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.member-input-item {
+  background: #fff; border-radius: 14px;
+  padding: 13px 16px; display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 2px 8px rgba(139,99,71,0.06);
+}
+.member-input-emoji { font-size: 22px; flex-shrink: 0; }
+.member-input-info { flex: 1; }
+.member-input-name { font-size: 14px; color: #3d2b1f; font-weight: 500; }
+.member-input-field {
+  font-size: 12px; color: #b8a898;
+  border: none; outline: none; background: transparent;
+  width: 100%; margin-top: 2px;
+}
+.member-input-field::placeholder { color: #c4b5a8; }
+.member-input-add {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #f0e8de; border: 1.5px dashed #c4a882;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: #c4a882; flex-shrink: 0;
+}
+
+.create-footer { margin-top: auto; padding-bottom: 40px; }
+.create-btn-primary {
+  width: 100%; padding: 14px;
+  background: #8b6347; border-radius: 50px;
+  font-size: 15px; color: #faf7f2;
+  text-align: center; letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+.create-btn-skip {
+  text-align: center; font-size: 12px; color: #b8a898;
+}
+
+/* 邀请页面 */
+.invite-screen { flex: 1; overflow-y: auto; }
+.invite-header {
+  padding: 20px 20px 16px;
+  background: linear-gradient(160deg, #5c3d2e, #8b6347);
+  text-align: center;
+}
+.invite-header-label {
+  font-size: 10px; color: rgba(245,237,224,0.5);
+  letter-spacing: 2px; margin-bottom: 8px;
+}
+.invite-header-title {
+  font-size: 18px; color: #f5ede0; font-weight: 400;
+  letter-spacing: 1px; margin-bottom: 4px;
+}
+.invite-header-sub {
+  font-size: 12px; color: rgba(245,237,224,0.5);
+}
+
+.invite-letter {
+  margin: 16px; background: #fff;
+  border-radius: 16px; padding: 20px;
+  box-shadow: 0 4px 20px rgba(139,99,71,0.1);
+}
+.invite-letter-label {
+  font-size: 10px; color: #c4a882;
+  letter-spacing: 1px; margin-bottom: 10px;
+}
+.invite-letter-text {
+  font-size: 14px; color: #3d2b1f; line-height: 1.9;
+}
+.invite-letter-sign {
+  font-size: 13px; color: #8b6347;
+  margin-top: 12px; text-align: right;
+}
+
+.invite-members-preview {
+  margin: 0 16px 16px;
+  background: #faf7f2; border-radius: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e8dfd4;
+}
+.invite-members-label {
+  font-size: 10px; color: #b8a898;
+  letter-spacing: 1px; margin-bottom: 10px;
+}
+.invite-members-row {
+  display: flex; gap: 12px; align-items: center;
+}
+.invite-member-item {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 4px;
+}
+.invite-member-av {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #f0e8de; display: flex; align-items: center;
+  justify-content: center; font-size: 18px;
+  border: 2px solid #fff; box-shadow: 0 2px 6px rgba(139,99,71,0.1);
+}
+.invite-member-name { font-size: 10px; color: #8b7060; }
+.invite-member-pending {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #f5ede0; border: 1.5px dashed #c4a882;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: #c4a882;
+}
+
+.invite-actions { padding: 0 16px 40px; }
+.invite-btn-primary {
+  width: 100%; padding: 14px;
+  background: #8b6347; border-radius: 50px;
+  font-size: 15px; color: #faf7f2;
+  text-align: center; letter-spacing: 1px; margin-bottom: 10px;
+}
+.invite-btn-copy {
+  width: 100%; padding: 13px;
+  background: #fff; border: 1px solid #e8dfd4;
+  border-radius: 50px; font-size: 14px; color: #8b7060;
+  text-align: center; margin-bottom: 10px;
+}
+.invite-hint {
+  text-align: center; font-size: 11px; color: #b8a898; line-height: 1.6;
+}
+
+/* 被邀请方看到的页面 */
+.accept-screen { flex: 1; overflow-y: auto; }
+.accept-hero {
+  background: linear-gradient(160deg, #5c3d2e, #8b6347);
+  padding: 32px 24px 24px; text-align: center;
+}
+.accept-hero-icon { font-size: 48px; margin-bottom: 12px; }
+.accept-hero-title { font-size: 18px; color: #f5ede0; font-weight: 400; margin-bottom: 6px; }
+.accept-hero-sub { font-size: 12px; color: rgba(245,237,224,0.55); }
+
+.accept-body { padding: 20px 16px; }
+.accept-invite-card {
+  background: #fff; border-radius: 16px;
+  padding: 18px; margin-bottom: 16px;
+  box-shadow: 0 4px 16px rgba(139,99,71,0.08);
+}
+.accept-invite-from {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+}
+.accept-from-av {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg, #8b6347, #c4a882);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.accept-from-name { font-size: 14px; color: #3d2b1f; font-weight: 500; }
+.accept-from-sub { font-size: 11px; color: #b8a898; margin-top: 2px; }
+.accept-invite-text {
+  font-size: 14px; color: #3d2b1f; line-height: 1.8;
+  padding: 14px; background: #faf7f2; border-radius: 10px;
+}
+
+.accept-preview {
+  background: #fdf5ec; border-radius: 14px;
+  padding: 14px 16px; margin-bottom: 20px;
+  border: 1px solid #e8dfd4;
+}
+.accept-preview-label { font-size: 10px; color: #c4a882; letter-spacing: 1px; margin-bottom: 8px; }
+.accept-preview-item {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.accept-preview-item:last-child { margin-bottom: 0; }
+.accept-preview-dot { width: 4px; height: 4px; border-radius: 50%; background: #c4a882; flex-shrink: 0; }
+.accept-preview-text { font-size: 12px; color: #5c3d2e; line-height: 1.5; }
+
+.accept-actions { padding: 0 0 40px; }
+.accept-btn-primary {
+  width: 100%; padding: 14px;
+  background: #8b6347; border-radius: 50px;
+  font-size: 15px; color: #faf7f2;
+  text-align: center; letter-spacing: 1px; margin-bottom: 10px;
+}
+.accept-btn-decline {
+  width: 100%; padding: 13px;
+  background: transparent; border: none;
+  font-size: 13px; color: #b8a898; text-align: center;
+}
+
+/* 遮罩 */
+.overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.38); z-index: 8;
+}
+
+/* 分割线 */
+.divider {
+  width: 100%; height: 1px;
+  background: linear-gradient(90deg, transparent, #c4b5a8, transparent);
+  margin: 48px 0;
+}
+
+/* 跳转标注 */
+.jump-annotation {
+  position: absolute;
+  background: rgba(139,99,71,0.9);
+  color: #faf7f2; font-size: 10px;
+  padding: 3px 8px; border-radius: 8px;
+  white-space: nowrap; z-index: 50;
+  pointer-events: none;
+}
+
+/* 箭头连接 */
+.arrow-wrap {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  padding-top: 200px; width: 48px; flex-shrink: 0;
+}
+.arrow-line-h {
+  width: 28px; height: 1.5px;
+  background: linear-gradient(90deg, #c4a882, #8b6347);
+}
+.arrow-head-r { font-size: 14px; color: #8b6347; margin-left: -3px; }
+.arrow-desc {
+  font-size: 10px; color: #8b7060;
+  text-align: center; margin-top: 6px;
+  max-width: 44px; line-height: 1.4;
+}
+
+/* 打字动画 */
+.typing { display: flex; gap: 4px; align-items: center; }
+.typing span {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: #c4a882; animation: td 1.2s infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes td {
+  0%,60%,100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* 汇总表 */
+.summary-card {
+  background: #fff; border-radius: 20px;
+  padding: 28px 32px; max-width: 1200px;
+  margin: 40px auto 0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+}
+.summary-title {
+  font-size: 11px; color: #a89880;
+  letter-spacing: 2px; margin-bottom: 20px;
+}
+.summary-table { width: 100%; border-collapse: collapse; }
+.summary-table th {
+  font-size: 11px; color: #b8a898; font-weight: 500;
+  text-align: left; padding: 8px 12px;
+  border-bottom: 1px solid #f0e8de;
+}
+.summary-table td {
+  font-size: 12px; color: #5c3d2e;
+  padding: 10px 12px; border-bottom: 1px solid #f5f0eb;
+  vertical-align: top; line-height: 1.6;
+}
+.summary-table tr:last-child td { border-bottom: none; }
+.tag { display: inline-block; font-size: 10px; color: #8b6347; background: #f5ede0; padding: 2px 7px; border-radius: 8px; margin-right: 3px; }
+
+</style>
+</head>
+<body>
+
+<div class="page-title">拾光 · 记忆之家 完整原型</div>
+<div class="page-subtitle">微信小程序 · 记忆之家模块全流程 含跳转逻辑</div>
+
+<!-- ========== Section 1: 主页面 ========== -->
+<div class="section">
+  <div class="section-title">主页面 · 全部视图 & 单人筛选</div>
+  <div class="phones-row">
+
+    <!-- 屏01 记忆之家·空状态（未创建） -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="nav-bar">
+          <div class="nav-mine-btn">我</div>
+          <div class="nav-archive-center"><span style="font-size:14px;">👩</span><span class="nav-archive-name">我的档案</span><span class="nav-archive-arrow">▾</span></div>
+        </div>
+        <div class="page-body">
+          <div class="empty-screen">
+            <div class="empty-icon">🏠</div>
+            <div class="empty-title">还没有记忆之家</div>
+            <div class="empty-desc">创建一个家庭空间<br>邀请家人一起记录<br>把各自的故事汇聚在一起</div>
+            <div class="empty-btn">创建记忆之家</div>
+          </div>
+          <div class="capsule-tab-wrap">
+            <div class="capsule-tab">
+              <div class="cap-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#c4b5a8" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#c4b5a8" stroke-width="1.8"/></svg><span class="cap-label">人生之书</span></div>
+              <div class="cap-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#faf7f2" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+              <div class="cap-item active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#8b6347" stroke-width="1.8"/><path d="M9 22V12h6v10" stroke="#8b6347" stroke-width="1.8"/></svg><span class="cap-label" style="color:#8b6347">记忆之家</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏01 · 记忆之家空状态<br>（未创建）</div>
+    </div>
+
+    <!-- 屏02 记忆之家·有内容·全部视图 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="nav-bar">
+          <div class="nav-mine-btn">我</div>
+          <div class="nav-archive-center"><span style="font-size:14px;">👩</span><span class="nav-archive-name">我的档案</span><span class="nav-archive-arrow">▾</span></div>
+        </div>
+        <div class="page-body">
+          <div class="home-scroll">
+            <div class="home-header">
+              <div class="home-title">记忆之家</div>
+              <div class="members-filter">
+                <div class="filter-item">
+                  <div class="filter-all-btn active">全部</div>
+                  <div class="filter-name active">全部</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av active">👩</div>
+                  <div class="filter-name">我</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av">👨</div>
+                  <div class="filter-name">老公</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av">👴</div>
+                  <div class="filter-name">爸爸</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av">👵</div>
+                  <div class="filter-name">妈妈</div>
+                </div>
+                <div class="filter-item">
+                  <div class="invite-circle">＋</div>
+                  <div class="filter-name">邀请</div>
+                </div>
+              </div>
+            </div>
+            <div class="timeline-wrap">
+              <div class="tl-date-row"><span class="tl-date-text">2025年6月</span><div class="tl-date-line"></div></div>
+              <div class="tl-item">
+                <div class="tl-dot-col"><div class="tl-dot me"></div><div class="tl-line"></div></div>
+                <div class="tl-card">
+                  <div class="tl-card-header"><div class="tl-member-av">👩</div><div class="tl-member-name">我 · 分享了一段记忆</div></div>
+                  <div class="tl-card-title">今天和妈妈打了很久的电话</div>
+                  <div class="tl-card-preview">她说最近身体还好，就是有点想我。我突然有点鼻酸...</div>
+                  <div class="tl-card-footer"><div class="tl-date">6月12日</div><div class="tl-reactions"><div class="tl-reaction">🕯️ 3</div><div class="tl-reaction">💬 1</div></div></div>
+                </div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-dot-col"><div class="tl-dot"></div><div class="tl-line"></div></div>
+                <div class="tl-card">
+                  <div class="tl-card-header"><div class="tl-member-av">👴</div><div class="tl-member-name">爸爸 · 分享了一段记忆</div></div>
+                  <div class="tl-card-title">那年我们搬进新家</div>
+                  <div class="tl-card-preview">1998年冬天，我们一家三口搬进了那套两居室，那是我们第一个真正的家...</div>
+                  <div class="tl-card-footer"><div class="tl-date">6月10日</div><div class="tl-reactions"><div class="tl-reaction">🕯️ 5</div><div class="tl-reaction">💬 3</div></div></div>
+                </div>
+              </div>
+              <div class="tl-date-row"><span class="tl-date-text">2025年5月</span><div class="tl-date-line"></div></div>
+              <div class="tl-item">
+                <div class="tl-dot-col"><div class="tl-dot"></div></div>
+                <div class="tl-card">
+                  <div class="tl-card-header"><div class="tl-member-av">👵</div><div class="tl-member-name">妈妈 · 分享了一段记忆</div></div>
+                  <div class="tl-card-title">你小时候最爱吃的那碗面</div>
+                  <div class="tl-card-preview">每次你生病，我就给你煮那碗番茄鸡蛋面，你总说比什么都好吃...</div>
+                  <div class="tl-card-footer"><div class="tl-date">5月28日</div><div class="tl-reactions"><div class="tl-reaction">🕯️ 8</div><div class="tl-reaction">💬 4</div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="capsule-tab-wrap">
+            <div class="capsule-tab">
+              <div class="cap-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#c4b5a8" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#c4b5a8" stroke-width="1.8"/></svg><span class="cap-label">人生之书</span></div>
+              <div class="cap-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#faf7f2" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+              <div class="cap-item active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#8b6347" stroke-width="1.8"/><path d="M9 22V12h6v10" stroke="#8b6347" stroke-width="1.8"/></svg><span class="cap-label" style="color:#8b6347">记忆之家</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏02 · 记忆之家主页<br>全部视图（默认）</div>
+    </div>
+
+    <!-- 屏03 记忆之家·单人筛选 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="nav-bar">
+          <div class="nav-mine-btn">我</div>
+          <div class="nav-archive-center"><span style="font-size:14px;">👩</span><span class="nav-archive-name">我的档案</span><span class="nav-archive-arrow">▾</span></div>
+        </div>
+        <div class="page-body">
+          <div class="home-scroll">
+            <div class="home-header">
+              <div class="home-title">记忆之家</div>
+              <div class="members-filter">
+                <div class="filter-item">
+                  <div class="filter-all-btn inactive">全部</div>
+                  <div class="filter-name">全部</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av">👩</div>
+                  <div class="filter-name">我</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av">👨</div>
+                  <div class="filter-name">老公</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av active">👴</div>
+                  <div class="filter-name active">爸爸</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av">👵</div>
+                  <div class="filter-name">妈妈</div>
+                </div>
+                <div class="filter-item">
+                  <div class="invite-circle">＋</div>
+                  <div class="filter-name">邀请</div>
+                </div>
+              </div>
+            </div>
+            <div class="filter-hint">
+              <span>👴</span>
+              <span>正在查看爸爸的记忆</span>
+            </div>
+            <div class="timeline-wrap">
+              <div class="tl-date-row"><span class="tl-date-text">2025年6月</span><div class="tl-date-line"></div></div>
+              <div class="tl-item">
+                <div class="tl-dot-col"><div class="tl-dot me"></div><div class="tl-line"></div></div>
+                <div class="tl-card">
+                  <div class="tl-card-header"><div class="tl-member-av">👴</div><div class="tl-member-name">爸爸 · 分享了一段记忆</div></div>
+                  <div class="tl-card-title">那年我们搬进新家</div>
+                  <div class="tl-card-preview">1998年冬天，我们一家三口搬进了那套两居室，那是我们第一个真正的家...</div>
+                  <div class="tl-card-footer"><div class="tl-date">6月10日</div><div class="tl-reactions"><div class="tl-reaction">🕯️ 5</div><div class="tl-reaction">💬 3</div></div></div>
+                </div>
+              </div>
+              <div class="tl-date-row"><span class="tl-date-text">2025年4月</span><div class="tl-date-line"></div></div>
+              <div class="tl-item">
+                <div class="tl-dot-col"><div class="tl-dot"></div></div>
+                <div class="tl-card">
+                  <div class="tl-card-header"><div class="tl-member-av">👴</div><div class="tl-member-name">爸爸 · 分享了一段记忆</div></div>
+                  <div class="tl-card-title">我年轻时骑车上班的日子</div>
+                  <div class="tl-card-preview">那时候没有地铁，每天骑一个小时自行车去单位，冬天冷得手都僵了...</div>
+                  <div class="tl-card-footer"><div class="tl-date">4月3日</div><div class="tl-reactions"><div class="tl-reaction">🕯️ 6</div><div class="tl-reaction">💬 2</div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="capsule-tab-wrap">
+            <div class="capsule-tab">
+              <div class="cap-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#c4b5a8" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#c4b5a8" stroke-width="1.8"/></svg><span class="cap-label">人生之书</span></div>
+              <div class="cap-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#faf7f2" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+              <div class="cap-item active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#8b6347" stroke-width="1.8"/><path d="M9 22V12h6v10" stroke="#8b6347" stroke-width="1.8"/></svg><span class="cap-label" style="color:#8b6347">记忆之家</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏03 · 记忆之家主页<br>单人筛选视图（爸爸）</div>
+    </div>
+
+    <!-- 屏04 记忆之家·有内容·空成员（已创建但无人分享） -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="nav-bar">
+          <div class="nav-mine-btn">我</div>
+          <div class="nav-archive-center"><span style="font-size:14px;">👩</span><span class="nav-archive-name">我的档案</span><span class="nav-archive-arrow">▾</span></div>
+        </div>
+        <div class="page-body">
+          <div class="home-scroll">
+            <div class="home-header">
+              <div class="home-title">记忆之家</div>
+              <div class="members-filter">
+                <div class="filter-item">
+                  <div class="filter-all-btn active">全部</div>
+                  <div class="filter-name active">全部</div>
+                </div>
+                <div class="filter-item">
+                  <div class="filter-av active">👩</div>
+                  <div class="filter-name">我</div>
+                </div>
+                <div class="filter-item">
+                  <div class="invite-circle">＋</div>
+                  <div class="filter-name">邀请</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:40px 20px;text-align:center;">
+              <div style="font-size:36px;margin-bottom:14px;opacity:0.4;">📭</div>
+              <div style="font-size:14px;color:#3d2b1f;margin-bottom:8px;">还没有共同的记忆</div>
+              <div style="font-size:12px;color:#b8a898;line-height:1.7;margin-bottom:20px;">先邀请家人加入<br>或者把你的记忆分享过来</div>
+              <div style="display:flex;gap:10px;justify-content:center;">
+                <div style="padding:9px 16px;background:#8b6347;border-radius:20px;font-size:12px;color:#faf7f2;">邀请家人</div>
+                <div style="padding:9px 16px;background:#fff;border:1px solid #e8dfd4;border-radius:20px;font-size:12px;color:#8b7060;">去人生之书分享</div>
+              </div>
+            </div>
+          </div>
+          <div class="capsule-tab-wrap">
+            <div class="capsule-tab">
+              <div class="cap-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#c4b5a8" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#c4b5a8" stroke-width="1.8"/></svg><span class="cap-label">人生之书</span></div>
+              <div class="cap-plus"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#faf7f2" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+              <div class="cap-item active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#8b6347" stroke-width="1.8"/><path d="M9 22V12h6v10" stroke="#8b6347" stroke-width="1.8"/></svg><span class="cap-label" style="color:#8b6347">记忆之家</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏04 · 已创建但无内容<br>（待邀请/待分享状态）</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== Section 2: 内容详情页 ========== -->
+<div class="section">
+  <div class="section-title">内容详情页</div>
+  <div class="phones-row">
+
+    <!-- 屏05 内容详情页·他人记忆 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div style="display:flex;flex-direction:column;height:100%;">
+            <div class="detail-nav">
+              <div class="detail-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <span class="detail-nav-title">记忆详情</span>
+              <div class="detail-more">···</div>
+            </div>
+            <div class="detail-scroll" style="padding-bottom:80px;">
+              <div class="detail-author-row">
+                <div class="detail-author-av">👴</div>
+                <div class="detail-author-info">
+                  <div class="detail-author-name">爸爸</div>
+                  <div class="detail-author-time">2025年6月10日 · 回忆录</div>
+                </div>
+              </div>
+              <div class="detail-tag-row">
+                <div class="detail-tag">回忆录</div>
+                <div class="detail-tag">搬家</div>
+                <div class="detail-tag">1998年</div>
+              </div>
+              <div class="detail-title">那年我们搬进新家</div>
+              <div class="detail-body">
+                1998年的冬天，我们一家三口搬进了那套两居室。那是我们第一个真正意义上属于自己的家。<br><br>
+                搬家那天特别冷，你妈妈抱着你，你才两岁多，穿着厚厚的棉衣，好奇地东张西望。我记得把最后一箱东西搬进来，关上门，你妈妈突然哭了。<br><br>
+                我问她怎么了，她说没什么，就是高兴。
+              </div>
+              <div class="detail-divider"></div>
+              <div class="reaction-bar">
+                <div class="reaction-btn active">🕯️ 点亮 5</div>
+                <div class="reaction-btn">💬 留言 3</div>
+              </div>
+              <div class="comment-section">
+                <div class="comment-label">留言</div>
+                <div class="comment-item">
+                  <div class="comment-av">👩</div>
+                  <div class="comment-content">
+                    <div class="comment-name">我</div>
+                    <div class="comment-text">爸，我完全不记得这件事了，但看完眼眶有点热。</div>
+                    <div class="comment-time">6月11日</div>
+                  </div>
+                </div>
+                <div class="comment-item">
+                  <div class="comment-av">👵</div>
+                  <div class="comment-content">
+                    <div class="comment-name">妈妈</div>
+                    <div class="comment-text">你爸记性真好，我都忘了我那天哭了。</div>
+                    <div class="comment-time">6月12日</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="comment-input-bar">
+              <input class="comment-input" placeholder="留下你的感受..." />
+              <div class="comment-send"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z" stroke="#faf7f2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏05 · 内容详情页<br>（他人记忆，可点亮+留言）</div>
+    </div>
+
+    <!-- 屏06 内容详情页·自己的记忆 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div style="display:flex;flex-direction:column;height:100%;">
+            <div class="detail-nav">
+              <div class="detail-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <span class="detail-nav-title">记忆详情</span>
+              <div class="detail-more">···</div>
+            </div>
+            <div class="detail-scroll" style="padding-bottom:80px;">
+              <div class="detail-author-row">
+                <div class="detail-author-av" style="background:linear-gradient(135deg,#8b6347,#c4a882);color:#faf7f2;font-size:14px;font-weight:500;">我</div>
+                <div class="detail-author-info">
+                  <div class="detail-author-name">我</div>
+                  <div class="detail-author-time">2025年6月12日 · 随手记</div>
+                </div>
+                <!-- 自己的记忆有取消分享入口 -->
+                <div style="font-size:11px;color:#b8a898;padding:4px 10px;border:1px solid #e8dfd4;border-radius:12px;cursor:pointer;">取消分享</div>
+              </div>
+              <div class="detail-tag-row">
+                <div class="detail-tag">随手记</div>
+                <div class="detail-tag">妈妈</div>
+                <div class="detail-tag">思念</div>
+              </div>
+              <div class="detail-title">今天和妈妈打了很久的电话</div>
+              <div class="detail-body">
+                今天傍晚，接到了妈妈的电话。她的声音很平静，说身体还好，只是最近有点想我。<br><br>
+                我不知道为什么，听到这句话的时候，鼻子突然有点酸。可能是因为已经三个月没有回家了，可能是因为她说"想我"这两个字的方式，轻描淡写，却让我心里一紧。
+              </div>
+              <div class="detail-divider"></div>
+              <div class="reaction-bar">
+                <div class="reaction-btn">🕯️ 点亮 3</div>
+                <div class="reaction-btn">💬 留言 1</div>
+              </div>
+              <div class="comment-section">
+                <div class="comment-label">留言</div>
+                <div class="comment-item">
+                  <div class="comment-av">👵</div>
+                  <div class="comment-content">
+                    <div class="comment-name">妈妈</div>
+                    <div class="comment-text">看到你写的，妈妈也鼻酸了。下次早点回来。</div>
+                    <div class="comment-time">6月12日</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="comment-input-bar">
+              <input class="comment-input" placeholder="回复留言..." />
+              <div class="comment-send"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z" stroke="#faf7f2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏06 · 内容详情页<br>（自己的记忆，有取消分享入口）</div>
+    </div>
+
+    <!-- 屏07 更多操作菜单 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body" style="position:relative;">
+          <div class="overlay" style="border-radius:0 0 36px 36px;z-index:5;"></div>
+          <div class="detail-nav" style="position:relative;z-index:6;">
+            <div class="detail-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="detail-nav-title">记忆详情</span>
+            <div class="detail-more" style="color:#c4a882;">···</div>
+          </div>
+          <!-- 底部操作菜单 -->
+          <div style="position:absolute;bottom:0;left:0;right:0;z-index:10;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px 40px;box-shadow:0 -8px 40px rgba(0,0,0,0.12);">
+            <div style="width:36px;height:4px;background:#e8dfd4;border-radius:2px;margin:0 auto 18px;"></div>
+            <!-- 他人记忆的操作项 -->
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid #f5f0eb;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#f5ede0;display:flex;align-items:center;justify-content:center;font-size:18px;">🔗</div>
+                <div style="font-size:14px;color:#3d2b1f;">复制文字</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid #f5f0eb;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#e8f0f8;display:flex;align-items:center;justify-content:center;font-size:18px;">↗️</div>
+                <div style="font-size:14px;color:#3d2b1f;">转发给朋友</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#fdf5e0;display:flex;align-items:center;justify-content:center;font-size:18px;">⚑</div>
+                <div style="font-size:14px;color:#3d2b1f;">举报</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:16px;filter:blur(1px);">
+            <div style="background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;">
+              <div style="font-size:13px;color:#3d2b1f;font-weight:500;margin-bottom:4px;">那年我们搬进新家</div>
+              <div style="font-size:11px;color:#8b7060;line-height:1.6;">1998年的冬天，我们一家三口搬进了那套两居室...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏07 · 详情页更多操作<br>（他人记忆：复制/转发/举报）</div>
+    </div>
+
+    <!-- 屏08 自己记忆的更多操作 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body" style="position:relative;">
+          <div class="overlay" style="border-radius:0 0 36px 36px;z-index:5;"></div>
+          <div class="detail-nav" style="position:relative;z-index:6;">
+            <div class="detail-back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <span class="detail-nav-title">记忆详情</span>
+            <div class="detail-more" style="color:#c4a882;">···</div>
+          </div>
+          <div style="position:absolute;bottom:0;left:0;right:0;z-index:10;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px 40px;box-shadow:0 -8px 40px rgba(0,0,0,0.12);">
+            <div style="width:36px;height:4px;background:#e8dfd4;border-radius:2px;margin:0 auto 18px;"></div>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid #f5f0eb;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#f5ede0;display:flex;align-items:center;justify-content:center;font-size:18px;">✏️</div>
+                <div style="font-size:14px;color:#3d2b1f;">编辑</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid #f5f0eb;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#f5ede0;display:flex;align-items:center;justify-content:center;font-size:18px;">🔗</div>
+                <div style="font-size:14px;color:#3d2b1f;">复制文字</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid #f5f0eb;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#fef0f0;display:flex;align-items:center;justify-content:center;font-size:18px;">🚫</div>
+                <div style="font-size:14px;color:#3d2b1f;">取消分享</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#fef0f0;display:flex;align-items:center;justify-content:center;font-size:18px;">🗑️</div>
+                <div style="font-size:14px;color:#e55;">从记忆之家删除</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:16px;filter:blur(1px);">
+            <div style="background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;">
+              <div style="font-size:13px;color:#3d2b1f;font-weight:500;margin-bottom:4px;">今天和妈妈打了很久的电话</div>
+              <div style="font-size:11px;color:#8b7060;line-height:1.6;">她说最近身体还好，就是有点想我...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏08 · 详情页更多操作<br>（自己记忆：编辑/复制/取消分享/删除）</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== Section 3: 创建记忆之家 ========== -->
+<div class="section">
+  <div class="section-title">创建记忆之家流程</div>
+  <div class="phones-row">
+
+    <!-- 屏09 创建·设置家庭成员 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div style="height:48px;padding:0 16px;display:flex;align-items:center;background:#faf7f2;border-bottom:1px solid #f0e8de;flex-shrink:0;">
+          <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <span style="font-size:15px;color:#3d2b1f;font-weight:500;margin-left:8px;">创建记忆之家</span>
+        </div>
+        <div class="page-body">
+          <div class="create-screen">
+            <div class="create-step-label">
+              <div class="step-dot active"></div>
+              <div class="step-dot active"></div>
+              <div class="step-dot"></div>
+              <span style="margin-left:4px;">第 2 步，共 3 步</span>
+            </div>
+            <div class="create-title">这个家里，有哪些人？</div>
+            <div class="create-desc">添加家庭成员，之后可以邀请他们加入</div>
+            <div class="member-input-list">
+              <div class="member-input-item">
+                <div class="member-input-emoji">👨</div>
+                <div class="member-input-info">
+                  <div class="member-input-name">老公</div>
+                  <input class="member-input-field" placeholder="添加备注（可选）" />
+                </div>
+                <div style="font-size:16px;color:#c4b5a8;cursor:pointer;">×</div>
+              </div>
+              <div class="member-input-item">
+                <div class="member-input-emoji">👴</div>
+                <div class="member-input-info">
+                  <div class="member-input-name">爸爸</div>
+                  <input class="member-input-field" placeholder="添加备注（可选）" />
+                </div>
+                <div style="font-size:16px;color:#c4b5a8;cursor:pointer;">×</div>
+              </div>
+              <div class="member-input-item">
+                <div class="member-input-emoji">👵</div>
+                <div class="member-input-info">
+                  <div class="member-input-name">妈妈</div>
+                  <input class="member-input-field" value="3月15日生日" style="color:#8b6347;" />
+                </div>
+                <div style="font-size:16px;color:#c4b5a8;cursor:pointer;">×</div>
+              </div>
+              <div class="member-input-item" style="border:1.5px dashed #e8dfd4;background:#faf7f2;cursor:pointer;">
+                <div class="member-input-add">＋</div>
+                <div class="member-input-info">
+                  <div style="font-size:13px;color:#c4a882;">添加家庭成员</div>
+                </div>
+              </div>
+            </div>
+            <div class="create-footer">
+              <div class="create-btn-primary">下一步</div>
+              <div class="create-btn-skip">跳过，之后再添加</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏09 · 创建记忆之家<br>设置家庭成员</div>
+    </div>
+
+    <!-- 屏10 创建·完成页 -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:40px 28px 48px;text-align:center;">
+            <div style="font-size:11px;color:#b8a898;letter-spacing:2px;">你的记忆之家，建好了</div>
+            <!-- 房子插画 -->
+            <div style="position:relative;width:200px;height:180px;">
+              <svg width="200" height="180" viewBox="0 0 200 180" fill="none">
+                <path d="M100 20L175 80H25L100 20Z" fill="#c4a882" opacity="0.9"/>
+                <rect x="130" y="30" width="12" height="30" rx="2" fill="#b8956e" opacity="0.7"/>
+                <rect x="30" y="80" width="140" height="90" rx="4" fill="#fff" opacity="0.95"/>
+                <rect x="30" y="80" width="140" height="90" rx="4" stroke="#e8dfd4" stroke-width="1"/>
+                <rect x="48" y="100" width="36" height="32" rx="4" fill="#fef9f0" stroke="#e8dfd4" stroke-width="1.2"/>
+                <line x1="66" y1="100" x2="66" y2="132" stroke="#e8dfd4" stroke-width="1"/>
+                <line x1="48" y1="116" x2="84" y2="116" stroke="#e8dfd4" stroke-width="1"/>
+                <rect x="49" y="101" width="16" height="14" rx="2" fill="#fef3c7" opacity="0.8"/>
+                <rect x="116" y="100" width="36" height="32" rx="4" fill="#fef9f0" stroke="#e8dfd4" stroke-width="1.2"/>
+                <line x1="134" y1="100" x2="134" y2="132" stroke="#e8dfd4" stroke-width="1"/>
+                <line x1="116" y1="116" x2="152" y2="116" stroke="#e8dfd4" stroke-width="1"/>
+                <rect x="82" y="120" width="36" height="50" rx="18" fill="#f0e8de" stroke="#ddd5c8" stroke-width="1.2"/>
+                <circle cx="112" cy="148" r="2.5" fill="#c4a882"/>
+                <line x1="10" y1="170" x2="190" y2="170" stroke="#e8dfd4" stroke-width="1" stroke-dasharray="4,4"/>
+              </svg>
+            </div>
+            <div>
+              <div style="font-size:20px;color:#3d2b1f;font-weight:300;line-height:1.7;margin-bottom:10px;">这里只有你和家人的故事</div>
+              <div style="font-size:13px;color:#b8a898;line-height:1.8;margin-bottom:28px;">现在邀请家人加入<br>让这里开始有温度</div>
+            </div>
+            <!-- 家庭成员预览 -->
+            <div style="width:100%;background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 4px 16px rgba(139,99,71,0.08);margin-bottom:20px;">
+              <div style="font-size:10px;color:#b8a898;letter-spacing:1px;margin-bottom:10px;">你的家庭成员</div>
+              <div style="display:flex;align-items:center;gap:0;">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                  <div style="width:34px;height:34px;border-radius:50%;background:#f0e8de;display:flex;align-items:center;justify-content:center;font-size:17px;">👩</div>
+                  <div style="font-size:10px;color:#8b6347;">我</div>
+                </div>
+                <div style="flex:0.5;height:1px;background:repeating-linear-gradient(90deg,#e8dfd4 0,#e8dfd4 3px,transparent 3px,transparent 7px);"></div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                  <div style="width:34px;height:34px;border-radius:50%;background:#f0e8de;display:flex;align-items:center;justify-content:center;font-size:17px;">👨</div>
+                  <div style="font-size:10px;color:#8b6347;">老公</div>
+                </div>
+                <div style="flex:0.5;height:1px;background:repeating-linear-gradient(90deg,#e8dfd4 0,#e8dfd4 3px,transparent 3px,transparent 7px);"></div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                  <div style="width:34px;height:34px;border-radius:50%;background:#f0e8de;display:flex;align-items:center;justify-content:center;font-size:17px;">👴</div>
+                  <div style="font-size:10px;color:#8b6347;">爸爸</div>
+                </div>
+                <div style="flex:0.5;height:1px;background:repeating-linear-gradient(90deg,#e8dfd4 0,#e8dfd4 3px,transparent 3px,transparent 7px);"></div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                  <div style="width:34px;height:34px;border-radius:50%;background:#f0e8de;display:flex;align-items:center;justify-content:center;font-size:17px;">👵</div>
+                  <div style="font-size:10px;color:#8b6347;">妈妈</div>
+                </div>
+              </div>
+            </div>
+            <div style="width:100%;padding:14px;background:#8b6347;border-radius:50px;font-size:15px;color:#faf7f2;text-align:center;letter-spacing:2px;">去邀请家人</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏10 · 创建完成页<br>引导邀请家人</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== Section 4: 邀请流程 ========== -->
+<div class="section">
+  <div class="section-title">邀请流程 · 发送方 & 接收方</div>
+  <div class="phones-row">
+
+    <!-- 屏11 邀请页（发送方） -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div style="height:48px;padding:0 16px;display:flex;align-items:center;background:#faf7f2;border-bottom:1px solid #f0e8de;flex-shrink:0;">
+          <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="#8b6347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <span style="font-size:15px;color:#3d2b1f;font-weight:500;margin-left:8px;">邀请家人</span>
+        </div>
+        <div class="page-body">
+          <div class="invite-screen">
+            <div class="invite-header">
+              <div class="invite-header-label">一封来自家人的邀请</div>
+              <div class="invite-header-title">加入我们的记忆之家</div>
+              <div class="invite-header-sub">林晓雨 邀请你一起记录家的故事</div>
+            </div>
+            <div class="invite-letter">
+              <div class="invite-letter-label">邀请信</div>
+              <div class="invite-letter-text">
+                爸爸，我在用一个叫拾光的小程序记录我们家的故事。<br><br>
+                你脑子里装着好多事情，我一直想好好听你讲，但每次见面总是聊不完。<br><br>
+                来加入吧，让我们把那些故事都留下来。
+              </div>
+              <div class="invite-letter-sign">— 晓雨</div>
+            </div>
+            <div class="invite-members-preview">
+              <div class="invite-members-label">已在记忆之家的成员</div>
+              <div class="invite-members-row">
+                <div class="invite-member-item">
+                  <div class="invite-member-av">👩</div>
+                  <div class="invite-member-name">晓雨</div>
+                </div>
+                <div class="invite-member-item">
+                  <div class="invite-member-av">👨</div>
+                  <div class="invite-member-name">老公</div>
+                </div>
+                <div class="invite-member-item">
+                  <div class="invite-member-pending">？</div>
+                  <div class="invite-member-name" style="color:#c4a882;">待加入</div>
+                </div>
+              </div>
+            </div>
+            <div class="invite-actions">
+              <div class="invite-btn-primary">发送给爸爸（微信）</div>
+              <div class="invite-btn-copy">复制邀请链接</div>
+              <div class="invite-hint">对方点击链接后，需要同意才能加入<br>你的记忆之家内容对他可见</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏11 · 邀请页（发送方）<br>含邀请信和成员预览</div>
+    </div>
+
+    <!-- 屏12 接受邀请页（接收方） -->
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="wx-capsule"><div class="wx-dot"></div><div class="wx-line"></div><div class="wx-dot"></div></div>
+        <div class="status-bar" style="padding-right:96px;"><span class="status-time">9:41</span></div>
+        <div class="page-body">
+          <div class="accept-screen">
+            <div class="accept-hero">
+              <div class="accept-hero-icon">🏠</div>
+              <div class="accept-hero-title">你收到了一份邀请</div>
+              <div class="accept-hero-sub">林晓雨 邀请你加入她的记忆之家</div>
+            </div>
+            <div class="accept-body">
+              <div class="accept-invite-card">
+                <div class="accept-invite-from">
+                  <div class="accept-from-av">👩</div>
+                  <div>
+                    <div class="accept-from-name">林晓雨（女儿）</div>
+                    <div class="accept-from-sub">拾光记录者 · 已记录 23 篇记忆</div>
+                  </div>
+                </div>
+                <div class="accept-invite-text">
+                  爸爸，我在用一个叫拾光的小程序记录我们家的故事。你脑子里装着好多事情，我一直想好好听你讲……来加入吧，让我们把那些故事都留下来。
+                </div>
+              </div>
+              <div class="accept-preview">
+                <div class="accept-preview-label">加入后你可以</div>
+                <div class="accept-preview-item"><div class="accept-preview-dot"></div><div class="accept-preview-text">看到晓雨分享的记忆</div></div>
+                <div class="accept-preview-item"><div class="accept-preview-dot"></div><div class="accept-preview-text">用AI讲述你自己的故事</div></div>
+                <div class="accept-preview-item"><div class="accept-preview-dot"></div><div class="accept-preview-text">选择把故事分享给家人</div></div>
+                <div class="accept-preview-item"><div class="accept-preview-dot"></div><div class="accept-preview-text">你的私人记忆只有你自己可见</div></div>
+              </div>
+              <div class="accept-actions">
+                <div class="accept-btn-primary">同意加入</div>
+                <div class="accept-btn-decline">暂时不了</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="phone-label">屏12 · 接受邀请页（接收方）<br>含权限说明和同意/拒绝</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ========== Section 5: 跳转逻辑汇总 ========== -->
+<div class="summary-card">
+  <div class="summary-title">记忆之家 · 完整跳转逻辑汇总</div>
+  <table class="summary-table">
+    <tr>
+      <th>触发位置</th>
+      <th>触发动作</th>
+      <th>跳转目标</th>
+      <th>备注</th>
+    </tr>
+    <tr>
+      <td><span class="tag">记忆之家Tab</span></td>
+      <td>首次进入，未创建</td>
+      <td>空状态页，展示创建入口</td>
+      <td>点击"创建记忆之家"进入创建流程</td>
+    </tr>
+    <tr>
+      <td><span class="tag">成员筛选栏</span></td>
+      <td>点击"全部"</td>
+      <td>全部成员时间轴视图</td>
+      <td>默认状态，全部按钮高亮</td>
+    </tr>
+    <tr>
+      <td><span class="tag">成员筛选栏</span></td>
+      <td>点击某个成员头像</td>
+      <td>该成员的单人时间轴视图</td>
+      <td>顶部显示筛选提示条，全部按钮变灰</td>
+    </tr>
+    <tr>
+      <td><span class="tag">成员筛选栏</span></td>
+      <td>点击"＋邀请"</td>
+      <td>邀请家人页面</td>
+      <td>展示邀请信和发送方式</td>
+    </tr>
+    <tr>
+      <td><span class="tag">时间轴卡片</span></td>
+      <td>点击任意记忆卡片</td>
+      <td>内容详情页</td>
+      <td>区分自己的记忆和他人的记忆，操作项不同</td>
+    </tr>
+    <tr>
+      <td><span class="tag">内容详情页</span></td>
+      <td>点击"···"更多</td>
+      <td>底部操作菜单</td>
+      <td>他人记忆：复制/转发/举报；自己记忆：编辑/复制/取消分享/删除</td>
+    </tr>
+    <tr>
+      <td><span class="tag">内容详情页</span></td>
+      <td>点击"🕯️点亮"</td>
+      <td>当前页，点亮数+1</td>
+      <td>再次点击取消点亮，数字-1</td>
+    </tr>
+    <tr>
+      <td><span class="tag">内容详情页</span></td>
+      <td>点击"💬留言"</td>
+      <td>底部输入框获焦</td>
+      <td>键盘弹出，输入区上移</td>
+    </tr>
+    <tr>
+      <td><span class="tag">内容详情页</span></td>
+      <td>点击"取消分享"（自己的记忆）</td>
+      <td>确认弹窗</td>
+      <td>确认后从记忆之家时间轴移除，人生之书中保留</td>
+    </tr>
+    <tr>
+      <td><span class="tag">空状态页</span></td>
+      <td>点击"去人生之书分享"</td>
+      <td>切换至人生之书Tab</td>
+      <td>引导用户从人生之书发布内容</td>
+    </tr>
+    <tr>
+      <td><span class="tag">人生之书</span></td>
+      <td>叙事生成页点击"分享→"</td>
+      <td>内容发布到记忆之家时间轴</td>
+      <td>若未创建记忆之家，弹出引导创建弹窗</td>
+    </tr>
+    <tr>
+      <td><span class="tag">书封面卡片</span></td>
+      <td>点击"3位家庭成员"</td>
+      <td>切换至记忆之家Tab，全部视图</td>
+      <td>Tab切换动画</td>
+    </tr>
+  </table>
+</div>
+
+<script>(function(){
+  if (window.__bxBridge) return; window.__bxBridge = true;
+  var MARK = '__bixiaomi';
+  function post(type, data){ try{ parent.postMessage(Object.assign({__bixiaomi:true,type:type}, data||{}), '*'); }catch(e){} }
+
+  // ③ 运行时错误回传
+  function reportError(kind, message, src, lineno, colno){
+    post('IFRAME_ERROR', { kind:kind, message:String(message||''), source:src||'', lineno:lineno||0, colno:colno||0 });
+  }
+  window.addEventListener('error', function(e){ reportError('error', e.message, e.filename, e.lineno, e.colno); }, true);
+  window.addEventListener('unhandledrejection', function(e){ var r=e&&e.reason; reportError('unhandledrejection', (r&&r.message)||r||'unhandled rejection'); });
+
+  // ① 批注模式：给元素打稳定 id、hover 描边、click 回传
+  var mode = 'default';
+  var idSeq = 0;
+  function ensureId(el){ if(!el.getAttribute('data-bx-id')){ el.setAttribute('data-bx-id','bx-'+(++idSeq)); } return el.getAttribute('data-bx-id'); }
+  var lastHover = null;
+  function clearHover(){ if(lastHover){ lastHover.style.outline=''; lastHover=null; } }
+  document.addEventListener('mouseover', function(e){
+    if(mode!=='comment') return;
+    var el=e.target; if(!el||el===document.body||el===document.documentElement) return;
+    clearHover(); lastHover=el; el.style.outline='2px solid #c96442'; el.style.outlineOffset='1px';
+  }, true);
+  document.addEventListener('mouseout', function(){ if(mode==='comment') clearHover(); }, true);
+  document.addEventListener('click', function(e){
+    if(mode!=='comment') return;
+    var el=e.target; if(!el) return;
+    e.preventDefault(); e.stopPropagation();
+    var id=ensureId(el);
+    var oh=''; try{ oh=el.outerHTML.slice(0,800); }catch(_){}
+    var r={left:0,top:0,width:0,height:0}; try{ var b=el.getBoundingClientRect(); r={left:b.left,top:b.top,width:b.width,height:b.height}; }catch(_){}
+    post('ELEMENT_SELECTED', { selector:'[data-bx-id="'+id+'"]', tag:(el.tagName||'').toLowerCase(), outerHTML:oh, rect:r });
+  }, true);
+
+  // ② 实时调样式：把 token 写成根 CSS 变量 + 一段 !important 强覆盖样式。
+  // 仅写 CSS 变量对 AI 原型几乎无效（它们用自己硬编码的颜色），所以额外注入
+  // 高优先级覆盖，至少让主色/圆角/字号肉眼可见地生效。
+  var bxOverrideStyle = null;
+  function bxEscapeColor(c){ return (''+c).replace(/[^#0-9a-zA-Z(),.%s]/g,''); }
+  function applyTweaks(t){
+    if(!t) return; var root=document.documentElement.style;
+    if(t.accent){ root.setProperty('--bx-accent', t.accent); }
+    if(t.radius!=null){ root.setProperty('--bx-radius', t.radius+'px'); }
+    if(t.spacing!=null){ root.setProperty('--bx-spacing', t.spacing); }
+    if(t.fontScale!=null){ root.setProperty('--bx-font-scale', t.fontScale); }
+    try{
+      if(!bxOverrideStyle){
+        bxOverrideStyle=document.createElement('style');
+        bxOverrideStyle.setAttribute('data-bx-override','1');
+        (document.head||document.documentElement).appendChild(bxOverrideStyle);
+      }
+      var css='';
+      if(t.accent){
+        var a=bxEscapeColor(t.accent);
+        // 主色：作用到按钮/主CTA/链接/主题类，强制覆盖背景与文字色
+        css+='button,.btn,[class*="btn"],[class*="button"],[class*="primary"],[type="submit"]{background-color:'+a+' !important;border-color:'+a+' !important;}';
+        css+='a,[class*="link"]{color:'+a+' !important;}';
+        css+='[class*="badge"],[class*="tag"],[class*="chip"]{background-color:'+a+' !important;color:#fff !important;}';
+      }
+      if(t.radius!=null){
+        css+='button,.btn,[class*="btn"],[class*="button"],input,select,textarea,[class*="card"],[class*="badge"]{border-radius:'+(t.radius)+'px !important;}';
+      }
+      if(t.fontScale!=null){
+        css+='html{font-size:calc(100% * '+(t.fontScale)+') !important;}';
+      }
+      bxOverrideStyle.textContent=css;
+    }catch(_){}
+  }
+  // 注入一小段兜底 CSS，让常见元素读这些变量（尽力而为，主色/圆角优先保证）
+  try{
+    var s=document.createElement('style');
+    s.textContent='a,button,.btn,[class*="btn"]{accent-color:var(--bx-accent,initial)}'+
+      'button,.btn,[class*="btn"],input,select,textarea,.card,[class*="card"]{border-radius:var(--bx-radius,initial)}'+
+      ':root{--bx-font-scale:1}html{font-size:calc(100% * var(--bx-font-scale,1))}';
+    (document.head||document.documentElement).appendChild(s);
+  }catch(_){}
+
+  // 父→iframe 控制消息
+  window.addEventListener('message', function(e){
+    var d=e.data; if(!d||d[MARK]!==true) return;
+    if(d.type==='BX_SET_MODE'){ mode = d.mode==='comment'?'comment':'default'; if(mode!=='comment') clearHover(); }
+    else if(d.type==='BX_APPLY_TWEAKS'){ applyTweaks(d.tokens); }
+  });
+
+  post('BX_READY', {});
+})();</script></body>
+</html>
