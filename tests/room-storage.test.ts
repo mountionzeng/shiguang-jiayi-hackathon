@@ -15,6 +15,7 @@ import {
   savePersonalDraftIfSourcesUnchanged,
   saveDraftIfSourcesUnchanged,
   saveRoomState,
+  updatePersonalShareTarget,
 } from "../miniprogram/services/roomStorage";
 
 function installVersionedStorageMock(initial: Record<string, unknown> = {}) {
@@ -257,4 +258,142 @@ test("appending a personal story invalidates only its author's draft", (context)
   const afterFamily = appendContribution(family, withDrafts);
   assert.equal(afterFamily.personalDrafts?.owner?.title, draft.title);
   assert.equal(afterFamily.personalDrafts?.["member-1"]?.title, "林秋的第一章");
+});
+
+test("changing a targeted reader preserves both personal and family drafts", (context) => {
+  const restoreWx = installStorageMock();
+  context.after(restoreWx);
+
+  const initial = createInitialRoomState();
+  const author = initial.members.find((member) => member.id === "owner");
+  assert.ok(author);
+  const withDrafts = {
+    ...initial,
+    draft,
+    personalDrafts: { owner: draft },
+  };
+  const beforeFingerprint = personalBookSourceFingerprint(withDrafts, author.id);
+  saveRoomState(withDrafts);
+
+  const shared = updatePersonalShareTarget(
+    "demo-personal-rain",
+    author,
+    "member-1",
+  );
+
+  assert.deepEqual(
+    shared.contributions.find((memory) => memory.id === "demo-personal-rain")
+      ?.sharedWithMemberIds,
+    ["member-1"],
+  );
+  assert.deepEqual(
+    loadRoomState().contributions.find(
+      (memory) => memory.id === "demo-personal-rain",
+    )?.sharedWithMemberIds,
+    ["member-1"],
+  );
+  assert.equal(shared.personalDrafts?.owner.title, draft.title);
+  assert.equal(shared.draft?.title, draft.title);
+  assert.equal(personalBookSourceFingerprint(shared, author.id), beforeFingerprint);
+  assert.throws(
+    () => updatePersonalShareTarget("demo-personal-rain", author, "unknown"),
+    /家庭成员/,
+  );
+
+  updatePersonalShareTarget("demo-personal-rain", author, undefined);
+  assert.equal(
+    loadRoomState().contributions.find(
+      (memory) => memory.id === "demo-personal-rain",
+    )?.sharedWithMemberIds,
+    undefined,
+  );
+});
+
+test("changing a share target keeps stories and chapters saved after the picker opened", (context) => {
+  const restoreWx = installStorageMock();
+  context.after(restoreWx);
+
+  const openedState = createInitialRoomState();
+  const author = openedState.members.find((member) => member.id === "owner");
+  assert.ok(author);
+  saveRoomState(openedState);
+
+  const newerStory = createContribution({
+    id: "saved-while-picker-open",
+    authorMemberId: "member-1",
+    authorName: "林秋",
+    relation: "母亲",
+    text: "分享面板打开以后，家人又记下了这一段。",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-08-28T05:08:00.000Z"),
+  });
+  const newerDraft = { ...draft, title: "面板打开后生成的新章节" };
+  saveRoomState({
+    ...openedState,
+    contributions: [...openedState.contributions, newerStory],
+    personalDrafts: {
+      ...(openedState.personalDrafts ?? {}),
+      "member-1": newerDraft,
+    },
+  });
+
+  const shared = updatePersonalShareTarget(
+    "demo-personal-rain",
+    author,
+    "member-2",
+  );
+
+  assert.ok(shared.contributions.some((memory) => memory.id === newerStory.id));
+  assert.equal(shared.personalDrafts?.["member-1"]?.title, newerDraft.title);
+  assert.deepEqual(
+    shared.contributions.find((memory) => memory.id === "demo-personal-rain")
+      ?.sharedWithMemberIds,
+    ["member-2"],
+  );
+});
+
+test("the oldest personal story remains shareable after more than three stories", (context) => {
+  const restoreWx = installStorageMock();
+  context.after(restoreWx);
+
+  const initial = createInitialRoomState();
+  const author = initial.members.find((member) => member.id === "owner");
+  assert.ok(author);
+  const extraStories = [0, 1, 2, 3].map((offset) =>
+    createContribution({
+      id: `newer-personal-${offset}`,
+      authorMemberId: author.id,
+      authorName: author.name,
+      relation: author.relation,
+      text: `后来记录的个人故事 ${offset + 1}`,
+      scope: "personal",
+      visibility: "private",
+      now: new Date(`2026-08-28T05:${10 + offset}:00.000Z`),
+    }),
+  );
+  saveRoomState({
+    ...initial,
+    contributions: initial.contributions.map((memory) =>
+      memory.id === "demo-personal-rain"
+        ? { ...memory, sharedWithMemberIds: ["member-1"] }
+        : memory,
+    ).concat(extraStories),
+  });
+
+  const updated = updatePersonalShareTarget(
+    "demo-personal-rain",
+    author,
+    undefined,
+  );
+
+  const oldest = updated.contributions.find(
+    (memory) => memory.id === "demo-personal-rain",
+  );
+  assert.equal(oldest?.sharedWithMemberIds, undefined);
+  assert.ok(
+    updated.contributions.filter(
+      (memory) => memory.scope === "personal" && memory.authorMemberId === author.id,
+    ).length > 3,
+  );
 });

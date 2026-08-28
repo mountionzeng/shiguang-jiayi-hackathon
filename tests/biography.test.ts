@@ -10,10 +10,13 @@ import {
   createInitialRoomState,
   MEMORY_TYPE_LABELS,
   personalBookContributions,
+  personalShareTargetMemberIds,
   pendingFamilyContributions,
   pendingContributionsFor,
   reviewContribution,
   revokeFamilyVisibility,
+  setPersonalShareTarget,
+  sharedPersonalContributionsForMember,
   visibleContributionsForMember,
 } from "../miniprogram/domain/biography";
 
@@ -61,6 +64,131 @@ test("a personal story belongs only to its author's life book", () => {
     () => reviewContribution(personal, "confirmed", "elder"),
     /个人故事.*不进入家庭确认/,
   );
+});
+
+test("a personal story can be shared with exactly one chosen family member", () => {
+  const state = createInitialRoomState();
+  const author = state.members.find((member) => member.id === "owner");
+  const chosen = state.members.find((member) => member.id === "member-1");
+  const unchosen = state.members.find((member) => member.id === "member-2");
+  assert.ok(author && chosen && unchosen);
+
+  const personal = createContribution({
+    id: "targeted-personal",
+    authorMemberId: author.id,
+    authorName: author.name,
+    relation: author.relation,
+    text: "今天下班时忽然想起，小时候有人等我回家的感觉真好。",
+    scope: "personal",
+    visibility: "private",
+    sharedWithMemberId: chosen.id,
+    now: fixedNow,
+  });
+
+  assert.deepEqual(personal.sharedWithMemberIds, [chosen.id]);
+  assert.deepEqual(sharedPersonalContributionsForMember([personal], chosen.id), [personal]);
+  assert.deepEqual(sharedPersonalContributionsForMember([personal], unchosen.id), []);
+  assert.ok(visibleContributionsForMember([personal], chosen).includes(personal));
+  assert.ok(!visibleContributionsForMember([personal], unchosen).includes(personal));
+
+  // 定向分享只授予阅读权，不改变归属或书稿来源。
+  assert.deepEqual(personalBookContributions([personal], author.id), [personal]);
+  assert.deepEqual(personalBookContributions([personal], chosen.id), []);
+  assert.deepEqual(biographySourceContributions([personal]), []);
+});
+
+test("only the author can change a personal story's targeted reader", () => {
+  const state = createInitialRoomState();
+  const author = state.members.find((member) => member.id === "owner");
+  const chosen = state.members.find((member) => member.id === "member-1");
+  const other = state.members.find((member) => member.id === "member-2");
+  assert.ok(author && chosen && other);
+
+  const personal = createContribution({
+    id: "share-control-personal",
+    authorMemberId: author.id,
+    authorName: author.name,
+    relation: author.relation,
+    text: "这是一段属于我自己的故事。",
+    scope: "personal",
+    visibility: "private",
+    now: fixedNow,
+  });
+  const family = createContribution({
+    id: "share-control-family",
+    authorMemberId: author.id,
+    authorName: author.name,
+    relation: author.relation,
+    text: "这是一段家庭共同记忆。",
+    scope: "family",
+    visibility: "family",
+    now: fixedNow,
+  });
+
+  assert.throws(() => setPersonalShareTarget(personal, other, chosen.id), /只有故事的主人/);
+  assert.throws(() => setPersonalShareTarget(personal, author, author.id), /不能分享给自己/);
+  assert.throws(() => setPersonalShareTarget(family, author, chosen.id), /只有个人故事/);
+
+  const shared = setPersonalShareTarget(personal, author, chosen.id);
+  assert.deepEqual(shared.sharedWithMemberIds, [chosen.id]);
+  const revoked = setPersonalShareTarget(shared, author, undefined);
+  assert.equal(revoked.sharedWithMemberIds, undefined);
+  assert.deepEqual(sharedPersonalContributionsForMember([revoked], chosen.id), []);
+  assert.deepEqual(visibleContributionsForMember([revoked], chosen), []);
+});
+
+test("malformed cached share targets fail closed without granting access", () => {
+  const state = createInitialRoomState();
+  const author = state.members.find((member) => member.id === "owner");
+  const viewer = state.members.find((member) => member.id === "member-1");
+  assert.ok(author && viewer);
+
+  const personal = createContribution({
+    id: "malformed-share-targets",
+    authorMemberId: author.id,
+    authorName: author.name,
+    relation: author.relation,
+    text: "缓存即使损坏，也不能把我的个人故事错误地分享出去。",
+    scope: "personal",
+    visibility: "private",
+    now: fixedNow,
+  });
+  const malformedValues: unknown[] = [
+    { 0: viewer.id },
+    42,
+    viewer.id,
+    [viewer.id, 42],
+    [viewer.id, "member-2"],
+  ];
+
+  for (const malformedValue of malformedValues) {
+    const malformed = {
+      ...personal,
+      sharedWithMemberIds: malformedValue,
+    } as unknown as typeof personal;
+
+    assert.doesNotThrow(() => personalShareTargetMemberIds(malformed));
+    assert.deepEqual(personalShareTargetMemberIds(malformed), []);
+    assert.deepEqual(sharedPersonalContributionsForMember([malformed], viewer.id), []);
+    assert.deepEqual(visibleContributionsForMember([malformed], viewer), []);
+  }
+});
+
+test("the creation boundary cannot grant a personal story to multiple readers", () => {
+  const input = {
+    id: "multi-reader-input",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "一次只可以定向分享给一个人。",
+    scope: "personal",
+    visibility: "private",
+    sharedWithMemberId: ["member-1", "member-2"],
+    now: fixedNow,
+  } as unknown as Parameters<typeof createContribution>[0];
+
+  const contribution = createContribution(input);
+  assert.equal(contribution.sharedWithMemberIds, undefined);
 });
 
 test("family review selectors ignore even malformed pending personal records", () => {

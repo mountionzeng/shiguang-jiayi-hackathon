@@ -35,6 +35,12 @@ export interface MemoryContribution {
    */
   scope?: MemoryScope;
   visibility: Visibility;
+  /**
+   * 个人故事可额外授权给指定家人阅读。
+   * 这只是阅读权限，不改变故事归属，也不会让内容进入记忆之家或他人的人生之书。
+   * 当前版本只允许零或一位接收者；数组形态仅用于缓存兼容，多个不同 ID 会失败关闭。
+   */
+  sharedWithMemberIds?: string[];
   reviewStatus: ReviewStatus;
   createdAt: string;
 }
@@ -66,6 +72,7 @@ export interface CreateContributionInput {
   memoryType?: MemoryType;
   scope?: MemoryScope;
   visibility: Visibility;
+  sharedWithMemberId?: string;
   now?: Date;
   id?: string;
 }
@@ -88,6 +95,18 @@ function normalizeMemoryText(text: string): string {
   return text.trim().replace(/\s+/g, " ");
 }
 
+function normalizeShareTargets(memberIds: unknown, authorMemberId: string): string[] {
+  if (!Array.isArray(memberIds)) return [];
+  return Array.from(
+    new Set(
+      memberIds
+        .filter((memberId): memberId is string => typeof memberId === "string")
+        .map((memberId) => memberId.trim())
+        .filter(Boolean),
+    ),
+  ).filter((memberId) => memberId !== authorMemberId);
+}
+
 export function createContribution(input: CreateContributionInput): MemoryContribution {
   const text = normalizeMemoryText(input.text);
 
@@ -101,6 +120,11 @@ export function createContribution(input: CreateContributionInput): MemoryContri
 
   const now = input.now ?? new Date();
   const id = input.id ?? `memory-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
+  const scope = input.scope ?? "family";
+  const shareTargets =
+    scope === "personal"
+      ? normalizeShareTargets([input.sharedWithMemberId], input.authorMemberId)
+      : [];
 
   return {
     id,
@@ -110,10 +134,11 @@ export function createContribution(input: CreateContributionInput): MemoryContri
     text,
     title: input.title?.trim() || undefined,
     memoryType: input.memoryType ?? "note",
-    scope: input.scope ?? "family",
-    visibility: input.scope === "personal" ? "private" : input.visibility,
+    scope,
+    visibility: scope === "personal" ? "private" : input.visibility,
+    sharedWithMemberIds: shareTargets.length > 0 ? shareTargets : undefined,
     // 自己讲自己的故事，无需交给另一位“主人公”确认。
-    reviewStatus: input.scope === "personal" ? "confirmed" : "pending",
+    reviewStatus: scope === "personal" ? "confirmed" : "pending",
     createdAt: now.toISOString(),
   };
 }
@@ -172,6 +197,64 @@ export function personalBookContributions(
   );
 }
 
+/** 对本地缓存中的分享对象做失败关闭的读取，异常字段绝不能变成阅读授权。 */
+export function personalShareTargetMemberIds(
+  contribution: MemoryContribution,
+): string[] {
+  if (contributionScope(contribution) !== "personal") return [];
+
+  const storedTargets: unknown = contribution.sharedWithMemberIds;
+  if (
+    !Array.isArray(storedTargets) ||
+    !storedTargets.every((memberId) => typeof memberId === "string")
+  ) {
+    return [];
+  }
+
+  const normalizedTargets = normalizeShareTargets(
+    storedTargets,
+    contribution.authorMemberId,
+  );
+  return normalizedTargets.length <= 1 ? normalizedTargets : [];
+}
+
+/** 指定家人收到的个人故事：只授予阅读权，不会成为对方的人生之书素材。 */
+export function sharedPersonalContributionsForMember(
+  contributions: MemoryContribution[],
+  memberId: string,
+): MemoryContribution[] {
+  return contributions.filter(
+    (contribution) =>
+      contributionScope(contribution) === "personal" &&
+      contribution.authorMemberId !== memberId &&
+      personalShareTargetMemberIds(contribution).includes(memberId),
+  );
+}
+
+/** 个人故事的主人可以指定一位家人阅读，传 undefined 即取消定向分享。 */
+export function setPersonalShareTarget(
+  contribution: MemoryContribution,
+  actor: FamilyMember,
+  targetMemberId?: string,
+): MemoryContribution {
+  if (contributionScope(contribution) !== "personal") {
+    throw new Error("只有个人故事可以定向分享");
+  }
+  if (contribution.authorMemberId !== actor.id) {
+    throw new Error("只有故事的主人可以更改分享对象");
+  }
+
+  const target = targetMemberId?.trim();
+  if (target === actor.id) {
+    throw new Error("不能分享给自己");
+  }
+
+  return {
+    ...contribution,
+    sharedWithMemberIds: target ? [target] : undefined,
+  };
+}
+
 /**
  * 家人视角能看到的原始片段。
  *
@@ -186,7 +269,10 @@ export function visibleContributionsForMember(
 ): MemoryContribution[] {
   return contributions.filter((contribution) => {
     if (contributionScope(contribution) === "personal") {
-      return contribution.authorMemberId === viewer.id;
+      return (
+        contribution.authorMemberId === viewer.id ||
+        personalShareTargetMemberIds(contribution).includes(viewer.id)
+      );
     }
     if (viewer.role === "elder") return true;
     if (contribution.authorMemberId === viewer.id) return true;

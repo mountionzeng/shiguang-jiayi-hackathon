@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/quick-note/quick-note",
     "pages/interview/interview",
     "pages/room/room",
     "pages/review/review",

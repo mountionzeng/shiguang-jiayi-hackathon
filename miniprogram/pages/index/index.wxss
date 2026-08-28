@@ -181,6 +181,62 @@
   background: rgba(31, 58, 52, 0.12);
 }
 
+/* ---- 随手记录入口 ---- */
+
+.capture-card {
+  display: flex;
+  align-items: center;
+  min-height: 118rpx;
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 28rpx;
+  background: var(--coral);
+  color: #fffdfb;
+}
+
+.capture-card:active {
+  opacity: 0.86;
+}
+
+.capture-plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 72rpx;
+  height: 72rpx;
+  margin-right: 20rpx;
+  border-radius: 36rpx;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 48rpx;
+  font-weight: 300;
+}
+
+.capture-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.capture-title {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.capture-note {
+  margin-top: 3rpx;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 24rpx;
+}
+
+.capture-arrow {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
 /* ---- 今日共享问题 ---- */
 
 .question-card {
@@ -255,6 +311,209 @@
 .fragment-byline {
   font-size: 24rpx;
   color: var(--ink-faint);
+}
+
+.fragment-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68rpx;
+  margin-top: 18rpx;
+  padding-top: 14rpx;
+  border-top: 2rpx solid var(--line);
+}
+
+.fragment-share-state {
+  color: var(--ink-faint);
+  font-size: 24rpx;
+}
+
+.fragment-share-btn {
+  min-height: 58rpx;
+  padding: 0 18rpx;
+  border-radius: 18rpx;
+  background: var(--lake-soft);
+  color: var(--lake);
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+/* ---- 家人定向分享给我的个人故事 ---- */
+
+.shared-section {
+  margin-top: 44rpx;
+}
+
+.shared-card {
+  margin-bottom: 20rpx;
+  padding: 28rpx 30rpx;
+  border: 2rpx solid rgba(47, 110, 143, 0.28);
+  border-radius: 26rpx;
+  background: var(--lake-soft);
+}
+
+.shared-card:active {
+  opacity: 0.82;
+}
+
+.shared-from {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shared-author {
+  color: var(--lake);
+  font-size: 25rpx;
+}
+
+.shared-text {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 18rpx;
+  color: var(--ink);
+  font-size: 32rpx;
+  line-height: 1.75;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.shared-foot {
+  margin-top: 16rpx;
+  color: var(--ink-faint);
+  font-size: 24rpx;
+}
+
+/* ---- 定向分享成员选择面板 ---- */
+
+.share-picker-mask {
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(24, 37, 34, 0.42);
+}
+
+.share-picker-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 78vh;
+  padding: 12rpx 28rpx calc(24rpx + env(safe-area-inset-bottom));
+  border-radius: 36rpx 36rpx 0 0;
+  background: var(--paper);
+}
+
+.share-picker-handle {
+  flex-shrink: 0;
+  width: 74rpx;
+  height: 8rpx;
+  margin: 0 auto 24rpx;
+  border-radius: 4rpx;
+  background: var(--line);
+}
+
+.share-picker-head {
+  flex-shrink: 0;
+  padding: 0 6rpx 22rpx;
+}
+
+.share-picker-title {
+  color: var(--ink);
+  font-size: 40rpx;
+  font-weight: 600;
+}
+
+.share-picker-note {
+  margin-top: 8rpx;
+  color: var(--ink-faint);
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+
+.share-picker-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.share-target {
+  display: flex;
+  align-items: center;
+  min-height: 112rpx;
+  margin-bottom: 14rpx;
+  padding: 16rpx 20rpx;
+  border: 2rpx solid var(--line);
+  border-radius: 24rpx;
+  background: var(--paper-card);
+}
+
+.share-target-on {
+  border-color: var(--jade);
+  background: var(--jade-soft);
+}
+
+.share-target-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 68rpx;
+  height: 68rpx;
+  margin-right: 18rpx;
+  border-radius: 34rpx;
+  background: var(--jade);
+  color: #fff;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+
+.share-target-private {
+  background: var(--ink-faint);
+}
+
+.share-target-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.share-target-name {
+  color: var(--ink);
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.share-target-relation {
+  margin-top: 4rpx;
+  color: var(--ink-soft);
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.share-target-check {
+  flex-shrink: 0;
+  width: 40rpx;
+  margin-left: 12rpx;
+  color: var(--jade);
+  font-size: 34rpx;
+  font-weight: 700;
+  text-align: center;
+}
+
+.share-picker-cancel {
+  flex-shrink: 0;
+  min-height: 78rpx;
+  margin-top: 8rpx;
+  border-radius: 22rpx;
+  background: var(--paper-sunk);
+  color: var(--ink-soft);
+  font-size: 28rpx;
+  font-weight: 600;
 }
 
 /* ---- 空状态 ---- */

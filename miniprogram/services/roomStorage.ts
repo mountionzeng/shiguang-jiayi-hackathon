@@ -7,6 +7,7 @@ import {
   FamilyRoomState,
   MemoryContribution,
   personalBookSourceFingerprint,
+  setPersonalShareTarget,
 } from "../domain/biography";
 
 const STORAGE_KEY = "shiguang-family-room-v3";
@@ -118,6 +119,41 @@ export function replaceContribution(
       item.id === contribution.id ? contribution : item,
     ),
     draft: undefined,
+  };
+  saveRoomState(next);
+  return next;
+}
+
+/**
+ * 只更新个人故事的定向阅读者。
+ * 分享权限不是书稿来源的一部分，因此不应让个人章节或家庭章节失效。
+ */
+export function updatePersonalShareTarget(
+  contributionId: string,
+  actor: FamilyMember,
+  targetMemberId?: string,
+): FamilyRoomState {
+  // 选择面板可能打开很久；提交时必须重新读取，不能让旧页面快照覆盖新故事或新章节。
+  const state = loadRoomState();
+  const currentActor = state.members.find((member) => member.id === actor.id);
+  if (!currentActor) {
+    throw new Error("当前身份已不在这个家庭房间");
+  }
+  if (targetMemberId && !state.members.some((member) => member.id === targetMemberId)) {
+    throw new Error("请选择房间里的家庭成员");
+  }
+
+  const contribution = state.contributions.find((item) => item.id === contributionId);
+  if (!contribution) {
+    throw new Error("没有找到这段故事");
+  }
+
+  const updated = setPersonalShareTarget(contribution, currentActor, targetMemberId);
+  const next = {
+    ...state,
+    contributions: state.contributions.map((item) =>
+      item.id === contributionId ? updated : item,
+    ),
   };
   saveRoomState(next);
   return next;
