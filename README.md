@@ -48,7 +48,7 @@
 1. 安装依赖：`npm install`
 2. 类型与测试检查：`npm run check`
 3. 在微信开发者工具中导入仓库根目录
-4. 将 `project.config.json` 中的测试 AppID 替换为“拾光家忆”的实际 AppID
+4. 当前项目 AppID 为 `wx6be512f0fe129b62`；使用微信开发者工具的成员需先由管理员添加为该小程序的开发者
 5. 如需使用虚构资料演示真实 AI 生成，可在微信云开发中部署 `cloudfunctions/generateBiography` 并配置服务端环境变量
 6. 部署完成后，将 `miniprogram/config/runtime.ts` 中的 `CLOUD_AI_ENABLED` 改为 `true`；真实用户使用前不得开启，需先补齐服务端身份、来源校验、配额和请求去重
 
@@ -79,6 +79,8 @@
 团队成员和最终分工将在提交前按真实情况补充。开发过程记录见 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)。
 
 完整项目说明见 [docs/project-document.md](docs/project-document.md)，演示视频脚本见 [docs/demo-script.md](docs/demo-script.md)。
+
+界面重设计请先阅读 [微信小程序前端重设计交接](docs/handoff/2026-08-28-mini-program-ui-redesign-handoff.md)，不要把 Web/React 实现方式直接搬进原生小程序。
 
 ## 提交提醒
 
