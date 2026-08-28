@@ -1,0 +1,18 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/room/room",
+    "pages/review/review",
+    "pages/book/book"
+  ],
+  "window": {
+    "backgroundColor": "#f3eee4",
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#f3eee4",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "拾光家忆"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

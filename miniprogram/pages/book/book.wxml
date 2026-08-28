@@ -1,0 +1,56 @@
+<view class="page-shell book-page page-enter">
+  <view class="book-heading">
+    <text class="eyebrow">03 · 写成一章</text>
+    <view class="section-title serif">{{protagonistName}}的人生，先从被记住的小事开始。</view>
+    <view class="source-summary">当前有 {{confirmed.length}} 条本人确认的回忆可用于写作</view>
+  </view>
+
+  <view class="empty-book" wx:if="{{!draft}}">
+    <view class="book-spine"></view>
+    <view class="cover-content">
+      <text class="cover-kicker">拾 光 家 忆</text>
+      <view class="cover-title serif">林致远\n口述传记</view>
+      <view class="cover-rule"></view>
+      <text class="cover-note">第一章正在等待被写下</text>
+    </view>
+  </view>
+
+  <view class="chapter-paper" wx:else>
+    <view class="chapter-topline">
+      <text class="chapter-number">CHAPTER 01</text>
+      <text class="status-pill">{{draft.sourceCount}} 条确认来源</text>
+    </view>
+    <view class="chapter-title serif">{{draft.title}}</view>
+    <view class="chapter-rule"></view>
+    <view class="chapter-paragraph serif" wx:for="{{draft.paragraphs}}" wx:key="index">
+      {{item}}
+    </view>
+    <view class="generation-note">{{modeLabel}}</view>
+  </view>
+
+  <button
+    class="primary-button generate-button"
+    loading="{{generating}}"
+    disabled="{{generating}}"
+    bindtap="generateChapter"
+  >{{draft ? '根据确认内容重新整理' : '生成传记第一章'}}</button>
+
+  <view class="source-section">
+    <view class="source-heading">
+      <text class="source-title serif">这一章依据什么</text>
+      <text class="source-count">{{confirmed.length}} 条</text>
+    </view>
+    <view class="source-card" wx:for="{{confirmed}}" wx:key="id">
+      <view class="source-dot"></view>
+      <view class="source-copy">
+        <text class="source-text">{{item.text}}</text>
+        <text class="source-by">{{item.authorName}} · {{item.relation}} · 本人已确认</text>
+      </view>
+    </view>
+    <view class="no-source" wx:if="{{confirmed.length === 0}}">
+      还没有确认过的材料。返回上一页，请主人公先核对。
+    </view>
+  </view>
+
+  <button class="quiet-button" bindtap="backToRoom">回到家庭房间继续补充</button>
+</view>

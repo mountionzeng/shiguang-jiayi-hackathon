@@ -1,0 +1,115 @@
+page {
+  min-height: 100%;
+  background: #f3eee4;
+  color: #29251f;
+  font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  font-size: 30rpx;
+}
+view,
+text,
+button,
+textarea {
+  box-sizing: border-box;
+}
+
+button {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  line-height: 1.4;
+}
+
+button::after {
+  border: 0;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: 36rpx 38rpx calc(48rpx + env(safe-area-inset-bottom));
+}
+
+.page-enter {
+  animation: page-rise 420ms ease-out both;
+}
+
+.eyebrow {
+  color: #9b563c;
+  font-size: 22rpx;
+  font-weight: 600;
+  letter-spacing: 5rpx;
+}
+
+.serif {
+  font-family: "Songti SC", STSong, serif;
+}
+
+.primary-button,
+.secondary-button,
+.quiet-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 96rpx;
+  border-radius: 24rpx;
+  font-weight: 600;
+}
+
+.primary-button {
+  background: #9b563c;
+  color: #fffaf0;
+  box-shadow: 0 16rpx 34rpx rgba(93, 50, 34, 0.18);
+}
+
+.secondary-button {
+  border: 2rpx solid #b9aa96;
+  background: transparent;
+  color: #393228;
+}
+
+.quiet-button {
+  min-height: 72rpx;
+  color: #756b5e;
+  font-size: 26rpx;
+}
+
+.primary-button:active,
+.secondary-button:active,
+.quiet-button:active {
+  transform: scale(0.98);
+  opacity: 0.86;
+}
+
+.section-title {
+  margin-top: 18rpx;
+  font-family: "Songti SC", STSong, serif;
+  font-size: 50rpx;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.muted {
+  color: #756b5e;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: #e7ded0;
+  color: #6f6254;
+  font-size: 22rpx;
+}
+
+@keyframes page-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

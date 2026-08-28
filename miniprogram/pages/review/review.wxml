@@ -1,0 +1,77 @@
+<view class="page-shell review-page page-enter">
+  <view class="review-intro">
+    <text class="eyebrow">02 · 老人确认</text>
+    <view class="section-title serif">{{protagonistName}}，请亲自说清楚。</view>
+    <view class="review-description">
+      家人记得的事不一定完全准确。只有你确认过、且家庭可见的内容，才会进入正式传记。
+    </view>
+  </view>
+
+  <view class="authority-line">
+    <view class="authority-avatar serif">远</view>
+    <view class="authority-copy">
+      <text class="authority-name">当前核对人 · {{protagonistName}}</text>
+      <text class="authority-note">Story 发起者和其他亲人不能代为确认</text>
+    </view>
+  </view>
+
+  <view class="review-progress">
+    <view class="progress-item">
+      <text class="progress-value serif">{{pending.length}}</text>
+      <text class="progress-label">待核对</text>
+    </view>
+    <view class="progress-divider"></view>
+    <view class="progress-item">
+      <text class="progress-value serif">{{confirmedCount}}</text>
+      <text class="progress-label">可写入传记</text>
+    </view>
+    <view class="progress-divider"></view>
+    <view class="progress-item">
+      <text class="progress-value serif">{{handledCount}}</text>
+      <text class="progress-label">已处理</text>
+    </view>
+  </view>
+
+  <view class="pending-list" wx:if="{{pending.length > 0}}">
+    <view class="review-card" wx:for="{{pending}}" wx:key="id">
+      <view class="card-source">
+        <view>
+          <text class="source-name">{{item.authorName}}</text>
+          <text class="source-relation"> · {{item.relation}}</text>
+        </view>
+        <text class="source-visibility">{{item.visibilityLabel}}</text>
+      </view>
+      <view class="memory-text serif">{{item.text}}</view>
+      <view class="review-question">{{item.reviewQuestion}}</view>
+      <button
+        class="confirm-action"
+        data-id="{{item.id}}"
+        data-status="confirmed"
+        bindtap="reviewMemory"
+      >{{item.confirmLabel}}</button>
+      <view class="secondary-actions">
+        <button
+          class="conflict-action"
+          data-id="{{item.id}}"
+          data-status="conflict"
+          bindtap="reviewMemory"
+        >说法不一致</button>
+        <button
+          class="reject-action"
+          data-id="{{item.id}}"
+          data-status="rejected"
+          bindtap="reviewMemory"
+        >不是这样</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty-review" wx:else>
+    <view class="empty-mark serif">✓</view>
+    <view class="empty-title serif">这一轮已经核对完成</view>
+    <view class="empty-note">新回忆进来后，还会再次请你确认。</view>
+  </view>
+
+  <button class="primary-button book-button" bindtap="goToBook">查看传记第一章</button>
+  <button class="quiet-button" bindtap="goBackToRoom">返回家庭房间继续讲述</button>
+</view>

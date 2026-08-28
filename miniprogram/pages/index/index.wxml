@@ -1,0 +1,39 @@
+<view class="page-shell home-page page-enter">
+  <view class="brand-lockup">
+    <view class="brand-seal serif">忆</view>
+    <view class="brand-copy">
+      <text class="brand-name serif">拾光家忆</text>
+      <text class="brand-note">家庭共同讲述的文字传记</text>
+    </view>
+  </view>
+
+  <view class="hero-copy">
+    <text class="eyebrow">为仍能亲口讲述的人</text>
+    <view class="hero-title serif">把一家人的记忆，\n写成他的一生。</view>
+    <view class="hero-description">
+      亲人负责记起，老人负责确认。AI 只整理已经说清楚的事，不替任何人编造人生。
+    </view>
+  </view>
+
+  <view class="memory-window">
+    <view class="window-grain"></view>
+    <view class="quote-mark serif">“</view>
+    <view class="memory-quote serif">
+      每次下雨，他都会站在巷口，手里多带一把小伞。
+    </view>
+    <view class="memory-source">林岚 · 外孙女的回忆</view>
+    <view class="verification-stamp serif">待本人确认</view>
+  </view>
+
+  <view class="story-steps">
+    <view class="story-step" wx:for="{{steps}}" wx:key="number">
+      <text class="step-number">{{item.number}}</text>
+      <text class="step-label">{{item.label}}</text>
+    </view>
+  </view>
+
+  <button class="primary-button" bindtap="enterRoom">进入林家的拾光房间</button>
+  <button class="quiet-button" bindtap="resetDemo">重置演示内容</button>
+
+  <view class="demo-note">黑客松演示使用虚构家庭资料</view>
+</view>

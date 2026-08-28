@@ -1,0 +1,197 @@
+.review-description {
+  margin-top: 24rpx;
+  color: #756a5d;
+  font-size: 27rpx;
+  line-height: 1.8;
+}
+.authority-line {
+  display: flex;
+  align-items: center;
+  margin-top: 42rpx;
+  padding: 22rpx;
+  border: 2rpx solid #c9bca9;
+  border-radius: 24rpx;
+}
+
+.authority-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #6a705c;
+  color: #fffaf0;
+  font-size: 27rpx;
+}
+
+.authority-copy {
+  display: flex;
+  flex-direction: column;
+  margin-left: 20rpx;
+}
+
+.authority-name {
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.authority-note {
+  margin-top: 6rpx;
+  color: #877c6f;
+  font-size: 20rpx;
+}
+
+.review-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin-top: 38rpx;
+  padding: 30rpx 8rpx;
+  border-top: 2rpx solid #d1c5b5;
+  border-bottom: 2rpx solid #d1c5b5;
+}
+
+.progress-item {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+}
+
+.progress-value {
+  color: #9b563c;
+  font-size: 43rpx;
+}
+
+.progress-label {
+  margin-top: 4rpx;
+  color: #827668;
+  font-size: 20rpx;
+}
+
+.progress-divider {
+  width: 2rpx;
+  height: 48rpx;
+  background: #c9bcaa;
+}
+
+.pending-list {
+  margin-top: 40rpx;
+}
+
+.review-card {
+  margin-bottom: 30rpx;
+  padding: 34rpx;
+  border-radius: 8rpx 34rpx 8rpx 34rpx;
+  background: #fffaf0;
+  box-shadow: 0 18rpx 46rpx rgba(70, 57, 42, 0.09);
+}
+
+.card-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #7a6f62;
+  font-size: 22rpx;
+}
+
+.source-name {
+  color: #4b4339;
+  font-weight: 600;
+}
+
+.source-visibility {
+  color: #9b563c;
+}
+
+.memory-text {
+  margin-top: 28rpx;
+  font-size: 33rpx;
+  font-weight: 600;
+  line-height: 1.72;
+}
+
+.review-question {
+  margin-top: 30rpx;
+  padding-top: 24rpx;
+  border-top: 2rpx solid #e4dacb;
+  color: #7e7264;
+  font-size: 23rpx;
+}
+
+.confirm-action,
+.conflict-action,
+.reject-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.confirm-action {
+  min-height: 82rpx;
+  margin-top: 20rpx;
+  background: #6a705c;
+  color: #fffaf0;
+}
+
+.secondary-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 14rpx;
+}
+
+.conflict-action,
+.reject-action {
+  flex: 1;
+  min-height: 72rpx;
+  border: 2rpx solid #d3c7b8;
+  background: transparent;
+  color: #776b5f;
+}
+
+.confirm-action:active,
+.conflict-action:active,
+.reject-action:active {
+  transform: scale(0.98);
+  opacity: 0.86;
+}
+
+.empty-review {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 42rpx;
+  padding: 56rpx 30rpx;
+  border: 2rpx dashed #c6b8a5;
+}
+
+.empty-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 82rpx;
+  height: 82rpx;
+  border-radius: 50%;
+  background: #6a705c;
+  color: #fffaf0;
+  font-size: 35rpx;
+}
+
+.empty-title {
+  margin-top: 24rpx;
+  font-size: 33rpx;
+}
+
+.empty-note {
+  margin-top: 12rpx;
+  color: #8b8073;
+  font-size: 22rpx;
+}
+
+.book-button {
+  margin-top: 38rpx;
+}

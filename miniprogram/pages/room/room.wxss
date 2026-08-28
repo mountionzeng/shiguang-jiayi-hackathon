@@ -1,0 +1,273 @@
+.room-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.room-count {
+  margin-top: 14rpx;
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  background: #e5dccd;
+  color: #6f6356;
+  font-size: 22rpx;
+}
+
+.member-strip {
+  width: calc(100% + 38rpx);
+  margin-top: 42rpx;
+}
+
+.member-row {
+  display: inline-flex;
+  padding-right: 38rpx;
+}
+
+.member {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 118rpx;
+  margin-right: 12rpx;
+}
+
+.member-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 50%;
+  background: #d8cdbd;
+  color: #51483e;
+  font-size: 28rpx;
+}
+
+.elder-avatar {
+  border: 4rpx solid #f3eee4;
+  background: #6a705c;
+  color: #fffaf0;
+  box-shadow: 0 0 0 3rpx #6a705c;
+}
+
+.member-name {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+}
+
+.member-relation {
+  margin-top: 2rpx;
+  color: #968a7d;
+  font-size: 18rpx;
+}
+
+.invite-avatar {
+  border: 2rpx dashed #aa9d8c;
+  background: transparent;
+  color: #8b7e70;
+}
+
+.ai-prompt {
+  display: flex;
+  margin-top: 46rpx;
+  padding: 30rpx;
+  border-left: 6rpx solid #9b563c;
+  background: #e8dfd2;
+}
+
+.ai-mark {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 18rpx 18rpx 18rpx 4rpx;
+  background: #9b563c;
+  color: #fffaf0;
+  font-size: 25rpx;
+}
+
+.ai-copy {
+  display: flex;
+  flex-direction: column;
+  margin-left: 22rpx;
+}
+
+.ai-label {
+  color: #8b7767;
+  font-size: 20rpx;
+}
+
+.ai-question {
+  margin-top: 12rpx;
+  font-size: 31rpx;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.ai-hint {
+  margin-top: 12rpx;
+  color: #817566;
+  font-size: 21rpx;
+  line-height: 1.6;
+}
+
+.conversation {
+  margin-top: 48rpx;
+}
+
+.memory-message {
+  display: flex;
+  margin-bottom: 34rpx;
+  animation: message-in 360ms ease-out both;
+}
+
+.message-avatar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #c8b9a5;
+  color: #4b4035;
+}
+
+.message-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: 18rpx;
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #766a5d;
+  font-size: 21rpx;
+}
+
+.message-scope {
+  color: #9b563c;
+}
+
+.message-bubble {
+  margin-top: 10rpx;
+  padding: 24rpx 26rpx;
+  border-radius: 8rpx 26rpx 26rpx 26rpx;
+  background: #fffaf0;
+  color: #393229;
+  font-size: 27rpx;
+  line-height: 1.75;
+  box-shadow: 0 12rpx 30rpx rgba(66, 53, 39, 0.07);
+}
+
+.message-status {
+  margin-top: 9rpx;
+  color: #978b7e;
+  font-size: 20rpx;
+}
+
+.composer {
+  margin-top: 16rpx;
+  padding: 30rpx;
+  border: 2rpx solid #d4c8b8;
+  border-radius: 30rpx;
+  background: rgba(255, 250, 240, 0.62);
+}
+
+.memory-input {
+  width: 100%;
+  min-height: 154rpx;
+  color: #332e27;
+  font-size: 28rpx;
+  line-height: 1.7;
+}
+
+.memory-placeholder {
+  color: #a49a8d;
+}
+
+.composer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20rpx;
+}
+
+.visibility-options {
+  display: flex;
+}
+
+.visibility-option {
+  margin-right: 12rpx;
+  padding: 10rpx 17rpx;
+  border-radius: 999rpx;
+  color: #877b6e;
+  font-size: 21rpx;
+}
+
+.visibility-option.active {
+  background: #6a705c;
+  color: #fffaf0;
+}
+
+.character-count {
+  color: #a09689;
+  font-size: 20rpx;
+}
+
+.submit-button {
+  min-height: 84rpx;
+  margin-top: 24rpx;
+  border-radius: 20rpx;
+  font-size: 26rpx;
+}
+
+.next-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 50rpx;
+  padding-top: 34rpx;
+  border-top: 2rpx solid #cfc3b2;
+}
+
+.next-label,
+.next-title {
+  display: block;
+}
+
+.next-label {
+  color: #95897c;
+  font-size: 20rpx;
+}
+
+.next-title {
+  margin-top: 7rpx;
+  font-size: 31rpx;
+}
+
+.next-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 82rpx;
+  height: 82rpx;
+  border-radius: 50%;
+  background: #29251f;
+  color: #fffaf0;
+  font-size: 38rpx;
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(12rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

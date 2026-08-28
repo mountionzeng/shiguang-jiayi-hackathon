@@ -1,0 +1,4 @@
+{
+  "desc": "拾光家忆黑客松演示版页面索引",
+  "rules": [{ "action": "disallow", "page": "*" }]
+}

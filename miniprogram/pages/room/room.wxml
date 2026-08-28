@@ -1,0 +1,83 @@
+<view class="page-shell room-page page-enter">
+  <view class="room-heading">
+    <view>
+      <text class="eyebrow">01 · 家人讲述</text>
+      <view class="section-title">{{roomName}}</view>
+    </view>
+    <view class="room-count">{{members.length}} 人</view>
+  </view>
+
+  <scroll-view class="member-strip" scroll-x enhanced show-scrollbar="{{false}}">
+    <view class="member-row">
+      <view class="member" wx:for="{{members}}" wx:key="id">
+        <view class="member-avatar {{item.role === 'elder' ? 'elder-avatar' : ''}} serif">{{item.avatarText}}</view>
+        <text class="member-name">{{item.name}}</text>
+        <text class="member-relation">{{item.relation}}</text>
+      </view>
+      <view class="member invite-member">
+        <view class="member-avatar invite-avatar">＋</view>
+        <text class="member-name">邀请家人</text>
+        <text class="member-relation">赛后接入</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="ai-prompt">
+    <view class="ai-mark serif">问</view>
+    <view class="ai-copy">
+      <text class="ai-label">AI 采访者 · 一次只问一件事</text>
+      <text class="ai-question serif">你第一次意识到外公很爱这个家，是在什么时候？</text>
+      <text class="ai-hint">不知道年份也没关系，可以直接说“记不清”。</text>
+    </view>
+  </view>
+
+  <view class="conversation">
+    <view class="memory-message" wx:for="{{contributions}}" wx:key="id">
+      <view class="message-avatar serif">{{item.avatarText}}</view>
+      <view class="message-main">
+        <view class="message-meta">
+          <text>{{item.authorName}} · {{item.relation}}</text>
+          <text class="message-scope">{{item.visibilityLabel}}</text>
+        </view>
+        <view class="message-bubble">{{item.text}}</view>
+        <view class="message-status">{{item.statusLabel}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="composer">
+    <textarea
+      class="memory-input"
+      value="{{inputText}}"
+      maxlength="{{maxLength}}"
+      auto-height
+      placeholder="写下一件你记得的小事……"
+      placeholder-class="memory-placeholder"
+      bindinput="onInput"
+    />
+    <view class="composer-meta">
+      <view class="visibility-options">
+        <view
+          class="visibility-option {{visibility === 'family' ? 'active' : ''}}"
+          data-visibility="family"
+          bindtap="chooseVisibility"
+        >家庭可见</view>
+        <view
+          class="visibility-option {{visibility === 'private' ? 'active' : ''}}"
+          data-visibility="private"
+          bindtap="chooseVisibility"
+        >私密提交</view>
+      </view>
+      <text class="character-count">{{remaining}}</text>
+    </view>
+    <button class="primary-button submit-button" bindtap="submitMemory">把这段回忆交给外公</button>
+  </view>
+
+  <view class="next-step">
+    <view>
+      <text class="next-label">下一步</text>
+      <text class="next-title serif">请林致远亲自核对</text>
+    </view>
+    <button class="next-arrow" bindtap="goToReview">→</button>
+  </view>
+</view>

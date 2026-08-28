@@ -1,0 +1,21 @@
+{
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "miniprogramRoot": "miniprogram/",
+  "projectname": "shiguang-jiayi-hackathon",
+  "description": "拾光家忆黑客松文字 MVP",
+  "setting": {
+    "useCompilerPlugins": [
+      "typescript"
+    ],
+    "es6": true,
+    "enhance": true,
+    "minified": true,
+    "postcss": true,
+    "urlCheck": true,
+    "minifyWXML": true
+  },
+  "simulatorType": "wechat",
+  "condition": {}
+}
