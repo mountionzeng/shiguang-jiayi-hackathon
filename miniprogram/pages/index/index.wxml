@@ -3,14 +3,11 @@
     <view class="topline">
       <view class="wordmark">
         <view class="brand-mark wordmark-icon"></view>
-        <text class="wordmark-text serif">拾光</text>
-      </view>
-      <view class="book-links">
-        <text class="book-link" bindtap="openMemoryHome">记忆之家</text>
+        <text class="wordmark-text serif">拾光Ai</text>
       </view>
     </view>
 
-    <view class="home-cover wash" bindtap="openBook">
+    <view class="home-cover wash">
       <text class="home-cover-label">只写我亲自经历的故事</text>
       <view class="home-cover-title serif">{{bookTitle}}</view>
       <view class="home-cover-sub">{{coverSubtitle}}</view>
@@ -30,7 +27,34 @@
           <text class="home-cover-stat-label">书稿章节</text>
         </view>
       </view>
-      <view class="home-cover-open">打开人生之书</view>
+    </view>
+
+    <view class="branch-buttons">
+      <button class="branch-button" bindtap="openBook">
+        <view class="branch-motif motif-book">
+          <view class="book-page book-page-left"></view>
+          <view class="book-page book-page-right"></view>
+          <view class="book-spine"></view>
+          <view class="book-sun"></view>
+        </view>
+        <view class="branch-copy">
+          <text class="branch-name serif">人生之书</text>
+          <text class="branch-note">我的故事</text>
+        </view>
+      </button>
+
+      <button class="branch-button" bindtap="openMemoryHome">
+        <view class="branch-motif motif-home">
+          <view class="home-roof"></view>
+          <view class="home-body"></view>
+          <view class="home-person home-person-one"></view>
+          <view class="home-person home-person-two"></view>
+        </view>
+        <view class="branch-copy">
+          <text class="branch-name serif">记忆之家</text>
+          <text class="branch-note">我和亲友</text>
+        </view>
+      </button>
     </view>
 
     <button class="start-chat" bindtap="startInterview">

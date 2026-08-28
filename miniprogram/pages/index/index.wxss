@@ -12,7 +12,6 @@
 .topline {
   display: flex;
   align-items: center;
-  justify-content: space-between;
 }
 
 .wordmark {
@@ -31,25 +30,6 @@
   font-size: 32rpx;
   font-weight: 600;
   letter-spacing: 7rpx;
-}
-
-.book-links {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-}
-
-.book-link {
-  display: flex;
-  align-items: center;
-  min-height: 72rpx;
-  padding: 0 8rpx;
-  color: var(--ink-soft);
-  font-size: 26rpx;
-}
-
-.book-link:active {
-  color: var(--jade);
 }
 
 .home-cover {
@@ -124,17 +104,154 @@
   background: rgba(31, 58, 52, 0.12);
 }
 
-.home-cover-open {
-  margin-top: 12rpx;
-  color: var(--jade);
-  font-size: 25rpx;
-  font-weight: 600;
-  text-align: right;
+.branch-buttons {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 18rpx;
 }
 
-.home-cover:active {
-  opacity: 0.82;
-  transform: scale(0.992);
+.branch-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  min-height: 142rpx;
+  padding: 20rpx 18rpx;
+  border: 2rpx solid var(--line);
+  border-radius: 26rpx;
+  background: var(--paper-card);
+  text-align: left;
+}
+
+.branch-button:active {
+  background: var(--paper-sunk);
+  transform: scale(0.985);
+}
+
+.branch-motif {
+  position: relative;
+  flex-shrink: 0;
+  width: 72rpx;
+  height: 66rpx;
+  margin-right: 14rpx;
+}
+
+.book-page {
+  position: absolute;
+  bottom: 8rpx;
+  width: 31rpx;
+  height: 43rpx;
+  border: 3rpx solid var(--jade);
+  background: var(--jade-soft);
+}
+
+.book-page-left {
+  left: 5rpx;
+  border-right: 0;
+  border-radius: 5rpx 0 3rpx 12rpx;
+  transform: skewY(7deg);
+}
+
+.book-page-right {
+  right: 5rpx;
+  border-left: 0;
+  border-radius: 0 5rpx 12rpx 3rpx;
+  transform: skewY(-7deg);
+}
+
+.book-spine {
+  position: absolute;
+  bottom: 8rpx;
+  left: 34rpx;
+  width: 3rpx;
+  height: 45rpx;
+  border-radius: 2rpx;
+  background: var(--jade);
+}
+
+.book-sun {
+  position: absolute;
+  top: 3rpx;
+  right: 4rpx;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: var(--apricot);
+}
+
+.home-roof {
+  position: absolute;
+  top: 8rpx;
+  left: 18rpx;
+  width: 36rpx;
+  height: 36rpx;
+  border-top: 3rpx solid var(--lake);
+  border-left: 3rpx solid var(--lake);
+  border-radius: 4rpx 0 0;
+  transform: rotate(45deg);
+}
+
+.home-body {
+  position: absolute;
+  bottom: 7rpx;
+  left: 13rpx;
+  width: 46rpx;
+  height: 34rpx;
+  border-right: 3rpx solid var(--lake);
+  border-bottom: 3rpx solid var(--lake);
+  border-left: 3rpx solid var(--lake);
+  border-radius: 0 0 9rpx 9rpx;
+  background: var(--lake-soft);
+}
+
+.home-person {
+  position: absolute;
+  bottom: 19rpx;
+  z-index: 1;
+  width: 11rpx;
+  height: 11rpx;
+  border-radius: 50%;
+}
+
+.home-person::after {
+  position: absolute;
+  top: 11rpx;
+  left: -2rpx;
+  width: 15rpx;
+  height: 12rpx;
+  border-radius: 8rpx 8rpx 3rpx 3rpx;
+  content: "";
+  background: inherit;
+}
+
+.home-person-one {
+  left: 23rpx;
+  background: var(--jade);
+}
+
+.home-person-two {
+  right: 22rpx;
+  background: var(--lake);
+}
+
+.branch-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.branch-name {
+  color: var(--ink);
+  font-size: 29rpx;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.branch-note {
+  margin-top: 3rpx;
+  color: var(--ink-faint);
+  font-size: 21rpx;
 }
 
 .start-chat {
