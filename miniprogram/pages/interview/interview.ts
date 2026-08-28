@@ -1,5 +1,6 @@
 import {
   createContribution,
+  MemoryScope,
   MAX_MEMORY_LENGTH,
   MemoryType,
   Visibility,
@@ -10,8 +11,9 @@ import {
   DIMENSION_LABELS,
   draftTitleFromAnswers,
   InterviewDimension,
+  InterviewMode,
   nextInterviewPrompt,
-  pickSharedQuestion,
+  pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
 import { CLOUD_AI_ENABLED } from "../../config/runtime";
@@ -37,6 +39,8 @@ function today(): string {
 
 Page({
   data: {
+    mode: "personal" as InterviewMode,
+    isPersonal: true,
     protagonistName: "",
     memberName: "",
     memberRelation: "",
@@ -60,8 +64,6 @@ Page({
 
     // 「随手记 / 回忆录」沿用原型的说法，在整理时才选，入口仍然只有一个。
     memoryType: "note" as MemoryType,
-    // 原型的「也分享到记忆之家？」= 把这段设为家庭可见。
-    shareToMemoryHome: false,
     saving: false,
     saved: false,
 
@@ -71,14 +73,17 @@ Page({
 
   messageSeq: 0,
 
-  onLoad() {
+  onLoad(options: { mode?: string }) {
     const state = loadRoomState();
     const member = loadCurrentMember(state);
     const isElder = member.role === "elder";
-    const question = pickSharedQuestion(sharedQuestionSeed());
+    const mode: InterviewMode = options.mode === "family" ? "family" : "personal";
+    const question = pickInterviewQuestion(sharedQuestionSeed(), mode);
 
     this.setData({
-      protagonistName: state.protagonistName,
+      mode,
+      isPersonal: mode === "personal",
+      protagonistName: mode === "personal" ? member.name : state.protagonistName,
       memberName: member.name,
       memberRelation: member.relation,
       isElder,
@@ -87,16 +92,15 @@ Page({
 
     this.pushMessage(
       "opening",
-      isElder
-        ? `${question.text}\n（这是今天全家的同一个问题，你就当讲给孩子们听。）`
-        : `${question.text}\n（说说你记得的${state.protagonistName}，想到哪儿说到哪儿。）`,
+      mode === "personal"
+        ? `${question.text}\n（这段只写进你自己的人生之书，请用“我”来讲。）`
+        : `${question.text}\n（讲一段你和家人共同经历的事，请用“我们”来讲。）`,
     );
   },
 
   /**
    * 没点「整理成片段」就直接退出时，聊天记录不能白讲。
-   * 这里自动存成"只给老人看"的回忆片段：这是最保守的可见范围，
-   * 不会在讲述人没做选择的情况下把内容摊给其他家人。
+   * 个人采访自动存回自己书里；家庭采访保存为待确认的家庭记忆。
    */
   onUnload() {
     wx.disableAlertBeforeUnload();
@@ -113,7 +117,8 @@ Page({
           text: this.data.answers.join(" ").slice(0, MAX_MEMORY_LENGTH),
           title: draftTitleFromAnswers(this.data.answers),
           memoryType: "note",
-          visibility: "private",
+          scope: this.data.mode as MemoryScope,
+          visibility: this.data.isPersonal ? "private" : "family",
         }),
         state,
       );
@@ -151,13 +156,16 @@ Page({
     this.setData({ answers, inputText: "", asking: true });
 
     wx.enableAlertBeforeUnload({
-      message: `现在离开的话，以上聊天记录会先为你保存成「只给${this.data.protagonistName}看」的回忆片段。想让家人也看到，请回去点「整理成片段」。`,
+      message: this.data.isPersonal
+        ? "现在离开的话，以上聊天记录会先保存到你自己的人生之书。"
+        : "现在离开的话，以上聊天记录会先保存为待确认的家庭记忆。",
     });
 
     // 本地规则引擎：每轮只挑一个还没问过的方向，且不连着问同一个。
     const prompt = nextInterviewPrompt({
       answer,
       askedDimensions: this.data.askedDimensions,
+      mode: this.data.mode,
     });
 
     setTimeout(() => {
@@ -210,10 +218,6 @@ Page({
     this.setData({ memoryType: event.currentTarget.dataset.type });
   },
 
-  toggleShare() {
-    this.setData({ shareToMemoryHome: !this.data.shareToMemoryHome });
-  },
-
   notYet() {
     wx.showToast({ title: "照片和语音赛后接入", icon: "none" });
   },
@@ -225,8 +229,7 @@ Page({
     try {
       const state = loadRoomState();
       const member = loadCurrentMember(state);
-      // 没有点「分享到记忆之家」就只留在自己的人生之书里。
-      const visibility: Visibility = this.data.shareToMemoryHome ? "family" : "private";
+      const visibility: Visibility = this.data.isPersonal ? "private" : "family";
       appendContribution(
         createContribution({
           authorMemberId: member.id,
@@ -235,6 +238,7 @@ Page({
           text: this.data.draftText,
           title: this.data.draftTitle,
           memoryType: this.data.memoryType,
+          scope: this.data.mode as MemoryScope,
           visibility,
         }),
         state,
@@ -243,10 +247,9 @@ Page({
       this.setData({ saved: true });
       wx.disableAlertBeforeUnload();
       wx.showToast({
-        title:
-          visibility === "private"
-            ? `已存进人生之书，只有${state.protagonistName}看得到`
-            : `已分享，等${state.protagonistName}确认后家人才看得到`,
+        title: this.data.isPersonal
+          ? "已存进我的人生之书"
+          : "已存进记忆之家，等待确认",
         icon: "none",
         duration: 2400,
       });

@@ -1,10 +1,14 @@
 import {
-  biographySourceContributions,
-  biographySourceFingerprint,
   BiographyDraft,
+  personalBookContributions,
+  personalBookSourceFingerprint,
 } from "../../domain/biography";
 import { generateBiography } from "../../services/biographyService";
-import { loadRoomState, saveDraftIfSourcesUnchanged } from "../../services/roomStorage";
+import {
+  loadCurrentMember,
+  loadRoomState,
+  savePersonalDraftIfSourcesUnchanged,
+} from "../../services/roomStorage";
 
 interface SourceView {
   id: string;
@@ -35,16 +39,17 @@ Page({
 
   refresh() {
     const state = loadRoomState();
-    const qualified = biographySourceContributions(state.contributions);
-    const draft = state.draft;
+    const member = loadCurrentMember(state);
+    const qualified = personalBookContributions(state.contributions, member.id);
+    const draft = state.personalDrafts?.[member.id];
     const isCloudDraft = draft?.generationMode === "cloud-ai";
 
     this.setData({
-      protagonistName: state.protagonistName,
+      protagonistName: member.name,
       sources: qualified.map((item) => ({
         id: item.id,
         text: item.text,
-        byline: `${item.authorName} · ${item.relation}`,
+        byline: `${member.name} · 亲自讲述`,
       })),
       sourceCount: qualified.length,
       draft,
@@ -52,8 +57,8 @@ Page({
       modeLabel: draft ? (isCloudDraft ? "AI 云生成草稿" : "本地演示整理") : "",
       modeNote: draft
         ? isCloudDraft
-          ? "由云端模型依据下方来源写成，家人需要复核之后才算数。"
-          : "云 AI 未启用，这段文字是按规则拼接来源得到的，不是模型创作。"
+          ? "由云端模型只依据我亲自讲述的片段写成，我可以继续修改。"
+          : "云 AI 未启用，这段文字只按规则整理我的原话，不是模型创作。"
         : "",
       stale: Boolean(draft) && draft!.sourceCount !== qualified.length,
     });
@@ -67,17 +72,23 @@ Page({
     if (this.data.generating) return;
 
     const state = loadRoomState();
-    if (biographySourceContributions(state.contributions).length === 0) {
-      wx.showToast({ title: "还没有可用的来源", icon: "none" });
+    const member = loadCurrentMember(state);
+    if (personalBookContributions(state.contributions, member.id).length === 0) {
+      wx.showToast({ title: "还没有写下自己的经历", icon: "none" });
       return;
     }
 
     // 记录生成时的来源指纹：生成期间来源若发生变化，旧结果必须丢弃。
-    const sourceFingerprint = biographySourceFingerprint(state);
+    const sourceFingerprint = personalBookSourceFingerprint(state, member.id);
     this.setData({ generating: true });
     try {
-      const draft = await generateBiography(state);
-      if (!saveDraftIfSourcesUnchanged(draft, sourceFingerprint, loadRoomState())) {
+      const draft = await generateBiography(state, member);
+      if (!savePersonalDraftIfSourcesUnchanged(
+        draft,
+        sourceFingerprint,
+        member.id,
+        loadRoomState(),
+      )) {
         this.refresh();
         wx.showToast({ title: "来源刚刚变了，请重新整理", icon: "none", duration: 2400 });
         return;

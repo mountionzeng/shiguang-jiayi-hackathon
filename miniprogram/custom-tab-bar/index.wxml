@@ -7,7 +7,7 @@
 
   <view class="plus" bindtap="startInterview">
     <text class="plus-sign">＋</text>
-    <text class="plus-text">回忆采访</text>
+    <text class="plus-text">{{selected === 0 ? '写我的故事' : '记共同回忆'}}</text>
   </view>
 
   <view

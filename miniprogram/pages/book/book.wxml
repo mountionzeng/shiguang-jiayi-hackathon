@@ -5,7 +5,7 @@
     <view class="no-source wash">
       <view class="no-source-title serif">还写不了</view>
       <view class="no-source-note">
-        章节只能用 {{protagonistName}} 确认过、并且家庭可见的片段写成。现在一条都还没有，所以这里不会先编一段出来占位。
+        人生之书只能用 {{protagonistName}} 亲自讲述的经历写成。家人的共同记忆不会混进来；现在还没有个人片段，所以这里不会编一段占位。
       </view>
       <button class="btn btn-ghost no-source-btn" bindtap="goBack">回去先讲一段</button>
     </view>
@@ -15,8 +15,8 @@
     <!-- 章节 -->
     <view class="chapter" wx:if="{{draft}}">
       <view class="chapter-top">
-        <text class="tag tag-apricot"><text class="tag-mark">草</text>草稿，等家人复核</text>
-        <text class="chapter-sources" bindtap="toggleSources">{{draft.sourceCount}} 条来源</text>
+        <text class="tag tag-apricot"><text class="tag-mark">我</text>我的书稿</text>
+        <text class="chapter-sources" bindtap="toggleSources">{{draft.sourceCount}} 段亲历</text>
       </view>
 
       <view class="chapter-title serif">{{draft.title}}</view>
@@ -39,8 +39,8 @@
 
     <!-- 还没整理过 -->
     <view class="not-yet" wx:if="{{!draft}}">
-      <view class="not-yet-title serif">有 {{sourceCount}} 条可以用的片段了</view>
-      <view class="not-yet-note">把它们整理成一章，读起来才像一本书。原始片段不会因此消失。</view>
+      <view class="not-yet-title serif">已经写下 {{sourceCount}} 段自己的经历</view>
+      <view class="not-yet-note">把它们整理成一章，读起来才像一本书。记忆之家的家庭故事不会被带进来。</view>
     </view>
 
     <button
@@ -53,7 +53,7 @@
     <!-- 来源展开 -->
     <view class="sources">
       <view class="sources-head" bindtap="toggleSources">
-        <text class="sources-title">这一章依据的 {{sourceCount}} 条来源</text>
+        <text class="sources-title">这一章依据的 {{sourceCount}} 段个人讲述</text>
         <text class="sources-toggle">{{showSources ? '收起' : '展开'}}</text>
       </view>
 
@@ -61,7 +61,7 @@
         <view class="source-item" wx:for="{{sources}}" wx:key="id">
           <view class="source-text serif">{{item.text}}</view>
           <view class="source-foot">
-            <text class="tag tag-jade"><text class="tag-mark">✓</text>{{protagonistName}} 已确认</text>
+            <text class="tag tag-jade"><text class="tag-mark">我</text>亲自讲述</text>
             <text class="source-by">{{item.byline}}</text>
           </view>
         </view>

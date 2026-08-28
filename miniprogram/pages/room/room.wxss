@@ -4,6 +4,47 @@
   padding: 8rpx 0 24rpx;
 }
 
+.room-head .eyebrow {
+  margin-bottom: 8rpx;
+}
+
+.elder-task {
+  display: flex;
+  align-items: center;
+  margin: 26rpx 0 10rpx;
+  padding: 26rpx 30rpx;
+  border-radius: 28rpx;
+  background: var(--coral-soft);
+  border: 2rpx solid rgba(199, 69, 46, 0.28);
+}
+
+.elder-task-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.elder-task-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--coral);
+}
+
+.elder-task-note {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 25rpx;
+  color: var(--ink-soft);
+}
+
+.elder-task-go {
+  flex-shrink: 0;
+  padding-left: 20rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--coral);
+}
+
 .room-title {
   font-size: 46rpx;
   font-weight: 600;

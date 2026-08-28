@@ -6,13 +6,37 @@ import {
   BiographyDraft,
   createContribution,
   createInitialRoomState,
+  personalBookSourceFingerprint,
   reviewContribution,
 } from "../miniprogram/domain/biography";
 import {
+  appendContribution,
   loadRoomState,
+  savePersonalDraftIfSourcesUnchanged,
   saveDraftIfSourcesUnchanged,
   saveRoomState,
 } from "../miniprogram/services/roomStorage";
+
+function installVersionedStorageMock(initial: Record<string, unknown> = {}) {
+  const stored = new Map(Object.entries(initial));
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "wx");
+  Object.defineProperty(globalThis, "wx", {
+    configurable: true,
+    writable: true,
+    value: {
+      getStorageSync: (key: string) => stored.get(key),
+      setStorageSync: (key: string, value: unknown) => stored.set(key, value),
+    },
+  });
+
+  return {
+    read: (key: string) => stored.get(key),
+    restore: () => {
+      if (previous) Object.defineProperty(globalThis, "wx", previous);
+      else delete (globalThis as Record<string, unknown>).wx;
+    },
+  };
+}
 
 function installStorageMock() {
   let stored: unknown;
@@ -42,18 +66,36 @@ const draft: BiographyDraft = {
   generationMode: "local-demo",
 };
 
+test("v2 rooms migrate to v3 without becoming personal stories", (context) => {
+  const legacy = createInitialRoomState();
+  const scopeLess = legacy.contributions.map(({ scope: _scope, ...memory }) => memory);
+  const storage = installVersionedStorageMock({
+    "shiguang-family-room-v2": {
+      ...legacy,
+      contributions: scopeLess,
+      draft,
+    },
+  });
+  context.after(storage.restore);
+
+  const migrated = loadRoomState();
+  const persisted = storage.read("shiguang-family-room-v3") as typeof migrated;
+
+  assert.deepEqual(
+    migrated.contributions.map((memory) => memory.id),
+    legacy.contributions.map((memory) => memory.id),
+  );
+  assert.ok(migrated.contributions.every((memory) => memory.scope === "family"));
+  assert.equal(migrated.draft, undefined);
+  assert.deepEqual(persisted, migrated);
+});
+
 test("a late generation keeps unrelated newer room changes", (context) => {
   const restoreWx = installStorageMock();
   context.after(restoreWx);
 
   const initial = createInitialRoomState();
-  const started = {
-    ...initial,
-    contributions: [
-      reviewContribution(initial.contributions[0], "confirmed", "elder"),
-      initial.contributions[1],
-    ],
-  };
+  const started = initial;
   const fingerprint = biographySourceFingerprint(started);
   const newerPending = createContribution({
     id: "newer-pending",
@@ -81,13 +123,7 @@ test("a late generation is discarded after the confirmed source set changes", (c
   context.after(restoreWx);
 
   const initial = createInitialRoomState();
-  const started = {
-    ...initial,
-    contributions: [
-      reviewContribution(initial.contributions[0], "confirmed", "elder"),
-      initial.contributions[1],
-    ],
-  };
+  const started = initial;
   const fingerprint = biographySourceFingerprint(started);
   const changed = {
     ...started,
@@ -103,7 +139,10 @@ test("a late generation is discarded after the confirmed source set changes", (c
 
   assert.equal(saved, undefined);
   assert.equal(loadRoomState().draft, undefined);
-  assert.equal(loadRoomState().contributions[1].reviewStatus, "confirmed");
+  assert.equal(
+    loadRoomState().contributions.find((memory) => memory.id === "demo-memory-radio")?.reviewStatus,
+    "confirmed",
+  );
 });
 
 test("confirming a private memory does not invalidate a public-source draft", (context) => {
@@ -122,11 +161,7 @@ test("confirming a private memory does not invalidate a public-source draft", (c
   });
   const started = {
     ...initial,
-    contributions: [
-      reviewContribution(initial.contributions[0], "confirmed", "elder"),
-      initial.contributions[1],
-      privatePending,
-    ],
+    contributions: [...initial.contributions, privatePending],
   };
   const fingerprint = biographySourceFingerprint(started);
   saveRoomState({
@@ -142,5 +177,84 @@ test("confirming a private memory does not invalidate a public-source draft", (c
 
   assert.ok(saved);
   assert.equal(saved.draft?.title, draft.title);
-  assert.equal(saved.contributions[2].reviewStatus, "confirmed");
+  assert.equal(
+    saved.contributions.find((memory) => memory.id === privatePending.id)?.reviewStatus,
+    "confirmed",
+  );
+});
+
+test("a personal draft is isolated to its owner and rejects changed personal sources", (context) => {
+  const restoreWx = installStorageMock();
+  context.after(restoreWx);
+
+  const initial = createInitialRoomState();
+  saveRoomState(initial);
+  const fingerprint = personalBookSourceFingerprint(initial, "owner");
+
+  const saved = savePersonalDraftIfSourcesUnchanged(
+    draft,
+    fingerprint,
+    "owner",
+  );
+  assert.equal(saved?.personalDrafts?.owner.title, draft.title);
+  assert.equal(saved?.personalDrafts?.["member-1"], undefined);
+
+  const newerPersonal = createContribution({
+    id: "owner-new-personal",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "这是我后来想起的另一段亲身经历。",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-08-28T05:05:00.000Z"),
+  });
+  saveRoomState({
+    ...initial,
+    contributions: [...initial.contributions, newerPersonal],
+  });
+
+  assert.equal(
+    savePersonalDraftIfSourcesUnchanged(draft, fingerprint, "owner"),
+    undefined,
+  );
+});
+
+test("appending a personal story invalidates only its author's draft", (context) => {
+  const restoreWx = installStorageMock();
+  context.after(restoreWx);
+
+  const initial = createInitialRoomState();
+  const withDrafts = {
+    ...initial,
+    personalDrafts: { owner: draft, "member-1": { ...draft, title: "林秋的第一章" } },
+  };
+  const personal = createContribution({
+    id: "owner-next-story",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "这是我又想起的一段亲身经历。",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-08-28T05:06:00.000Z"),
+  });
+
+  const afterPersonal = appendContribution(personal, withDrafts);
+  assert.equal(afterPersonal.personalDrafts?.owner, undefined);
+  assert.equal(afterPersonal.personalDrafts?.["member-1"]?.title, "林秋的第一章");
+
+  const family = createContribution({
+    id: "family-next-story",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "这是我和家人共同经历的一件事。",
+    scope: "family",
+    visibility: "family",
+    now: new Date("2026-08-28T05:07:00.000Z"),
+  });
+  const afterFamily = appendContribution(family, withDrafts);
+  assert.equal(afterFamily.personalDrafts?.owner?.title, draft.title);
+  assert.equal(afterFamily.personalDrafts?.["member-1"]?.title, "林秋的第一章");
 });

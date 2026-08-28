@@ -32,88 +32,78 @@
     </view>
   </view>
 
-  <!-- 书封面：点整张进阅读，三个数据点各自跳转 -->
+  <!-- 人生之书只属于当前身份本人，不混入家人的共同记忆 -->
   <view class="cover wash">
     <view class="cover-tap" bindtap="openBook">
-      <text class="cover-label">全家一起写的人生之书</text>
-      <view class="cover-title serif">{{protagonistName}}</view>
+      <text class="cover-label">只写我亲自经历的故事</text>
+      <view class="cover-title serif">{{protagonistName}}的人生之书</view>
       <view class="cover-sub" wx:if="{{hasFragments}}">{{chapterLabel}}</view>
-      <view class="cover-sub" wx:else>还没有人写下第一段，等你开个头</view>
+      <view class="cover-sub" wx:else>还没有写下第一段，从一件小事开始就好</view>
     </view>
 
     <view class="cover-stats">
-      <view class="cover-stat" bindtap="openFragments">
+      <view class="cover-stat">
         <text class="cover-stat-num serif">{{fragmentCount}}</text>
-        <text class="cover-stat-label">回忆片段</text>
+        <text class="cover-stat-label">我的片段</text>
       </view>
       <view class="cover-stat-line"></view>
-      <view class="cover-stat" bindtap="openPending">
-        <text class="cover-stat-num serif">{{pendingCount}}</text>
-        <text class="cover-stat-label">待确认</text>
+      <view class="cover-stat" bindtap="openBook">
+        <text class="cover-stat-num serif">{{chapterCount}}</text>
+        <text class="cover-stat-label">书稿章节</text>
       </view>
       <view class="cover-stat-line"></view>
       <view class="cover-stat" bindtap="openMemoryHome">
         <text class="cover-stat-num serif">{{memberCount}}</text>
-        <text class="cover-stat-label">参与家人</text>
+        <text class="cover-stat-label">位家人</text>
       </view>
     </view>
   </view>
 
-  <!-- 老人身份：待确认任务优先 -->
-  <view class="elder-task" wx:if="{{identity.isElder && pendingCount > 0}}" bindtap="openPending">
-    <view class="elder-task-copy">
-      <view class="elder-task-title">有 {{pendingCount}} 条家人的说法，等你亲自核对</view>
-      <text class="elder-task-note">一次只看一条，确认之后才会写进书里</text>
-    </view>
-    <text class="elder-task-go">去核对</text>
-  </view>
-
-  <!-- 今日共享问题 -->
+  <!-- 人生之书的问题只问自己 -->
   <view class="question-card">
     <view class="question-head">
-      <text class="tag tag-apricot"><text class="tag-mark">问</text>今天全家的同一个问题</text>
-      <text class="question-date">每个人分开回答</text>
+      <text class="tag tag-apricot"><text class="tag-mark">我</text>今天，问问自己</text>
+      <text class="question-date">只进入我的书</text>
     </view>
     <view class="question-text serif">{{todayQuestion.text}}</view>
     <view class="question-hint">{{todayQuestion.hint}}</view>
     <button class="btn btn-primary question-btn" bindtap="startInterview">
-      {{identity.isElder ? '讲讲我自己' : '说说我记得的'}}
+      讲讲我的故事
     </button>
   </view>
 
   <!-- 有内容：最近确认的片段 -->
   <view class="fragments" wx:if="{{hasFragments}}">
     <view class="section-head">
-      <text class="section-title">已经确认的片段</text>
-      <text class="section-more" bindtap="openFragments">全部 {{fragmentCount}} 条</text>
+      <text class="section-title">我写下的片段</text>
+      <text class="section-more">共 {{fragmentCount}} 条</text>
     </view>
 
-    <view class="fragment-card" wx:for="{{recentFragments}}" wx:key="id" bindtap="openFragments">
+    <view class="fragment-card" wx:for="{{recentFragments}}" wx:key="id" bindtap="openBook">
       <view class="fragment-text serif">{{item.text}}</view>
       <view class="fragment-foot">
-        <text class="tag tag-jade"><text class="tag-mark">✓</text>本人已确认</text>
-        <text class="fragment-byline">{{item.byline}} · {{item.dateLabel}}</text>
+        <text class="tag tag-jade"><text class="tag-mark">我</text>{{item.typeLabel}}</text>
+        <text class="fragment-byline">{{item.dateLabel}}</text>
       </view>
     </view>
   </view>
 
-  <!-- 空状态：引导全家完成第一段采访 -->
+  <!-- 空状态：只引导用户讲自己的亲历 -->
   <view class="empty-block wash" wx:else>
     <view class="brand-mark empty-mark"></view>
     <view class="empty-title serif">这本书还是空的</view>
     <view class="empty-desc">
-      先由任意一位家人回答上面的问题。老人确认之后，第一段回忆就会出现在这里。
+      这里不替任何家人作传，只收下你亲自经历、亲口讲出的故事。
     </view>
     <view class="empty-steps">
-      <view class="empty-step"><text class="empty-step-num">1</text>家人分头回答同一个问题</view>
-      <view class="empty-step"><text class="empty-step-num">2</text>{{protagonistName}} 逐条确认是不是这样</view>
-      <view class="empty-step"><text class="empty-step-num">3</text>确认过的片段整理成章节</view>
+      <view class="empty-step"><text class="empty-step-num">1</text>回答一个关于自己的问题</view>
+      <view class="empty-step"><text class="empty-step-num">2</text>整理并保留自己的原话</view>
+      <view class="empty-step"><text class="empty-step-num">3</text>把片段慢慢写成我的书</view>
     </view>
   </view>
 
   <view class="demo-note" wx:if="{{localDemoOnly}}">
-    当前未连云端，采访提问与章节整理均为本地演示逻辑，不是 AI 生成。
+    当前未连云端，个人采访与章节整理均为本地演示逻辑，不是 AI 生成。
   </view>
   <button class="btn btn-quiet" bindtap="resetDemo">重置演示内容</button>
 </view>
-

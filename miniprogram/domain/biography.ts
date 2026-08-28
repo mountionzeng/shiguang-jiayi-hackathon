@@ -2,6 +2,7 @@ export type Visibility = "family" | "private";
 export type ReviewStatus = "pending" | "confirmed" | "rejected" | "conflict";
 export type ReviewerRole = "elder" | "owner" | "contributor";
 export type GenerationMode = "local-demo" | "cloud-ai";
+export type MemoryScope = "personal" | "family";
 
 /**
  * 片段类型，沿用队友原型的「随手记 / 回忆录」两种写法。
@@ -26,6 +27,13 @@ export interface MemoryContribution {
   text: string;
   title?: string;
   memoryType?: MemoryType;
+  /**
+   * personal：讲述人自己的亲历，只进入他/她的人生之书。
+   * family：与家人的共同记忆，只在确认后进入记忆之家。
+   *
+   * 旧版缓存没有该字段；读取时一律按 family 处理，避免旧家庭素材误入个人书。
+   */
+  scope?: MemoryScope;
   visibility: Visibility;
   reviewStatus: ReviewStatus;
   createdAt: string;
@@ -44,6 +52,8 @@ export interface FamilyRoomState {
   protagonistName: string;
   members: FamilyMember[];
   contributions: MemoryContribution[];
+  personalDrafts?: Record<string, BiographyDraft>;
+  /** @deprecated 旧版以家庭主人公为中心的章节草稿，只保留用于缓存兼容。 */
   draft?: BiographyDraft;
 }
 
@@ -54,6 +64,7 @@ export interface CreateContributionInput {
   text: string;
   title?: string;
   memoryType?: MemoryType;
+  scope?: MemoryScope;
   visibility: Visibility;
   now?: Date;
   id?: string;
@@ -66,8 +77,12 @@ export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
 };
 export const VISIBILITY_LABELS: Record<Visibility, string> = {
   family: "家庭可见",
-  private: "私密提交 · 仅本人和老人可见",
+  private: "仅自己可见",
 };
+
+export function contributionScope(contribution: MemoryContribution): MemoryScope {
+  return contribution.scope ?? "family";
+}
 
 function normalizeMemoryText(text: string): string {
   return text.trim().replace(/\s+/g, " ");
@@ -95,8 +110,10 @@ export function createContribution(input: CreateContributionInput): MemoryContri
     text,
     title: input.title?.trim() || undefined,
     memoryType: input.memoryType ?? "note",
-    visibility: input.visibility,
-    reviewStatus: "pending",
+    scope: input.scope ?? "family",
+    visibility: input.scope === "personal" ? "private" : input.visibility,
+    // 自己讲自己的故事，无需交给另一位“主人公”确认。
+    reviewStatus: input.scope === "personal" ? "confirmed" : "pending",
     createdAt: now.toISOString(),
   };
 }
@@ -106,11 +123,24 @@ export function reviewContribution(
   reviewStatus: Exclude<ReviewStatus, "pending">,
   reviewerRole: ReviewerRole,
 ): MemoryContribution {
+  if (contributionScope(contribution) === "personal") {
+    throw new Error("个人故事由讲述者本人负责，不进入家庭确认");
+  }
   if (reviewerRole !== "elder") {
     throw new Error("只有传记主人公可以确认事实");
   }
 
   return { ...contribution, reviewStatus };
+}
+
+export function pendingFamilyContributions(
+  contributions: MemoryContribution[],
+): MemoryContribution[] {
+  return contributions.filter(
+    (contribution) =>
+      contributionScope(contribution) === "family" &&
+      contribution.reviewStatus === "pending",
+  );
 }
 
 export function confirmedContributions(
@@ -124,7 +154,21 @@ export function biographySourceContributions(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
-      contribution.reviewStatus === "confirmed" && contribution.visibility === "family",
+      contributionScope(contribution) === "family" &&
+      contribution.reviewStatus === "confirmed" &&
+      contribution.visibility === "family",
+  );
+}
+
+/** 当前用户人生之书的素材：只取他/她亲自讲述的个人故事。 */
+export function personalBookContributions(
+  contributions: MemoryContribution[],
+  memberId: string,
+): MemoryContribution[] {
+  return contributions.filter(
+    (contribution) =>
+      contributionScope(contribution) === "personal" &&
+      contribution.authorMemberId === memberId,
   );
 }
 
@@ -140,9 +184,11 @@ export function visibleContributionsForMember(
   contributions: MemoryContribution[],
   viewer: FamilyMember,
 ): MemoryContribution[] {
-  if (viewer.role === "elder") return contributions;
-
   return contributions.filter((contribution) => {
+    if (contributionScope(contribution) === "personal") {
+      return contribution.authorMemberId === viewer.id;
+    }
+    if (viewer.role === "elder") return true;
     if (contribution.authorMemberId === viewer.id) return true;
     return contribution.visibility === "family" && contribution.reviewStatus === "confirmed";
   });
@@ -156,7 +202,7 @@ export function pendingContributionsFor(
   contributions: MemoryContribution[],
   viewer: FamilyMember,
 ): MemoryContribution[] {
-  const pending = contributions.filter((contribution) => contribution.reviewStatus === "pending");
+  const pending = pendingFamilyContributions(contributions);
   if (viewer.role === "elder") return pending;
   return pending.filter((contribution) => contribution.authorMemberId === viewer.id);
 }
@@ -171,6 +217,23 @@ export function biographySourceFingerprint(state: FamilyRoomState): string {
         authorName: memory.authorName,
         relation: memory.relation,
         text: memory.text,
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  });
+}
+
+export function personalBookSourceFingerprint(
+  state: FamilyRoomState,
+  memberId: string,
+): string {
+  return JSON.stringify({
+    memberId,
+    sources: personalBookContributions(state.contributions, memberId)
+      .map((memory) => ({
+        id: memory.id,
+        text: memory.text,
+        title: memory.title,
+        memoryType: memory.memoryType,
       }))
       .sort((left, right) => left.id.localeCompare(right.id)),
   });
@@ -204,6 +267,31 @@ export function buildLocalBiographyDraft(
   };
 }
 
+export function buildLocalPersonalBiographyDraft(
+  memberName: string,
+  memberId: string,
+  contributions: MemoryContribution[],
+  now = new Date(),
+): BiographyDraft {
+  const personal = personalBookContributions(contributions, memberId);
+
+  if (personal.length === 0) {
+    throw new Error("至少写下一段自己的经历后才能生成章节");
+  }
+
+  return {
+    title: "第一章｜我记得的那一天",
+    paragraphs: [
+      `这是${memberName}亲自讲述的人生片段。以下文字只整理自 ${personal.length} 段自己的回忆。`,
+      ...personal.map((memory) => `“${memory.text}”`),
+      "这些亲历先被认真地收在这里，等我想起更多细节，再继续往下写。",
+    ],
+    sourceCount: personal.length,
+    generatedAt: now.toISOString(),
+    generationMode: "local-demo",
+  };
+}
+
 export function createInitialRoomState(): FamilyRoomState {
   return {
     roomName: "林家的拾光房间",
@@ -216,20 +304,36 @@ export function createInitialRoomState(): FamilyRoomState {
     ],
     contributions: [
       createContribution({
-        id: "demo-memory-rain",
+        id: "demo-personal-rain",
         authorMemberId: "owner",
         authorName: "林岚",
         relation: "外孙女",
-        text: "小时候每逢下雨，外公都会提前站在巷口等我放学，手里总多带一把小伞。",
-        visibility: "family",
-        now: new Date("2026-08-28T02:10:00.000Z"),
+        text: "我小时候最喜欢下雨天，因为放学走到巷口时，总能看见外公带着两把伞在那里等我。",
+        scope: "personal",
+        visibility: "private",
+        now: new Date("2026-08-28T02:05:00.000Z"),
       }),
+      reviewContribution(
+        createContribution({
+          id: "demo-memory-rain",
+          authorMemberId: "owner",
+          authorName: "林岚",
+          relation: "外孙女",
+          text: "小时候每逢下雨，外公都会提前站在巷口等我放学，手里总多带一把小伞。",
+          scope: "family",
+          visibility: "family",
+          now: new Date("2026-08-28T02:10:00.000Z"),
+        }),
+        "confirmed",
+        "elder",
+      ),
       createContribution({
         id: "demo-memory-radio",
         authorMemberId: "member-1",
         authorName: "林秋",
         relation: "女儿",
         text: "父亲年轻时喜欢修收音机，邻居家的机器坏了也常来找他。具体是哪一年，我记不清了。",
+        scope: "family",
         visibility: "family",
         now: new Date("2026-08-28T02:18:00.000Z"),
       }),
@@ -241,7 +345,7 @@ export function createInitialRoomState(): FamilyRoomState {
  * 从记忆之家撤下自己的片段。
  *
  * 规则来源：交接文档「取消分享／从记忆之家删除」。
- * 只撤销"家庭可见"这一件事：原始内容继续留在人生之书，投稿人和老人依然看得到，
+ * 只撤销"家庭可见"这一件事：原始内容仍由投稿人保留，老人依然看得到，
  * 老人的确认结论也不受影响。真正的删除是另一个动作，必须由本人另行明确执行。
  */
 export function revokeFamilyVisibility(

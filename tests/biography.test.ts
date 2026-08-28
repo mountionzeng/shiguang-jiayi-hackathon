@@ -4,10 +4,13 @@ import test from "node:test";
 import {
   biographySourceContributions,
   buildLocalBiographyDraft,
+  buildLocalPersonalBiographyDraft,
   confirmedContributions,
   createContribution,
   createInitialRoomState,
   MEMORY_TYPE_LABELS,
+  personalBookContributions,
+  pendingFamilyContributions,
   pendingContributionsFor,
   reviewContribution,
   revokeFamilyVisibility,
@@ -30,6 +33,78 @@ test("a family member can submit a normalized private memory", () => {
   assert.equal(contribution.text, "外公 总会等我放学。");
   assert.equal(contribution.visibility, "private");
   assert.equal(contribution.reviewStatus, "pending");
+});
+
+test("a personal story belongs only to its author's life book", () => {
+  const personal = createContribution({
+    id: "owner-personal",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "我第一次离开家去外地读书，是在一个下雨的早晨。",
+    scope: "personal",
+    // 即使调用方误传 family，个人故事也必须保持私有。
+    visibility: "family",
+    now: fixedNow,
+  });
+
+  assert.equal(personal.reviewStatus, "confirmed");
+  assert.equal(personal.visibility, "private");
+  assert.deepEqual(personalBookContributions([personal], "owner"), [personal]);
+  assert.deepEqual(personalBookContributions([personal], "member-1"), []);
+  assert.deepEqual(biographySourceContributions([personal]), []);
+  const state = createInitialRoomState();
+  const elder = state.members.find((member) => member.id === "elder");
+  assert.ok(elder);
+  assert.deepEqual(visibleContributionsForMember([personal], elder), []);
+  assert.throws(
+    () => reviewContribution(personal, "confirmed", "elder"),
+    /个人故事.*不进入家庭确认/,
+  );
+});
+
+test("family review selectors ignore even malformed pending personal records", () => {
+  const family = createContribution({
+    id: "family-pending",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "我和家人一起走过那条路。",
+    scope: "family",
+    visibility: "family",
+    now: fixedNow,
+  });
+  const malformedPersonal = {
+    ...createContribution({
+      id: "personal-corrupt-pending",
+      authorMemberId: "owner",
+      authorName: "林岚",
+      relation: "外孙女",
+      text: "这是我自己的故事。",
+      scope: "personal",
+      visibility: "private",
+      now: fixedNow,
+    }),
+    reviewStatus: "pending" as const,
+  };
+
+  assert.deepEqual(pendingFamilyContributions([malformedPersonal, family]), [family]);
+});
+
+test("a personal biography draft never pulls in memory-home stories", () => {
+  const state = createInitialRoomState();
+  const draft = buildLocalPersonalBiographyDraft(
+    "林岚",
+    "owner",
+    state.contributions,
+    fixedNow,
+  );
+  const fullText = draft.paragraphs.join("\n");
+
+  assert.equal(draft.sourceCount, 1);
+  assert.match(fullText, /我小时候最喜欢下雨天/);
+  assert.doesNotMatch(fullText, /父亲年轻时喜欢修收音机/);
+  assert.doesNotMatch(fullText, /小时候每逢下雨，外公都会提前站在巷口/);
 });
 
 test("blank and oversized memories are rejected", () => {

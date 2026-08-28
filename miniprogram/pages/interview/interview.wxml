@@ -3,10 +3,12 @@
   <view class="who-bar">
     <view class="who-copy">
       <text class="who-name">{{memberName}} · {{memberRelation}}</text>
-      <text class="who-note" wx:if="{{isElder}}">你在讲自己的往事</text>
-      <text class="who-note" wx:else>你在讲你记得的 {{protagonistName}}</text>
+      <text class="who-note" wx:if="{{isPersonal}}">人生之书 · 我讲自己的往事</text>
+      <text class="who-note" wx:else>记忆之家 · 我讲和家人的共同经历</text>
     </view>
-    <text class="tag tag-lake"><text class="tag-mark">独</text>独立采访</text>
+    <text class="tag {{isPersonal ? 'tag-apricot' : 'tag-lake'}}">
+      <text class="tag-mark">{{isPersonal ? '我' : '家'}}</text>{{isPersonal ? '我的故事' : '共同记忆'}}
+    </text>
   </view>
 
   <!-- ============ 对话 ============ -->
@@ -138,21 +140,21 @@
 
         <view class="draft-rule"></view>
         <view class="draft-hint">
-          保存后放进 {{protagonistName}} 的人生之书 · {{memoryType === 'note' ? '随手记' : '回忆录'}}
+          {{isPersonal ? '保存后只进入我的人生之书' : '保存后只进入记忆之家'}} · {{memoryType === 'note' ? '随手记' : '回忆录'}}
         </view>
 
-        <!-- 原型的「也分享到记忆之家？」：打开即设为家庭可见 -->
-        <view class="share-row {{shareToMemoryHome ? 'share-row-on' : ''}}" bindtap="toggleShare">
+        <!-- 两个入口的去向固定，避免把个人传记与家庭共同记忆再次混在一起。 -->
+        <view class="share-row share-row-on">
           <view class="share-copy">
-            <text class="share-title">也分享到记忆之家？</text>
-            <text class="share-note" wx:if="{{shareToMemoryHome}}">
-              等 {{protagonistName}} 确认属实后，家人就能在记忆之家看到。
+            <text class="share-title">{{isPersonal ? '这是我的人生故事' : '这是我们的家庭记忆'}}</text>
+            <text class="share-note" wx:if="{{isPersonal}}">
+              只属于当前用户，不会出现在记忆之家。
             </text>
             <text class="share-note" wx:else>
-              不分享的话，这段只留在人生之书，只有你和 {{protagonistName}} 看得到。
+              确认后家人能看见，但不会写进任何人的人生之书。
             </text>
           </view>
-          <text class="share-action">{{shareToMemoryHome ? '已选择分享 ✓' : '分享 →'}}</text>
+          <text class="share-action">去向已确定 ✓</text>
         </view>
 
         <view class="scroll-tail"></view>
@@ -165,7 +167,7 @@
         <button
           class="btn btn-primary save-go {{(saving || tooLong) ? 'btn-disabled' : ''}}"
           bindtap="save"
-        >{{saving ? '正在保存…' : '保存到书里'}}</button>
+        >{{saving ? '正在保存…' : (isPersonal ? '保存到我的书' : '保存到记忆之家')}}</button>
       </view>
     </view>
   </block>

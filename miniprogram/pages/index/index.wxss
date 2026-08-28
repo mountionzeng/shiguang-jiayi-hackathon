@@ -127,7 +127,7 @@
 
 .cover-title {
   margin-top: 16rpx;
-  font-size: 68rpx;
+  font-size: 56rpx;
   font-weight: 600;
   line-height: 1.2;
   color: var(--ink);
@@ -179,45 +179,6 @@
   width: 2rpx;
   margin: 24rpx 0;
   background: rgba(31, 58, 52, 0.12);
-}
-
-/* ---- 老人待确认任务 ---- */
-
-.elder-task {
-  display: flex;
-  align-items: center;
-  margin-top: 28rpx;
-  padding: 28rpx 32rpx;
-  border-radius: 28rpx;
-  background: var(--coral-soft);
-  border: 2rpx solid rgba(199, 69, 46, 0.28);
-}
-
-.elder-task-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.elder-task-title {
-  font-size: 34rpx;
-  font-weight: 600;
-  line-height: 1.45;
-  color: var(--coral);
-}
-
-.elder-task-note {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 26rpx;
-  color: var(--ink-soft);
-}
-
-.elder-task-go {
-  flex-shrink: 0;
-  padding-left: 20rpx;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: var(--coral);
 }
 
 /* ---- 今日共享问题 ---- */

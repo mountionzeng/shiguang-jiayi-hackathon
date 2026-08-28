@@ -52,6 +52,7 @@ function formatTime(iso: string): string {
 
 Page({
   data: {
+    roomName: "",
     protagonistName: "",
     viewerId: "",
     viewerName: "",
@@ -64,6 +65,8 @@ Page({
     hasAnyQualified: false,
 
     myPendingCount: 0,
+    pendingCount: 0,
+    canReview: false,
 
     detail: null as TimelineItem | null,
   },
@@ -81,7 +84,8 @@ Page({
   refresh(state: FamilyRoomState = loadRoomState()) {
     const viewer = loadCurrentMember(state);
 
-    // 记忆之家只呈现"老人已确认 + 家庭可见"的片段。
+    // 记忆之家只呈现"家庭故事 + 已确认 + 家庭可见"的片段。
+    // personal 作用域的内容永远只留在各自的人生之书。
     // 待确认、拒绝、冲突和私密投稿一律不进入这条时间线。
     const qualified = biographySourceContributions(state.contributions);
     const avatarByMember = new Map(
@@ -125,6 +129,7 @@ Page({
       }));
 
     this.setData({
+      roomName: state.roomName,
       protagonistName: state.protagonistName,
       viewerId: viewer.id,
       viewerName: viewer.name,
@@ -134,6 +139,10 @@ Page({
       timeline,
       hasAnyQualified: qualified.length > 0,
       myPendingCount: pendingContributionsFor(state.contributions, viewer).length,
+      pendingCount: state.contributions.filter(
+        (item) => item.scope !== "personal" && item.reviewStatus === "pending",
+      ).length,
+      canReview: viewer.role === "elder",
       detail: this.data.detail
         ? timeline.find((item) => item.id === this.data.detail!.id) ?? null
         : null,
@@ -161,14 +170,14 @@ Page({
     wx.setClipboardData({ data: this.data.detail.text });
   },
 
-  /** 撤下只解除家庭可见，原文仍留在人生之书。 */
+  /** 撤下只解除家庭可见，不会误塞进任何人的人生之书。 */
   revokeSharing() {
     const detail = this.data.detail;
     if (!detail) return;
 
     wx.showModal({
       title: "从记忆之家撤下",
-      content: "其他家人将不再看到这一段，也不会再用来整理章节。原文仍然留在人生之书里，你和老人还看得到。",
+      content: "其他家人将不再看到这一段。它不会进入任何人的人生之书，原始记录仍由你保留。",
       confirmText: "撤下",
       cancelText: "再想想",
       success: (result) => {
@@ -189,7 +198,7 @@ Page({
           );
           this.setData({ detail: null });
           this.refresh(nextState);
-          wx.showToast({ title: "已撤下，原文仍在人生之书", icon: "none", duration: 2400 });
+          wx.showToast({ title: "已从记忆之家撤下", icon: "none", duration: 2200 });
         } catch (error) {
           wx.showToast({
             title: error instanceof Error ? error.message : "暂时无法撤下",
@@ -201,7 +210,11 @@ Page({
   },
 
   startInterview() {
-    wx.navigateTo({ url: "/pages/interview/interview" });
+    wx.navigateTo({ url: "/pages/interview/interview?mode=family" });
+  },
+
+  openReview() {
+    wx.navigateTo({ url: "/pages/review/review" });
   },
 
   goHome() {

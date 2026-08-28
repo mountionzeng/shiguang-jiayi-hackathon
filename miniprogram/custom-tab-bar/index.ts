@@ -13,7 +13,8 @@ Component({
     },
 
     startInterview() {
-      wx.navigateTo({ url: "/pages/interview/interview" });
+      const mode = this.data.selected === 0 ? "personal" : "family";
+      wx.navigateTo({ url: `/pages/interview/interview?mode=${mode}` });
     },
   },
 });

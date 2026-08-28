@@ -1,12 +1,12 @@
 import {
-  biographySourceContributions,
   FamilyMember,
   FamilyRoomState,
+  MEMORY_TYPE_LABELS,
   MemoryContribution,
-  pendingContributionsFor,
+  personalBookContributions,
 } from "../../domain/biography";
 import {
-  pickSharedQuestion,
+  pickInterviewQuestion,
   SharedQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
@@ -21,7 +21,7 @@ import {
 interface FragmentView {
   id: string;
   text: string;
-  byline: string;
+  typeLabel: string;
   dateLabel: string;
 }
 
@@ -48,7 +48,7 @@ function toFragmentViews(contributions: MemoryContribution[]): FragmentView[] {
     .map((contribution) => ({
       id: contribution.id,
       text: contribution.text,
-      byline: `${contribution.authorName} · ${contribution.relation}`,
+      typeLabel: MEMORY_TYPE_LABELS[contribution.memoryType ?? "note"],
       dateLabel: formatDate(contribution.createdAt),
     }));
 }
@@ -61,7 +61,7 @@ function toIdentityView(member: FamilyMember): IdentityView {
     relation: member.relation,
     avatarText: member.avatarText,
     isElder,
-    roleLabel: isElder ? "这本书的主人公" : "家人",
+    roleLabel: "正在看我的人生之书",
   };
 }
 
@@ -73,7 +73,6 @@ Page({
     showIdentityPicker: false,
 
     fragmentCount: 0,
-    pendingCount: 0,
     memberCount: 0,
     hasFragments: false,
 
@@ -81,6 +80,7 @@ Page({
     recentFragments: [] as FragmentView[],
 
     chapterReady: false,
+    chapterCount: 0,
     chapterLabel: "",
     localDemoOnly: !CLOUD_AI_ENABLED,
   },
@@ -99,26 +99,26 @@ Page({
   refresh(state: FamilyRoomState = loadRoomState()) {
     const member = loadCurrentMember(state);
     const identity = toIdentityView(member);
-    const qualified = biographySourceContributions(state.contributions);
-    const pending = pendingContributionsFor(state.contributions, member);
+    const personal = personalBookContributions(state.contributions, member.id);
+    const personalDraft = state.personalDrafts?.[member.id];
 
     this.setData({
-      protagonistName: state.protagonistName,
+      protagonistName: member.name,
       identity,
       identityOptions: state.members.map(toIdentityView),
-      fragmentCount: qualified.length,
-      pendingCount: pending.length,
+      fragmentCount: personal.length,
       memberCount: state.members.length,
-      hasFragments: qualified.length > 0,
-      recentFragments: toFragmentViews(qualified),
-      todayQuestion: pickSharedQuestion(sharedQuestionSeed()),
-      chapterReady: qualified.length > 0,
-      chapterLabel: state.draft ? state.draft.title : "还没有整理成章节",
+      hasFragments: personal.length > 0,
+      recentFragments: toFragmentViews(personal),
+      todayQuestion: pickInterviewQuestion(sharedQuestionSeed(), "personal"),
+      chapterReady: personal.length > 0,
+      chapterCount: personalDraft ? 1 : 0,
+      chapterLabel: personalDraft?.title ?? "还没有整理成章节",
     });
   },
 
   startInterview() {
-    wx.navigateTo({ url: "/pages/interview/interview" });
+    wx.navigateTo({ url: "/pages/interview/interview?mode=personal" });
   },
 
   openBook() {
@@ -127,23 +127,6 @@ Page({
       return;
     }
     wx.navigateTo({ url: "/pages/book/book" });
-  },
-
-  openFragments() {
-    wx.switchTab({ url: "/pages/room/room" });
-  },
-
-  openPending() {
-    if (this.data.identity && this.data.identity.isElder) {
-      wx.navigateTo({ url: "/pages/review/review" });
-      return;
-    }
-    wx.showToast({
-      title: "这些是你投稿后等待老人确认的内容",
-      icon: "none",
-      duration: 2200,
-    });
-    wx.switchTab({ url: "/pages/room/room" });
   },
 
   openMemoryHome() {

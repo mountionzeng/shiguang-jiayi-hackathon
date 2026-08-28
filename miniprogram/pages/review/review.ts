@@ -2,6 +2,7 @@ import {
   biographySourceContributions,
   FamilyRoomState,
   MemoryContribution,
+  pendingFamilyContributions,
   reviewContribution,
   ReviewStatus,
   VISIBILITY_LABELS,
@@ -53,8 +54,11 @@ Page({
   refresh(state: FamilyRoomState = loadRoomState()) {
     const viewer = loadCurrentMember(state);
     const isElder = viewer.role === "elder";
-    const pending = state.contributions.filter((item) => item.reviewStatus === "pending");
-    const handled = state.contributions.length - pending.length;
+    const familyContributions = state.contributions.filter(
+      (item) => item.scope !== "personal",
+    );
+    const pending = pendingFamilyContributions(familyContributions);
+    const handled = familyContributions.length - pending.length;
     const avatarByMember = new Map(
       state.members.map((member) => [member.id, member.avatarText]),
     );
@@ -120,8 +124,8 @@ Page({
     }
   },
 
-  goToBook() {
-    wx.navigateTo({ url: "/pages/book/book" });
+  goToMemoryHome() {
+    wx.switchTab({ url: "/pages/room/room" });
   },
 
   goBack() {

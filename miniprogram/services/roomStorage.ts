@@ -1,19 +1,45 @@
 import {
   BiographyDraft,
   biographySourceFingerprint,
+  contributionScope,
   createInitialRoomState,
   FamilyMember,
   FamilyRoomState,
   MemoryContribution,
+  personalBookSourceFingerprint,
 } from "../domain/biography";
 
-const STORAGE_KEY = "shiguang-family-room-v2";
+const STORAGE_KEY = "shiguang-family-room-v3";
+const LEGACY_STORAGE_KEY = "shiguang-family-room-v2";
+
+function readStoredRoom(key: string): FamilyRoomState | undefined {
+  const stored = wx.getStorageSync<FamilyRoomState>(key);
+  if (stored && Array.isArray(stored.contributions) && Array.isArray(stored.members)) {
+    return stored;
+  }
+  return undefined;
+}
 
 export function loadRoomState(): FamilyRoomState {
   try {
-    const stored = wx.getStorageSync<FamilyRoomState>(STORAGE_KEY);
-    if (stored && Array.isArray(stored.contributions) && Array.isArray(stored.members)) {
-      return stored;
+    const current = readStoredRoom(STORAGE_KEY);
+    if (current) return current;
+
+    const legacy = readStoredRoom(LEGACY_STORAGE_KEY);
+    if (legacy) {
+      const migrated: FamilyRoomState = {
+        ...legacy,
+        // v2 没有 scope；一律归入家庭记忆，绝不能猜成某个人的亲历。
+        contributions: legacy.contributions.map((contribution) => ({
+          ...contribution,
+          scope: contributionScope(contribution),
+        })),
+        personalDrafts: legacy.personalDrafts ?? {},
+        // v2 草稿由家庭公开素材生成，不能冒充任何成员的新人生之书。
+        draft: undefined,
+      };
+      saveRoomState(migrated);
+      return migrated;
     }
   } catch (error) {
     console.warn("无法读取本地家庭房间，将使用演示数据", error);
@@ -42,14 +68,41 @@ export function saveDraftIfSourcesUnchanged(
   return next;
 }
 
+export function savePersonalDraftIfSourcesUnchanged(
+  draft: BiographyDraft,
+  sourceFingerprint: string,
+  memberId: string,
+  latestState = loadRoomState(),
+): FamilyRoomState | undefined {
+  if (personalBookSourceFingerprint(latestState, memberId) !== sourceFingerprint) {
+    return undefined;
+  }
+
+  const next = {
+    ...latestState,
+    personalDrafts: {
+      ...(latestState.personalDrafts ?? {}),
+      [memberId]: draft,
+    },
+  };
+  saveRoomState(next);
+  return next;
+}
+
 export function appendContribution(
   contribution: MemoryContribution,
   state = loadRoomState(),
 ): FamilyRoomState {
+  const personalDrafts = { ...(state.personalDrafts ?? {}) };
+  if (contributionScope(contribution) === "personal") {
+    delete personalDrafts[contribution.authorMemberId];
+  }
+
   const next = {
     ...state,
     contributions: [...state.contributions, contribution],
-    draft: undefined,
+    personalDrafts,
+    draft: contributionScope(contribution) === "family" ? undefined : state.draft,
   };
   saveRoomState(next);
   return next;

@@ -9,6 +9,7 @@
  */
 
 export type InterviewDimension = "person" | "time" | "place" | "event" | "feeling";
+export type InterviewMode = "personal" | "family";
 
 export const INTERVIEW_DIMENSIONS: InterviewDimension[] = [
   "person",
@@ -42,42 +43,71 @@ export interface SharedQuestion {
   hint: string;
 }
 
+/** 人生之书的问题只问“我”，不把用户带去替别人作传。 */
+export const PERSONAL_QUESTIONS: SharedQuestion[] = [
+  {
+    id: "self-first-home",
+    text: "你最早记得的那个家，是什么样子？",
+    hint: "从一扇门、一张桌子或一种声音说起就好。",
+  },
+  {
+    id: "self-proud",
+    text: "你第一次觉得“这件事我做到了”，是在什么时候？",
+    hint: "不用是大事，一次考试、一份工作或一道菜都可以。",
+  },
+  {
+    id: "self-road",
+    text: "你年轻时每天最常走的是哪一条路？",
+    hint: "说说从哪里出发、路上会经过什么。",
+  },
+  {
+    id: "self-keepsake",
+    text: "你有没有一件一直舍不得丢的东西？",
+    hint: "它从哪里来，又陪你经历过什么？",
+  },
+  {
+    id: "self-turning",
+    text: "哪一天之后，你觉得自己和以前不一样了？",
+    hint: "记不清日期没关系，先讲那天发生了什么。",
+  },
+];
+
 /** 共享问题池：同一天全家看到同一个问题，形成"一起写一本书"的实感。 */
 export const SHARED_QUESTIONS: SharedQuestion[] = [
   {
     id: "q-hands",
-    text: "他有没有一双做惯了什么事的手？那双手最常在做什么？",
-    hint: "从一件具体的物件或动作说起，比从「他是个什么样的人」容易得多。",
+    text: "家里谁有一双让你一看就记得的手？那双手最常做什么？",
+    hint: "从一个动作说起，也说说你当时在旁边做什么。",
   },
   {
     id: "q-door",
-    text: "他住过最久的那个屋子，门口是什么样子？",
-    hint: "颜色、声音、台阶高低，任何一个细节都算。",
+    text: "你和家人共同住过最久的屋子，门口是什么样子？",
+    hint: "颜色、声音、台阶高低，任何一个共同记得的细节都算。",
   },
   {
     id: "q-meal",
-    text: "他做过、或最爱吃的一道菜是什么？",
-    hint: "菜名想不起来也行，说说是什么味道。",
+    text: "家里哪一道菜，一吃就让你想起某位家人？",
+    hint: "是谁做的、你们什么时候一起吃，想到哪儿说到哪儿。",
   },
   {
     id: "q-song",
-    text: "有没有一首他会哼的调子，或者常挂在嘴边的一句话？",
+    text: "家里有没有一首大家都会哼的调子，或一句常挂在嘴边的话？",
     hint: "哼不全没关系，记得几个字就写几个字。",
   },
   {
     id: "q-walk",
-    text: "他年轻的时候，每天要走的那条路是什么样的？",
-    hint: "上班、上学、下地，哪一条都可以。",
+    text: "你和家人一起走过最多次的那条路，是什么样的？",
+    hint: "上学、赶集、探亲，哪一条都可以。",
   },
   {
     id: "q-weather",
-    text: "下雨天，他一般在做什么？",
-    hint: "天气常常能把很具体的画面带出来。",
+    text: "你记得和家人一起经历过的某个下雨天吗？",
+    hint: "谁在场、你们在做什么，天气会把画面带回来。",
   },
   {
     id: "q-keepsake",
-    text: "家里有没有一件他一直舍不得扔的东西？",
-    hint: "说说它长什么样，为什么留着。",
+    text: "家里有没有一件大家一直舍不得扔的东西？",
+    hint: "说说它长什么样，和家里的谁有关。",
   },
 ];
 
@@ -109,6 +139,34 @@ const FOLLOW_UP_TEMPLATES: Record<InterviewDimension, string[]> = {
   ],
 };
 
+const PERSONAL_FOLLOW_UP_TEMPLATES: Record<InterviewDimension, string[]> = {
+  person: [
+    "那时候谁和你在一起？",
+    "这件事里，还有谁对你很重要？",
+    "你最想把这段讲给谁听？",
+  ],
+  time: [
+    "大概是哪一年，或者你多大的时候？",
+    "那是什么季节，天冷还是热？",
+    "这是只发生过一次，还是常常发生？",
+  ],
+  place: [
+    "这件事发生在哪儿？屋里还是外头？",
+    "那个地方长什么样，你还记得吗？",
+    "从你当时住的地方到那儿，要走多久？",
+  ],
+  event: [
+    "后来呢，接着发生了什么？",
+    "那天你具体做了什么？",
+    "这件事最后是怎么结束的？",
+  ],
+  feeling: [
+    "当时你心里是什么感觉？",
+    "现在回头想这件事，你是什么感觉？",
+    "这件事给你留下了什么？",
+  ],
+};
+
 const DIMENSION_KEYWORDS: Record<InterviewDimension, RegExp> = {
   person: /爸|妈|父|母|爷|奶|外公|外婆|哥|姐|弟|妹|叔|姑|舅|婶|嫂|邻居|同事|同学|朋友|师傅|孩子|他|她/,
   time: /年|月|日|岁|那时|后来|小时候|以前|从前|当时|冬|夏|春|秋|早上|晚上|中午|点钟|年代|解放|文革|改革/,
@@ -133,6 +191,7 @@ export interface NextPromptInput {
   answer: string;
   /** 之前已经追问过的方向，按提问顺序排列。 */
   askedDimensions: InterviewDimension[];
+  mode?: InterviewMode;
 }
 
 /**
@@ -160,7 +219,10 @@ export function nextInterviewPrompt(input: NextPromptInput): InterviewPrompt {
     (askedCount.get(current) ?? 0) < (askedCount.get(best) ?? 0) ? current : best,
   );
 
-  const templates = FOLLOW_UP_TEMPLATES[dimension];
+  const templates =
+    input.mode === "personal"
+      ? PERSONAL_FOLLOW_UP_TEMPLATES[dimension]
+      : FOLLOW_UP_TEMPLATES[dimension];
   const text = templates[(askedCount.get(dimension) ?? 0) % templates.length];
 
   return { dimension, text };
@@ -177,6 +239,14 @@ function stableHash(seed: string): number {
 /** 同一个 seed（例如同一天）下，全家拿到同一个共享问题。 */
 export function pickSharedQuestion(seed: string): SharedQuestion {
   return SHARED_QUESTIONS[stableHash(seed) % SHARED_QUESTIONS.length];
+}
+
+export function pickInterviewQuestion(
+  seed: string,
+  mode: InterviewMode,
+): SharedQuestion {
+  const pool = mode === "personal" ? PERSONAL_QUESTIONS : SHARED_QUESTIONS;
+  return pool[stableHash(seed) % pool.length];
 }
 
 /** 把日期转成"全家同一天同一个问题"的 seed。 */

@@ -7,6 +7,8 @@ import {
   INTERVIEW_DIMENSIONS,
   InterviewDimension,
   nextInterviewPrompt,
+  PERSONAL_QUESTIONS,
+  pickInterviewQuestion,
   pickSharedQuestion,
   sharedQuestionSeed,
 } from "../miniprogram/domain/interview";
@@ -73,6 +75,22 @@ test("the whole family sees the same shared question on the same day", () => {
   assert.equal(pickSharedQuestion(seed).id, pickSharedQuestion(sameDayLater).id);
   assert.ok(pickSharedQuestion(seed).text.length > 0);
   assert.notEqual(seed, nextDay);
+});
+
+test("personal and family interviews use different narrative voices", () => {
+  const seed = "2026-08-28";
+  const personalQuestion = pickInterviewQuestion(seed, "personal");
+  const familyQuestion = pickInterviewQuestion(seed, "family");
+  const personalPrompt = nextInterviewPrompt({
+    answer: "嗯。",
+    askedDimensions: ["person", "time", "place"],
+    mode: "personal",
+  });
+
+  assert.ok(PERSONAL_QUESTIONS.some((question) => question.id === personalQuestion.id));
+  assert.notEqual(personalQuestion.id, familyQuestion.id);
+  assert.doesNotMatch(personalPrompt.text, /他|她/);
+  assert.match(personalPrompt.text, /你|后来|这件事/);
 });
 
 test("the draft title is cut from the speaker's own words, never invented", () => {
