@@ -76,25 +76,45 @@
   justify-content: flex-end;
 }
 
-.bubble-wrap {
-  max-width: 82%;
+/* 追问：从普通气泡里独立出来的一张卡片 */
+.ask-card {
+  margin: 0 0 28rpx 0;
+  padding: 22rpx 24rpx;
+  border-left: 6rpx solid var(--apricot);
+  border-radius: 0 22rpx 22rpx 0;
+  background: var(--apricot-soft);
+}
+
+.ask-label {
+  font-size: 23rpx;
+  font-weight: 600;
+  letter-spacing: 3rpx;
+  color: var(--apricot);
+}
+
+.ask-text {
+  margin-top: 10rpx;
+  font-size: 34rpx;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.ai-mark {
   display: flex;
-  flex-direction: column;
-}
-
-.row-me .bubble-wrap {
-  align-items: flex-end;
-}
-
-.bubble-label {
-  margin-bottom: 8rpx;
-  padding-left: 8rpx;
-  font-size: 22rpx;
-  letter-spacing: 2rpx;
-  color: var(--lake);
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 56rpx;
+  height: 56rpx;
+  margin-right: 16rpx;
+  border-radius: 28rpx;
+  background: var(--jade);
+  color: #fbfdfc;
+  font-size: 26rpx;
 }
 
 .bubble {
+  max-width: 78%;
   padding: 26rpx 28rpx;
   border-radius: 26rpx;
   font-size: 36rpx;
@@ -197,49 +217,130 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 156rpx;
-  min-height: 96rpx;
-  border-radius: 24rpx;
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 48rpx;
   background: var(--coral);
-  color: #fffdfb;
-  font-size: 30rpx;
-  font-weight: 600;
 }
 
 .send-btn:active {
   opacity: 0.84;
 }
 
-/* ---- 保存阶段 ---- */
-
-.save-head {
-  margin-bottom: 20rpx;
+.send-arrow {
+  color: #fffdfb;
+  font-size: 44rpx;
+  line-height: 1;
+  font-weight: 600;
 }
 
-.save-title {
-  margin-top: 16rpx;
-  font-size: 42rpx;
+/* ---- 工具条 ---- */
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  margin-top: 18rpx;
+}
+
+.tool-chip {
+  min-height: 60rpx;
+  padding: 12rpx 18rpx;
+  margin-right: 12rpx;
+  border-radius: 18rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.tool-chip-off {
+  background: var(--paper-sunk);
+  color: var(--ink-faint);
+}
+
+.tool-spacer {
+  flex: 1;
+}
+
+.tidy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 76rpx;
+  padding: 0 26rpx;
+  border-radius: 22rpx;
+  border: 2rpx solid var(--coral);
+  color: var(--coral);
+  font-size: 28rpx;
   font-weight: 600;
-  line-height: 1.5;
+}
+
+.tidy-btn:active {
+  opacity: 0.8;
+}
+
+.tidy-btn-off {
+  border-color: var(--line);
+  color: var(--ink-faint);
+}
+
+/* ---- 保存阶段 ---- */
+
+.tidy-label {
+  display: block;
+  font-size: 24rpx;
+  letter-spacing: 2rpx;
+  color: var(--jade);
+}
+
+.draft-title {
+  width: 100%;
+  margin-top: 16rpx;
+  font-size: 46rpx;
+  font-weight: 600;
+  line-height: 1.45;
   color: var(--ink);
 }
 
-.save-note {
-  margin-top: 12rpx;
-  font-size: 28rpx;
-  line-height: 1.7;
-  color: var(--ink-soft);
+.draft-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 16rpx;
+}
+
+.meta-date {
+  margin-right: 14rpx;
+  font-size: 24rpx;
+  color: var(--ink-faint);
+}
+
+.meta-chip {
+  margin: 4rpx 10rpx 4rpx 0;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: var(--jade-soft);
+  color: var(--jade);
+  font-size: 23rpx;
+}
+
+.draft-rule {
+  width: 100%;
+  height: 2rpx;
+  margin: 24rpx 0 4rpx;
+  background: var(--line);
+}
+
+.draft-hint {
+  margin-top: 22rpx;
+  font-size: 25rpx;
+  color: var(--ink-faint);
 }
 
 .draft-field {
   width: 100%;
   min-height: 190rpx;
-  padding: 26rpx;
-  border-radius: 26rpx;
-  background: var(--paper-card);
-  border: 2rpx solid var(--line);
-  font-size: 36rpx;
-  line-height: 1.8;
+  margin-top: 20rpx;
+  font-size: 34rpx;
+  line-height: 1.95;
   color: var(--ink);
 }
 
@@ -310,4 +411,21 @@
   font-size: 27rpx;
   line-height: 1.65;
   color: var(--ink-soft);
+}
+
+
+/* ---- 保存阶段底部双按钮 ---- */
+
+.save-row {
+  display: flex;
+  align-items: center;
+}
+
+.save-back {
+  flex: 1;
+  margin-right: 16rpx;
+}
+
+.save-go {
+  flex: 1.6;
 }

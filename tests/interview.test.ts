@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   detectCoveredDimensions,
+  draftTitleFromAnswers,
   INTERVIEW_DIMENSIONS,
   InterviewDimension,
   nextInterviewPrompt,
@@ -72,4 +73,18 @@ test("the whole family sees the same shared question on the same day", () => {
   assert.equal(pickSharedQuestion(seed).id, pickSharedQuestion(sameDayLater).id);
   assert.ok(pickSharedQuestion(seed).text.length > 0);
   assert.notEqual(seed, nextDay);
+});
+
+test("the draft title is cut from the speaker's own words, never invented", () => {
+  assert.equal(
+    draftTitleFromAnswers(["外婆家门口有一口老井，井沿被磨得很亮。"]),
+    "外婆家门口有一口老井",
+  );
+  // 超长的首句会被截断并标出省略，而不是概括成别的说法。
+  assert.equal(
+    draftTitleFromAnswers(["他那时候在纺织厂上班每天早上四点就起来了"]),
+    "他那时候在纺织厂上班每天早上…",
+  );
+  assert.equal(draftTitleFromAnswers([]), "");
+  assert.equal(draftTitleFromAnswers(["   "]), "");
 });

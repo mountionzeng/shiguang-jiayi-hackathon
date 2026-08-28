@@ -1,6 +1,5 @@
 <view class="interview-page" style="bottom: {{keyboardHeight}}px">
 
-  <!-- 采访抬头：谁在讲，讲给谁 -->
   <view class="who-bar">
     <view class="who-copy">
       <text class="who-name">{{memberName}} · {{memberRelation}}</text>
@@ -10,7 +9,7 @@
     <text class="tag tag-lake"><text class="tag-mark">独</text>独立采访</text>
   </view>
 
-  <!-- ============ 对话阶段 ============ -->
+  <!-- ============ 对话 ============ -->
   <block wx:if="{{stage === 'chat'}}">
     <scroll-view
       class="chat-scroll"
@@ -23,23 +22,27 @@
           未连云端，以下追问来自本地提问规则，不是 AI 生成。
         </view>
 
-        <view
-          class="{{item.role === 'interviewer' ? 'row row-ai' : 'row row-me'}}"
-          wx:for="{{messages}}"
-          wx:key="id"
-          id="{{item.id}}"
-        >
-          <view class="bubble-wrap">
-            <text class="bubble-label" wx:if="{{item.dimensionLabel}}">{{item.dimensionLabel}}</text>
-            <view class="{{item.role === 'interviewer' ? 'bubble bubble-ai serif' : 'bubble bubble-me serif'}}">{{item.text}}</view>
+        <block wx:for="{{messages}}" wx:key="id">
+          <!-- 追问：单独的卡片，和普通气泡区分开 -->
+          <view class="ask-card" wx:if="{{item.kind === 'followup'}}" id="{{item.id}}">
+            <text class="ask-label">{{item.label}}</text>
+            <view class="ask-text serif">{{item.text}}</view>
           </view>
-        </view>
+
+          <view class="row row-me" wx:elif="{{item.kind === 'answer'}}" id="{{item.id}}">
+            <view class="bubble bubble-me serif">{{item.text}}</view>
+          </view>
+
+          <view class="row row-ai" wx:else id="{{item.id}}">
+            <view class="ai-mark serif">问</view>
+            <view class="bubble bubble-ai serif">{{item.text}}</view>
+          </view>
+        </block>
 
         <view class="row row-ai" wx:if="{{asking}}">
-          <view class="bubble-wrap">
-            <view class="bubble bubble-ai typing">
-              <text class="dot"></text><text class="dot"></text><text class="dot"></text>
-            </view>
+          <view class="ai-mark serif">问</view>
+          <view class="bubble bubble-ai typing">
+            <text class="dot"></text><text class="dot"></text><text class="dot"></text>
           </view>
         </view>
 
@@ -48,11 +51,6 @@
     </scroll-view>
 
     <view class="composer">
-      <view class="finish-wrap" wx:if="{{answers.length > 0}}">
-        <text class="finish-count">已经讲了 {{answers.length}} 段</text>
-        <button class="btn btn-ghost finish-btn" bindtap="finish">说完了，去保存</button>
-      </view>
-
       <view class="input-row">
         <textarea
           class="input-field"
@@ -68,20 +66,51 @@
           bindinput="onInput"
           bindkeyboardheightchange="onKeyboardHeightChange"
         ></textarea>
-        <button class="send-btn" bindtap="send">说完这句</button>
+        <view class="send-btn" bindtap="send">
+          <text class="send-arrow">→</text>
+        </view>
+      </view>
+
+      <view class="tool-row">
+        <view class="tool-chip tool-chip-off" bindtap="notYet">照片 · 赛后接入</view>
+        <view class="tool-chip tool-chip-off" bindtap="notYet">语音 · 赛后接入</view>
+        <view class="tool-spacer"></view>
+        <view
+          class="tidy-btn {{answers.length === 0 ? 'tidy-btn-off' : ''}}"
+          bindtap="finish"
+        >整理成片段</view>
       </view>
     </view>
   </block>
 
-  <!-- ============ 保存阶段 ============ -->
+  <!-- ============ 整理与保存 ============ -->
   <block wx:else>
     <scroll-view class="chat-scroll" scroll-y>
       <view class="chat-inner">
-        <view class="save-head">
-          <text class="tag tag-muted" wx:if="{{localDemoOnly}}"><text class="tag-mark">本</text>本地演示整理</text>
-          <view class="save-title serif">这段先按你说的原话存下来</view>
-          <view class="save-note">没有改写、没有补写。确认之后才会用来整理章节。</view>
+        <text class="tidy-label">
+          {{localDemoOnly ? '本地演示整理 · 保留你说的原话' : 'AI 云整理 · 需要复核'}}
+        </text>
+
+        <textarea
+          class="draft-title serif"
+          value="{{draftTitle}}"
+          placeholder="给这段起个名字"
+          placeholder-class="input-placeholder"
+          auto-height
+          fixed="{{true}}"
+          adjust-position="{{false}}"
+          show-confirm-bar="{{false}}"
+          bindinput="onTitleInput"
+          bindkeyboardheightchange="onKeyboardHeightChange"
+        ></textarea>
+
+        <view class="draft-meta">
+          <text class="meta-date">{{dateLabel}}</text>
+          <text class="meta-chip">回忆片段</text>
+          <text class="meta-chip" wx:for="{{coveredChips}}" wx:key="*this" wx:for-item="chip">{{chip}}</text>
         </view>
+
+        <view class="draft-rule"></view>
 
         <textarea
           class="draft-field serif"
@@ -96,6 +125,10 @@
         ></textarea>
         <view class="draft-count {{tooLong ? 'draft-count-over' : ''}}">
           {{draftLength}} / 500 字{{tooLong ? '　超出部分请先删掉' : ''}}
+        </view>
+
+        <view class="draft-hint">
+          保存后放进 {{protagonistName}} 的人生之书 · 回忆片段
         </view>
 
         <view class="scope-block">
@@ -131,11 +164,13 @@
     </scroll-view>
 
     <view class="composer">
-      <button
-        class="btn btn-primary {{(saving || tooLong) ? 'btn-disabled' : ''}}"
-        bindtap="save"
-      >{{saving ? '正在保存…' : '保存这段回忆'}}</button>
-      <button class="btn btn-quiet" bindtap="backToChat">再补几句</button>
+      <view class="save-row">
+        <button class="btn btn-ghost save-back" bindtap="backToChat">继续讲</button>
+        <button
+          class="btn btn-primary save-go {{(saving || tooLong) ? 'btn-disabled' : ''}}"
+          bindtap="save"
+        >{{saving ? '正在保存…' : '保存到书里'}}</button>
+      </view>
     </view>
   </block>
 </view>

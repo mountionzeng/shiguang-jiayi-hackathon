@@ -18,12 +18,22 @@ export const INTERVIEW_DIMENSIONS: InterviewDimension[] = [
   "feeling",
 ];
 
+/** 追问卡片上的标签，沿用队友原型「追问人物 / 追问地点」的写法。 */
 export const DIMENSION_LABELS: Record<InterviewDimension, string> = {
-  person: "还有谁",
-  time: "什么时候",
-  place: "在哪儿",
-  event: "后来呢",
-  feeling: "心里的感觉",
+  person: "追问人物",
+  time: "追问时候",
+  place: "追问地点",
+  event: "追问经过",
+  feeling: "追问感受",
+};
+
+/** 保存页上「已经说到」的短标签。 */
+export const DIMENSION_CHIPS: Record<InterviewDimension, string> = {
+  person: "人物",
+  time: "时间",
+  place: "地点",
+  event: "经过",
+  feeling: "感受",
 };
 
 export interface SharedQuestion {
@@ -175,4 +185,19 @@ export function sharedQuestionSeed(now = new Date()): string {
   const month = `${now.getMonth() + 1}`.padStart(2, "0");
   const day = `${now.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+
+/**
+ * 从讲述人自己的话里截一个标题出来。
+ *
+ * 只做截取，不改写、不概括、不补词：本地演示阶段没有模型，
+ * 任何"归纳"都会变成替讲述人编话。标题在保存页上可以直接改。
+ */
+export function draftTitleFromAnswers(answers: string[]): string {
+  const first = (answers[0] ?? "").trim();
+  if (!first) return "";
+
+  const clause = first.split(/[，。！？；：、\s]/).filter(Boolean)[0] ?? first;
+  return clause.length > 14 ? `${clause.slice(0, 14)}…` : clause;
 }
