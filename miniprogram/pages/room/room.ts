@@ -9,7 +9,11 @@ import {
   Visibility,
   visibleContributionsForMember,
 } from "../../domain/biography";
-import { appendContribution, loadRoomState } from "../../services/roomStorage";
+import {
+  appendContributionRemoteFirst,
+  loadRoomStateRemoteFirst,
+  roomDataModeLabel,
+} from "../../services/roomRepository";
 
 interface ContributionView extends MemoryContribution {
   avatarText: string;
@@ -56,23 +60,26 @@ Page({
     visibility: "family" as Visibility,
     maxLength: MAX_MEMORY_LENGTH,
     remaining: MAX_MEMORY_LENGTH,
+    dataModeLabel: "",
   },
 
-  onShow() {
-    this.refresh();
+  async onShow() {
+    await this.refresh();
   },
 
-  refresh(state: FamilyRoomState = loadRoomState()) {
-    const currentMember = state.members.find((member) => member.id === CURRENT_MEMBER_ID);
-    const visibleContributions = currentMember
-      ? visibleContributionsForMember(state.contributions, currentMember)
-      : state.contributions.filter((contribution) => contribution.visibility === "family");
+  async refresh(state?: FamilyRoomState) {
+    const roomState = state ?? (await loadRoomStateRemoteFirst());
+    const currentRoomMember = roomState.members.find((member) => member.id === CURRENT_MEMBER_ID);
+    const visibleContributions = currentRoomMember
+      ? visibleContributionsForMember(roomState.contributions, currentRoomMember)
+      : roomState.contributions.filter((contribution) => contribution.visibility === "family");
 
     this.setData({
-      roomName: state.roomName,
-      protagonistName: state.protagonistName,
-      members: state.members,
-      contributions: toContributionViews(visibleContributions, state.members),
+      roomName: roomState.roomName,
+      protagonistName: roomState.protagonistName,
+      members: roomState.members,
+      contributions: toContributionViews(visibleContributions, roomState.members),
+      dataModeLabel: roomDataModeLabel(),
     });
   },
 
@@ -88,7 +95,7 @@ Page({
     this.setData({ visibility: event.currentTarget.dataset.visibility });
   },
 
-  submitMemory() {
+  async submitMemory() {
     try {
       const contribution = createContribution({
         authorMemberId: CURRENT_MEMBER_ID,
@@ -97,9 +104,9 @@ Page({
         text: this.data.inputText,
         visibility: this.data.visibility,
       });
-      const nextState = appendContribution(contribution, loadRoomState());
+      const nextState = await appendContributionRemoteFirst(contribution);
       this.setData({ inputText: "", remaining: MAX_MEMORY_LENGTH });
-      this.refresh(nextState);
+      await this.refresh(nextState);
       wx.showToast({ title: "已交给外公核对", icon: "none" });
     } catch (error) {
       wx.showToast({

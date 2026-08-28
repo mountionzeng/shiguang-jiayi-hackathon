@@ -6,7 +6,10 @@ import {
   ReviewStatus,
   VISIBILITY_LABELS,
 } from "../../domain/biography";
-import { loadRoomState, replaceContribution } from "../../services/roomStorage";
+import {
+  loadRoomStateRemoteFirst,
+  replaceContributionRemoteFirst,
+} from "../../services/roomRepository";
 
 interface PendingMemoryView extends MemoryContribution {
   visibilityLabel: string;
@@ -28,14 +31,15 @@ Page({
     handledCount: 0,
   },
 
-  onShow() {
-    this.refresh();
+  async onShow() {
+    await this.refresh();
   },
 
-  refresh(state: FamilyRoomState = loadRoomState()) {
+  async refresh(state?: FamilyRoomState) {
+    const roomState = state ?? (await loadRoomStateRemoteFirst());
     this.setData({
-      protagonistName: state.protagonistName,
-      pending: state.contributions
+      protagonistName: roomState.protagonistName,
+      pending: roomState.contributions
         .filter((item) => item.reviewStatus === "pending")
         .map((item) => ({
           ...item,
@@ -47,20 +51,20 @@ Page({
           confirmLabel:
             item.visibility === "private" ? "确认属实，继续保密" : "是的，这是事实",
         })),
-      confirmedCount: biographySourceContributions(state.contributions).length,
-      handledCount: state.contributions.filter(
+      confirmedCount: biographySourceContributions(roomState.contributions).length,
+      handledCount: roomState.contributions.filter(
         (item) => item.reviewStatus !== "pending",
       ).length,
     });
   },
 
-  reviewMemory(event: {
+  async reviewMemory(event: {
     currentTarget: {
       dataset: { id: string; status: Exclude<ReviewStatus, "pending"> };
     };
   }) {
     const { id, status } = event.currentTarget.dataset;
-    const state = loadRoomState();
+    const state = await loadRoomStateRemoteFirst();
     const target = state.contributions.find((item) => item.id === id);
     if (!target) {
       wx.showToast({ title: "没有找到这段回忆", icon: "none" });
@@ -68,12 +72,11 @@ Page({
     }
 
     try {
-      const nextState = replaceContribution(
+      const nextState = await replaceContributionRemoteFirst(
         reviewContribution(target, status, "elder"),
-        state,
       );
       wx.showToast({ title: actionLabels[status], icon: "none" });
-      this.refresh(nextState);
+      await this.refresh(nextState);
     } catch (error) {
       wx.showToast({
         title: error instanceof Error ? error.message : "暂时无法核对",

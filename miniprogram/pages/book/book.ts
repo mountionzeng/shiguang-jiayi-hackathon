@@ -6,9 +6,9 @@ import {
 } from "../../domain/biography";
 import { generateBiography } from "../../services/biographyService";
 import {
-  loadRoomState,
-  saveDraftIfSourcesUnchanged,
-} from "../../services/roomStorage";
+  loadRoomStateRemoteFirst,
+  saveDraftIfSourcesUnchangedRemoteFirst,
+} from "../../services/roomRepository";
 
 Page({
   data: {
@@ -19,12 +19,12 @@ Page({
     modeLabel: "",
   },
 
-  onShow() {
-    this.refresh();
+  async onShow() {
+    await this.refresh();
   },
 
-  refresh() {
-    const state = loadRoomState();
+  async refresh() {
+    const state = await loadRoomStateRemoteFirst();
     this.setData({
       protagonistName: state.protagonistName,
       confirmed: biographySourceContributions(state.contributions),
@@ -41,7 +41,7 @@ Page({
   async generateChapter() {
     if (this.data.generating) return;
 
-    const state = loadRoomState();
+    const state = await loadRoomStateRemoteFirst();
     if (biographySourceContributions(state.contributions).length === 0) {
       wx.showToast({ title: "请先确认至少一段回忆", icon: "none" });
       return;
@@ -51,13 +51,12 @@ Page({
     this.setData({ generating: true });
     try {
       const draft = await generateBiography(state);
-      const latestState = loadRoomState();
-      if (!saveDraftIfSourcesUnchanged(draft, sourceFingerprint, latestState)) {
-        this.refresh();
+      if (!(await saveDraftIfSourcesUnchangedRemoteFirst(draft, sourceFingerprint))) {
+        await this.refresh();
         wx.showToast({ title: "确认材料已变化，请重新生成", icon: "none" });
         return;
       }
-      this.refresh();
+      await this.refresh();
       wx.showToast({
         title: draft.generationMode === "cloud-ai" ? "第一章已生成" : "演示草稿已整理",
         icon: "none",

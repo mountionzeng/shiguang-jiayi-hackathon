@@ -4,7 +4,10 @@
       <text class="eyebrow">01 · 家人讲述</text>
       <view class="section-title">{{roomName}}</view>
     </view>
-    <view class="room-count">{{members.length}} 人</view>
+    <view class="room-side">
+      <view class="room-count">{{members.length}} 人</view>
+      <view class="data-mode">{{dataModeLabel}}</view>
+    </view>
   </view>
 
   <scroll-view class="member-strip" scroll-x enhanced show-scrollbar="{{false}}">

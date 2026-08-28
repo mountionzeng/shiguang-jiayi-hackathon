@@ -12,6 +12,18 @@
   font-size: 22rpx;
 }
 
+.room-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.data-mode {
+  margin-top: 10rpx;
+  color: #9b563c;
+  font-size: 19rpx;
+}
+
 .member-strip {
   width: calc(100% + 38rpx);
   margin-top: 42rpx;

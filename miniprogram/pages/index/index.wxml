@@ -35,5 +35,5 @@
   <button class="primary-button" bindtap="enterRoom">进入林家的拾光房间</button>
   <button class="quiet-button" bindtap="resetDemo">重置演示内容</button>
 
-  <view class="demo-note">黑客松演示使用虚构家庭资料</view>
+  <view class="demo-note">黑客松演示使用虚构家庭资料 · {{dataModeLabel}}</view>
 </view>
