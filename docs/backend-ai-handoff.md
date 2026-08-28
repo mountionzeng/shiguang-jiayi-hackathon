@@ -43,8 +43,20 @@
 - 小程序 AppID：`wx6be512f0fe129b62`
 - 云开发环境 ID：`cloud1-d0g8c8yg0513a6068`
 - 云 AI 开关：`miniprogram/config/runtime.ts` 中的 `CLOUD_AI_ENABLED`
+- FastAPI 后端开关：`miniprogram/config/runtime.ts` 中的 `BACKEND_API_ENABLED`
+- FastAPI 本地地址：`http://127.0.0.1:8000/api/v1`
 
 体验版演示前可以保持 `CLOUD_AI_ENABLED = false`，这样没有 AI key 或云函数未部署时也能走本地演示草稿。
+
+## 已加入的前端适配层
+
+`miniprogram/services/backendApi.ts` 已经把当前前端数据映射到 FastAPI 后端：
+
+- 投稿：`MemoryContribution` → `POST /families/{family_id}/source-records` + `POST /families/{family_id}/memories`
+- 老人确认：`reviewStatus` → `PUT /families/{family_id}/memories/{memory_id}`
+- 传记生成任务：确认且家庭可见的记忆 → `POST /families/{family_id}/generation-jobs`
+
+默认仍不开启真实后端请求，因为体验版手机无法访问开发者电脑上的 `127.0.0.1`。后续若要真机多人同步，应优先切到云数据库/公网 API，再打开 `BACKEND_API_ENABLED`。
 
 ## 前端需要注意的改动
 
