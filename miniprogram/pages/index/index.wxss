@@ -86,20 +86,56 @@
 /* ---- 可触碰的书封 ---- */
 
 .book-stage {
+  position: relative;
   display: flex;
+  align-items: center;
+  flex-direction: column;
   justify-content: center;
   margin-top: 106rpx;
+  perspective: 1200rpx;
 }
 
 .book {
   position: relative;
-  width: 370rpx;
-  height: 555rpx;
+  width: 430rpx;
+  height: 645rpx;
+  transform-style: preserve-3d;
+  cursor: pointer;
 }
 
-.book:active {
-  opacity: 0.86;
-  transform: translateY(2rpx) scale(0.99);
+.book:not(.book-opening):active {
+  transform: translateY(3rpx) scale(0.985);
+}
+
+.book-pages-under {
+  position: absolute;
+  top: 36rpx;
+  right: 22rpx;
+  bottom: 34rpx;
+  left: 58rpx;
+  border: 2rpx solid rgba(129, 117, 93, 0.16);
+  border-radius: 8rpx 22rpx 20rpx 8rpx;
+  background: linear-gradient(100deg, #eee6d5 0%, #fffdf5 14%, #f8f2e5 100%);
+  box-shadow: 14rpx 16rpx 28rpx rgba(62, 61, 52, 0.11);
+  transform: rotate(1.4deg);
+}
+
+.book-cover-leaf {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform-origin: 17% 50%;
+  transform-style: preserve-3d;
+}
+
+.book-opening .book-cover-leaf {
+  animation: book-cover-open 640ms cubic-bezier(0.24, 0.74, 0.3, 1) both;
+}
+
+.book-opening .book-pages-under {
+  animation: book-pages-wake 640ms ease-out both;
 }
 
 .ancient-book-art {
@@ -116,13 +152,13 @@
 .book-cover-copy {
   position: absolute;
   top: 0;
-  right: 36rpx;
-  bottom: 88rpx;
-  left: 74rpx;
+  right: 42rpx;
+  bottom: 102rpx;
+  left: 86rpx;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 44rpx 8rpx 0;
+  padding: 51rpx 8rpx 0;
   pointer-events: none;
 }
 
@@ -141,7 +177,7 @@
 
 .book-title {
   color: var(--ink);
-  font-size: 33rpx;
+  font-size: 36rpx;
   font-weight: 500;
   line-height: 1.34;
   letter-spacing: 1rpx;
@@ -151,7 +187,7 @@
   margin-top: 6rpx;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 20rpx;
+  font-size: 22rpx;
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -165,7 +201,7 @@
   padding-top: 13rpx;
   border-top: 2rpx solid rgba(129, 117, 93, 0.18);
   color: var(--ink-faint);
-  font-size: 17rpx;
+  font-size: 18rpx;
 }
 
 .book-stats > text {
@@ -174,7 +210,26 @@
 
 .book-stat-num {
   color: var(--jade);
+  font-size: 23rpx;
+}
+
+.book-open-label {
+  margin-top: -12rpx;
+  color: rgba(79, 127, 107, 0.72);
   font-size: 21rpx;
+  letter-spacing: 3rpx;
+}
+
+@keyframes book-cover-open {
+  0% { transform: translateX(0) rotateY(0deg) scale(1); filter: brightness(1); }
+  45% { transform: translateX(-18rpx) rotateY(-38deg) scale(1.025); filter: brightness(1.03); }
+  100% { transform: translateX(-44rpx) rotateY(-76deg) scale(1.04); filter: brightness(0.96); }
+}
+
+@keyframes book-pages-wake {
+  0% { opacity: 0.45; transform: rotate(1.4deg) scale(0.97); }
+  55% { opacity: 1; transform: rotate(0.6deg) scale(1.01); }
+  100% { opacity: 1; transform: rotate(0deg) scale(1); }
 }
 
 /* ---- 树枝与双入口 ---- */

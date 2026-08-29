@@ -26,28 +26,37 @@
   </view>
 
   <view class="book-stage">
-    <view class="book">
-      <image
-        class="ancient-book-art"
-        src="/assets/illustrations/ancient-book-shell.png"
-        mode="aspectFit"
-        aria-hidden="true"
-      ></image>
-      <view class="book-cover-copy">
-        <text class="book-kicker typewriter">拾 光 录</text>
-        <view class="book-copy">
-          <view class="book-title typewriter">{{bookTitle}}</view>
-          <view class="book-subtitle">{{coverSubtitle}}</view>
-          <view class="book-stats">
-            <text><text class="book-stat-num">{{fragmentCount}}</text> 片段</text>
-            <text>·</text>
-            <text><text class="book-stat-num">{{storyCount}}</text> 故事</text>
-            <text>·</text>
-            <text><text class="book-stat-num">{{chapterCount}}</text> 章节</text>
+    <view
+      class="book {{bookOpening ? 'book-opening' : ''}}"
+      bindtap="openMemoryArchive"
+      role="button"
+      aria-label="打开管理记忆档案"
+    >
+      <view class="book-pages-under"></view>
+      <view class="book-cover-leaf">
+        <image
+          class="ancient-book-art"
+          src="/assets/illustrations/ancient-book-shell.png"
+          mode="aspectFit"
+          aria-hidden="true"
+        ></image>
+        <view class="book-cover-copy">
+          <text class="book-kicker typewriter">拾 光 录</text>
+          <view class="book-copy">
+            <view class="book-title typewriter">{{bookTitle}}</view>
+            <view class="book-subtitle">{{coverSubtitle}}</view>
+            <view class="book-stats">
+              <text><text class="book-stat-num">{{fragmentCount}}</text> 片段</text>
+              <text>·</text>
+              <text><text class="book-stat-num">{{storyCount}}</text> 故事</text>
+              <text>·</text>
+              <text><text class="book-stat-num">{{chapterCount}}</text> 章节</text>
+            </view>
           </view>
         </view>
       </view>
     </view>
+    <view class="book-open-label typewriter">轻触打开记忆档案</view>
   </view>
 
   <view class="recent" wx:if="{{hasRecentStories}}">

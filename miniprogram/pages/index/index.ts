@@ -72,11 +72,13 @@ Page({
     fragmentCount: 0,
     storyCount: 0,
     chapterCount: 0,
+    bookOpening: false,
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
   },
 
   onShow() {
+    this.setData({ bookOpening: false });
     this.refresh();
   },
 
@@ -108,6 +110,15 @@ Page({
 
   openProfiles() {
     wx.navigateTo({ url: "/pages/profiles/profiles" });
+  },
+
+  openMemoryArchive() {
+    if (this.data.bookOpening) return;
+    this.setData({ bookOpening: true });
+    setTimeout(() => {
+      this.setData({ bookOpening: false });
+      wx.navigateTo({ url: "/pages/archive/archive" });
+    }, 620);
   },
 
   continueStory(event: {

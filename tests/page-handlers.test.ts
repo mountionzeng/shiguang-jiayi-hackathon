@@ -22,7 +22,7 @@ interface TestPageInstance extends TestPageDefinition {
 
 const definitions = new Map<string, TestPageDefinition>();
 
-async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles"): Promise<TestPageDefinition> {
+async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive"): Promise<TestPageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
 
@@ -45,8 +45,10 @@ async function pageDefinition(name: "index" | "interview" | "room" | "book" | "p
       await import("../miniprogram/pages/room/room");
     } else if (name === "book") {
       await import("../miniprogram/pages/book/book");
-    } else {
+    } else if (name === "profiles") {
       await import("../miniprogram/pages/profiles/profiles");
+    } else {
+      await import("../miniprogram/pages/archive/archive");
     }
   } finally {
     if (previous) Object.defineProperty(globalThis, "Page", previous);
@@ -557,6 +559,32 @@ test("the home avatar opens a profile switcher", async (context) => {
   callPage(page, "openProfiles");
 
   assert.equal(last(storage.navigations), "/pages/profiles/profiles");
+});
+
+test("the home book opens the memory archive after its animation", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+
+  withImmediateTimeouts(() => callPage(page, "openMemoryArchive"));
+
+  assert.equal(page.data.bookOpening, false);
+  assert.equal(last(storage.navigations), "/pages/archive/archive");
+});
+
+test("the memory archive shows only the current profile's quick notes", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+
+  callPage(page, "refresh");
+
+  assert.equal(page.data.memberName, "林岚");
+  assert.deepEqual(
+    (page.data.notes as Array<{ id: string }>).map((note) => note.id),
+    ["demo-personal-rain"],
+  );
+  assert.equal(page.data.hasNotes, true);
 });
 
 test("choosing a profile changes the active personal archive", async (context) => {
