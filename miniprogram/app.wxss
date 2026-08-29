@@ -64,6 +64,11 @@ button::after {
   font-family: "Songti SC", STSong, "Noto Serif CJK SC", serif;
 }
 
+/* 展示文字保留打字机的英文节奏，中文回退到清晰的仿宋。 */
+.typewriter {
+  font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
+}
+
 /* ---------- 版面 ---------- */
 
 .shell {

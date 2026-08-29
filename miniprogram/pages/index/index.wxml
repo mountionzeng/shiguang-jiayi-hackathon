@@ -9,7 +9,7 @@
   <view class="topline">
     <view class="wordmark">
       <view class="brand-mark wordmark-icon"></view>
-      <text class="wordmark-text serif">拾光Ai</text>
+      <text class="wordmark-text typewriter">拾光Ai</text>
     </view>
     <view class="member-avatar serif">{{memberInitial}}</view>
   </view>
@@ -23,9 +23,9 @@
         aria-hidden="true"
       ></image>
       <view class="book-cover-copy">
-        <text class="book-kicker serif">拾 光 录</text>
+        <text class="book-kicker typewriter">拾 光 录</text>
         <view class="book-copy">
-          <view class="book-title serif">{{bookTitle}}</view>
+          <view class="book-title typewriter">{{bookTitle}}</view>
           <view class="book-subtitle">{{coverSubtitle}}</view>
           <view class="book-stats">
             <text><text class="book-stat-num">{{fragmentCount}}</text> 片段</text>
@@ -59,8 +59,10 @@
         mode="aspectFit"
         aria-hidden="true"
       ></image>
-      <view class="branch-label serif">人生之书</view>
-      <view class="branch-note">我的故事</view>
+      <view class="branch-copy">
+        <view class="branch-label typewriter">人生之书</view>
+        <view class="branch-note">我的故事</view>
+      </view>
     </button>
 
     <button
@@ -86,14 +88,16 @@
           <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
         </view>
       </view>
-      <view class="branch-label serif">记忆之家</view>
-      <view class="branch-note">我和亲友</view>
+      <view class="branch-copy">
+        <view class="branch-label typewriter">记忆之家</view>
+        <view class="branch-note">我和亲友</view>
+      </view>
     </button>
   </view>
 
   <button class="start-chat" bindtap="startInterview">
     <text class="start-chat-plus">＋</text>
-    <text>开始聊聊</text>
+    <text class="typewriter">开始聊聊</text>
   </button>
 
   <view class="recent" wx:if="{{hasRecentStories}}">
