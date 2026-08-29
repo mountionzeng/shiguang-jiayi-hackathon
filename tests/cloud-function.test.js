@@ -200,23 +200,41 @@ test("the interview cloud function returns one safe follow-up", async () => {
   const previousKey = process.env.CHAT_AI_API_KEY;
   const previousModel = process.env.CHAT_AI_MODEL;
   const previousBaseUrl = process.env.CHAT_AI_BASE_URL;
-  let requestBody;
+  const requests = [];
 
   process.env.CHAT_AI_API_KEY = "test-chat-key";
   process.env.CHAT_AI_MODEL = "smart-chat-model";
   process.env.CHAT_AI_BASE_URL = "https://chat-model.invalid/v1";
   global.fetch = async (_url, options) => {
-    requestBody = JSON.parse(options.body);
+    const requestBody = JSON.parse(options.body);
+    requests.push(requestBody);
+    const content = requests.length === 1
+      ? JSON.stringify({
+          input_type: "完整叙述",
+          emotion_intensity: "中",
+          new_info: {
+            时间: "那年冬天",
+            地点: "老屋门口",
+            人物: "我和外公",
+            情感: null,
+            事件: "等车",
+          },
+          key_detail: "老屋门口等车",
+          missing_info: ["情感"],
+          suggested_focus: "追问现在回想这件事的感受",
+        })
+      : JSON.stringify({
+          dimension: "feeling",
+          text: "老屋门口等车这幕还挺清楚。现在想起那天，你最深的感觉是什么？",
+        });
+
     return {
       ok: true,
       json: async () => ({
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                dimension: "feeling",
-                text: "现在想起那天，你最清楚的感觉是什么？",
-              }),
+              content,
             },
           },
         ],
@@ -236,12 +254,20 @@ test("the interview cloud function returns one safe follow-up", async () => {
 
     assert.equal(result.generationMode, "cloud-ai");
     assert.equal(result.dimension, "feeling");
-    assert.equal(result.text, "现在想起那天，你最清楚的感觉是什么？");
-    assert.equal(requestBody.model, "smart-chat-model");
-    assert.match(requestBody.messages[1].content, /老屋门口/);
-    assert.match(requestBody.messages[0].content, /传记访谈助手/);
-    assert.match(requestBody.messages[1].content, /内容类型：回忆录/);
-    assert.doesNotMatch(JSON.stringify(requestBody), /test-chat-key/);
+    assert.equal(
+      result.text,
+      "老屋门口等车这幕还挺清楚。现在想起那天，你最深的感觉是什么？",
+    );
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].model, "smart-chat-model");
+    assert.equal(requests[0].temperature, 0.2);
+    assert.equal(requests[1].temperature, 0.85);
+    assert.match(requests[0].messages[0].content, /分析模块/);
+    assert.match(requests[0].messages[1].content, /老屋门口/);
+    assert.match(requests[1].messages[0].content, /记忆采访者/);
+    assert.match(requests[1].messages[1].content, /本轮策略/);
+    assert.match(requests[1].messages[1].content, /内容类型：回忆录/);
+    assert.doesNotMatch(JSON.stringify(requests), /test-chat-key/);
   } finally {
     global.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.CHAT_AI_API_KEY;
@@ -263,6 +289,26 @@ test("the interview cloud function separates note and memoir prompts", () => {
   assert.match(note.rule, /不要引导成长意义/);
   assert.match(memoir.rule, /正式传记/);
   assert.match(memoir.rule, /后来影响/);
+});
+
+test("the interview strategy reacts to emotion and off-track replies", () => {
+  const highEmotion = chatInterviewTest.decideStrategy({
+    inputType: "情感信号",
+    emotionIntensity: "高",
+    missingInfo: ["地点", "时间"],
+    keyDetail: "很想外公",
+  }, []);
+  assert.equal(highEmotion.dimension, "feeling");
+  assert.match(highEmotion.instruction, /回应情绪/);
+
+  const offTrack = chatInterviewTest.decideStrategy({
+    inputType: "反问跑题",
+    emotionIntensity: "中",
+    missingInfo: ["时间", "地点"],
+    keyDetail: "用户把 AI 当成记忆里的人",
+  }, []);
+  assert.equal(offTrack.dimension, "person");
+  assert.match(offTrack.instruction, /接住用户的话/);
 });
 
 test("the interview cloud parser accepts plain text fallback", () => {

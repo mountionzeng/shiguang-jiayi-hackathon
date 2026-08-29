@@ -1,149 +1,181 @@
-<view class="home page-enter">
-  <image
-    class="home-paper"
-    src="/assets/illustrations/home-paper.jpg"
-    mode="scaleToFill"
-    aria-hidden="true"
-  ></image>
+<scroll-view class="home-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <view class="home page-enter">
+    <image
+      class="home-paper"
+      src="/assets/illustrations/home-paper.jpg"
+      mode="scaleToFill"
+      aria-hidden="true"
+    ></image>
 
-  <view class="topline">
-    <button
-      class="my-entry"
-      bindtap="openMyHome"
-      hover-class="none"
-      aria-label="打开我的首页"
-    >
-      <view class="member-avatar serif">
-        <image
-          class="member-avatar-backdrop"
-          src="/assets/illustrations/book-wash.png"
-          mode="aspectFill"
-          aria-hidden="true"
-        ></image>
-        <text class="member-avatar-letter">{{memberAvatarText}}</text>
-      </view>
-    </button>
-  </view>
-
-  <view class="profile-switch-wrap">
-    <button
-      class="profile-switch"
-      bindtap="openProfiles"
-      hover-class="profile-switch-pressed"
-      aria-label="切换当前讲述档案"
-    >
-      <view class="profile-switch-copy">
-        <text class="profile-switch-note">切换档案</text>
-        <text class="profile-switch-name serif">{{memberName}}</text>
-      </view>
-      <text class="profile-switch-arrow">{{profileChooserOpen ? '⌃' : '⌄'}}</text>
-    </button>
-
-    <view class="profile-menu" wx:if="{{profileChooserOpen}}">
+    <view class="topline">
       <button
-        class="profile-menu-item {{item.selected ? 'profile-menu-item-on' : ''}}"
-        wx:for="{{profileOptions}}"
-        wx:key="id"
-        data-id="{{item.id}}"
-        bindtap="chooseProfile"
+        class="my-entry"
+        bindtap="openMyHome"
         hover-class="none"
-        aria-label="切换到{{item.name}}的档案"
+        aria-label="打开我的首页"
       >
-        <view class="profile-menu-avatar serif">{{item.avatarText}}</view>
-        <view class="profile-menu-copy">
-          <text class="profile-menu-name">{{item.name}}</text>
-          <text class="profile-menu-relation">{{item.relation}}</text>
+        <view class="member-avatar serif">
+          <image
+            class="member-avatar-backdrop"
+            src="/assets/illustrations/book-wash.png"
+            mode="aspectFill"
+            aria-hidden="true"
+          ></image>
+          <text class="member-avatar-letter">{{memberAvatarText}}</text>
         </view>
-        <text class="profile-menu-check">{{item.selected ? '✓' : ''}}</text>
       </button>
     </view>
-  </view>
 
-  <view class="book-stage">
-    <view
-      class="book {{bookOpening ? 'book-opening' : ''}}"
-      bindtap="openMemoryArchive"
-      role="button"
-      aria-label="打开管理记忆档案"
-    >
-      <view class="book-pages-under"></view>
-      <view class="book-cover-leaf">
-        <image
-          class="ancient-book-art"
-          src="/assets/illustrations/ancient-book-shell.png"
-          mode="aspectFit"
-          aria-hidden="true"
-        ></image>
-        <view class="book-cover-copy">
-          <text class="book-kicker typewriter">拾 光 录</text>
-          <view class="book-copy">
-            <view class="book-title typewriter">{{bookTitle}}</view>
-            <view class="book-subtitle">{{coverSubtitle}}</view>
-            <view class="book-stats" role="group" aria-label="快速打开故事空间">
-              <button
-                class="book-stat-action book-stat-note"
-                catchtap="openArchiveTab"
-                data-tab="note"
-                hover-class="none"
-                aria-label="打开随手记"
-              >
-                <text class="book-stat-num">{{memoryCount}}</text>
-                <text class="book-stat-label">篇记忆</text>
-              </button>
-              <button
-                class="book-stat-action book-stat-memoir"
-                catchtap="openArchiveTab"
-                data-tab="memoir"
-                hover-class="none"
-                aria-label="打开回忆录"
-              >
-                <text class="book-stat-num">{{memoirCount}}</text>
-                <text class="book-stat-label">篇回忆录</text>
-              </button>
-              <button
-                class="book-stat-action book-stat-home"
-                catchtap="openMemoryHome"
-                hover-class="none"
-                aria-label="打开记忆之家"
-              >
-                <text class="book-stat-num">{{familyMemberCount}}</text>
-                <text class="book-stat-label">个家庭成员</text>
-              </button>
+    <view class="profile-switch-wrap">
+      <button
+        class="profile-switch"
+        bindtap="openProfiles"
+        hover-class="profile-switch-pressed"
+        aria-label="切换当前讲述档案"
+      >
+        <view class="profile-switch-copy">
+          <text class="profile-switch-note">切换档案</text>
+          <text class="profile-switch-name serif">{{memberName}}</text>
+        </view>
+        <text class="profile-switch-arrow">{{profileChooserOpen ? '⌃' : '⌄'}}</text>
+      </button>
+
+    </view>
+
+    <view class="book-stage">
+      <view
+        class="book {{bookOpening ? 'book-opening' : ''}}"
+        bindtap="openMemoryArchive"
+        role="button"
+        aria-label="打开管理记忆档案"
+      >
+        <view class="book-pages-under"></view>
+        <view class="book-cover-leaf">
+          <image
+            class="ancient-book-art"
+            src="/assets/illustrations/ancient-book-shell.png"
+            mode="aspectFit"
+            aria-hidden="true"
+          ></image>
+          <view class="book-cover-copy">
+            <text class="book-kicker typewriter">拾 光 录</text>
+            <view class="book-copy">
+              <view class="book-title typewriter">{{bookTitle}}</view>
+              <view class="book-subtitle">{{coverSubtitle}}</view>
+              <view class="book-stats" role="group" aria-label="快速打开故事空间">
+                <button
+                  class="book-stat-action book-stat-note"
+                  catchtap="openArchiveTab"
+                  data-tab="note"
+                  hover-class="none"
+                  aria-label="打开随手记"
+                >
+                  <text class="book-stat-num">{{memoryCount}}</text>
+                  <text class="book-stat-label">篇记忆</text>
+                </button>
+                <button
+                  class="book-stat-action book-stat-memoir"
+                  catchtap="openArchiveTab"
+                  data-tab="memoir"
+                  hover-class="none"
+                  aria-label="打开回忆录"
+                >
+                  <text class="book-stat-num">{{memoirCount}}</text>
+                  <text class="book-stat-label">篇回忆录</text>
+                </button>
+                <button
+                  class="book-stat-action book-stat-home"
+                  catchtap="openMemoryHome"
+                  hover-class="none"
+                  aria-label="打开记忆之家"
+                >
+                  <text class="book-stat-num">{{familyMemberCount}}</text>
+                  <text class="book-stat-label">个家庭成员</text>
+                </button>
+              </view>
             </view>
           </view>
         </view>
       </view>
-    </view>
-    <view class="book-open-label typewriter">轻触打开记忆档案</view>
-  </view>
-
-  <view class="recent" wx:if="{{hasRecentStories}}">
-    <view class="recent-head">
-      <text class="recent-title serif">最近聊过</text>
-      <text class="recent-note">点开就能接着说</text>
+      <view class="book-open-label typewriter">轻触打开记忆档案</view>
     </view>
 
-    <view
-      class="story-row"
-      wx:for="{{recentStories}}"
-      wx:key="id"
-      data-id="{{item.id}}"
-      data-title="{{item.storyTitle}}"
-      bindtap="continueStory"
-    >
-      <view class="story-copy">
-        <view class="story-title serif">{{item.title}}</view>
-        <view class="story-excerpt">{{item.excerpt}}</view>
-        <view class="story-meta">{{item.dateLabel}} · {{item.countLabel}}</view>
+    <view class="recommended" wx:if="{{hasRecommendedQuestion}}">
+      <view class="recommended-head">
+        <text class="recommended-title serif">推荐问</text>
+        <button
+          class="recommended-refresh"
+          bindtap="changeRecommendedQuestion"
+          hover-class="none"
+          aria-label="换一个推荐问题"
+        >换一个问题</button>
       </view>
-      <view class="story-continue">继续聊</view>
+      <view
+        class="recommended-card"
+        bindtap="continueRecommendedQuestion"
+        role="button"
+        aria-label="继续回答推荐问题"
+      >
+        <view class="recommended-label">{{recommendedQuestionLabel}}</view>
+        <view class="recommended-context">{{recommendedQuestionContext}}</view>
+        <view class="recommended-question">{{recommendedQuestion}}</view>
+        <view class="recommended-action">继续聊聊</view>
+      </view>
+    </view>
+
+    <view class="recent" wx:if="{{hasRecentStories}}">
+      <view class="recent-head">
+        <text class="recent-title serif">最近聊过</text>
+        <text class="recent-note">点开就能接着说</text>
+      </view>
+
+      <view
+        class="story-row"
+        wx:for="{{recentStories}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        data-title="{{item.storyTitle}}"
+        bindtap="continueStory"
+      >
+        <view class="story-copy">
+          <view class="story-title serif">{{item.title}}</view>
+          <view class="story-excerpt">{{item.excerpt}}</view>
+          <view class="story-meta">{{item.dateLabel}} · {{item.countLabel}}</view>
+        </view>
+        <view class="story-continue">继续聊</view>
+      </view>
+    </view>
+
+    <view class="home-empty" wx:else>
+      <view class="home-empty-title serif">还没有故事</view>
+      <view class="home-empty-note">不用想好从哪里开始，先说一句就好。</view>
     </view>
   </view>
+</scroll-view>
 
-  <view class="home-empty" wx:else>
-    <view class="home-empty-title serif">还没有故事</view>
-    <view class="home-empty-note">不用想好从哪里开始，先说一句就好。</view>
-  </view>
-</view>
+<scroll-view
+  class="profile-menu profile-menu-floating"
+  wx:if="{{profileChooserOpen}}"
+  scroll-y
+  enhanced
+  show-scrollbar="{{false}}"
+>
+  <button
+    class="profile-menu-item {{item.selected ? 'profile-menu-item-on' : ''}}"
+    wx:for="{{profileOptions}}"
+    wx:key="id"
+    data-id="{{item.id}}"
+    bindtap="chooseProfile"
+    hover-class="none"
+    aria-label="切换到{{item.name}}的档案"
+  >
+    <view class="profile-menu-avatar serif">{{item.avatarText}}</view>
+    <view class="profile-menu-copy">
+      <text class="profile-menu-name">{{item.name}}</text>
+      <text class="profile-menu-relation">{{item.relation}}</text>
+    </view>
+    <text class="profile-menu-check">{{item.selected ? '✓' : ''}}</text>
+  </button>
+</scroll-view>
 
 <story-switcher current="home"></story-switcher>

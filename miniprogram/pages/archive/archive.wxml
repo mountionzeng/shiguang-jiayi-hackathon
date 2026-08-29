@@ -24,12 +24,35 @@
   </view>
 
   <view class="note-list" wx:if="{{hasItems}}">
-    <view class="note-paper" wx:for="{{archiveItems}}" wx:key="id">
-      <view class="note-pin"></view>
-      <view class="note-date">{{item.dateLabel}}</view>
-      <view class="note-title serif">{{item.title}}</view>
-      <view class="note-excerpt">{{item.excerpt}}</view>
-      <view class="note-archive">{{item.archiveLabel}}</view>
+    <view class="note-swipe" wx:for="{{archiveItems}}" wx:key="id">
+      <button
+        class="note-delete"
+        data-id="{{item.id}}"
+        data-title="{{item.title}}"
+        bindtap="deleteMemory"
+        hover-class="none"
+        aria-label="删除{{item.title}}"
+      >
+        <view class="note-delete-badge">
+          <view class="note-trash">
+            <view class="note-trash-lid"></view>
+            <view class="note-trash-can"></view>
+          </view>
+        </view>
+      </button>
+      <view
+        class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}"
+        data-id="{{item.id}}"
+        bindtouchstart="onNoteTouchStart"
+        bindtouchend="onNoteTouchEnd"
+        bindtap="closeSwipe"
+      >
+        <view class="note-pin"></view>
+        <view class="note-date">{{item.dateLabel}}</view>
+        <view class="note-title serif">{{item.title}}</view>
+        <view class="note-excerpt">{{item.excerpt}}</view>
+        <view class="note-archive">{{item.archiveLabel}}</view>
+      </view>
     </view>
   </view>
 
@@ -38,5 +61,5 @@
     <view class="archive-empty-note">从首页“记下此刻”开始说几句，保存后会出现在这里。</view>
   </view>
 
-  <view class="archive-version-note">当前版本先支持查看；移动、改名和删除会在下一版补充。</view>
+  <view class="archive-version-note">左滑记忆可以删除；移动和改名会在后续版本补充。</view>
 </view>

@@ -1,9 +1,18 @@
 /* 首页：当代书籍装帧；三入口固定在底部切换栏。 */
 
+.home-scroll {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #fbf8f1;
+}
+
 .home {
   position: relative;
-  min-height: 100vh;
-  padding: 36rpx 40rpx calc(276rpx + env(safe-area-inset-bottom));
+  min-height: calc(100vh + 2rpx);
+  padding: 22rpx 40rpx calc(276rpx + env(safe-area-inset-bottom));
   background: #fbf8f1;
 }
 
@@ -28,9 +37,9 @@
 
 .home > .topline {
   position: absolute;
-  top: 36rpx;
+  top: 8rpx;
   left: 32rpx;
-  z-index: 2;
+  z-index: 960;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -58,9 +67,9 @@
 
 .profile-switch-wrap {
   position: absolute;
-  top: 36rpx;
+  top: 4rpx;
   left: 50%;
-  z-index: 3;
+  z-index: 980;
   width: 360rpx;
   margin: 0;
   transform: translateX(-50%);
@@ -72,9 +81,9 @@
   align-items: center;
   justify-content: space-between;
   width: 360rpx;
-  min-height: 92rpx;
+  height: 84rpx;
   margin: 0;
-  padding: 14rpx 24rpx 14rpx 28rpx;
+  padding: 10rpx 24rpx 10rpx 28rpx;
   border: 2rpx solid rgba(79, 127, 107, 0.18);
   border-radius: 46rpx;
   background: rgba(255, 253, 247, 0.72);
@@ -158,15 +167,27 @@
 
 .profile-menu {
   position: absolute;
-  top: 104rpx;
+  top: 96rpx;
   right: 0;
   left: 0;
-  z-index: 4;
+  z-index: 999;
+  height: 318rpx;
   padding: 10rpx;
   border: 2rpx solid rgba(129, 117, 93, 0.14);
   border-radius: 26rpx;
   background: rgba(255, 254, 251, 0.96);
   box-shadow: 0 18rpx 38rpx rgba(75, 73, 63, 0.12);
+  overflow: hidden;
+}
+
+.profile-menu-floating {
+  position: fixed;
+  top: 100rpx;
+  right: auto;
+  left: 50%;
+  z-index: 10000;
+  width: 360rpx;
+  transform: translateX(-50%);
 }
 
 .profile-menu-item {
@@ -247,14 +268,16 @@
   align-items: center;
   flex-direction: column;
   justify-content: center;
-  margin-top: 230rpx;
+  z-index: 0;
+  margin-top: 68rpx;
   perspective: 1200rpx;
 }
 
 .book {
   position: relative;
-  width: 500rpx;
-  height: 750rpx;
+  z-index: 0;
+  width: 540rpx;
+  height: 810rpx;
   transform-style: preserve-3d;
   cursor: pointer;
 }
@@ -308,13 +331,13 @@
 .book-cover-copy {
   position: absolute;
   top: 0;
-  right: 48rpx;
-  bottom: 118rpx;
-  left: 100rpx;
+  right: 52rpx;
+  bottom: 128rpx;
+  left: 108rpx;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 60rpx 8rpx 0;
+  padding: 66rpx 8rpx 0;
   /* 封面文字与 .book-cover-leaf 同层翻转，透视始终贴合书页。 */
   font-family: "ShiguangBookType", "Songti SC", STSong, serif;
   pointer-events: none;
@@ -339,7 +362,7 @@
 
 .book-title {
   color: var(--ink);
-  font-size: 40rpx;
+  font-size: 48rpx;
   font-weight: 400;
   line-height: 1.34;
   letter-spacing: 1rpx;
@@ -419,6 +442,102 @@
   color: rgba(79, 127, 107, 0.72);
   font-size: 21rpx;
   letter-spacing: 3rpx;
+}
+
+/* ---- 推荐追问 ---- */
+
+.recommended {
+  margin-top: 24rpx;
+}
+
+.recommended-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14rpx;
+}
+
+.recommended-title {
+  color: var(--ink);
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.recommended-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 154rpx;
+  min-height: 56rpx;
+  margin: 0;
+  padding: 0 18rpx;
+  border: 2rpx solid rgba(181, 145, 82, 0.46);
+  border-radius: 28rpx;
+  background: rgba(255, 253, 247, 0.72);
+  color: #9b7334;
+  font-size: 23rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.recommended-refresh::after { border: 0; }
+
+.recommended-card {
+  position: relative;
+  padding: 28rpx 30rpx 30rpx 34rpx;
+  border: 2rpx solid rgba(129, 117, 93, 0.14);
+  border-radius: 22rpx;
+  background: rgba(255, 254, 251, 0.78);
+  box-shadow: 0 18rpx 42rpx rgba(75, 73, 63, 0.09);
+  overflow: hidden;
+}
+
+.recommended-card::before {
+  position: absolute;
+  top: 28rpx;
+  bottom: 28rpx;
+  left: 0;
+  width: 7rpx;
+  border-radius: 0 7rpx 7rpx 0;
+  background: rgba(181, 145, 82, 0.78);
+  content: "";
+}
+
+.recommended-card:active {
+  transform: translateY(2rpx) scale(0.99);
+}
+
+.recommended-label {
+  color: #9b7334;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.recommended-context {
+  margin-top: 10rpx;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 25rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recommended-question {
+  margin-top: 8rpx;
+  color: var(--ink);
+  font-size: 31rpx;
+  line-height: 1.55;
+}
+
+.recommended-action {
+  margin-top: 18rpx;
+  color: var(--jade);
+  font-size: 24rpx;
+  font-weight: 600;
+  text-align: right;
 }
 
 @keyframes book-cover-open {

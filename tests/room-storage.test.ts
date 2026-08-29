@@ -67,7 +67,7 @@ const draft: BiographyDraft = {
   generationMode: "local-demo",
 };
 
-test("v2 rooms migrate to v4 without becoming personal stories", (context) => {
+test("v2 rooms migrate to v5 without becoming personal stories", (context) => {
   const legacy = createInitialRoomState();
   const scopeLess = legacy.contributions.map(({ scope: _scope, ...memory }) => memory);
   const storage = installVersionedStorageMock({
@@ -80,7 +80,7 @@ test("v2 rooms migrate to v4 without becoming personal stories", (context) => {
   context.after(storage.restore);
 
   const migrated = loadRoomState();
-  const persisted = storage.read("shiguang-family-room-v4") as typeof migrated;
+  const persisted = storage.read("shiguang-family-room-v5") as typeof migrated;
 
   assert.deepEqual(
     migrated.contributions.map((memory) => memory.id),
@@ -91,7 +91,7 @@ test("v2 rooms migrate to v4 without becoming personal stories", (context) => {
   assert.deepEqual(persisted, migrated);
 });
 
-test("v3 migration preserves one reader but keeps old multi-reader corruption closed", (context) => {
+test("v3 rooms migrate to v5 while preserving one reader and closing corrupted multi-reader data", (context) => {
   const previous = createInitialRoomState();
   const singleReader = createContribution({
     id: "v3-single-reader",
@@ -132,7 +132,7 @@ test("v3 migration preserves one reader but keeps old multi-reader corruption cl
     )?.sharedWithMemberIds,
     undefined,
   );
-  assert.deepEqual(storage.read("shiguang-family-room-v4"), migrated);
+  assert.deepEqual(storage.read("shiguang-family-room-v5"), migrated);
 });
 
 test("a late generation keeps unrelated newer room changes", (context) => {

@@ -1,11 +1,13 @@
 import {
   biographySourceFingerprint,
   BiographyDraft,
-  createInitialRoomState,
+  createDemoRoomState,
+  createEmptyRoomState,
   contributionRelatedMemberIds,
   contributionScope,
   FamilyMember,
   FamilyRoomState,
+  isUntouchedDemoRoomState,
   MemoryContribution,
   personalBookSourceFingerprint,
   personalShareTargetMemberIds,
@@ -79,24 +81,47 @@ function serverDate() {
   return database().serverDate();
 }
 
-function familyMemberDocId(memberId: string): string {
-  return `${DEMO_FAMILY_ID}_${memberId}`;
+let cachedOpenId: string | undefined;
+
+function sanitizeDocumentPart(value: string): string {
+  return value.replace(/[^0-9A-Za-z_-]/g, "_");
 }
 
-function sourceRecordDocId(contributionId: string): string {
-  return `src_${contributionId}`;
+async function loadOpenId(): Promise<string> {
+  if (cachedOpenId) return cachedOpenId;
+  const response = await wx.cloud.callFunction({ name: "getOpenId" });
+  const openid = String((response.result as { openid?: unknown } | undefined)?.openid ?? "").trim();
+  if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
+  cachedOpenId = openid;
+  return cachedOpenId;
 }
 
-function familyDraftDocId(): string {
-  return `${DEMO_FAMILY_ID}_family_latest`;
+async function currentFamilyId(): Promise<string> {
+  return `family_${sanitizeDocumentPart(await loadOpenId())}`;
 }
 
-function personalDraftDocId(memberId: string): string {
-  return `${DEMO_FAMILY_ID}_${memberId}_personal_latest`;
+function familyMemberDocId(familyId: string, memberId: string): string {
+  return `${familyId}_${sanitizeDocumentPart(memberId)}`;
 }
 
-function generatedArtifactDocId(draft: BiographyDraft): string {
-  return `artifact_${draft.generatedAt.replace(/[^0-9A-Za-z]/g, "_")}`;
+function memoryDocId(familyId: string, contributionId: string): string {
+  return `${familyId}_${sanitizeDocumentPart(contributionId)}`;
+}
+
+function sourceRecordDocId(familyId: string, contributionId: string): string {
+  return `src_${familyId}_${sanitizeDocumentPart(contributionId)}`;
+}
+
+function familyDraftDocId(familyId: string): string {
+  return `${familyId}_family_latest`;
+}
+
+function personalDraftDocId(familyId: string, memberId: string): string {
+  return `${familyId}_${sanitizeDocumentPart(memberId)}_personal_latest`;
+}
+
+function generatedArtifactDocId(familyId: string, draft: BiographyDraft): string {
+  return `artifact_${familyId}_${draft.generatedAt.replace(/[^0-9A-Za-z]/g, "_")}`;
 }
 
 function isNotFoundError(error: unknown): boolean {
@@ -104,8 +129,8 @@ function isNotFoundError(error: unknown): boolean {
   return message.includes("does not exist") || message.includes("document.get:fail");
 }
 
-async function saveFamilyShell(state: FamilyRoomState): Promise<void> {
-  await collection(CLOUD_COLLECTIONS.families).doc(DEMO_FAMILY_ID).set({
+async function saveFamilyShell(familyId: string, state: FamilyRoomState): Promise<void> {
+  await collection(CLOUD_COLLECTIONS.families).doc(familyId).set({
     data: {
       roomName: state.roomName,
       protagonistName: state.protagonistName,
@@ -114,15 +139,15 @@ async function saveFamilyShell(state: FamilyRoomState): Promise<void> {
   });
 }
 
-async function saveMembers(members: FamilyMember[]): Promise<void> {
+async function saveMembers(familyId: string, members: FamilyMember[]): Promise<void> {
   await Promise.all(
     members.map((member) =>
       collection(CLOUD_COLLECTIONS.familyMembers)
-        .doc(familyMemberDocId(member.id))
+        .doc(familyMemberDocId(familyId, member.id))
         .set({
           data: {
             ...member,
-            familyId: DEMO_FAMILY_ID,
+            familyId,
             memberId: member.id,
             updatedAt: serverDate(),
           },
@@ -131,11 +156,14 @@ async function saveMembers(members: FamilyMember[]): Promise<void> {
   );
 }
 
-async function saveContribution(contribution: MemoryContribution): Promise<void> {
-  const sourceRecordId = sourceRecordDocId(contribution.id);
+async function saveContribution(
+  familyId: string,
+  contribution: MemoryContribution,
+): Promise<void> {
+  const sourceRecordId = sourceRecordDocId(familyId, contribution.id);
   await collection(CLOUD_COLLECTIONS.sourceRecords).doc(sourceRecordId).set({
     data: {
-      familyId: DEMO_FAMILY_ID,
+      familyId,
       contributorMemberId: contribution.authorMemberId,
       contributorName: contribution.authorName,
       relation: contribution.relation,
@@ -160,10 +188,11 @@ async function saveContribution(contribution: MemoryContribution): Promise<void>
     },
   });
 
-  await collection(CLOUD_COLLECTIONS.memories).doc(contribution.id).set({
+  await collection(CLOUD_COLLECTIONS.memories).doc(memoryDocId(familyId, contribution.id)).set({
     data: {
-      familyId: DEMO_FAMILY_ID,
+      familyId,
       sourceRecordId,
+      frontendContributionId: contribution.id,
       authorMemberId: contribution.authorMemberId,
       authorName: contribution.authorName,
       relation: contribution.relation,
@@ -187,19 +216,19 @@ async function saveContribution(contribution: MemoryContribution): Promise<void>
   });
 }
 
-async function saveDraft(draft: BiographyDraft | undefined): Promise<void> {
+async function saveDraft(familyId: string, draft: BiographyDraft | undefined): Promise<void> {
   if (!draft) {
     try {
-      await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(familyDraftDocId()).remove();
+      await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(familyDraftDocId(familyId)).remove();
     } catch (error) {
       if (!isNotFoundError(error)) throw error;
     }
     return;
   }
 
-  await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(familyDraftDocId()).set({
+  await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(familyDraftDocId(familyId)).set({
     data: {
-      familyId: DEMO_FAMILY_ID,
+      familyId,
       draftType: "family",
       draft,
       updatedAt: serverDate(),
@@ -207,10 +236,14 @@ async function saveDraft(draft: BiographyDraft | undefined): Promise<void> {
   });
 }
 
-async function savePersonalDraft(memberId: string, draft: BiographyDraft): Promise<void> {
-  await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(personalDraftDocId(memberId)).set({
+async function savePersonalDraft(
+  familyId: string,
+  memberId: string,
+  draft: BiographyDraft,
+): Promise<void> {
+  await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(personalDraftDocId(familyId, memberId)).set({
     data: {
-      familyId: DEMO_FAMILY_ID,
+      familyId,
       memberId,
       draftType: "personal",
       draft,
@@ -219,9 +252,17 @@ async function savePersonalDraft(memberId: string, draft: BiographyDraft): Promi
   });
 }
 
-async function removePersonalDraft(memberId: string): Promise<void> {
+async function removePersonalDraft(familyId: string, memberId: string): Promise<void> {
   try {
-    await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(personalDraftDocId(memberId)).remove();
+    await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(personalDraftDocId(familyId, memberId)).remove();
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+  }
+}
+
+async function removeDocIfExists(collectionName: string, documentId: string): Promise<void> {
+  try {
+    await collection(collectionName).doc(documentId).remove();
   } catch (error) {
     if (!isNotFoundError(error)) throw error;
   }
@@ -238,44 +279,62 @@ async function clearDemoCollection(collectionName: string): Promise<void> {
   );
 }
 
-async function saveCloudRoomState(state: FamilyRoomState): Promise<void> {
-  await saveFamilyShell(state);
-  await saveMembers(state.members);
-  await Promise.all(state.contributions.map((contribution) => saveContribution(contribution)));
-  await saveDraft(state.draft);
+async function clearFamilyCollection(
+  collectionName: string,
+  familyId: string,
+): Promise<void> {
+  const response = await collection(collectionName).where({ familyId }).get();
+  const records = response.data as Array<{ _id?: string }>;
+  await Promise.all(
+    records
+      .map((record) => record._id)
+      .filter((id): id is string => Boolean(id))
+      .map((id) => collection(collectionName).doc(id).remove()),
+  );
+}
+
+async function saveCloudRoomState(
+  familyId: string,
+  state: FamilyRoomState,
+): Promise<void> {
+  await saveFamilyShell(familyId, state);
+  await saveMembers(familyId, state.members);
+  await Promise.all(state.contributions.map((contribution) => saveContribution(familyId, contribution)));
+  await saveDraft(familyId, state.draft);
   await Promise.all(
     Object.entries(state.personalDrafts ?? {}).map(([memberId, draft]) =>
-      savePersonalDraft(memberId, draft),
+      savePersonalDraft(familyId, memberId, draft),
     ),
   );
 }
 
-async function seedInitialState(): Promise<FamilyRoomState> {
-  const initial = createInitialRoomState();
-  await saveCloudRoomState(initial);
+async function seedInitialState(familyId: string): Promise<FamilyRoomState> {
+  const initial = createEmptyRoomState();
+  await saveCloudRoomState(familyId, initial);
   return initial;
 }
 
 export async function loadCloudRoomState(): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
   let family: CloudFamily | undefined;
   try {
-    const response = await collection(CLOUD_COLLECTIONS.families).doc(DEMO_FAMILY_ID).get();
+    const response = await collection(CLOUD_COLLECTIONS.families).doc(familyId).get();
     family = response.data as CloudFamily;
   } catch (error) {
     if (!isNotFoundError(error)) throw error;
   }
 
   if (!family) {
-    return seedInitialState();
+    return seedInitialState(familyId);
   }
 
   const [membersResponse, memoriesResponse, draftResponse] = await Promise.all([
-    collection(CLOUD_COLLECTIONS.familyMembers).where({ familyId: DEMO_FAMILY_ID }).get(),
+    collection(CLOUD_COLLECTIONS.familyMembers).where({ familyId }).get(),
     collection(CLOUD_COLLECTIONS.memories)
-      .where({ familyId: DEMO_FAMILY_ID })
+      .where({ familyId })
       .orderBy("createdAt", "asc")
       .get(),
-    collection(CLOUD_COLLECTIONS.biographyDrafts).where({ familyId: DEMO_FAMILY_ID }).get(),
+    collection(CLOUD_COLLECTIONS.biographyDrafts).where({ familyId }).get(),
   ]);
 
   const members = (membersResponse.data as CloudFamilyMember[])
@@ -289,12 +348,15 @@ export async function loadCloudRoomState(): Promise<FamilyRoomState> {
     .sort((left, right) => left.id.localeCompare(right.id));
 
   if (members.length === 0) {
-    return seedInitialState();
+    return seedInitialState(familyId);
   }
 
-  const contributions = (memoriesResponse.data as Array<CloudMemory & { _id?: string }>).map(
+  const contributions = (memoriesResponse.data as Array<CloudMemory & {
+    _id?: string;
+    frontendContributionId?: string;
+  }>).map(
     (memory) => ({
-      id: String(memory._id ?? memory.sourceRecordId),
+      id: String(memory.frontendContributionId ?? memory._id ?? memory.sourceRecordId),
       authorMemberId: memory.authorMemberId,
       authorName: memory.authorName,
       relation: memory.relation,
@@ -324,7 +386,7 @@ export async function loadCloudRoomState(): Promise<FamilyRoomState> {
       .map((record) => [record.memberId as string, record.draft as BiographyDraft]),
   );
 
-  return {
+  const state = {
     roomName: family.roomName ?? "拾光房间",
     protagonistName: family.protagonistName ?? "主人公",
     members,
@@ -332,17 +394,25 @@ export async function loadCloudRoomState(): Promise<FamilyRoomState> {
     draft: familyDraft,
     personalDrafts,
   };
+
+  if (familyId !== DEMO_FAMILY_ID && isUntouchedDemoRoomState(state)) {
+    console.warn("当前用户空间里残留了完整示例家庭，已重置为空房间");
+    return seedInitialState(familyId);
+  }
+
+  return state;
 }
 
 export async function appendCloudContribution(
   contribution: MemoryContribution,
 ): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
-  await saveContribution(contribution);
+  await saveContribution(familyId, contribution);
   if (contributionScope(contribution) === "personal") {
-    await removePersonalDraft(contribution.authorMemberId);
+    await removePersonalDraft(familyId, contribution.authorMemberId);
   } else {
-    await saveDraft(undefined);
+    await saveDraft(familyId, undefined);
   }
   const personalDrafts = { ...(state.personalDrafts ?? {}) };
   if (contributionScope(contribution) === "personal") {
@@ -360,9 +430,10 @@ export async function appendCloudContribution(
 export async function replaceCloudContribution(
   contribution: MemoryContribution,
 ): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
-  await saveContribution(contribution);
-  await saveDraft(undefined);
+  await saveContribution(familyId, contribution);
+  await saveDraft(familyId, undefined);
   return {
     ...state,
     contributions: state.contributions.map((item) =>
@@ -372,19 +443,51 @@ export async function replaceCloudContribution(
   };
 }
 
+export async function deleteCloudContribution(
+  contributionId: string,
+): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const contribution = state.contributions.find((item) => item.id === contributionId);
+  if (!contribution) {
+    throw new Error("没有找到这段记忆");
+  }
+
+  await Promise.all([
+    collection(CLOUD_COLLECTIONS.memories).doc(memoryDocId(familyId, contributionId)).remove(),
+    collection(CLOUD_COLLECTIONS.sourceRecords).doc(sourceRecordDocId(familyId, contributionId)).remove(),
+    contributionScope(contribution) === "personal"
+      ? removePersonalDraft(familyId, contribution.authorMemberId)
+      : saveDraft(familyId, undefined),
+  ]);
+
+  const personalDrafts = { ...(state.personalDrafts ?? {}) };
+  if (contributionScope(contribution) === "personal") {
+    delete personalDrafts[contribution.authorMemberId];
+  }
+
+  return {
+    ...state,
+    contributions: state.contributions.filter((item) => item.id !== contributionId),
+    draft: contributionScope(contribution) === "family" ? undefined : state.draft,
+    personalDrafts,
+  };
+}
+
 export async function saveCloudDraftIfSourcesUnchanged(
   draft: BiographyDraft,
   sourceFingerprint: string,
 ): Promise<FamilyRoomState | undefined> {
+  const familyId = await currentFamilyId();
   const latestState = await loadCloudRoomState();
   if (biographySourceFingerprint(latestState) !== sourceFingerprint) {
     return undefined;
   }
 
-  await saveDraft(draft);
-  await collection(CLOUD_COLLECTIONS.generatedArtifacts).doc(generatedArtifactDocId(draft)).set({
+  await saveDraft(familyId, draft);
+  await collection(CLOUD_COLLECTIONS.generatedArtifacts).doc(generatedArtifactDocId(familyId, draft)).set({
     data: {
-      familyId: DEMO_FAMILY_ID,
+      familyId,
       productType: "memoir_review",
       artifactType: "text",
       title: draft.title,
@@ -404,15 +507,16 @@ export async function saveCloudPersonalDraftIfSourcesUnchanged(
   sourceFingerprint: string,
   memberId: string,
 ): Promise<FamilyRoomState | undefined> {
+  const familyId = await currentFamilyId();
   const latestState = await loadCloudRoomState();
   if (personalBookSourceFingerprint(latestState, memberId) !== sourceFingerprint) {
     return undefined;
   }
 
-  await savePersonalDraft(memberId, draft);
-  await collection(CLOUD_COLLECTIONS.generatedArtifacts).doc(generatedArtifactDocId(draft)).set({
+  await savePersonalDraft(familyId, memberId, draft);
+  await collection(CLOUD_COLLECTIONS.generatedArtifacts).doc(generatedArtifactDocId(familyId, draft)).set({
     data: {
-      familyId: DEMO_FAMILY_ID,
+      familyId,
       memberId,
       productType: "memoir_review",
       artifactType: "text",
@@ -439,6 +543,7 @@ export async function updateCloudPersonalShareTargets(
   actor: FamilyMember,
   targetMemberIds: string[],
 ): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
   const currentActor = state.members.find((member) => member.id === actor.id);
   const contribution = state.contributions.find((item) => item.id === contributionId);
@@ -446,7 +551,7 @@ export async function updateCloudPersonalShareTargets(
   if (!contribution) throw new Error("没有找到这段故事");
 
   const updated = setPersonalShareTargets(contribution, currentActor, targetMemberIds);
-  await saveContribution(updated);
+  await saveContribution(familyId, updated);
   return {
     ...state,
     contributions: state.contributions.map((item) =>
@@ -463,5 +568,27 @@ export async function resetCloudDemoRoom(): Promise<FamilyRoomState> {
     clearDemoCollection(CLOUD_COLLECTIONS.biographyDrafts),
     clearDemoCollection(CLOUD_COLLECTIONS.generatedArtifacts),
   ]);
-  return seedInitialState();
+  const demo = createDemoRoomState();
+  await saveCloudRoomState(DEMO_FAMILY_ID, demo);
+  return demo;
+}
+
+export async function resetCloudCurrentUserRoom(): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  if (familyId === DEMO_FAMILY_ID) {
+    throw new Error("不能用当前账号清空示例家庭");
+  }
+
+  await Promise.all([
+    removeDocIfExists(CLOUD_COLLECTIONS.families, familyId),
+    clearFamilyCollection(CLOUD_COLLECTIONS.familyMembers, familyId),
+    clearFamilyCollection(CLOUD_COLLECTIONS.sourceRecords, familyId),
+    clearFamilyCollection(CLOUD_COLLECTIONS.memories, familyId),
+    clearFamilyCollection(CLOUD_COLLECTIONS.biographyDrafts, familyId),
+    clearFamilyCollection(CLOUD_COLLECTIONS.generatedArtifacts, familyId),
+    clearFamilyCollection(CLOUD_COLLECTIONS.assets, familyId),
+    clearFamilyCollection(CLOUD_COLLECTIONS.aiTasks, familyId),
+  ]);
+
+  return seedInitialState(familyId);
 }

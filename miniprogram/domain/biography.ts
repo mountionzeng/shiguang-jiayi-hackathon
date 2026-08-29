@@ -456,7 +456,19 @@ export function buildLocalPersonalBiographyDraft(
   };
 }
 
-export function createInitialRoomState(): FamilyRoomState {
+export function createEmptyRoomState(): FamilyRoomState {
+  return {
+    roomName: "我的拾光房间",
+    protagonistName: "我",
+    members: [
+      { id: "owner", name: "我", relation: "自己", avatarText: "我", role: "owner" },
+    ],
+    contributions: [],
+    personalDrafts: {},
+  };
+}
+
+export function createDemoRoomState(): FamilyRoomState {
   return {
     roomName: "林家的拾光房间",
     protagonistName: "林致远",
@@ -505,6 +517,28 @@ export function createInitialRoomState(): FamilyRoomState {
       }),
     ],
   };
+}
+
+export function createInitialRoomState(): FamilyRoomState {
+  return createDemoRoomState();
+}
+
+function comparableRoomState(state: FamilyRoomState): FamilyRoomState {
+  const comparable = JSON.parse(JSON.stringify(state)) as FamilyRoomState;
+  if (Object.keys(comparable.personalDrafts ?? {}).length === 0) {
+    delete comparable.personalDrafts;
+  }
+  if (!comparable.draft) {
+    delete comparable.draft;
+  }
+  return comparable;
+}
+
+export function isUntouchedDemoRoomState(state: FamilyRoomState): boolean {
+  return (
+    JSON.stringify(comparableRoomState(state)) ===
+    JSON.stringify(comparableRoomState(createDemoRoomState()))
+  );
 }
 
 /**

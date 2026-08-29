@@ -80,4 +80,16 @@
       <text class="me-row-arrow">›</text>
     </button>
   </view>
+
+  <view class="me-section-title">账号</view>
+  <view class="me-list">
+    <button class="me-row me-row-danger" bindtap="clearCurrentAccountData" hover-class="none">
+      <text class="me-row-icon me-row-icon-danger">清</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">清空当前账号数据</text>
+        <text class="me-row-note">重新从空房间开始</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
+  </view>
 </view>

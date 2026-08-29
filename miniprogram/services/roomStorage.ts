@@ -3,7 +3,8 @@ import {
   biographySourceFingerprint,
   contributionRelatedMemberIds,
   contributionScope,
-  createInitialRoomState,
+  createDemoRoomState,
+  createEmptyRoomState,
   FamilyMember,
   FamilyRoomState,
   MemoryContribution,
@@ -12,7 +13,7 @@ import {
   setPersonalShareTargets,
 } from "../domain/biography";
 
-const STORAGE_KEY = "shiguang-family-room-v4";
+const STORAGE_KEY = "shiguang-family-room-v5";
 const V3_STORAGE_KEY = "shiguang-family-room-v3";
 const LEGACY_STORAGE_KEY = "shiguang-family-room-v2";
 
@@ -77,7 +78,7 @@ export function loadRoomState(): FamilyRoomState {
     console.warn("无法读取本地家庭房间，将使用演示数据", error);
   }
 
-  const initial = createInitialRoomState();
+  const initial = createEmptyRoomState();
   saveRoomState(initial);
   return initial;
 }
@@ -166,6 +167,30 @@ export function replaceContribution(
   return next;
 }
 
+export function deleteContribution(
+  contributionId: string,
+  state = loadRoomState(),
+): FamilyRoomState {
+  const contribution = state.contributions.find((item) => item.id === contributionId);
+  if (!contribution) {
+    throw new Error("没有找到这段记忆");
+  }
+
+  const personalDrafts = { ...(state.personalDrafts ?? {}) };
+  if (contributionScope(contribution) === "personal") {
+    delete personalDrafts[contribution.authorMemberId];
+  }
+
+  const next = {
+    ...state,
+    contributions: state.contributions.filter((item) => item.id !== contributionId),
+    draft: contributionScope(contribution) === "family" ? undefined : state.draft,
+    personalDrafts,
+  };
+  saveRoomState(next);
+  return next;
+}
+
 /**
  * 只更新个人故事的定向阅读者。
  * 分享权限不是书稿来源的一部分，因此不应让个人章节或家庭章节失效。
@@ -217,8 +242,15 @@ export function updatePersonalShareTargets(
 }
 
 export function resetDemoRoom(): FamilyRoomState {
-  const initial = createInitialRoomState();
+  const initial = createDemoRoomState();
   saveRoomState(initial);
+  return initial;
+}
+
+export function resetCurrentRoom(): FamilyRoomState {
+  const initial = createEmptyRoomState();
+  saveRoomState(initial);
+  saveCurrentMemberId(DEFAULT_MEMBER_ID);
   return initial;
 }
 

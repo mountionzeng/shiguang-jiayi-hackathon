@@ -7,7 +7,7 @@ import {
   FamilyRoomState,
 } from "../miniprogram/domain/biography";
 
-const ROOM_KEY = "shiguang-family-room-v4";
+const ROOM_KEY = "shiguang-family-room-v5";
 const CURRENT_MEMBER_KEY = "shiguang-current-member-v1";
 
 interface TestPageDefinition {
@@ -582,6 +582,29 @@ test("the home my entry opens the personal home page", async (context) => {
   assert.equal(last(storage.navigations), "/pages/me/me");
 });
 
+test("the home page recommends a follow-up from the latest memory", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+
+  await callPage(page, "refresh");
+
+  assert.equal(page.data.hasRecommendedQuestion, true);
+  assert.equal(page.data.recommendedSourceId, "demo-personal-rain");
+  assert.match(String(page.data.recommendedQuestionContext), /^关于/);
+  assert.ok(String(page.data.recommendedQuestionContext).length <= 21);
+  assert.match(String(page.data.recommendedQuestion), /[？?]$/);
+
+  callPage(page, "continueRecommendedQuestion");
+
+  assert.equal(
+    last(storage.navigations),
+    `/pages/interview/interview?sourceId=demo-personal-rain&storyTitle=${encodeURIComponent(
+      String(page.data.recommendedStoryTitle),
+    )}`,
+  );
+});
+
 test("the personal home page summarizes the active profile", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -634,6 +657,33 @@ test("the memory archive shows only the current profile's quick notes", async (c
     ["demo-personal-rain"],
   );
   assert.equal(page.data.hasNotes, true);
+});
+
+test("the memory archive supports swipe reveal and deleting a quick note", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+
+  await callPage(page, "refresh");
+  callPage(page, "onNoteTouchStart", {
+    currentTarget: { dataset: { id: "demo-personal-rain" } },
+    touches: [{ clientX: 260, clientY: 120 }],
+  });
+  callPage(page, "onNoteTouchEnd", {
+    currentTarget: { dataset: { id: "demo-personal-rain" } },
+    changedTouches: [{ clientX: 170, clientY: 124 }],
+  });
+
+  assert.equal(page.data.swipedItemId, "demo-personal-rain");
+
+  await callPage(page, "confirmDeleteMemory", "demo-personal-rain");
+
+  assert.ok(
+    !storage.roomState().contributions.some((memory) => memory.id === "demo-personal-rain"),
+  );
+  assert.equal(page.data.noteCount, 0);
+  assert.equal(page.data.hasItems, false);
+  assert.equal(last(storage.toasts), "已删除");
 });
 
 test("the memory archive switches to memoirs without mixing in quick notes", async (context) => {

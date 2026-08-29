@@ -5,6 +5,7 @@ import {
 } from "../../domain/biography";
 import {
   loadCurrentMemberRemoteFirst,
+  deleteContributionRemoteFirst,
   loadRoomStateRemoteFirst,
 } from "../../services/roomRepository";
 
@@ -41,7 +42,13 @@ Page({
     activeTab: "note" as ArchiveTab,
     archiveItems: [] as NoteView[],
     hasItems: false,
+    swipedItemId: "",
+    deletingItemId: "",
   },
+
+  swipeStartX: 0,
+  swipeStartY: 0,
+  swipeActiveId: "",
 
   onLoad(options: { tab?: string }) {
     this.setData({ activeTab: options.tab === "memoir" ? "memoir" : "note" });
@@ -55,7 +62,7 @@ Page({
     currentTarget: { dataset: { tab: ArchiveTab } };
   }) {
     const activeTab = event.currentTarget.dataset.tab === "memoir" ? "memoir" : "note";
-    this.setData({ activeTab });
+    this.setData({ activeTab, swipedItemId: "" });
     void this.refresh();
   },
 
@@ -90,5 +97,74 @@ Page({
       archiveItems,
       hasItems: archiveItems.length > 0,
     });
+  },
+
+  onNoteTouchStart(event: {
+    currentTarget: { dataset: { id: string } };
+    touches: Array<{ clientX: number; clientY: number }>;
+  }) {
+    const touch = event.touches[0];
+    if (!touch) return;
+    this.swipeStartX = touch.clientX;
+    this.swipeStartY = touch.clientY;
+    this.swipeActiveId = event.currentTarget.dataset.id || "";
+  },
+
+  onNoteTouchEnd(event: {
+    currentTarget: { dataset: { id: string } };
+    changedTouches: Array<{ clientX: number; clientY: number }>;
+  }) {
+    const touch = event.changedTouches[0];
+    const itemId = event.currentTarget.dataset.id || this.swipeActiveId;
+    if (!touch || !itemId) return;
+
+    const deltaX = touch.clientX - this.swipeStartX;
+    const deltaY = touch.clientY - this.swipeStartY;
+    if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -42) {
+      this.setData({ swipedItemId: itemId });
+    } else if (deltaX > 24 || Math.abs(deltaY) > Math.abs(deltaX)) {
+      this.setData({ swipedItemId: "" });
+    }
+  },
+
+  closeSwipe() {
+    if (this.data.swipedItemId) {
+      this.setData({ swipedItemId: "" });
+    }
+  },
+
+  deleteMemory(event: {
+    currentTarget: { dataset: { id: string; title: string } };
+  }) {
+    const contributionId = event.currentTarget.dataset.id || "";
+    const title = event.currentTarget.dataset.title || "这条记忆";
+    if (!contributionId || this.data.deletingItemId) return;
+
+    wx.showModal({
+      title: "删除记忆",
+      content: `确定删除「${title}」吗？删除后不可恢复。`,
+      confirmText: "删除",
+      confirmColor: "#c54d3f",
+      success: (result) => {
+        if (!result.confirm) return;
+        void this.confirmDeleteMemory(contributionId);
+      },
+    });
+  },
+
+  async confirmDeleteMemory(contributionId: string) {
+    this.setData({ deletingItemId: contributionId });
+    try {
+      await deleteContributionRemoteFirst(contributionId);
+      this.setData({ swipedItemId: "", deletingItemId: "" });
+      await this.refresh();
+      wx.showToast({ title: "已删除", icon: "none" });
+    } catch (error) {
+      this.setData({ deletingItemId: "" });
+      wx.showToast({
+        title: error instanceof Error ? error.message : "暂时无法删除",
+        icon: "none",
+      });
+    }
   },
 });

@@ -96,21 +96,123 @@
   margin-top: 28rpx;
 }
 
-.note-paper {
+.note-swipe {
   position: relative;
-  padding: 30rpx 30rpx 26rpx 36rpx;
-  border: 2rpx solid rgba(129, 117, 93, 0.14);
-  border-radius: 8rpx 22rpx 16rpx 10rpx;
-  background: rgba(255, 253, 247, 0.84);
-  box-shadow: 8rpx 12rpx 28rpx rgba(63, 66, 60, 0.06);
+  overflow: hidden;
 }
 
-.note-paper + .note-paper {
+.note-swipe + .note-swipe {
   margin-top: 20rpx;
 }
 
-.note-paper:nth-child(even) {
+.note-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 116rpx;
+  margin: 0;
+  padding: 0 10rpx 0 0;
+  background: transparent;
+  color: #fff;
+  line-height: 1;
+}
+
+.note-delete::after { border: 0; }
+
+.note-delete-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #cf5146;
+  box-shadow: 0 10rpx 20rpx rgba(173, 61, 50, 0.18);
+}
+
+.note-trash {
+  position: relative;
+  width: 34rpx;
+  height: 38rpx;
+}
+
+.note-trash-lid {
+  position: absolute;
+  top: 2rpx;
+  left: 4rpx;
+  width: 26rpx;
+  height: 6rpx;
+  border-radius: 5rpx;
+  background: #fffefb;
+}
+
+.note-trash-lid::before {
+  position: absolute;
+  top: -5rpx;
+  left: 8rpx;
+  width: 10rpx;
+  height: 5rpx;
+  border-radius: 5rpx 5rpx 0 0;
+  background: #fffefb;
+  content: "";
+}
+
+.note-trash-can {
+  position: absolute;
+  right: 5rpx;
+  bottom: 1rpx;
+  left: 5rpx;
+  height: 27rpx;
+  border: 4rpx solid #fffefb;
+  border-top: 0;
+  border-radius: 0 0 5rpx 5rpx;
+}
+
+.note-trash-can::before,
+.note-trash-can::after {
+  position: absolute;
+  top: 5rpx;
+  bottom: 5rpx;
+  width: 3rpx;
+  border-radius: 3rpx;
+  background: #fffefb;
+  content: "";
+}
+
+.note-trash-can::before {
+  left: 6rpx;
+}
+
+.note-trash-can::after {
+  right: 6rpx;
+}
+
+.note-paper {
+  position: relative;
+  z-index: 1;
+  padding: 30rpx 30rpx 26rpx 36rpx;
+  border: 2rpx solid rgba(129, 117, 93, 0.1);
+  border-radius: 8rpx 22rpx 16rpx 10rpx;
+  background: rgba(255, 254, 251, 0.96);
+  box-shadow: 6rpx 10rpx 24rpx rgba(63, 66, 60, 0.05);
+  transition: transform 180ms ease;
+}
+
+.note-paper-open {
+  transform: translateX(-116rpx);
+}
+
+.note-swipe:nth-child(even) .note-paper {
   transform: rotate(-0.35deg);
+}
+
+.note-swipe:nth-child(even) .note-paper-open {
+  transform: translateX(-116rpx) rotate(-0.35deg);
 }
 
 .note-pin {

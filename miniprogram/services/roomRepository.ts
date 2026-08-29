@@ -1,15 +1,19 @@
 import type { ShiguangAppOptions } from "../app";
 import {
   BiographyDraft,
+  createEmptyRoomState,
   FamilyMember,
   FamilyRoomState,
+  isUntouchedDemoRoomState,
   MemoryContribution,
 } from "../domain/biography";
 import { CLOUD_DATABASE_ENABLED } from "../config/runtime";
 import {
   appendCloudContribution,
+  deleteCloudContribution,
   loadCloudRoomState,
   replaceCloudContribution,
+  resetCloudCurrentUserRoom,
   resetCloudDemoRoom,
   saveCloudDraftIfSourcesUnchanged,
   saveCloudPersonalDraftIfSourcesUnchanged,
@@ -17,10 +21,12 @@ import {
 } from "./cloudRoomStorage";
 import {
   appendContribution,
+  deleteContribution,
   loadCurrentMember,
   saveCurrentMemberId,
   loadRoomState,
   replaceContribution,
+  resetCurrentRoom,
   resetDemoRoom,
   saveDraftIfSourcesUnchanged,
   savePersonalDraftIfSourcesUnchanged,
@@ -42,7 +48,9 @@ export async function loadRoomStateRemoteFirst(): Promise<FamilyRoomState> {
     try {
       return await loadCloudRoomState();
     } catch (error) {
-      console.warn("云端家庭房间不可用，将使用本地演示数据", error);
+      console.warn("云端家庭房间不可用，将临时使用本地缓存", error);
+      const localState = loadRoomState();
+      return isUntouchedDemoRoomState(localState) ? createEmptyRoomState() : localState;
     }
   }
 
@@ -85,6 +93,20 @@ export async function replaceContributionRemoteFirst(
   }
 
   return replaceContribution(contribution, loadRoomState());
+}
+
+export async function deleteContributionRemoteFirst(
+  contributionId: string,
+): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) {
+    try {
+      return await deleteCloudContribution(contributionId);
+    } catch (error) {
+      console.warn("云端记忆删除失败，将临时删除本地缓存", error);
+    }
+  }
+
+  return deleteContribution(contributionId, loadRoomState());
 }
 
 export async function saveDraftIfSourcesUnchangedRemoteFirst(
@@ -149,4 +171,16 @@ export async function resetDemoRoomRemoteFirst(): Promise<FamilyRoomState> {
   }
 
   return resetDemoRoom();
+}
+
+export async function resetCurrentUserRoomRemoteFirst(): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) {
+    try {
+      return await resetCloudCurrentUserRoom();
+    } catch (error) {
+      console.warn("云端当前账号清空失败，将只清空本地缓存", error);
+    }
+  }
+
+  return resetCurrentRoom();
 }

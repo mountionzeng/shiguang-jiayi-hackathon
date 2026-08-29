@@ -6,6 +6,11 @@ import {
   personalBookContributions,
 } from "../../domain/biography";
 import {
+  DIMENSION_LABELS,
+  InterviewDimension,
+  nextInterviewPrompt,
+} from "../../domain/interview";
+import {
   loadCurrentMemberRemoteFirst,
   loadRoomStateRemoteFirst,
   saveCurrentMemberIdLocal,
@@ -27,6 +32,22 @@ interface ProfileOptionView {
   avatarText: string;
   selected: boolean;
 }
+
+interface RecommendedQuestionView {
+  label: string;
+  context: string;
+  text: string;
+  sourceId: string;
+  storyTitle: string;
+}
+
+const RECOMMENDATION_DIMENSIONS: InterviewDimension[] = [
+  "person",
+  "time",
+  "place",
+  "event",
+  "feeling",
+];
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -86,7 +107,58 @@ function profileOptionsFor(
   }));
 }
 
+function latestContribution(
+  contributions: MemoryContribution[],
+): MemoryContribution | undefined {
+  return contributions
+    .slice()
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+}
+
+function compactContext(contribution: MemoryContribution): string {
+  const storyTitle = contributionStoryTitle(contribution);
+  const seed = storyTitle || contribution.summary || contribution.title || contribution.text;
+  const cleaned = seed.replace(/\s+/g, "");
+  const clipped = cleaned.length > 16 ? `${cleaned.slice(0, 16)}...` : cleaned;
+  return clipped ? `关于${clipped}` : "关于刚刚那段记忆";
+}
+
+function recommendedQuestionFor(
+  contribution: MemoryContribution | undefined,
+  offset: number,
+): RecommendedQuestionView | undefined {
+  if (!contribution) return undefined;
+
+  const askedDimensions = RECOMMENDATION_DIMENSIONS.slice(
+    0,
+    offset % RECOMMENDATION_DIMENSIONS.length,
+  );
+  const prompt = nextInterviewPrompt({
+    answer: contribution.text,
+    askedDimensions,
+    mode: "personal",
+  });
+
+  return {
+    label: DIMENSION_LABELS[prompt.dimension],
+    context: compactContext(contribution),
+    text: prompt.text,
+    sourceId: contribution.id,
+    storyTitle: contributionStoryTitle(contribution),
+  };
+}
+
+function interviewUrl(sourceId: string, storyTitle: string): string {
+  const query = [
+    `sourceId=${encodeURIComponent(sourceId)}`,
+    `storyTitle=${encodeURIComponent(storyTitle)}`,
+  ].join("&");
+  return `/pages/interview/interview?${query}`;
+}
+
 Page({
+  recommendationOffset: 0,
+
   data: {
     memberName: "",
     memberAvatarText: "",
@@ -98,6 +170,12 @@ Page({
     bookOpening: false,
     profileChooserOpen: false,
     profileOptions: [] as ProfileOptionView[],
+    recommendedQuestionLabel: "",
+    recommendedQuestionContext: "",
+    recommendedQuestion: "",
+    recommendedSourceId: "",
+    recommendedStoryTitle: "",
+    hasRecommendedQuestion: false,
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
   },
@@ -113,6 +191,10 @@ Page({
     const personal = personalBookContributions(currentState.contributions, member.id);
     const draft = currentState.personalDrafts?.[member.id];
     const recentStories = recentStoriesFor(personal);
+    const recommendedQuestion = recommendedQuestionFor(
+      latestContribution(personal),
+      this.recommendationOffset,
+    );
 
     this.setData({
       memberName: member.name,
@@ -123,6 +205,12 @@ Page({
       memoirCount: personal.filter((memory) => memory.memoryType === "memoir").length,
       familyMemberCount: currentState.members.length,
       profileOptions: profileOptionsFor(currentState.members, member.id),
+      recommendedQuestionLabel: recommendedQuestion?.label ?? "",
+      recommendedQuestionContext: recommendedQuestion?.context ?? "",
+      recommendedQuestion: recommendedQuestion?.text ?? "",
+      recommendedSourceId: recommendedQuestion?.sourceId ?? "",
+      recommendedStoryTitle: recommendedQuestion?.storyTitle ?? "",
+      hasRecommendedQuestion: Boolean(recommendedQuestion),
       recentStories,
       hasRecentStories: recentStories.length > 0,
     });
@@ -177,15 +265,28 @@ Page({
     wx.navigateTo({ url: "/pages/room/room" });
   },
 
+  changeRecommendedQuestion() {
+    this.recommendationOffset += 1;
+    void this.refresh();
+  },
+
+  continueRecommendedQuestion() {
+    const sourceId = this.data.recommendedSourceId || "";
+    if (!sourceId) {
+      wx.showToast({ title: "还没有可追问的记忆", icon: "none" });
+      return;
+    }
+
+    wx.navigateTo({
+      url: interviewUrl(sourceId, this.data.recommendedStoryTitle || ""),
+    });
+  },
+
   continueStory(event: {
     currentTarget: { dataset: { id: string; title: string } };
   }) {
     const storyTitle = event.currentTarget.dataset.title || "";
     const sourceId = event.currentTarget.dataset.id || "";
-    const query = [
-      `sourceId=${encodeURIComponent(sourceId)}`,
-      `storyTitle=${encodeURIComponent(storyTitle)}`,
-    ].join("&");
-    wx.navigateTo({ url: `/pages/interview/interview?${query}` });
+    wx.navigateTo({ url: interviewUrl(sourceId, storyTitle) });
   },
 });
