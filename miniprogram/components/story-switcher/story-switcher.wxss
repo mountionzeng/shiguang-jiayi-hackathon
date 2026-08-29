@@ -9,22 +9,20 @@
   left: 0;
   z-index: 20;
   display: flex;
-  height: calc(196rpx + env(safe-area-inset-bottom));
-  padding: 0 28rpx env(safe-area-inset-bottom);
-  border-top: 2rpx solid rgba(129, 117, 93, 0.12);
-  background: rgba(251, 248, 241, 0.96);
-  box-shadow: 0 -14rpx 34rpx rgba(65, 70, 65, 0.05);
-  overflow: hidden;
+  align-items: flex-start;
+  height: calc(258rpx + env(safe-area-inset-bottom));
+  padding: 0 16rpx env(safe-area-inset-bottom);
+  background: radial-gradient(ellipse 118% 96% at 50% 100%, rgba(251, 248, 241, 0.98) 0%, rgba(251, 248, 241, 0.94) 70%, rgba(251, 248, 241, 0) 71%);
+  overflow: visible;
 }
 
 .switcher-branch {
   position: absolute;
-  top: 14rpx;
-  right: 18rpx;
-  left: 18rpx;
-  width: calc(100% - 36rpx);
-  height: 86rpx;
-  opacity: 0.52;
+  top: 2rpx;
+  left: -6%;
+  width: 112%;
+  height: 190rpx;
+  opacity: 0.7;
   pointer-events: none;
 }
 
@@ -33,8 +31,8 @@
   z-index: 1;
   flex: 1;
   min-width: 0;
-  height: 196rpx;
-  padding-top: 96rpx;
+  height: 248rpx;
+  padding-top: 188rpx;
   background: transparent;
   color: #2a2e2b;
   text-align: center;
@@ -45,33 +43,36 @@
   transform: translateY(-5rpx) scale(1.035);
 }
 
-.story-tab-current::after {
-  position: absolute;
-  right: 80rpx;
-  bottom: 12rpx;
-  left: 80rpx;
-  height: 3rpx;
-  border-radius: 3rpx;
-  background: #4f7f6b;
-  content: "";
+.story-tab-personal {
+  transform: translate(-12rpx, 16rpx) rotate(-1.5deg);
+}
+
+.story-tab-chat {
+  z-index: 3;
+  transform: translate(2rpx, -20rpx);
+}
+
+.story-tab-family {
+  transform: translate(-8rpx, 7rpx) rotate(1.2deg);
 }
 
 .tab-art {
   position: absolute;
-  top: -2rpx;
+  top: 34rpx;
   left: 50%;
   display: block;
-  width: 154rpx;
-  height: 96rpx;
-  margin-left: -77rpx;
+  width: 231rpx;
+  height: 144rpx;
+  margin-left: -115.5rpx;
   transition: transform 220ms ease;
 }
 
 .tab-art-chat {
-  top: -4rpx;
-  width: 112rpx;
-  height: 100rpx;
-  margin-left: -56rpx;
+  top: -8rpx;
+  width: 224rpx;
+  height: 200rpx;
+  margin-left: -112rpx;
+  filter: drop-shadow(0 9rpx 12rpx rgba(57, 91, 76, 0.18));
   animation: logo-breathe 4.2s ease-in-out infinite;
 }
 
@@ -81,22 +82,13 @@
 
 .tab-title {
   font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
-  font-size: 29rpx;
+  font-size: 28rpx;
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 2rpx;
 }
 
-.tab-note {
-  margin-top: 3rpx;
-  color: #8a8e88;
-  font-size: 21rpx;
-  font-weight: 500;
-  line-height: 1.35;
-}
-
-.story-tab-current .tab-title,
-.story-tab-current .tab-note {
+.story-tab-current .tab-title {
   color: #4f7f6b;
 }
 
@@ -130,7 +122,7 @@
 .capture-sheet {
   position: fixed;
   right: 18rpx;
-  bottom: calc(186rpx + env(safe-area-inset-bottom));
+  bottom: calc(248rpx + env(safe-area-inset-bottom));
   left: 18rpx;
   z-index: 40;
   padding: 16rpx 28rpx 30rpx;

@@ -77,7 +77,7 @@ button::after {
 }
 
 .shell-with-bar {
-  padding-bottom: calc(210rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(276rpx + env(safe-area-inset-bottom));
 }
 
 /* 分支内容页没有常驻导航，只提供一个明确的退出动作回到首页。 */
