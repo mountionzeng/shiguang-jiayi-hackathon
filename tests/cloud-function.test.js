@@ -2,6 +2,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { main, _test } = require("../cloudfunctions/generateBiography/index.js");
+const {
+  main: chatInterviewMain,
+  _test: chatInterviewTest,
+} = require("../cloudfunctions/chatInterview/index.js");
 
 test("the cloud boundary rejects empty and oversized source batches", () => {
   assert.throws(() => _test.validateMemories([]), /NO_CONFIRMED_MEMORIES/);
@@ -158,4 +162,96 @@ test("the cloud function returns a traceable chapter from the configured model",
     if (previousBaseUrl === undefined) delete process.env.AI_BASE_URL;
     else process.env.AI_BASE_URL = previousBaseUrl;
   }
+});
+
+test("the interview cloud function rejects missing credentials or empty answers", async () => {
+  const previousKey = process.env.CHAT_AI_API_KEY;
+  const previousModel = process.env.CHAT_AI_MODEL;
+  const previousSharedKey = process.env.AI_API_KEY;
+  const previousSharedModel = process.env.AI_MODEL;
+  delete process.env.CHAT_AI_API_KEY;
+  delete process.env.CHAT_AI_MODEL;
+  delete process.env.AI_API_KEY;
+  delete process.env.AI_MODEL;
+
+  try {
+    await assert.rejects(
+      () => chatInterviewMain({ answer: "一段回忆" }),
+      /AI_NOT_CONFIGURED/,
+    );
+  } finally {
+    if (previousKey === undefined) delete process.env.CHAT_AI_API_KEY;
+    else process.env.CHAT_AI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.CHAT_AI_MODEL;
+    else process.env.CHAT_AI_MODEL = previousModel;
+    if (previousSharedKey === undefined) delete process.env.AI_API_KEY;
+    else process.env.AI_API_KEY = previousSharedKey;
+    if (previousSharedModel === undefined) delete process.env.AI_MODEL;
+    else process.env.AI_MODEL = previousSharedModel;
+  }
+});
+
+test("the interview cloud function returns one safe follow-up", async () => {
+  const previousFetch = global.fetch;
+  const previousKey = process.env.CHAT_AI_API_KEY;
+  const previousModel = process.env.CHAT_AI_MODEL;
+  const previousBaseUrl = process.env.CHAT_AI_BASE_URL;
+  let requestBody;
+
+  process.env.CHAT_AI_API_KEY = "test-chat-key";
+  process.env.CHAT_AI_MODEL = "smart-chat-model";
+  process.env.CHAT_AI_BASE_URL = "https://chat-model.invalid/v1";
+  global.fetch = async (_url, options) => {
+    requestBody = JSON.parse(options.body);
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                dimension: "feeling",
+                text: "现在想起那天，你最清楚的感觉是什么？",
+              }),
+            },
+          },
+        ],
+      }),
+    };
+  };
+
+  try {
+    const result = await chatInterviewMain({
+      answer: "那年冬天我和外公在老屋门口等车。",
+      askedDimensions: ["person", "time"],
+      memberName: "林岚",
+      storyTitle: "老屋门口",
+      previousAnswers: ["那时候天很冷。"],
+    });
+
+    assert.equal(result.generationMode, "cloud-ai");
+    assert.equal(result.dimension, "feeling");
+    assert.equal(result.text, "现在想起那天，你最清楚的感觉是什么？");
+    assert.equal(requestBody.model, "smart-chat-model");
+    assert.match(requestBody.messages[1].content, /老屋门口/);
+    assert.doesNotMatch(JSON.stringify(requestBody), /test-chat-key/);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.CHAT_AI_API_KEY;
+    else process.env.CHAT_AI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.CHAT_AI_MODEL;
+    else process.env.CHAT_AI_MODEL = previousModel;
+    if (previousBaseUrl === undefined) delete process.env.CHAT_AI_BASE_URL;
+    else process.env.CHAT_AI_BASE_URL = previousBaseUrl;
+  }
+});
+
+test("the interview cloud parser accepts plain text fallback", () => {
+  const result = chatInterviewTest.parseInterviewPrompt(
+    "追问：后来你又想起了哪个细节？",
+    "event",
+  );
+
+  assert.equal(result.dimension, "event");
+  assert.equal(result.text, "后来你又想起了哪个细节？");
 });

@@ -14,11 +14,11 @@ import {
   DIMENSION_LABELS,
   draftTitleFromAnswers,
   InterviewDimension,
-  nextInterviewPrompt,
   pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
 import { CLOUD_AI_ENABLED } from "../../config/runtime";
+import { generateInterviewPrompt } from "../../services/interviewService";
 import {
   appendContributionRemoteFirst,
   loadCurrentMemberRemoteFirst,
@@ -50,8 +50,6 @@ interface InterviewLoadOptions {
   sourceId?: string;
   storyTitle?: string;
 }
-
-const THINKING_DELAY_MS = 420;
 
 function decodeQueryValue(value = ""): string {
   try {
@@ -262,7 +260,7 @@ Page({
     this.setData({ keyboardHeight: event.detail.height });
   },
 
-  send() {
+  async send() {
     const answer = this.data.inputText.trim();
     if (!answer) {
       wx.showToast({ title: "先说一句吧，短一点也行", icon: "none" });
@@ -277,20 +275,25 @@ Page({
       message: "现在离开的话，以上聊天会先存进你的未整理片段，仅你可见。",
     });
 
-    // 本地规则引擎：每轮只挑一个还没问过的方向，且不连着问同一个。
-    const prompt = nextInterviewPrompt({
-      answer,
-      askedDimensions: this.data.askedDimensions,
-      mode: "personal",
-    });
-
-    setTimeout(() => {
+    try {
+      const prompt = await generateInterviewPrompt({
+        answer,
+        askedDimensions: this.data.askedDimensions,
+        mode: "personal",
+        memberName: this.data.memberName,
+        storyTitle: this.data.storyTitle,
+        previousAnswers: this.data.answers,
+      });
       this.setData({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
       this.pushMessage("followup", prompt.text, DIMENSION_LABELS[prompt.dimension]);
-    }, THINKING_DELAY_MS);
+    } catch (error) {
+      console.warn("生成追问失败", error);
+      this.setData({ asking: false });
+      wx.showToast({ title: "暂时问不出来，稍后再试", icon: "none" });
+    }
   },
 
   finish() {

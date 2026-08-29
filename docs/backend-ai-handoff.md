@@ -38,13 +38,26 @@
    - `memoir_review`：回忆录式回顾，精炼，适合章节、人生故事、纪念册。
    - `moment_note`：随手记，细节更丰富，适合近期记忆、多模态小片段。
 
-当前仓库已有 `cloudfunctions/generateBiography`，它适合作为 `memoir_review` 的第一版云函数入口。API key 应只放在云函数环境变量中，不能写入小程序代码或提交到 GitHub。
+当前仓库已有两个云函数入口：
+
+- `cloudfunctions/generateBiography`：适合作为 `memoir_review` 的第一版章节生成入口。
+- `cloudfunctions/chatInterview`：适合作为“和 AI 聊聊”的追问生成入口。
+
+API key 应只放在云函数环境变量中，不能写入小程序代码或提交到 GitHub。
 
 当前体验版准备使用 DeepSeek 的 OpenAI 兼容接口：
 
 - `AI_BASE_URL`：`https://api.deepseek.com`
 - `AI_MODEL`：`deepseek-v4-flash`
 - `AI_API_KEY`：在 DeepSeek 控制台生成后，只填入微信云函数环境变量，不提交到仓库。
+
+如果“追问”想使用更聪明或不同的模型，可以给 `chatInterview` 单独配置：
+
+- `CHAT_AI_BASE_URL`
+- `CHAT_AI_MODEL`
+- `CHAT_AI_API_KEY`
+
+如果 `CHAT_AI_*` 未配置，`chatInterview` 会尝试复用 `AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY`。
 
 ## 当前云开发配置
 
