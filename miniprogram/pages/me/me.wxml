@@ -1,0 +1,83 @@
+<view class="me-page page-enter">
+  <image
+    class="me-paper"
+    src="/assets/illustrations/home-paper.jpg"
+    mode="scaleToFill"
+    aria-hidden="true"
+  ></image>
+
+  <view class="me-heading">
+    <view class="me-title serif">我的</view>
+  </view>
+
+  <view class="me-profile">
+    <view class="me-avatar serif">
+      <image
+        class="me-avatar-backdrop"
+        src="/assets/illustrations/book-wash.png"
+        mode="aspectFill"
+        aria-hidden="true"
+      ></image>
+      <text class="me-avatar-letter">{{memberAvatarText}}</text>
+    </view>
+    <view class="me-profile-copy">
+      <view class="me-name serif">{{memberName}}</view>
+      <view class="me-relation">{{memberRelation}} · 拾光记录者</view>
+    </view>
+  </view>
+
+  <view class="me-stats">
+    <view class="me-stat">
+      <text class="me-stat-num">{{memoryCount}}</text>
+      <text class="me-stat-label">篇记忆</text>
+    </view>
+    <view class="me-stat">
+      <text class="me-stat-num">{{sharedCount}}</text>
+      <text class="me-stat-label">已分享</text>
+    </view>
+    <view class="me-stat">
+      <text class="me-stat-num">{{familyCount}}</text>
+      <text class="me-stat-label">家庭记忆</text>
+    </view>
+  </view>
+
+  <view class="me-section-title">记忆管理</view>
+  <view class="me-list">
+    <button class="me-row" bindtap="openArchive" hover-class="none">
+      <text class="me-row-icon">书</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">管理记忆档案</text>
+        <text class="me-row-note">随手记 · 回忆录</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
+    <button class="me-row" bindtap="openProfiles" hover-class="none">
+      <text class="me-row-icon">档</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">切换档案</text>
+        <text class="me-row-note">选择这次以谁的身份记录</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
+    <button class="me-row" bindtap="openFamilyHome" hover-class="none">
+      <text class="me-row-icon">家</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">记忆之家</text>
+        <text class="me-row-note">查看亲友共享的记忆</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
+  </view>
+
+  <view class="me-section-title">提醒与通知</view>
+  <view class="me-list">
+    <button class="me-row" bindtap="notYet" hover-class="none">
+      <text class="me-row-icon">铃</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">家人生日提醒</text>
+        <text class="me-row-note">后续版本接入</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
+  </view>
+</view>

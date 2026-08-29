@@ -8,10 +8,10 @@
 
   <view class="topline">
     <button
-      class="profile-entry"
-      bindtap="openProfiles"
+      class="my-entry"
+      bindtap="openMyHome"
       hover-class="none"
-      aria-label="打开切换档案"
+      aria-label="打开我的首页"
     >
       <view class="member-avatar serif">
         <image
@@ -23,6 +23,40 @@
         <text class="member-avatar-letter">{{memberAvatarText}}</text>
       </view>
     </button>
+  </view>
+
+  <view class="profile-switch-wrap">
+    <button
+      class="profile-switch"
+      bindtap="openProfiles"
+      hover-class="profile-switch-pressed"
+      aria-label="切换当前讲述档案"
+    >
+      <view class="profile-switch-copy">
+        <text class="profile-switch-note">切换档案</text>
+        <text class="profile-switch-name serif">{{memberName}}</text>
+      </view>
+      <text class="profile-switch-arrow">{{profileChooserOpen ? '⌃' : '⌄'}}</text>
+    </button>
+
+    <view class="profile-menu" wx:if="{{profileChooserOpen}}">
+      <button
+        class="profile-menu-item {{item.selected ? 'profile-menu-item-on' : ''}}"
+        wx:for="{{profileOptions}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="chooseProfile"
+        hover-class="none"
+        aria-label="切换到{{item.name}}的档案"
+      >
+        <view class="profile-menu-avatar serif">{{item.avatarText}}</view>
+        <view class="profile-menu-copy">
+          <text class="profile-menu-name">{{item.name}}</text>
+          <text class="profile-menu-relation">{{item.relation}}</text>
+        </view>
+        <text class="profile-menu-check">{{item.selected ? '✓' : ''}}</text>
+      </button>
+    </view>
   </view>
 
   <view class="book-stage">
@@ -53,8 +87,8 @@
                 hover-class="none"
                 aria-label="打开随手记"
               >
-                <text class="book-stat-num">{{fragmentCount}}</text>
-                <text class="book-stat-label">随手记</text>
+                <text class="book-stat-num">{{memoryCount}}</text>
+                <text class="book-stat-label">篇记忆</text>
               </button>
               <button
                 class="book-stat-action book-stat-memoir"
@@ -63,8 +97,8 @@
                 hover-class="none"
                 aria-label="打开回忆录"
               >
-                <text class="book-stat-num">{{storyCount}}</text>
-                <text class="book-stat-label">回忆录</text>
+                <text class="book-stat-num">{{memoirCount}}</text>
+                <text class="book-stat-label">篇回忆录</text>
               </button>
               <button
                 class="book-stat-action book-stat-home"
@@ -72,8 +106,8 @@
                 hover-class="none"
                 aria-label="打开记忆之家"
               >
-                <text class="book-stat-num">{{chapterCount}}</text>
-                <text class="book-stat-label">记忆之家</text>
+                <text class="book-stat-num">{{familyMemberCount}}</text>
+                <text class="book-stat-label">个家庭成员</text>
               </button>
             </view>
           </view>

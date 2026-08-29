@@ -1,5 +1,6 @@
 import {
   contributionStoryTitle,
+  FamilyMember,
   FamilyRoomState,
   MemoryContribution,
   personalBookContributions,
@@ -7,6 +8,7 @@ import {
 import {
   loadCurrentMemberRemoteFirst,
   loadRoomStateRemoteFirst,
+  saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
 
 interface RecentStoryView {
@@ -16,6 +18,14 @@ interface RecentStoryView {
   dateLabel: string;
   countLabel: string;
   storyTitle: string;
+}
+
+interface ProfileOptionView {
+  id: string;
+  name: string;
+  relation: string;
+  avatarText: string;
+  selected: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -63,16 +73,31 @@ function recentStoriesFor(
     .map(({ count: _count, ...story }) => story);
 }
 
+function profileOptionsFor(
+  members: FamilyMember[],
+  currentMemberId: string,
+): ProfileOptionView[] {
+  return members.map((member) => ({
+    id: member.id,
+    name: member.name,
+    relation: member.relation,
+    avatarText: member.avatarText,
+    selected: member.id === currentMemberId,
+  }));
+}
+
 Page({
   data: {
     memberName: "",
     memberAvatarText: "",
     bookTitle: "",
     coverSubtitle: "",
-    fragmentCount: 0,
-    storyCount: 0,
-    chapterCount: 0,
+    memoryCount: 0,
+    memoirCount: 0,
+    familyMemberCount: 0,
     bookOpening: false,
+    profileChooserOpen: false,
+    profileOptions: [] as ProfileOptionView[],
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
   },
@@ -86,9 +111,6 @@ Page({
     const currentState = state ?? await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(currentState);
     const personal = personalBookContributions(currentState.contributions, member.id);
-    const storyTitles = new Set(
-      personal.map(contributionStoryTitle).filter(Boolean),
-    );
     const draft = currentState.personalDrafts?.[member.id];
     const recentStories = recentStoriesFor(personal);
 
@@ -97,9 +119,10 @@ Page({
       memberAvatarText: member.avatarText,
       bookTitle: `${member.name}的人生之书`,
       coverSubtitle: draft?.title ?? "还没有整理成章节",
-      fragmentCount: personal.filter((memory) => !contributionStoryTitle(memory)).length,
-      storyCount: storyTitles.size,
-      chapterCount: draft ? 1 : 0,
+      memoryCount: personal.filter((memory) => (memory.memoryType ?? "note") === "note").length,
+      memoirCount: personal.filter((memory) => memory.memoryType === "memoir").length,
+      familyMemberCount: currentState.members.length,
+      profileOptions: profileOptionsFor(currentState.members, member.id),
       recentStories,
       hasRecentStories: recentStories.length > 0,
     });
@@ -110,7 +133,28 @@ Page({
   },
 
   openProfiles() {
-    wx.navigateTo({ url: "/pages/profiles/profiles" });
+    this.setData({ profileChooserOpen: !this.data.profileChooserOpen });
+  },
+
+  async chooseProfile(event: {
+    currentTarget: { dataset: { id: string } };
+  }) {
+    const memberId = event.currentTarget.dataset.id;
+    const state = await loadRoomStateRemoteFirst();
+    const member = state.members.find((item) => item.id === memberId);
+
+    if (!member) {
+      wx.showToast({ title: "没有找到这个档案", icon: "none" });
+      return;
+    }
+
+    saveCurrentMemberIdLocal(member.id);
+    this.setData({ profileChooserOpen: false });
+    await this.refresh(state);
+  },
+
+  openMyHome() {
+    wx.navigateTo({ url: "/pages/me/me" });
   },
 
   openMemoryArchive() {

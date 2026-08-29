@@ -22,7 +22,7 @@ interface TestPageInstance extends TestPageDefinition {
 
 const definitions = new Map<string, TestPageDefinition>();
 
-async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive"): Promise<TestPageDefinition> {
+async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me"): Promise<TestPageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
 
@@ -47,8 +47,10 @@ async function pageDefinition(name: "index" | "interview" | "room" | "book" | "p
       await import("../miniprogram/pages/book/book");
     } else if (name === "profiles") {
       await import("../miniprogram/pages/profiles/profiles");
-    } else {
+    } else if (name === "archive") {
       await import("../miniprogram/pages/archive/archive");
+    } else {
+      await import("../miniprogram/pages/me/me");
     }
   } finally {
     if (previous) Object.defineProperty(globalThis, "Page", previous);
@@ -551,14 +553,45 @@ test("home shows only the current member's own recent stories", async (context) 
   assert.equal(storage.currentMemberId(), "member-1");
 });
 
-test("the home avatar opens a profile switcher", async (context) => {
+test("the home profile switch expands and changes the active archive profile", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("index"));
 
+  await callPage(page, "refresh");
   callPage(page, "openProfiles");
+  assert.equal(page.data.profileChooserOpen, true);
+  assert.equal((page.data.profileOptions as Array<{ id: string }>).length, 5);
 
-  assert.equal(last(storage.navigations), "/pages/profiles/profiles");
+  await callPage(page, "chooseProfile", {
+    currentTarget: { dataset: { id: "member-1" } },
+  });
+
+  assert.equal(storage.currentMemberId(), "member-1");
+  assert.equal(page.data.profileChooserOpen, false);
+  assert.equal(page.data.memberName, "林秋");
+});
+
+test("the home my entry opens the personal home page", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+
+  callPage(page, "openMyHome");
+
+  assert.equal(last(storage.navigations), "/pages/me/me");
+});
+
+test("the personal home page summarizes the active profile", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("me"));
+
+  await callPage(page, "refresh");
+
+  assert.equal(page.data.memberName, "林岚");
+  assert.equal(page.data.memoryCount, 1);
+  assert.equal(page.data.familyCount, 2);
 });
 
 test("the home book opens the memory archive after its animation", async (context) => {
