@@ -95,7 +95,7 @@ async function main(event) {
       signal: controller.signal,
       body: JSON.stringify({
         model,
-        temperature: 0.45,
+        temperature: 1,
         messages: [
           {
             role: "system",

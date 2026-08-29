@@ -6,6 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts tests/*.test.js",
+    "test:kimi": "node scripts/test-kimi-connection.mjs",
     "check": "npm run typecheck && npm test"
   },
   "devDependencies": {
