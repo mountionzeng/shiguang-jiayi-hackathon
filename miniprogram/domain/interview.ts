@@ -185,6 +185,7 @@ export function detectCoveredDimensions(answer: string): InterviewDimension[] {
 export interface InterviewPrompt {
   dimension: InterviewDimension;
   text: string;
+  generationMode?: "cloud-ai" | "local-fallback";
 }
 
 export interface NextPromptInput {

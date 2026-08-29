@@ -297,7 +297,11 @@ Page({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
-      this.pushMessage("followup", prompt.text, DIMENSION_LABELS[prompt.dimension]);
+      this.pushMessage(
+        "followup",
+        prompt.text,
+        `${DIMENSION_LABELS[prompt.dimension]} · ${prompt.generationMode === "cloud-ai" ? "AI" : "本地兜底"}`,
+      );
     } catch (error) {
       console.warn("生成追问失败", error);
       this.setData({ asking: false });

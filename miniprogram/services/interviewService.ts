@@ -49,11 +49,14 @@ export interface GenerateInterviewPromptInput {
 export async function generateInterviewPrompt(
   input: GenerateInterviewPromptInput,
 ): Promise<InterviewPrompt> {
-  const fallback = nextInterviewPrompt({
+  const fallback: InterviewPrompt = {
+    ...nextInterviewPrompt({
     answer: input.answer,
     askedDimensions: input.askedDimensions,
     mode: input.mode,
-  });
+    }),
+    generationMode: "local-fallback",
+  };
 
   if (!canUseCloudAi()) return fallback;
 
@@ -74,6 +77,7 @@ export async function generateInterviewPrompt(
       return {
         dimension: response.result.dimension,
         text: response.result.text.trim(),
+        generationMode: "cloud-ai",
       };
     }
 
