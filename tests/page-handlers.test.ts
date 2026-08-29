@@ -209,6 +209,7 @@ test("continuing a recent story opens the interview with its existing context", 
     sourceId: query.get("sourceId") ?? "",
     storyTitle: query.get("storyTitle") ?? "",
   });
+  assert.equal(interview.data.stage, "chat");
   assert.equal(interview.data.storyTitle, "外公接我放学");
   assert.match(
     (interview.data.messages as Array<{ text: string }>)[0]?.text ?? "",
@@ -216,13 +217,31 @@ test("continuing a recent story opens the interview with its existing context", 
   );
 });
 
+test("a new conversation chooses a telling style before chat", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+
+  const interview = instantiate(await pageDefinition("interview"));
+  await callPage(interview, "onLoad");
+  assert.equal(interview.data.stage, "choose");
+  assert.equal(interview.data.memoryType, "note");
+
+  callPage(interview, "chooseType", {
+    currentTarget: { dataset: { type: "memoir" } },
+  });
+  assert.equal(interview.data.memoryType, "memoir");
+
+  callPage(interview, "beginInterview");
+  assert.equal(interview.data.stage, "chat");
+});
+
 test("home opens both content branches and each branch exits back home", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
 
   const home = instantiate(await pageDefinition("index"));
-  callPage(home, "openBook");
-  callPage(home, "openMemoryHome");
+  withImmediateTimeouts(() => callPage(home, "openBook"));
+  withImmediateTimeouts(() => callPage(home, "openMemoryHome"));
   assert.deepEqual(storage.navigations, [
     "/pages/book/book",
     "/pages/room/room",
@@ -269,7 +288,9 @@ test("leaving chat preserves unsent text as a private unorganized fragment", asy
   callPage(page, "onInput", {
     detail: { value: "这句话还没有按发送，但也不应该丢失。" },
   });
-  await callPage(page, "saveRecoverableAnswers", ["这句话还没有按发送，但也不应该丢失。"]);
+  await callPage(page, "saveRecoverableAnswers", [
+    "这句话还没有按发送，但也不应该丢失。",
+  ]);
 
   const saved = last(storage.roomState().contributions);
   assert.equal(saved?.text, "这句话还没有按发送，但也不应该丢失。");
@@ -308,7 +329,10 @@ test("returning from organize and continuing chat unloads the newest transcript"
   callPage(page, "finish");
   callPage(page, "backToChat");
   page.setData({ inputText: "回到聊天后又想起的一句。" });
-  await callPage(page, "saveRecoverableAnswers", ["第一段已经讲完。", "回到聊天后又想起的一句。"]);
+  await callPage(page, "saveRecoverableAnswers", [
+    "第一段已经讲完。",
+    "回到聊天后又想起的一句。",
+  ]);
 
   assert.equal(
     last(storage.roomState().contributions)?.text,

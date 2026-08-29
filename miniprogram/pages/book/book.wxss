@@ -64,7 +64,7 @@
   width: 88rpx;
   height: 4rpx;
   margin: 24rpx 0 8rpx;
-  background: var(--coral);
+  background: var(--apricot);
 }
 
 /* 长文阅读：宣纸底、深墨绿字，背后不铺任何彩色肌理 */

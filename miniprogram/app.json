@@ -7,11 +7,11 @@
     "pages/book/book"
   ],
   "window": {
-    "backgroundColor": "#fbf8f2",
+    "backgroundColor": "#fbf8f1",
     "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#fbf8f2",
+    "navigationBarBackgroundColor": "#fbf8f1",
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "拾光"
+    "navigationBarTitleText": "拾光Ai"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",

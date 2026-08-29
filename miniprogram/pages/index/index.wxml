@@ -1,71 +1,114 @@
-<view class="home page-enter">
-  <view class="home-head">
-    <view class="topline">
-      <view class="wordmark">
-        <view class="brand-mark wordmark-icon"></view>
-        <text class="wordmark-text serif">拾光Ai</text>
+<view class="home page-enter entry-{{entryAnimation}}">
+  <image
+    class="home-paper"
+    src="/assets/illustrations/home-paper.jpg"
+    mode="scaleToFill"
+    aria-hidden="true"
+  ></image>
+
+  <view class="topline">
+    <view class="wordmark">
+      <view class="brand-mark wordmark-icon"></view>
+      <text class="wordmark-text typewriter">拾光Ai</text>
+    </view>
+    <view class="member-avatar serif">{{memberInitial}}</view>
+  </view>
+
+  <view class="book-stage">
+    <view class="book">
+      <image
+        class="ancient-book-art"
+        src="/assets/illustrations/ancient-book-shell.png"
+        mode="aspectFit"
+        aria-hidden="true"
+      ></image>
+      <view class="book-cover-copy">
+        <text class="book-kicker typewriter">拾 光 录</text>
+        <view class="book-copy">
+          <view class="book-title typewriter">{{bookTitle}}</view>
+          <view class="book-subtitle">{{coverSubtitle}}</view>
+          <view class="book-stats">
+            <text><text class="book-stat-num">{{fragmentCount}}</text> 片段</text>
+            <text>·</text>
+            <text><text class="book-stat-num">{{storyCount}}</text> 故事</text>
+            <text>·</text>
+            <text><text class="book-stat-num">{{chapterCount}}</text> 章节</text>
+          </view>
+        </view>
       </view>
     </view>
+  </view>
 
-    <view class="home-cover wash">
-      <text class="home-cover-label">只写我亲自经历的故事</text>
-      <view class="home-cover-title serif">{{bookTitle}}</view>
-      <view class="home-cover-sub">{{coverSubtitle}}</view>
-      <view class="home-cover-stats">
-        <view class="home-cover-stat">
-          <text class="home-cover-num serif">{{fragmentCount}}</text>
-          <text class="home-cover-stat-label">未整理片段</text>
+  <view class="branch-scene">
+    <image
+      class="memory-branch"
+      src="/assets/illustrations/memory-branch.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    ></image>
+
+    <button
+      class="branch-choice branch-choice-personal"
+      bindtap="openBook"
+      hover-class="none"
+      aria-label="进入人生之书"
+    >
+      <image
+        class="bird-art bird-art-personal"
+        src="/assets/illustrations/memory-bird.png"
+        mode="aspectFit"
+        aria-hidden="true"
+      ></image>
+      <view class="branch-copy">
+        <view class="branch-label typewriter">人生之书</view>
+        <view class="branch-note">我的故事</view>
+      </view>
+    </button>
+
+    <button
+      class="branch-choice branch-choice-family"
+      bindtap="openMemoryHome"
+      hover-class="none"
+      aria-label="进入记忆之家"
+    >
+      <view class="family-flock">
+        <image
+          class="family-nest"
+          src="/assets/illustrations/memory-nest.png"
+          mode="aspectFit"
+          aria-hidden="true"
+        ></image>
+        <view class="family-bird bird-family-one">
+          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
         </view>
-        <view class="home-cover-line"></view>
-        <view class="home-cover-stat">
-          <text class="home-cover-num serif">{{storyCount}}</text>
-          <text class="home-cover-stat-label">个故事</text>
+        <view class="family-bird bird-family-two">
+          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
         </view>
-        <view class="home-cover-line"></view>
-        <view class="home-cover-stat">
-          <text class="home-cover-num serif">{{chapterCount}}</text>
-          <text class="home-cover-stat-label">书稿章节</text>
+        <view class="family-bird bird-family-three">
+          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
         </view>
       </view>
-    </view>
-
-    <view class="branch-buttons">
-      <button class="branch-button" bindtap="openBook">
-        <view class="branch-motif motif-book">
-          <view class="book-page book-page-left"></view>
-          <view class="book-page book-page-right"></view>
-          <view class="book-spine"></view>
-          <view class="book-sun"></view>
-        </view>
-        <view class="branch-copy">
-          <text class="branch-name serif">人生之书</text>
-          <text class="branch-note">我的故事</text>
-        </view>
-      </button>
-
-      <button class="branch-button" bindtap="openMemoryHome">
-        <view class="branch-motif motif-home">
-          <view class="home-roof"></view>
-          <view class="home-body"></view>
-          <view class="home-person home-person-one"></view>
-          <view class="home-person home-person-two"></view>
-        </view>
-        <view class="branch-copy">
-          <text class="branch-name serif">记忆之家</text>
-          <text class="branch-note">我和亲友</text>
-        </view>
-      </button>
-    </view>
-
-    <button class="start-chat" bindtap="startInterview">
-      <text class="start-chat-plus">＋</text>
-      <text>开始聊聊</text>
+      <view class="branch-copy">
+        <view class="branch-label typewriter">记忆之家</view>
+        <view class="branch-note">我和亲友</view>
+      </view>
     </button>
   </view>
 
+  <button
+    class="start-chat"
+    bindtap="startInterview"
+    hover-class="start-chat-pressed"
+    hover-stay-time="110"
+    aria-label="开始聊聊，记录此刻的故事"
+  >
+    <text class="start-chat-plus">＋</text>
+    <text class="typewriter">开始聊聊</text>
+  </button>
+
   <view class="recent" wx:if="{{hasRecentStories}}">
     <view class="recent-head">
-      <text class="recent-title">最近聊过</text>
+      <text class="recent-title serif">最近聊过</text>
       <text class="recent-note">点开就能接着说</text>
     </view>
 
@@ -79,7 +122,7 @@
     >
       <view class="story-copy">
         <view class="story-title serif">{{item.title}}</view>
-        <view class="story-excerpt serif">{{item.excerpt}}</view>
+        <view class="story-excerpt">{{item.excerpt}}</view>
         <view class="story-meta">{{item.dateLabel}} · {{item.countLabel}}</view>
       </view>
       <view class="story-continue">继续聊</view>

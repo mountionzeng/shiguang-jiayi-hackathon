@@ -66,6 +66,7 @@ function recentStoriesFor(
 Page({
   data: {
     memberName: "",
+    memberInitial: "",
     bookTitle: "",
     coverSubtitle: "",
     fragmentCount: 0,
@@ -73,6 +74,7 @@ Page({
     chapterCount: 0,
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
+    entryAnimation: "" as "" | "personal" | "family",
   },
 
   onShow() {
@@ -91,6 +93,7 @@ Page({
 
     this.setData({
       memberName: member.name,
+      memberInitial: member.name.slice(0, 1),
       bookTitle: `${member.name}的人生之书`,
       coverSubtitle: draft?.title ?? "还没有整理成章节",
       fragmentCount: personal.filter((memory) => !contributionStoryTitle(memory)).length,
@@ -98,6 +101,7 @@ Page({
       chapterCount: draft ? 1 : 0,
       recentStories,
       hasRecentStories: recentStories.length > 0,
+      entryAnimation: "",
     });
   },
 
@@ -106,11 +110,24 @@ Page({
   },
 
   openBook() {
-    wx.navigateTo({ url: "/pages/book/book" });
+    this.animateEntry("personal", "/pages/book/book");
   },
 
   openMemoryHome() {
-    wx.navigateTo({ url: "/pages/room/room" });
+    this.animateEntry("family", "/pages/room/room");
+  },
+
+  animateEntry(
+    entryAnimation: "personal" | "family",
+    url: "/pages/book/book" | "/pages/room/room",
+  ) {
+    if (this.data.entryAnimation) return;
+
+    this.setData({ entryAnimation });
+    setTimeout(() => {
+      wx.navigateTo({ url });
+      this.setData({ entryAnimation: "" });
+    }, 620);
   },
 
   continueStory(event: {
