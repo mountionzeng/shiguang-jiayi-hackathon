@@ -7,7 +7,22 @@
   ></image>
 
   <view class="topline">
-    <view class="member-avatar serif">{{memberInitial}}</view>
+    <button
+      class="profile-entry"
+      bindtap="openProfiles"
+      hover-class="none"
+      aria-label="打开切换档案"
+    >
+      <view class="member-avatar serif">
+        <image
+          class="member-avatar-backdrop"
+          src="/assets/illustrations/book-wash.png"
+          mode="aspectFill"
+          aria-hidden="true"
+        ></image>
+        <text class="member-avatar-letter">{{memberAvatarText}}</text>
+      </view>
+    </button>
   </view>
 
   <view class="book-stage">

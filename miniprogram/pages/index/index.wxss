@@ -26,26 +26,61 @@
   z-index: 1;
 }
 
-.topline {
+.home > .topline {
+  position: absolute;
+  top: 36rpx;
+  left: 32rpx;
+  z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  width: 84rpx;
   min-height: 72rpx;
 }
 
+.profile-entry {
+  width: 84rpx;
+  height: 84rpx;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.profile-entry:active {
+  transform: translateY(2rpx) scale(0.96);
+}
+
 .member-avatar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 68rpx;
-  height: 68rpx;
+  width: 80rpx;
+  height: 80rpx;
   border: 2rpx solid rgba(79, 127, 107, 0.24);
   border-radius: 50%;
-  background: rgba(229, 239, 233, 0.82);
+  background: rgba(229, 239, 233, 0.9);
   color: var(--jade);
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 600;
   box-shadow: 0 8rpx 20rpx rgba(79, 127, 107, 0.08);
+  overflow: hidden;
+}
+
+.member-avatar-backdrop {
+  position: absolute;
+  top: -34rpx;
+  left: -20rpx;
+  width: 120rpx;
+  height: 156rpx;
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+.member-avatar-letter {
+  position: relative;
+  z-index: 1;
 }
 
 /* ---- 可触碰的书封 ---- */
@@ -53,7 +88,7 @@
 .book-stage {
   display: flex;
   justify-content: center;
-  margin-top: 34rpx;
+  margin-top: 106rpx;
 }
 
 .book {

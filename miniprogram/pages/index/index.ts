@@ -66,7 +66,7 @@ function recentStoriesFor(
 Page({
   data: {
     memberName: "",
-    memberInitial: "",
+    memberAvatarText: "",
     bookTitle: "",
     coverSubtitle: "",
     fragmentCount: 0,
@@ -91,7 +91,7 @@ Page({
 
     this.setData({
       memberName: member.name,
-      memberInitial: member.name.slice(0, 1),
+      memberAvatarText: member.avatarText,
       bookTitle: `${member.name}的人生之书`,
       coverSubtitle: draft?.title ?? "还没有整理成章节",
       fragmentCount: personal.filter((memory) => !contributionStoryTitle(memory)).length,
@@ -104,6 +104,10 @@ Page({
 
   startInterview() {
     wx.navigateTo({ url: "/pages/interview/interview" });
+  },
+
+  openProfiles() {
+    wx.navigateTo({ url: "/pages/profiles/profiles" });
   },
 
   continueStory(event: {

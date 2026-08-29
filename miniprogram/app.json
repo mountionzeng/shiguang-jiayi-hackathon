@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/profiles/profiles",
     "pages/interview/interview",
     "pages/room/room",
     "pages/review/review",
