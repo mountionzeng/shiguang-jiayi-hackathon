@@ -40,6 +40,12 @@
 
 当前仓库已有 `cloudfunctions/generateBiography`，它适合作为 `memoir_review` 的第一版云函数入口。API key 应只放在云函数环境变量中，不能写入小程序代码或提交到 GitHub。
 
+当前体验版准备使用 DeepSeek 的 OpenAI 兼容接口：
+
+- `AI_BASE_URL`：`https://api.deepseek.com`
+- `AI_MODEL`：`deepseek-v4-flash`
+- `AI_API_KEY`：在 DeepSeek 控制台生成后，只填入微信云函数环境变量，不提交到仓库。
+
 ## 当前云开发配置
 
 - 小程序 AppID：`wx6be512f0fe129b62`
@@ -48,7 +54,7 @@
 - FastAPI 后端开关：`miniprogram/config/runtime.ts` 中的 `BACKEND_API_ENABLED`
 - FastAPI 本地地址：`http://127.0.0.1:8000/api/v1`
 
-体验版演示前可以保持 `CLOUD_AI_ENABLED = false`，这样没有 AI key 或云函数未部署时也能走本地演示草稿。
+当前 `CLOUD_AI_ENABLED = true`。如果云函数未部署或环境变量未配置，页面仍会自动退回本地演示整理，但真机上会多等一次云函数失败返回。
 
 ## 已加入的前端适配层
 
