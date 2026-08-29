@@ -34,6 +34,12 @@ interface MessageView {
   label: string;
 }
 
+const FALLBACK_REASON_LABELS: Record<string, string> = {
+  "cloud-not-ready": "未连云端",
+  "function-error": "函数失败",
+  "invalid-result": "格式异常",
+};
+
 interface StoryOptionView {
   title: string;
   count: number;
@@ -300,7 +306,9 @@ Page({
       this.pushMessage(
         "followup",
         prompt.text,
-        `${DIMENSION_LABELS[prompt.dimension]} · ${prompt.generationMode === "cloud-ai" ? "AI" : "本地兜底"}`,
+        prompt.generationMode === "cloud-ai"
+          ? `${DIMENSION_LABELS[prompt.dimension]} · AI`
+          : `${DIMENSION_LABELS[prompt.dimension]} · 本地兜底/${FALLBACK_REASON_LABELS[prompt.fallbackReason ?? ""] ?? "未知"}`,
       );
     } catch (error) {
       console.warn("生成追问失败", error);

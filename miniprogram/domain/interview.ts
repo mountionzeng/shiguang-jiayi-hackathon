@@ -186,6 +186,7 @@ export interface InterviewPrompt {
   dimension: InterviewDimension;
   text: string;
   generationMode?: "cloud-ai" | "local-fallback";
+  fallbackReason?: "cloud-not-ready" | "function-error" | "invalid-result";
 }
 
 export interface NextPromptInput {

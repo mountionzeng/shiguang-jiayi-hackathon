@@ -37,6 +37,21 @@ function canUseCloudAi(): boolean {
   return Boolean(app.globalData.cloudReady);
 }
 
+function localFallbackPrompt(
+  input: GenerateInterviewPromptInput,
+  fallbackReason: InterviewPrompt["fallbackReason"],
+): InterviewPrompt {
+  return {
+    ...nextInterviewPrompt({
+      answer: input.answer,
+      askedDimensions: input.askedDimensions,
+      mode: input.mode,
+    }),
+    generationMode: "local-fallback",
+    fallbackReason,
+  };
+}
+
 export interface GenerateInterviewPromptInput {
   answer: string;
   askedDimensions: InterviewDimension[];
@@ -49,16 +64,7 @@ export interface GenerateInterviewPromptInput {
 export async function generateInterviewPrompt(
   input: GenerateInterviewPromptInput,
 ): Promise<InterviewPrompt> {
-  const fallback: InterviewPrompt = {
-    ...nextInterviewPrompt({
-    answer: input.answer,
-    askedDimensions: input.askedDimensions,
-    mode: input.mode,
-    }),
-    generationMode: "local-fallback",
-  };
-
-  if (!canUseCloudAi()) return fallback;
+  if (!canUseCloudAi()) return localFallbackPrompt(input, "cloud-not-ready");
 
   try {
     const response = await wx.cloud.callFunction({
@@ -82,9 +88,9 @@ export async function generateInterviewPrompt(
     }
 
     console.warn("AI 追问返回格式不完整，将使用本地追问规则", response.result);
+    return localFallbackPrompt(input, "invalid-result");
   } catch (error) {
     console.warn("AI 追问不可用，将使用本地追问规则", error);
+    return localFallbackPrompt(input, "function-error");
   }
-
-  return fallback;
 }

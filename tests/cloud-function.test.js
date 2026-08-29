@@ -260,6 +260,33 @@ test("the interview cloud parser accepts plain text fallback", () => {
   assert.equal(result.text, "后来你又想起了哪个细节？");
 });
 
+test("the interview cloud function diagnoses its configured provider without leaking keys", async () => {
+  const previousKey = process.env.CHAT_AI_API_KEY;
+  const previousModel = process.env.CHAT_AI_MODEL;
+  const previousBaseUrl = process.env.CHAT_AI_BASE_URL;
+  process.env.CHAT_AI_API_KEY = "secret-chat-key";
+  process.env.CHAT_AI_MODEL = "deepseek-chat";
+  process.env.CHAT_AI_BASE_URL = "https://api.deepseek.com";
+
+  try {
+    const result = await chatInterviewMain({ __diagnose: true });
+
+    assert.equal(result.diagnostic, true);
+    assert.equal(result.provider, "deepseek");
+    assert.equal(result.baseUrl, "https://api.deepseek.com");
+    assert.equal(result.model, "deepseek-chat");
+    assert.equal(result.hasApiKey, true);
+    assert.doesNotMatch(JSON.stringify(result), /secret-chat-key/);
+  } finally {
+    if (previousKey === undefined) delete process.env.CHAT_AI_API_KEY;
+    else process.env.CHAT_AI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.CHAT_AI_MODEL;
+    else process.env.CHAT_AI_MODEL = previousModel;
+    if (previousBaseUrl === undefined) delete process.env.CHAT_AI_BASE_URL;
+    else process.env.CHAT_AI_BASE_URL = previousBaseUrl;
+  }
+});
+
 test("the organize cloud function rejects missing credentials or empty transcripts", async () => {
   const previousKey = process.env.ORGANIZE_AI_API_KEY;
   const previousModel = process.env.ORGANIZE_AI_MODEL;

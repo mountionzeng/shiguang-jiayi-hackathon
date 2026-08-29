@@ -34,6 +34,13 @@ function localFallbackDimension(askedDimensions) {
   return DIMENSIONS.find((dimension) => dimension !== last) || "event";
 }
 
+function providerLabel(baseUrl) {
+  if (baseUrl.includes("moonshot.cn")) return "kimi";
+  if (baseUrl.includes("deepseek.com")) return "deepseek";
+  if (baseUrl.includes("openai.com")) return "openai";
+  return "custom";
+}
+
 function parseInterviewPrompt(content, fallbackDimension) {
   const cleaned = sanitizeText(content, 180);
   if (!cleaned) throw new Error("EMPTY_MODEL_OUTPUT");
@@ -61,6 +68,16 @@ async function main(event) {
   const model = process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
   const baseUrl = (process.env.CHAT_AI_BASE_URL || process.env.AI_BASE_URL || DEFAULT_BASE_URL)
     .replace(/\/$/, "");
+
+  if (event && event.__diagnose === true) {
+    return {
+      diagnostic: true,
+      provider: providerLabel(baseUrl),
+      baseUrl,
+      model: model || "",
+      hasApiKey: Boolean(apiKey),
+    };
+  }
 
   if (!apiKey || !model) {
     throw new Error("AI_NOT_CONFIGURED");
@@ -135,6 +152,7 @@ module.exports = {
   main,
   _test: {
     parseInterviewPrompt,
+    providerLabel,
     validateAskedDimensions,
     validatePreviousAnswers,
   },
