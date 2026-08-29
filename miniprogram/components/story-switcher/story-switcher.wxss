@@ -26,6 +26,17 @@
   pointer-events: none;
 }
 
+.switcher-book-edges {
+  position: absolute;
+  top: 18rpx;
+  left: -8%;
+  z-index: 0;
+  width: 116%;
+  height: 194rpx;
+  opacity: 0.38;
+  pointer-events: none;
+}
+
 .story-tab {
   position: relative;
   z-index: 1;
@@ -81,12 +92,37 @@
 }
 
 .tab-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
-  font-size: 28rpx;
-  font-weight: 600;
+  font-size: 34rpx;
+  font-weight: 700;
   line-height: 1.35;
-  letter-spacing: 2rpx;
+  letter-spacing: 0;
+  text-shadow: 0 1rpx 0 rgba(255, 253, 247, 0.78);
 }
+
+.arc-char {
+  display: block;
+  width: 35rpx;
+  transform-origin: 50% 100%;
+}
+
+.tab-title-personal .arc-1 { transform: translateY(9rpx) rotate(-9deg); }
+.tab-title-personal .arc-2 { transform: translateY(2rpx) rotate(-3deg); }
+.tab-title-personal .arc-3 { transform: translateY(0) rotate(3deg); }
+.tab-title-personal .arc-4 { transform: translateY(4rpx) rotate(9deg); }
+
+.tab-title-chat .arc-1 { transform: translateY(5rpx) rotate(-7deg); }
+.tab-title-chat .arc-2 { transform: translateY(0) rotate(-2deg); }
+.tab-title-chat .arc-3 { transform: translateY(0) rotate(2deg); }
+.tab-title-chat .arc-4 { transform: translateY(5rpx) rotate(7deg); }
+
+.tab-title-family .arc-1 { transform: translateY(4rpx) rotate(-9deg); }
+.tab-title-family .arc-2 { transform: translateY(0) rotate(-3deg); }
+.tab-title-family .arc-3 { transform: translateY(2rpx) rotate(3deg); }
+.tab-title-family .arc-4 { transform: translateY(9rpx) rotate(9deg); }
 
 .story-tab-current .tab-title {
   color: #4f7f6b;

@@ -5,6 +5,12 @@
     mode="aspectFit"
     aria-hidden="true"
   ></image>
+  <image
+    class="switcher-book-edges"
+    src="/assets/illustrations/story-switcher-book-edges.png"
+    mode="aspectFit"
+    aria-hidden="true"
+  ></image>
 
   <button
     class="story-tab story-tab-personal {{current === 'personal' ? 'story-tab-current' : ''}}"
@@ -18,7 +24,12 @@
       mode="aspectFit"
       aria-hidden="true"
     ></image>
-    <view class="tab-title">人生之书</view>
+    <view class="tab-title tab-title-personal" aria-label="人生之书">
+      <text class="arc-char arc-1">人</text>
+      <text class="arc-char arc-2">生</text>
+      <text class="arc-char arc-3">之</text>
+      <text class="arc-char arc-4">书</text>
+    </view>
   </button>
 
   <button
@@ -33,7 +44,12 @@
       mode="aspectFit"
       aria-hidden="true"
     ></image>
-    <view class="tab-title tab-chat-title">记下此刻</view>
+    <view class="tab-title tab-title-chat tab-chat-title" aria-label="记下此刻">
+      <text class="arc-char arc-1">记</text>
+      <text class="arc-char arc-2">下</text>
+      <text class="arc-char arc-3">此</text>
+      <text class="arc-char arc-4">刻</text>
+    </view>
   </button>
 
   <button
@@ -48,7 +64,12 @@
       mode="aspectFit"
       aria-hidden="true"
     ></image>
-    <view class="tab-title">记忆之家</view>
+    <view class="tab-title tab-title-family" aria-label="记忆之家">
+      <text class="arc-char arc-1">记</text>
+      <text class="arc-char arc-2">忆</text>
+      <text class="arc-char arc-3">之</text>
+      <text class="arc-char arc-4">家</text>
+    </view>
   </button>
 </view>
 

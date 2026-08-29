@@ -139,6 +139,8 @@
 
 `story-switcher-curved-branch.png` 是底部三入口专用的透明弧形水彩树枝压缩版，印刷母版为 `assets/masters/story-switcher-curved-branch-master.png`。树枝负责连接三枚图案，不得再叠加顶部横线、当前页下划线或规则矩形 Tab Bar；中间 LOGO 只保留一层很轻的柔和阴影。
 
+`story-switcher-book-edges.png` 是底部三入口背后的透明手绘古籍页边装饰，印刷母版为 `assets/masters/story-switcher-book-edges-master.png`。它仅以低对比度衬托三枚入口，须置于树枝、小鸟与 LOGO 下层；不能作为白色卡片、规则边框或文字底板。入口文字以原生文字逐字排成浅弧，沿各自图案的下缘走，须保持较大、较粗且清晰易读。
+
 “开始聊聊”底部弹层新增两枚透明古籍按钮：`capture-note-paper.png` 是轻薄散页，对应“随手记”；`capture-memoir-book.png` 是交错线装册，对应“回忆录”。两张图都不烘焙文字，避免小尺寸中文发糊。
 
 ### 界面参考：`references/`
