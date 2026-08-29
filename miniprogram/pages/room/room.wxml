@@ -1,8 +1,7 @@
 <view class="shell shell-with-bar page-enter">
 
   <view class="branch-bar">
-    <text class="branch-title serif">记忆之家</text>
-    <button class="branch-exit" bindtap="goHome">退出</button>
+    <text class="branch-title room-branch-title">记忆之家</text>
   </view>
 
   <view class="room-head">
@@ -29,7 +28,15 @@
         data-id="{{item.id}}"
         bindtap="chooseFilter"
       >
-        <view class="filter-avatar {{item.isElder ? 'filter-avatar-elder' : ''}} serif">{{item.avatarText}}</view>
+        <view class="filter-avatar {{item.isElder ? 'filter-avatar-elder' : ''}} serif">
+          <image
+            class="filter-avatar-backdrop"
+            src="/assets/illustrations/book-wash.png"
+            mode="aspectFill"
+            aria-hidden="true"
+          ></image>
+          <text class="filter-avatar-letter">{{item.avatarText}}</text>
+        </view>
         <text class="filter-name">{{item.name}}</text>
         <text class="filter-count">{{item.count}}</text>
       </view>
@@ -46,7 +53,15 @@
         </view>
         <view class="tl-body">
           <view class="tl-meta">
-            <view class="tl-avatar serif">{{item.avatarText}}</view>
+            <view class="tl-avatar serif">
+              <image
+                class="tl-avatar-backdrop"
+                src="/assets/illustrations/book-wash.png"
+                mode="aspectFill"
+                aria-hidden="true"
+              ></image>
+              <text class="tl-avatar-letter">{{item.avatarText}}</text>
+            </view>
             <text class="tl-author">{{item.authorName}} · {{item.relation}}</text>
             <text class="tl-mine" wx:if="{{item.isMine}}">我讲的</text>
           </view>
@@ -93,7 +108,15 @@
 <view class="sheet" wx:if="{{detail}}">
   <view class="sheet-grip"></view>
   <view class="sheet-meta">
-    <view class="tl-avatar serif">{{detail.avatarText}}</view>
+    <view class="tl-avatar serif">
+      <image
+        class="tl-avatar-backdrop"
+        src="/assets/illustrations/book-wash.png"
+        mode="aspectFill"
+        aria-hidden="true"
+      ></image>
+      <text class="tl-avatar-letter">{{detail.avatarText}}</text>
+    </view>
     <view class="sheet-who">
       <text class="sheet-author">{{detail.authorName}} · {{detail.relation}}</text>
       <text class="sheet-time">{{detail.dateLabel}} {{detail.timeLabel}} 讲述</text>

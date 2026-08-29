@@ -1,5 +1,13 @@
 /* 记忆之家：确认后公开的家庭时间线 */
 
+/*
+ * 页面标题与底部切换条的「记忆之家」是同样四个字，字形必须同款，
+ * 所以走 .typewriter 那套仿宋；房间名是内容，保持宋体的阅读感。
+ */
+.room-branch-title {
+  font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
+}
+
 .room-head {
   padding: 8rpx 0 24rpx;
 }
@@ -90,19 +98,47 @@
 }
 
 .filter-avatar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 76rpx;
   height: 76rpx;
+  border: 2rpx solid rgba(74, 110, 136, 0.26);
   border-radius: 38rpx;
-  background: var(--lake);
-  color: #fbfdfc;
+  background: rgba(203, 219, 232, 0.95);
+  color: var(--lake);
   font-size: 30rpx;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+/* 与首页、切换档案一致：同一张水彩底，蓝晕给亲友、绿晕给长辈。 */
+.filter-avatar-backdrop {
+  position: absolute;
+  top: -52rpx;
+  left: -48rpx;
+  width: 120rpx;
+  height: 160rpx;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.filter-avatar-letter {
+  position: relative;
+  z-index: 1;
 }
 
 .filter-avatar-elder {
-  background: var(--jade);
+  border-color: rgba(79, 127, 107, 0.26);
+  background: rgba(216, 231, 222, 0.95);
+  color: var(--jade);
+}
+
+.filter-avatar-elder .filter-avatar-backdrop {
+  top: -43rpx;
+  left: -22rpx;
+  opacity: 0.62;
 }
 
 .filter-name {
@@ -171,6 +207,7 @@
 }
 
 .tl-avatar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,10 +215,28 @@
   width: 52rpx;
   height: 52rpx;
   margin-right: 14rpx;
+  border: 2rpx solid rgba(74, 110, 136, 0.24);
   border-radius: 26rpx;
-  background: var(--lake);
-  color: #fbfdfc;
+  background: rgba(203, 219, 232, 0.95);
+  color: var(--lake);
   font-size: 24rpx;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.tl-avatar-backdrop {
+  position: absolute;
+  top: -64rpx;
+  left: -60rpx;
+  width: 120rpx;
+  height: 160rpx;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.tl-avatar-letter {
+  position: relative;
+  z-index: 1;
 }
 
 .tl-author {
