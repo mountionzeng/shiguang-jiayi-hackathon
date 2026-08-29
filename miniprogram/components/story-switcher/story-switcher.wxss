@@ -113,3 +113,154 @@
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-3rpx) scale(1.025); }
 }
+
+/* ---- 从中间 LOGO 弹出的古籍双入口 ---- */
+
+.capture-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 39;
+  background: rgba(36, 43, 39, 0.22);
+  animation: mask-in 220ms ease-out both;
+}
+
+.capture-sheet {
+  position: fixed;
+  right: 18rpx;
+  bottom: calc(186rpx + env(safe-area-inset-bottom));
+  left: 18rpx;
+  z-index: 40;
+  padding: 16rpx 28rpx 30rpx;
+  border: 2rpx solid rgba(129, 117, 93, 0.14);
+  border-radius: 34rpx 34rpx 20rpx 20rpx;
+  background: rgba(251, 248, 241, 0.985);
+  box-shadow: 0 20rpx 54rpx rgba(48, 58, 52, 0.16);
+  animation: capture-sheet-up 380ms cubic-bezier(0.2, 0.84, 0.28, 1.08) both;
+}
+
+.capture-grip {
+  width: 64rpx;
+  height: 7rpx;
+  margin: 0 auto 18rpx;
+  border-radius: 7rpx;
+  background: rgba(129, 117, 93, 0.2);
+}
+
+.capture-heading {
+  padding: 0 8rpx;
+}
+
+.capture-title {
+  color: #2a2e2b;
+  font-size: 35rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+}
+
+.capture-note {
+  margin-top: 4rpx;
+  color: #6a6e68;
+  font-size: 23rpx;
+  line-height: 1.55;
+}
+
+.capture-options {
+  display: flex;
+  margin-top: 18rpx;
+}
+
+.capture-choice {
+  position: relative;
+  flex: 1;
+  height: 250rpx;
+  background: transparent;
+  overflow: visible;
+  transition: transform 180ms ease;
+}
+
+.capture-choice + .capture-choice {
+  margin-left: 14rpx;
+}
+
+.capture-choice:active {
+  transform: translateY(4rpx) scale(0.975);
+}
+
+.capture-choice-note {
+  animation: capture-choice-pop 360ms cubic-bezier(0.2, 0.84, 0.28, 1.12) 90ms both;
+}
+
+.capture-choice-memoir {
+  animation: capture-choice-pop 360ms cubic-bezier(0.2, 0.84, 0.28, 1.12) 150ms both;
+}
+
+.capture-art {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: block;
+}
+
+.capture-art-note {
+  width: 294rpx;
+  height: 196rpx;
+  margin-left: -147rpx;
+}
+
+.capture-art-memoir {
+  top: -10rpx;
+  width: 224rpx;
+  height: 232rpx;
+  margin-left: -112rpx;
+}
+
+.capture-copy {
+  position: absolute;
+  z-index: 1;
+  text-align: center;
+  pointer-events: none;
+}
+
+.capture-copy-note {
+  top: 72rpx;
+  right: 22rpx;
+  left: 38rpx;
+}
+
+.capture-copy-memoir {
+  top: 92rpx;
+  right: 42rpx;
+  left: 18rpx;
+}
+
+.capture-choice-title {
+  color: #2f4e43;
+  font-size: 31rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+}
+
+.capture-choice-desc {
+  margin-top: 4rpx;
+  color: #72746f;
+  font-size: 21rpx;
+  line-height: 1.4;
+}
+
+@keyframes mask-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes capture-sheet-up {
+  from { opacity: 0; transform: translateY(80rpx) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes capture-choice-pop {
+  from { opacity: 0; transform: translateY(34rpx) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

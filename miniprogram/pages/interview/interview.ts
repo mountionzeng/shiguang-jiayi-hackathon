@@ -48,6 +48,7 @@ interface MemberOptionView {
 interface InterviewLoadOptions {
   sourceId?: string;
   storyTitle?: string;
+  memoryType?: string;
 }
 
 const THINKING_DELAY_MS = 420;
@@ -163,6 +164,12 @@ Page({
     const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");
     const requestedStoryTitle = decodeQueryValue(options.storyTitle);
     const requestedSourceId = decodeQueryValue(options.sourceId);
+    const requestedMemoryType: MemoryType | undefined =
+      options.memoryType === "memoir"
+        ? "memoir"
+        : options.memoryType === "note"
+          ? "note"
+          : undefined;
     const source = state.contributions.find((memory) => (
       memory.id === requestedSourceId &&
       memory.authorMemberId === member.id &&
@@ -177,12 +184,15 @@ Page({
       ? storyTitle
         ? `我们继续聊「${storyTitle}」吧。\n上次你讲到：“${sourcePreview}”\n这一次，你还想补充什么？`
         : `我们接着这段往下聊吧。\n上次你讲到：“${sourcePreview}”\n后来你又想起了什么？`
-      : `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`;
+      : requestedMemoryType === "note"
+        ? "先把这一刻想到的留下来吧。几句话也可以，聊完后再决定放进哪个故事。"
+        : `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`;
 
     this.setData({
       memberName: member.name,
       memberRelation: member.relation,
-      stage: source || storyTitle ? "chat" : "choose",
+      stage: source || storyTitle || requestedMemoryType ? "chat" : "choose",
+      memoryType: requestedMemoryType ?? this.data.memoryType,
       dateLabel: today(),
       storyTitle,
       storyOptions: storyOptionsFor(state.contributions, member.id, storyTitle),

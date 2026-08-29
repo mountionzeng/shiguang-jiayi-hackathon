@@ -54,3 +54,64 @@
     <view class="tab-note">我和亲友</view>
   </button>
 </view>
+
+<view
+  class="capture-mask"
+  wx:if="{{chooserOpen}}"
+  bindtap="closeChooser"
+  aria-label="关闭记录方式选择"
+></view>
+
+<view
+  class="capture-sheet"
+  wx:if="{{chooserOpen}}"
+  catchtap="keepChooserOpen"
+  role="dialog"
+  aria-label="选择记录方式"
+>
+  <view class="capture-grip"></view>
+  <view class="capture-heading">
+    <view class="capture-title typewriter">这次想怎么记？</view>
+    <view class="capture-note">先选一种讲述节奏，聊完以后再决定放进哪个故事。</view>
+  </view>
+
+  <view class="capture-options">
+    <button
+      class="capture-choice capture-choice-note"
+      data-type="note"
+      bindtap="chooseCaptureMode"
+      hover-class="none"
+      aria-label="选择随手记，先留下几句话"
+    >
+      <image
+        class="capture-art capture-art-note"
+        src="/assets/illustrations/capture-note-paper.png"
+        mode="aspectFit"
+        aria-hidden="true"
+      ></image>
+      <view class="capture-copy capture-copy-note">
+        <view class="capture-choice-title typewriter">随手记</view>
+        <view class="capture-choice-desc">先留下几句话</view>
+      </view>
+    </button>
+
+    <button
+      class="capture-choice capture-choice-memoir"
+      data-type="memoir"
+      bindtap="chooseCaptureMode"
+      hover-class="none"
+      aria-label="选择回忆录，和小忆慢慢聊"
+    >
+      <image
+        class="capture-art capture-art-memoir"
+        src="/assets/illustrations/capture-memoir-book.png"
+        mode="aspectFit"
+        aria-hidden="true"
+      ></image>
+      <view class="capture-copy capture-copy-memoir">
+        <view class="capture-choice-title typewriter">回忆录</view>
+        <view class="capture-choice-desc">和小忆慢慢聊</view>
+      </view>
+    </button>
+  </view>
+</view>

@@ -233,6 +233,11 @@ test("a new conversation chooses a telling style before chat", async (context) =
 
   callPage(interview, "beginInterview");
   assert.equal(interview.data.stage, "chat");
+
+  const selectedInterview = instantiate(await pageDefinition("interview"));
+  callPage(selectedInterview, "onLoad", { memoryType: "memoir" });
+  assert.equal(selectedInterview.data.stage, "chat");
+  assert.equal(selectedInterview.data.memoryType, "memoir");
 });
 
 test("each content branch exits back home", async (context) => {
