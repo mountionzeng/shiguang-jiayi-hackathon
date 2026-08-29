@@ -1,13 +1,17 @@
 import {
-  biographySourceContributions,
   FamilyRoomState,
   MemoryContribution,
+  biographySourceContributions,
   pendingFamilyContributions,
   reviewContribution,
   ReviewStatus,
   VISIBILITY_LABELS,
 } from "../../domain/biography";
-import { loadCurrentMember, loadRoomState, replaceContribution } from "../../services/roomStorage";
+import {
+  loadCurrentMemberRemoteFirst,
+  loadRoomStateRemoteFirst,
+  replaceContributionRemoteFirst,
+} from "../../services/roomRepository";
 
 interface FocusView {
   id: string;
@@ -48,19 +52,20 @@ Page({
   },
 
   onShow() {
-    this.refresh();
+    void this.refresh();
   },
 
-  refresh(state: FamilyRoomState = loadRoomState()) {
-    const viewer = loadCurrentMember(state);
+  async refresh(state?: FamilyRoomState) {
+    const currentState = state ?? await loadRoomStateRemoteFirst();
+    const viewer = await loadCurrentMemberRemoteFirst(currentState);
     const isElder = viewer.role === "elder";
-    const familyContributions = state.contributions.filter(
+    const familyContributions = currentState.contributions.filter(
       (item) => item.scope !== "personal",
     );
     const pending = pendingFamilyContributions(familyContributions);
     const handled = familyContributions.length - pending.length;
     const avatarByMember = new Map(
-      state.members.map((member) => [member.id, member.avatarText]),
+      currentState.members.map((member) => [member.id, member.avatarText]),
     );
 
     const next: MemoryContribution | undefined = pending[0];
@@ -81,27 +86,27 @@ Page({
         : null;
 
     this.setData({
-      protagonistName: state.protagonistName,
+      protagonistName: currentState.protagonistName,
       isElder,
       viewerName: viewer.name,
       focus,
       pendingCount: pending.length,
       handledCount: handled,
-      confirmedCount: biographySourceContributions(state.contributions).length,
+      confirmedCount: biographySourceContributions(currentState.contributions).length,
       positionLabel:
         pending.length > 0 ? `还剩 ${pending.length} 条，一次只看一条` : "",
     });
   },
 
-  reviewMemory(event: {
+  async reviewMemory(event: {
     currentTarget: { dataset: { status: Exclude<ReviewStatus, "pending"> } };
   }) {
     const focus = this.data.focus;
     if (!focus) return;
 
     const { status } = event.currentTarget.dataset;
-    const state = loadRoomState();
-    const viewer = loadCurrentMember(state);
+    const state = await loadRoomStateRemoteFirst();
+    const viewer = await loadCurrentMemberRemoteFirst(state);
     const target = state.contributions.find((item) => item.id === focus.id);
     if (!target) {
       wx.showToast({ title: "没有找到这一条", icon: "none" });
@@ -110,12 +115,11 @@ Page({
 
     try {
       // 确认权由领域层按真实身份判定，页面不再代传 elder。
-      const nextState = replaceContribution(
+      const nextState = await replaceContributionRemoteFirst(
         reviewContribution(target, status, viewer.role),
-        state,
       );
       wx.showToast({ title: actionLabels[status], icon: "none" });
-      this.refresh(nextState);
+      void this.refresh(nextState);
     } catch (error) {
       wx.showToast({
         title: error instanceof Error ? error.message : "暂时无法核对",

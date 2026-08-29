@@ -3,6 +3,7 @@ import {
   contributionScope,
   contributionStoryTitle,
   FamilyMember,
+  FamilyRoomState,
   MAX_MEMORY_LENGTH,
   MemoryType,
   normalizeMemoryText,
@@ -19,10 +20,10 @@ import {
 } from "../../domain/interview";
 import { CLOUD_AI_ENABLED } from "../../config/runtime";
 import {
-  appendContribution,
-  loadCurrentMember,
-  loadRoomState,
-} from "../../services/roomStorage";
+  appendContributionRemoteFirst,
+  loadCurrentMemberRemoteFirst,
+  loadRoomStateRemoteFirst,
+} from "../../services/roomRepository";
 
 interface MessageView {
   id: string;
@@ -53,7 +54,7 @@ function today(): string {
 }
 
 function storyOptionsFor(
-  memories: ReturnType<typeof loadRoomState>["contributions"],
+  memories: FamilyRoomState["contributions"],
   memberId: string,
   selectedTitle: string,
 ): StoryOptionView[] {
@@ -144,9 +145,9 @@ Page({
 
   messageSeq: 0,
 
-  onLoad() {
-    const state = loadRoomState();
-    const member = loadCurrentMember(state);
+  async onLoad() {
+    const state = await loadRoomStateRemoteFirst();
+    const member = await loadCurrentMemberRemoteFirst(state);
     const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");
 
     this.setData({
@@ -174,9 +175,13 @@ Page({
     const rawAnswers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (this.data.saved || rawAnswers.length === 0) return;
 
+    void this.saveRecoverableAnswers(rawAnswers);
+  },
+
+  async saveRecoverableAnswers(rawAnswers: string[]) {
     try {
-      let state = loadRoomState();
-      const member = loadCurrentMember(state);
+      const currentState = await loadRoomStateRemoteFirst();
+      const member = await loadCurrentMemberRemoteFirst(currentState);
       const recoverableText = normalizeMemoryText(
         this.data.stage === "save" && this.data.draftText
           ? this.data.draftText
@@ -184,8 +189,8 @@ Page({
       );
       const chunks = splitRecoverableText(recoverableText);
 
-      chunks.forEach((text, index) => {
-        state = appendContribution(createContribution({
+      for (const text of chunks) {
+        await appendContributionRemoteFirst(createContribution({
           authorMemberId: member.id,
           authorName: member.name,
           relation: member.relation,
@@ -197,8 +202,8 @@ Page({
           preserveNormalizedText: true,
           scope: "personal",
           visibility: "private",
-        }), state);
-      });
+        }));
+      }
     } catch (error) {
       console.warn("退出时自动保存失败", error);
     }
@@ -379,13 +384,13 @@ Page({
     wx.showToast({ title: "照片和语音赛后接入", icon: "none" });
   },
 
-  save() {
+  async save() {
     if (this.data.saving) return;
     this.setData({ saving: true });
 
     try {
-      const state = loadRoomState();
-      const member = loadCurrentMember(state);
+      const state = await loadRoomStateRemoteFirst();
+      const member = await loadCurrentMemberRemoteFirst(state);
       const availableMemberIds = new Set(
         state.members
           .filter((candidate) => candidate.id !== member.id)
@@ -397,7 +402,7 @@ Page({
       if (selectedMemberIds.some((memberId) => !availableMemberIds.has(memberId))) {
         throw new Error("有亲友已不在当前空间，请重新选择");
       }
-      appendContribution(
+      await appendContributionRemoteFirst(
         createContribution({
           authorMemberId: member.id,
           authorName: member.name,
@@ -411,7 +416,6 @@ Page({
           scope: "personal",
           visibility: "private",
         }),
-        state,
       );
 
       this.setData({ saved: true });

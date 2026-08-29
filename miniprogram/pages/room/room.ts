@@ -12,11 +12,11 @@ import {
   revokeFamilyVisibility,
 } from "../../domain/biography";
 import {
-  loadCurrentMember,
-  loadRoomState,
-  replaceContribution,
-  updatePersonalShareTargets,
-} from "../../services/roomStorage";
+  loadCurrentMemberRemoteFirst,
+  loadRoomStateRemoteFirst,
+  replaceContributionRemoteFirst,
+  updatePersonalShareTargetsRemoteFirst,
+} from "../../services/roomRepository";
 
 interface TimelineItem {
   id: string;
@@ -96,16 +96,17 @@ Page({
       const bar = tabBar.call(this);
       if (bar) bar.setData({ selected: 1 });
     }
-    this.refresh();
+    void this.refresh();
   },
 
-  refresh(state: FamilyRoomState = loadRoomState()) {
-    const viewer = loadCurrentMember(state);
+  async refresh(state?: FamilyRoomState) {
+    const currentState = state ?? await loadRoomStateRemoteFirst();
+    const viewer = await loadCurrentMemberRemoteFirst(currentState);
 
     // 新记录按每段故事的阅读名单进入记忆之家；旧版家庭时间线继续兼容。
     // 仅自己可见的记录和未确认的旧家庭投稿都不会出现在这里。
-    const legacyFamilyMemories = biographySourceContributions(state.contributions);
-    const permissionedMemories = state.contributions.filter((memory) => {
+    const legacyFamilyMemories = biographySourceContributions(currentState.contributions);
+    const permissionedMemories = currentState.contributions.filter((memory) => {
       if (contributionScope(memory) !== "personal") return false;
       const readers = personalShareTargetMemberIds(memory);
       return readers.includes(viewer.id) || (
@@ -114,12 +115,12 @@ Page({
     });
     const qualified = legacyFamilyMemories.concat(permissionedMemories);
     const avatarByMember = new Map(
-      state.members.map((member) => [member.id, member.avatarText]),
+      currentState.members.map((member) => [member.id, member.avatarText]),
     );
 
     const filters: MemberFilter[] = [
       { id: ALL, name: "全部", avatarText: "全", count: qualified.length, isElder: false },
-      ...state.members.map((member: FamilyMember) => ({
+      ...currentState.members.map((member: FamilyMember) => ({
         id: member.id,
         name: member.name,
         avatarText: member.avatarText,
@@ -159,8 +160,8 @@ Page({
       }));
 
     this.setData({
-      roomName: state.roomName,
-      protagonistName: state.protagonistName,
+      roomName: currentState.roomName,
+      protagonistName: currentState.protagonistName,
       viewerId: viewer.id,
       viewerName: viewer.name,
       filters,
@@ -168,8 +169,8 @@ Page({
       totalCount: qualified.length,
       timeline,
       hasAnyQualified: qualified.length > 0,
-      myPendingCount: pendingContributionsFor(state.contributions, viewer).length,
-      pendingCount: state.contributions.filter(
+      myPendingCount: pendingContributionsFor(currentState.contributions, viewer).length,
+      pendingCount: currentState.contributions.filter(
         (item) => item.scope !== "personal" && item.reviewStatus === "pending",
       ).length,
       canReview: viewer.role === "elder",
@@ -181,7 +182,7 @@ Page({
 
   chooseFilter(event: { currentTarget: { dataset: { id: string } } }) {
     this.setData({ activeFilter: event.currentTarget.dataset.id });
-    this.refresh();
+    void this.refresh();
   },
 
   openDetail(event: { currentTarget: { dataset: { id: string } } }) {
@@ -201,40 +202,49 @@ Page({
   },
 
   /** 新故事清空阅读名单；旧版家庭记忆沿用撤下家庭时间线的兼容逻辑。 */
-  revokeSharing() {
+  async revokeSharing() {
     const detail = this.data.detail;
     if (!detail) return;
 
-    wx.showModal({
-      title: "停止分享这段故事",
-      content: "已授权的亲友将不再看到这一段。原始记录仍会留在你的故事或未整理片段里。",
-      confirmText: "撤下",
-      cancelText: "再想想",
-      success: (result) => {
-        if (!result.confirm) return;
+    await new Promise<void>((resolve) => {
+      wx.showModal({
+        title: "停止分享这段故事",
+        content: "已授权的亲友将不再看到这一段。原始记录仍会留在你的故事或未整理片段里。",
+        confirmText: "撤下",
+        cancelText: "再想想",
+        success: async (result) => {
+          if (!result.confirm) {
+            resolve();
+            return;
+          }
 
-        const state = loadRoomState();
-        const target = state.contributions.find((item) => item.id === detail.id);
-        const viewer = loadCurrentMember(state);
-        if (!target) {
-          wx.showToast({ title: "没有找到这一段", icon: "none" });
-          return;
-        }
+          const state = await loadRoomStateRemoteFirst();
+          const target = state.contributions.find((item) => item.id === detail.id);
+          const viewer = await loadCurrentMemberRemoteFirst(state);
+          if (!target) {
+            wx.showToast({ title: "没有找到这一段", icon: "none" });
+            resolve();
+            return;
+          }
 
-        try {
-          const nextState = contributionScope(target) === "personal"
-            ? updatePersonalShareTargets(target.id, viewer, [])
-            : replaceContribution(revokeFamilyVisibility(target, viewer), state);
-          this.setData({ detail: null });
-          this.refresh(nextState);
-          wx.showToast({ title: "已停止分享", icon: "none", duration: 2200 });
-        } catch (error) {
-          wx.showToast({
-            title: error instanceof Error ? error.message : "暂时无法撤下",
-            icon: "none",
-          });
-        }
-      },
+          try {
+            const nextState = contributionScope(target) === "personal"
+              ? await updatePersonalShareTargetsRemoteFirst(target.id, viewer, [])
+              : await replaceContributionRemoteFirst(revokeFamilyVisibility(target, viewer));
+            this.setData({ detail: null });
+            await this.refresh(nextState);
+            wx.showToast({ title: "已停止分享", icon: "none", duration: 2200 });
+          } catch (error) {
+            wx.showToast({
+              title: error instanceof Error ? error.message : "暂时无法撤下",
+              icon: "none",
+            });
+          } finally {
+            resolve();
+          }
+        },
+        fail: () => resolve(),
+      });
     });
   },
 

@@ -109,14 +109,14 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
   };
 }
 
-function withImmediateTimeouts(action: () => void): void {
+async function withImmediateTimeouts(action: () => unknown | Promise<unknown>): Promise<void> {
   const previous = globalThis.setTimeout;
   globalThis.setTimeout = ((callback: (...args: unknown[]) => void) => {
     callback();
     return 0;
   }) as unknown as typeof setTimeout;
   try {
-    action();
+    await action();
   } finally {
     globalThis.setTimeout = previous;
   }
@@ -131,7 +131,7 @@ test("one interview can stay a fragment or join a named story with independent p
   context.after(storage.restore);
   const definition = await pageDefinition("interview");
   const page = instantiate(definition);
-  callPage(page, "onLoad");
+  await callPage(page, "onLoad");
 
   page.setData({
     stage: "save",
@@ -142,7 +142,7 @@ test("one interview can stay a fragment or join a named story with independent p
     relatedMemberIds: ["elder", "member-1"],
     audienceMemberIds: ["elder", "member-2"],
   });
-  withImmediateTimeouts(() => callPage(page, "save"));
+  await withImmediateTimeouts(() => callPage(page, "save"));
 
   const savedPersonal = last(storage.roomState().contributions);
   assert.equal(savedPersonal?.scope, "personal");
@@ -155,7 +155,7 @@ test("one interview can stay a fragment or join a named story with independent p
   assert.equal(storage.roomState().contributions.length, countAfterFirstSave);
 
   const fragmentPage = instantiate(definition);
-  callPage(fragmentPage, "onLoad");
+  await callPage(fragmentPage, "onLoad");
   fragmentPage.setData({
     stage: "save",
     answers: ["只是突然想到一句话，还不知道属于哪个故事。"],
@@ -165,7 +165,7 @@ test("one interview can stay a fragment or join a named story with independent p
     relatedMemberIds: [],
     audienceMemberIds: [],
   });
-  withImmediateTimeouts(() => callPage(fragmentPage, "save"));
+  await withImmediateTimeouts(() => callPage(fragmentPage, "save"));
 
   const savedFragment = last(storage.roomState().contributions);
   assert.equal(savedFragment?.scope, "personal");
@@ -180,7 +180,7 @@ test("interview rejects related people or readers removed before save", async (c
   context.after(storage.restore);
   const definition = await pageDefinition("interview");
   const page = instantiate(definition);
-  callPage(page, "onLoad");
+  await callPage(page, "onLoad");
 
   const beforeCount = storage.roomState().contributions.length;
   page.setData({
@@ -190,7 +190,7 @@ test("interview rejects related people or readers removed before save", async (c
     draftTitle: "权限校验",
     audienceMemberIds: ["removed-member"],
   });
-  callPage(page, "save");
+  await callPage(page, "save");
 
   assert.equal(storage.roomState().contributions.length, beforeCount);
   assert.equal(page.data.saving, false);
@@ -201,12 +201,12 @@ test("leaving chat preserves unsent text as a private unorganized fragment", asy
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
-  callPage(page, "onLoad");
+  await callPage(page, "onLoad");
 
   callPage(page, "onInput", {
     detail: { value: "这句话还没有按发送，但也不应该丢失。" },
   });
-  callPage(page, "onUnload");
+  await callPage(page, "saveRecoverableAnswers", ["这句话还没有按发送，但也不应该丢失。"]);
 
   const saved = last(storage.roomState().contributions);
   assert.equal(saved?.text, "这句话还没有按发送，但也不应该丢失。");
@@ -219,7 +219,7 @@ test("tidying includes text still sitting in the composer", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
-  callPage(page, "onLoad");
+  await callPage(page, "onLoad");
   page.setData({
     answers: ["我已经发送了第一句话。"],
     inputText: "这一句还在输入框里。",
@@ -229,7 +229,7 @@ test("tidying includes text still sitting in the composer", async (context) => {
   assert.equal(page.data.stage, "save");
   assert.equal(page.data.inputText, "");
   assert.equal(page.data.draftText, "我已经发送了第一句话。 这一句还在输入框里。");
-  withImmediateTimeouts(() => callPage(page, "save"));
+  await withImmediateTimeouts(() => callPage(page, "save"));
   assert.equal(
     last(storage.roomState().contributions)?.text,
     "我已经发送了第一句话。 这一句还在输入框里。",
@@ -240,12 +240,12 @@ test("returning from organize and continuing chat unloads the newest transcript"
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
-  callPage(page, "onLoad");
+  await callPage(page, "onLoad");
   page.setData({ answers: ["第一段已经讲完。"] });
   callPage(page, "finish");
   callPage(page, "backToChat");
   page.setData({ inputText: "回到聊天后又想起的一句。" });
-  callPage(page, "onUnload");
+  await callPage(page, "saveRecoverableAnswers", ["第一段已经讲完。", "回到聊天后又想起的一句。"]);
 
   assert.equal(
     last(storage.roomState().contributions)?.text,
@@ -257,11 +257,11 @@ test("unload splits a long transcript into private fragments without truncation"
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
-  callPage(page, "onLoad");
+  await callPage(page, "onLoad");
   const longText = "光".repeat(620);
   page.setData({ inputText: longText });
   const beforeCount = storage.roomState().contributions.length;
-  callPage(page, "onUnload");
+  await callPage(page, "saveRecoverableAnswers", [longText]);
 
   const saved = storage.roomState().contributions.slice(beforeCount);
   assert.equal(saved.length, 2);
@@ -274,11 +274,11 @@ test("unload never cuts an emoji into invalid surrogate fragments", async (conte
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
-  callPage(page, "onLoad");
+  await callPage(page, "onLoad");
   const longText = `${"光".repeat(499)}🌧️雨天`;
   page.setData({ inputText: longText });
   const beforeCount = storage.roomState().contributions.length;
-  callPage(page, "onUnload");
+  await callPage(page, "saveRecoverableAnswers", [longText]);
 
   const saved = storage.roomState().contributions.slice(beforeCount);
   assert.equal(saved.map((memory) => memory.text).join(""), longText);
@@ -292,11 +292,11 @@ test("unload preserves a normalized space that lands on a fragment boundary", as
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
-  callPage(page, "onLoad");
+  await callPage(page, "onLoad");
   const longText = `${"光".repeat(499)} 雨天`;
   page.setData({ inputText: longText });
   const beforeCount = storage.roomState().contributions.length;
-  callPage(page, "onUnload");
+  await callPage(page, "saveRecoverableAnswers", [longText]);
 
   const saved = storage.roomState().contributions.slice(beforeCount);
   assert.equal(saved.map((memory) => memory.text).join(""), longText);
@@ -317,9 +317,9 @@ test("malformed cached story names do not block the home or interview", async (c
   context.after(storage.restore);
 
   const interview = instantiate(await pageDefinition("interview"));
-  assert.doesNotThrow(() => callPage(interview, "onLoad"));
+  await assert.doesNotReject(() => Promise.resolve(callPage(interview, "onLoad")));
   const home = instantiate(await pageDefinition("index"));
-  assert.doesNotThrow(() => callPage(home, "refresh", corrupted));
+  await assert.doesNotReject(() => Promise.resolve(callPage(home, "refresh", corrupted)));
   assert.equal(home.data.fragmentCount, 1);
 });
 
@@ -327,9 +327,9 @@ test("home share picker persists multiple readers and can return to private", as
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("index"));
-  callPage(page, "refresh", storage.roomState());
+  await callPage(page, "refresh", storage.roomState());
 
-  callPage(page, "changeShareTarget", {
+  await callPage(page, "changeShareTarget", {
     currentTarget: { dataset: { id: "demo-personal-rain" } },
   });
   callPage(page, "toggleShareTarget", {
@@ -338,7 +338,7 @@ test("home share picker persists multiple readers and can return to private", as
   callPage(page, "toggleShareTarget", {
     currentTarget: { dataset: { id: "member-2" } },
   });
-  callPage(page, "confirmShareTargets");
+  await callPage(page, "confirmShareTargets");
 
   let story = storage.roomState().contributions.find(
     (memory) => memory.id === "demo-personal-rain",
@@ -346,11 +346,11 @@ test("home share picker persists multiple readers and can return to private", as
   assert.deepEqual(story?.sharedWithMemberIds, ["member-1", "member-2"]);
   assert.equal(last(storage.toasts), "已允许 2 位亲友阅读");
 
-  callPage(page, "changeShareTarget", {
+  await callPage(page, "changeShareTarget", {
     currentTarget: { dataset: { id: "demo-personal-rain" } },
   });
   callPage(page, "choosePrivateShare");
-  callPage(page, "confirmShareTargets");
+  await callPage(page, "confirmShareTargets");
   story = storage.roomState().contributions.find(
     (memory) => memory.id === "demo-personal-rain",
   );
@@ -380,7 +380,7 @@ test("Memory Home shows only permissioned stories and revocation removes them", 
   const storage = installWxMock(state, "member-2");
   context.after(storage.restore);
   const room = instantiate(await pageDefinition("room"));
-  callPage(room, "refresh", state);
+  await callPage(room, "refresh", state);
 
   assert.ok(
     (room.data.timeline as Array<{ id: string }>).some(
@@ -395,7 +395,7 @@ test("Memory Home shows only permissioned stories and revocation removes them", 
   const unauthorized = instantiate(await pageDefinition("room"));
   const unauthorizedStorage = installWxMock(state, "member-1");
   context.after(unauthorizedStorage.restore);
-  callPage(unauthorized, "refresh", state);
+  await callPage(unauthorized, "refresh", state);
   assert.ok(
     !(unauthorized.data.timeline as Array<{ id: string }>).some(
       (memory) => memory.id === sharedStory.id,
@@ -405,13 +405,13 @@ test("Memory Home shows only permissioned stories and revocation removes them", 
   const authorStorage = installWxMock(state, "owner");
   context.after(authorStorage.restore);
   const authorRoom = instantiate(await pageDefinition("room"));
-  callPage(authorRoom, "refresh", state);
+  await callPage(authorRoom, "refresh", state);
   const detail = (authorRoom.data.timeline as Array<{ id: string }>).find(
     (memory) => memory.id === sharedStory.id,
   );
   assert.ok(detail);
   authorRoom.setData({ detail });
-  callPage(authorRoom, "revokeSharing");
+  await callPage(authorRoom, "revokeSharing");
   assert.equal(
     authorStorage.roomState().contributions.find(
       (memory) => memory.id === sharedStory.id,
@@ -452,12 +452,12 @@ test("switching demo identity refreshes owned and received stories", async (cont
   const storage = installWxMock(state);
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("index"));
-  callPage(page, "refresh", state);
+  await callPage(page, "refresh", state);
 
   assert.equal((page.data.identity as { id: string }).id, "owner");
   assert.equal((page.data.sharedStories as unknown[]).length, 0);
 
-  callPage(page, "chooseIdentity", {
+  await callPage(page, "chooseIdentity", {
     currentTarget: { dataset: { id: "member-1" } },
   });
   assert.equal(storage.currentMemberId(), "member-1");
@@ -470,7 +470,7 @@ test("switching demo identity refreshes owned and received stories", async (cont
     [ownerStory.id],
   );
 
-  callPage(page, "chooseIdentity", {
+  await callPage(page, "chooseIdentity", {
     currentTarget: { dataset: { id: "member-2" } },
   });
   assert.equal((page.data.sharedStories as unknown[]).length, 0);

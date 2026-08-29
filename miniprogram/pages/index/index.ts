@@ -15,12 +15,12 @@ import {
 } from "../../domain/interview";
 import { CLOUD_AI_ENABLED } from "../../config/runtime";
 import {
-  loadCurrentMember,
-  loadRoomState,
-  resetDemoRoom,
-  saveCurrentMemberId,
-  updatePersonalShareTargets,
-} from "../../services/roomStorage";
+  loadCurrentMemberRemoteFirst,
+  loadRoomStateRemoteFirst,
+  resetDemoRoomRemoteFirst,
+  saveCurrentMemberIdLocal,
+  updatePersonalShareTargetsRemoteFirst,
+} from "../../services/roomRepository";
 
 interface FragmentView {
   id: string;
@@ -162,33 +162,34 @@ Page({
       const bar = tabBar.call(this);
       if (bar) bar.setData({ selected: 0 });
     }
-    this.refresh();
+    void this.refresh();
   },
 
-  refresh(state: FamilyRoomState = loadRoomState()) {
-    const member = loadCurrentMember(state);
+  async refresh(state?: FamilyRoomState) {
+    const currentState = state ?? await loadRoomStateRemoteFirst();
+    const member = await loadCurrentMemberRemoteFirst(currentState);
     const identity = toIdentityView(member);
-    const personal = personalBookContributions(state.contributions, member.id);
+    const personal = personalBookContributions(currentState.contributions, member.id);
     const storyTitles = new Set(
       personal.map(contributionStoryTitle).filter(Boolean),
     );
     const looseFragments = personal.filter((memory) => !contributionStoryTitle(memory));
     const sharedWithMe = sharedPersonalContributionsForMember(
-      state.contributions,
+      currentState.contributions,
       member.id,
     );
-    const personalDraft = state.personalDrafts?.[member.id];
+    const personalDraft = currentState.personalDrafts?.[member.id];
 
     this.setData({
       protagonistName: member.name,
       identity,
-      identityOptions: state.members.map(toIdentityView),
+      identityOptions: currentState.members.map(toIdentityView),
       memoryCount: personal.length,
       fragmentCount: looseFragments.length,
       storyCount: storyTitles.size,
-      memberCount: state.members.length,
+      memberCount: currentState.members.length,
       hasFragments: personal.length > 0,
-      recentFragments: toFragmentViews(personal, state.members),
+      recentFragments: toFragmentViews(personal, currentState.members),
       sharedStories: toSharedStoryViews(sharedWithMe),
       hasSharedStories: sharedWithMe.length > 0,
       todayQuestion: pickInterviewQuestion(sharedQuestionSeed(), "personal"),
@@ -202,9 +203,9 @@ Page({
     wx.navigateTo({ url: "/pages/interview/interview" });
   },
 
-  changeShareTarget(event: { currentTarget: { dataset: { id: string } } }) {
-    const state = loadRoomState();
-    const member = loadCurrentMember(state);
+  async changeShareTarget(event: { currentTarget: { dataset: { id: string } } }) {
+    const state = await loadRoomStateRemoteFirst();
+    const member = await loadCurrentMemberRemoteFirst(state);
     const story = personalBookContributions(
       state.contributions,
       member.id,
@@ -265,14 +266,14 @@ Page({
     });
   },
 
-  confirmShareTargets() {
+  async confirmShareTargets() {
     const storyId = this.data.sharePickerStoryId;
     if (!storyId) return;
 
     try {
-      const latestState = loadRoomState();
-      const latestMember = loadCurrentMember(latestState);
-      const next = updatePersonalShareTargets(
+      const latestState = await loadRoomStateRemoteFirst();
+      const latestMember = await loadCurrentMemberRemoteFirst(latestState);
+      const next = await updatePersonalShareTargetsRemoteFirst(
         storyId,
         latestMember,
         this.data.sharePickerSelectedMemberIds,
@@ -285,7 +286,7 @@ Page({
           : "已改为仅自己可见",
         icon: "none",
       });
-      this.refresh(next);
+      void this.refresh(next);
     } catch (error) {
       wx.showToast({
         title: error instanceof Error ? error.message : "暂时无法修改",
@@ -324,15 +325,15 @@ Page({
     this.setData({ showIdentityPicker: !this.data.showIdentityPicker });
   },
 
-  chooseIdentity(event: { currentTarget: { dataset: { id: string } } }) {
-    saveCurrentMemberId(event.currentTarget.dataset.id);
+  async chooseIdentity(event: { currentTarget: { dataset: { id: string } } }) {
+    saveCurrentMemberIdLocal(event.currentTarget.dataset.id);
     this.setData({ showIdentityPicker: false });
-    this.refresh();
+    await this.refresh();
   },
 
-  resetDemo() {
-    const state = resetDemoRoom();
+  async resetDemo() {
+    const state = await resetDemoRoomRemoteFirst();
     wx.showToast({ title: "演示家庭已重置", icon: "none" });
-    this.refresh(state);
+    void this.refresh(state);
   },
 });

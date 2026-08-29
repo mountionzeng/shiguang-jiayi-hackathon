@@ -5,10 +5,10 @@ import {
 } from "../../domain/biography";
 import { generateBiography } from "../../services/biographyService";
 import {
-  loadCurrentMember,
-  loadRoomState,
-  savePersonalDraftIfSourcesUnchanged,
-} from "../../services/roomStorage";
+  loadCurrentMemberRemoteFirst,
+  loadRoomStateRemoteFirst,
+  savePersonalDraftIfSourcesUnchangedRemoteFirst,
+} from "../../services/roomRepository";
 
 interface SourceView {
   id: string;
@@ -34,12 +34,12 @@ Page({
   },
 
   onShow() {
-    this.refresh();
+    void this.refresh();
   },
 
-  refresh() {
-    const state = loadRoomState();
-    const member = loadCurrentMember(state);
+  async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+    const state = nextState ?? await loadRoomStateRemoteFirst();
+    const member = await loadCurrentMemberRemoteFirst(state);
     const qualified = personalBookContributions(state.contributions, member.id);
     const draft = state.personalDrafts?.[member.id];
     const isCloudDraft = draft?.generationMode === "cloud-ai";
@@ -71,8 +71,8 @@ Page({
   async generateChapter() {
     if (this.data.generating) return;
 
-    const state = loadRoomState();
-    const member = loadCurrentMember(state);
+    const state = await loadRoomStateRemoteFirst();
+    const member = await loadCurrentMemberRemoteFirst(state);
     if (personalBookContributions(state.contributions, member.id).length === 0) {
       wx.showToast({ title: "还没有写下自己的经历", icon: "none" });
       return;
@@ -83,17 +83,17 @@ Page({
     this.setData({ generating: true });
     try {
       const draft = await generateBiography(state, member);
-      if (!savePersonalDraftIfSourcesUnchanged(
+      const savedState = await savePersonalDraftIfSourcesUnchangedRemoteFirst(
         draft,
         sourceFingerprint,
         member.id,
-        loadRoomState(),
-      )) {
-        this.refresh();
+      );
+      if (!savedState) {
+        void this.refresh();
         wx.showToast({ title: "来源刚刚变了，请重新整理", icon: "none", duration: 2400 });
         return;
       }
-      this.refresh();
+      void this.refresh(savedState);
       wx.showToast({
         title: draft.generationMode === "cloud-ai" ? "章节草稿已生成" : "演示草稿已整理",
         icon: "none",

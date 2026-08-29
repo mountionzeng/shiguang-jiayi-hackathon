@@ -204,6 +204,14 @@ async function savePersonalDraft(memberId: string, draft: BiographyDraft): Promi
   });
 }
 
+async function removePersonalDraft(memberId: string): Promise<void> {
+  try {
+    await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(personalDraftDocId(memberId)).remove();
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+  }
+}
+
 async function clearDemoCollection(collectionName: string): Promise<void> {
   const response = await collection(collectionName).where({ familyId: DEMO_FAMILY_ID }).get();
   const records = response.data as Array<{ _id?: string }>;
@@ -311,11 +319,21 @@ export async function appendCloudContribution(
 ): Promise<FamilyRoomState> {
   const state = await loadCloudRoomState();
   await saveContribution(contribution);
-  await saveDraft(undefined);
+  if (contributionScope(contribution) === "personal") {
+    await removePersonalDraft(contribution.authorMemberId);
+  } else {
+    await saveDraft(undefined);
+  }
+  const personalDrafts = { ...(state.personalDrafts ?? {}) };
+  if (contributionScope(contribution) === "personal") {
+    delete personalDrafts[contribution.authorMemberId];
+  }
+
   return {
     ...state,
     contributions: [...state.contributions, contribution],
-    draft: undefined,
+    draft: contributionScope(contribution) === "family" ? undefined : state.draft,
+    personalDrafts,
   };
 }
 
