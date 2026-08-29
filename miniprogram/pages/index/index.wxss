@@ -159,7 +159,13 @@
   flex-direction: column;
   justify-content: space-between;
   padding: 51rpx 8rpx 0;
+  /* 封面文字与 .book-cover-leaf 同层翻转，透视始终贴合书页。 */
+  font-family: "ShiguangBookType", "Songti SC", STSong, serif;
   pointer-events: none;
+}
+
+.book-cover-copy .typewriter {
+  font-family: "ShiguangBookType", "Songti SC", STSong, serif;
 }
 
 .book-kicker {
@@ -178,7 +184,7 @@
 .book-title {
   color: var(--ink);
   font-size: 36rpx;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.34;
   letter-spacing: 1rpx;
 }

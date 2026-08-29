@@ -3,6 +3,11 @@
  * 视觉方向：当代中文书籍装帧、象牙纸、朦胧彩铅与克制留白。
  * 约束：肌理只服务封面与氛围区；正文、事实原文和操作区必须保持高对比与大触控。
  */
+@font-face {
+  font-family: "ShiguangBookType";
+  src: url("/assets/fonts/shiguang-book-typewriter.ttf");
+}
+
 page {
   /* 纸与墨 */
   --paper: #fbf8f1;
