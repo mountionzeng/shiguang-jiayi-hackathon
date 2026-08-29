@@ -7,7 +7,6 @@ import {
   buildLocalPersonalBiographyDraft,
   confirmedContributions,
   createContribution,
-  createInitialRoomState,
   MEMORY_TYPE_LABELS,
   personalBookContributions,
   personalShareTargetMemberIds,
@@ -19,6 +18,7 @@ import {
   sharedPersonalContributionsForMember,
   visibleContributionsForMember,
 } from "../miniprogram/domain/biography";
+import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 const fixedNow = new Date("2026-08-28T04:00:00.000Z");
 

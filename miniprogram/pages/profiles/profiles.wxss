@@ -19,7 +19,10 @@
 }
 
 .profiles-heading,
+.profile-create,
 .profile-list,
+.profile-empty,
+.profile-danger-zone,
 .profiles-footnote {
   position: relative;
   z-index: 1;
@@ -40,7 +43,56 @@
 }
 
 .profile-list {
-  margin-top: 42rpx;
+  margin-top: 28rpx;
+}
+
+.profile-create {
+  margin-top: 34rpx;
+  padding: 28rpx;
+  border-radius: 28rpx;
+  background: rgba(255, 254, 251, 0.78);
+  box-shadow: 0 12rpx 30rpx rgba(75, 73, 63, 0.06);
+}
+
+.profile-create-title {
+  color: var(--ink);
+  font-size: 31rpx;
+  font-weight: 600;
+}
+
+.profile-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 82rpx;
+  margin-top: 18rpx;
+  padding: 0 24rpx;
+  border: 2rpx solid rgba(129, 117, 93, 0.14);
+  border-radius: 22rpx;
+  background: rgba(255, 253, 247, 0.92);
+  color: var(--ink);
+  font-size: 27rpx;
+}
+
+.profile-input-placeholder {
+  color: rgba(53, 57, 53, 0.36);
+}
+
+.profile-create-button {
+  width: 100%;
+  height: 84rpx;
+  margin-top: 20rpx;
+  border-radius: 42rpx;
+  background: var(--jade);
+  color: #fffefb;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 84rpx;
+}
+
+.profile-create-button::after { border: 0; }
+
+.profile-create-button:active {
+  transform: scale(0.985);
 }
 
 .profile-card {
@@ -130,6 +182,41 @@
   color: var(--jade);
   font-size: 24rpx;
   font-weight: 600;
+}
+
+.profile-empty {
+  margin-top: 26rpx;
+  padding: 24rpx 26rpx;
+  border-radius: 24rpx;
+  background: rgba(245, 239, 225, 0.68);
+  color: var(--ink-faint);
+  font-size: 24rpx;
+  line-height: 1.7;
+}
+
+.profile-danger-zone {
+  margin-top: 34rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 254, 251, 0.72);
+}
+
+.profile-clear-button {
+  width: 100%;
+  height: 76rpx;
+  border: 2rpx solid rgba(199, 82, 69, 0.24);
+  border-radius: 38rpx;
+  background: rgba(255, 247, 244, 0.86);
+  color: #b64a40;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 72rpx;
+}
+
+.profile-clear-button::after { border: 0; }
+
+.profile-clear-button:active {
+  transform: scale(0.985);
 }
 
 .profiles-footnote {

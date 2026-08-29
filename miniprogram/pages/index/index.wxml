@@ -35,7 +35,7 @@
       >
         <view class="profile-switch-copy">
           <text class="profile-switch-note">切换档案</text>
-          <text class="profile-switch-name serif">{{memberName}}</text>
+          <text class="profile-switch-name serif">{{hasProfile ? memberName : '未创建档案'}}</text>
         </view>
         <text class="profile-switch-arrow">{{profileChooserOpen ? '⌃' : '⌄'}}</text>
       </button>
@@ -100,6 +100,18 @@
       <view class="book-open-label typewriter">轻触打开记忆档案</view>
     </view>
 
+    <view class="home-setup" wx:if="{{!hasProfile}}">
+      <view class="home-setup-title serif">先创建你的家庭档案</view>
+      <view class="home-setup-note">从自己的名字开始，之后再把家人一个个加进来。</view>
+      <button
+        class="home-setup-button"
+        bindtap="createFirstProfile"
+        hover-class="none"
+      >
+        创建我的档案
+      </button>
+    </view>
+
     <view class="recommended" wx:if="{{hasRecommendedQuestion}}">
       <view class="recommended-head">
         <text class="recommended-title serif">推荐问</text>
@@ -146,7 +158,7 @@
       </view>
     </view>
 
-    <view class="home-empty" wx:else>
+    <view class="home-empty" wx:if="{{hasProfile && !hasRecentStories}}">
       <view class="home-empty-title serif">还没有故事</view>
       <view class="home-empty-note">不用想好从哪里开始，先说一句就好。</view>
     </view>
@@ -175,6 +187,18 @@
       <text class="profile-menu-relation">{{item.relation}}</text>
     </view>
     <text class="profile-menu-check">{{item.selected ? '✓' : ''}}</text>
+  </button>
+  <button
+    class="profile-menu-item profile-menu-add"
+    bindtap="addFamilyMember"
+    hover-class="none"
+    aria-label="添加家庭成员"
+  >
+    <view class="profile-menu-avatar profile-menu-add-icon">+</view>
+    <view class="profile-menu-copy">
+      <text class="profile-menu-name">家庭成员</text>
+      <text class="profile-menu-relation">添加新的家人档案</text>
+    </view>
   </button>
 </scroll-view>
 

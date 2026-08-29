@@ -1,13 +1,11 @@
 import {
   biographySourceFingerprint,
   BiographyDraft,
-  createDemoRoomState,
   createEmptyRoomState,
   contributionRelatedMemberIds,
   contributionScope,
   FamilyMember,
   FamilyRoomState,
-  isUntouchedDemoRoomState,
   MemoryContribution,
   personalBookSourceFingerprint,
   personalShareTargetMemberIds,
@@ -15,8 +13,6 @@ import {
   setPersonalShareTargets,
   Visibility,
 } from "../domain/biography";
-
-export const DEMO_FAMILY_ID = "demo-family";
 
 export const CLOUD_COLLECTIONS = {
   families: "families",
@@ -268,29 +264,21 @@ async function removeDocIfExists(collectionName: string, documentId: string): Pr
   }
 }
 
-async function clearDemoCollection(collectionName: string): Promise<void> {
-  const response = await collection(collectionName).where({ familyId: DEMO_FAMILY_ID }).get();
-  const records = response.data as Array<{ _id?: string }>;
-  await Promise.all(
-    records
-      .map((record) => record._id)
-      .filter((id): id is string => Boolean(id))
-      .map((id) => collection(collectionName).doc(id).remove()),
-  );
-}
-
 async function clearFamilyCollection(
   collectionName: string,
   familyId: string,
 ): Promise<void> {
-  const response = await collection(collectionName).where({ familyId }).get();
-  const records = response.data as Array<{ _id?: string }>;
-  await Promise.all(
-    records
-      .map((record) => record._id)
-      .filter((id): id is string => Boolean(id))
-      .map((id) => collection(collectionName).doc(id).remove()),
-  );
+  while (true) {
+    const response = await collection(collectionName).where({ familyId }).limit(20).get();
+    const records = response.data as Array<{ _id?: string }>;
+    if (records.length === 0) return;
+    await Promise.all(
+      records
+        .map((record) => record._id)
+        .filter((id): id is string => Boolean(id))
+        .map((id) => collection(collectionName).doc(id).remove()),
+    );
+  }
 }
 
 async function saveCloudRoomState(
@@ -348,7 +336,11 @@ export async function loadCloudRoomState(): Promise<FamilyRoomState> {
     .sort((left, right) => left.id.localeCompare(right.id));
 
   if (members.length === 0) {
-    return seedInitialState(familyId);
+    return {
+      ...createEmptyRoomState(),
+      roomName: family.roomName ?? "我的拾光房间",
+      protagonistName: family.protagonistName ?? "",
+    };
   }
 
   const contributions = (memoriesResponse.data as Array<CloudMemory & {
@@ -395,11 +387,6 @@ export async function loadCloudRoomState(): Promise<FamilyRoomState> {
     personalDrafts,
   };
 
-  if (familyId !== DEMO_FAMILY_ID && isUntouchedDemoRoomState(state)) {
-    console.warn("当前用户空间里残留了完整示例家庭，已重置为空房间");
-    return seedInitialState(familyId);
-  }
-
   return state;
 }
 
@@ -424,6 +411,43 @@ export async function appendCloudContribution(
     contributions: [...state.contributions, contribution],
     draft: contributionScope(contribution) === "family" ? undefined : state.draft,
     personalDrafts,
+  };
+}
+
+export async function addCloudFamilyMember(
+  name: string,
+  relation: string,
+): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const trimmedName = name.trim();
+  const trimmedRelation = relation.trim() || "家人";
+  if (!trimmedName) {
+    throw new Error("请填写家人的名字");
+  }
+  if (trimmedName.length > 12) {
+    throw new Error("名字不能超过 12 个字");
+  }
+  if (state.members.some((member) => member.name === trimmedName)) {
+    throw new Error("这个档案已经存在");
+  }
+
+  const firstProfile = state.members.length === 0;
+  const member: FamilyMember = {
+    id: firstProfile ? "owner" : `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: trimmedName,
+    relation: (firstProfile && !relation.trim() ? "自己" : trimmedRelation).slice(0, 12),
+    avatarText: trimmedName.slice(0, 1),
+    role: firstProfile ? "owner" : "contributor",
+  };
+  await saveMembers(familyId, [member]);
+  await saveFamilyShell(familyId, {
+    ...state,
+    members: [...state.members, member],
+  });
+  return {
+    ...state,
+    members: [...state.members, member],
   };
 }
 
@@ -560,23 +584,14 @@ export async function updateCloudPersonalShareTargets(
   };
 }
 
-export async function resetCloudDemoRoom(): Promise<FamilyRoomState> {
-  await Promise.all([
-    clearDemoCollection(CLOUD_COLLECTIONS.familyMembers),
-    clearDemoCollection(CLOUD_COLLECTIONS.sourceRecords),
-    clearDemoCollection(CLOUD_COLLECTIONS.memories),
-    clearDemoCollection(CLOUD_COLLECTIONS.biographyDrafts),
-    clearDemoCollection(CLOUD_COLLECTIONS.generatedArtifacts),
-  ]);
-  const demo = createDemoRoomState();
-  await saveCloudRoomState(DEMO_FAMILY_ID, demo);
-  return demo;
-}
-
 export async function resetCloudCurrentUserRoom(): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
-  if (familyId === DEMO_FAMILY_ID) {
-    throw new Error("不能用当前账号清空示例家庭");
+
+  try {
+    await wx.cloud.callFunction({ name: "resetCurrentUserRoom" });
+    return loadCloudRoomState();
+  } catch (error) {
+    console.warn("服务端清空当前账号失败，将尝试客户端清空", error);
   }
 
   await Promise.all([

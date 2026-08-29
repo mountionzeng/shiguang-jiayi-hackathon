@@ -3,9 +3,9 @@ import test from "node:test";
 
 import {
   createContribution,
-  createInitialRoomState,
   FamilyRoomState,
 } from "../miniprogram/domain/biography";
+import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 const ROOM_KEY = "shiguang-family-room-v5";
 const CURRENT_MEMBER_KEY = "shiguang-current-member-v1";

@@ -11,6 +11,29 @@
     <view class="profiles-note">选择这次要以谁的身份记录和阅读故事</view>
   </view>
 
+  <view class="profile-create">
+    <view class="profile-create-title serif">创建家庭成员档案</view>
+    <input
+      class="profile-input"
+      value="{{memberNameInput}}"
+      bindinput="onMemberNameInput"
+      maxlength="12"
+      placeholder="名字"
+      placeholder-class="profile-input-placeholder"
+    />
+    <input
+      class="profile-input"
+      value="{{relationInput}}"
+      bindinput="onRelationInput"
+      maxlength="12"
+      placeholder="关系，例如：妈妈、外公、自己"
+      placeholder-class="profile-input-placeholder"
+    />
+    <button class="profile-create-button" bindtap="addProfile" hover-class="none">
+      新增档案
+    </button>
+  </view>
+
   <view class="profile-list">
     <button
       class="profile-card {{item.current ? 'profile-card-current' : ''}}"
@@ -35,6 +58,20 @@
         <view class="profile-relation">{{item.relation}} · {{item.roleLabel}}</view>
       </view>
       <view class="profile-state">{{item.current ? '当前' : '切换'}}</view>
+    </button>
+  </view>
+
+  <view class="profile-empty" wx:if="{{!hasProfiles}}">
+    还没有家庭成员档案。先创建一个自己的档案，再慢慢把家人加进来。
+  </view>
+
+  <view class="profile-danger-zone">
+    <button
+      class="profile-clear-button"
+      bindtap="clearCurrentFamilyData"
+      hover-class="none"
+    >
+      清空当前账号数据
     </button>
   </view>
 

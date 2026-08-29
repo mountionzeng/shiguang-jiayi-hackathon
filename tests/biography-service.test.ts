@@ -3,10 +3,10 @@ import test from "node:test";
 
 import {
   createContribution,
-  createInitialRoomState,
   reviewContribution,
 } from "../miniprogram/domain/biography";
 import { generateBiography } from "../miniprogram/services/biographyService";
+import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 function installGlobal(name: "getApp" | "wx", value: unknown): () => void {
   const previous = Object.getOwnPropertyDescriptor(globalThis, name);

@@ -3,7 +3,6 @@ import {
   biographySourceFingerprint,
   contributionRelatedMemberIds,
   contributionScope,
-  createDemoRoomState,
   createEmptyRoomState,
   FamilyMember,
   FamilyRoomState,
@@ -191,6 +190,39 @@ export function deleteContribution(
   return next;
 }
 
+export function addFamilyMember(
+  name: string,
+  relation: string,
+  state = loadRoomState(),
+): FamilyRoomState {
+  const trimmedName = name.trim();
+  const trimmedRelation = relation.trim() || "家人";
+  if (!trimmedName) {
+    throw new Error("请填写家人的名字");
+  }
+  if (trimmedName.length > 12) {
+    throw new Error("名字不能超过 12 个字");
+  }
+  if (state.members.some((member) => member.name === trimmedName)) {
+    throw new Error("这个档案已经存在");
+  }
+
+  const firstProfile = state.members.length === 0;
+  const member: FamilyMember = {
+    id: firstProfile ? DEFAULT_MEMBER_ID : `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: trimmedName,
+    relation: (firstProfile && !relation.trim() ? "自己" : trimmedRelation).slice(0, 12),
+    avatarText: trimmedName.slice(0, 1),
+    role: firstProfile ? "owner" : "contributor",
+  };
+  const next = {
+    ...state,
+    members: [...state.members, member],
+  };
+  saveRoomState(next);
+  return next;
+}
+
 /**
  * 只更新个人故事的定向阅读者。
  * 分享权限不是书稿来源的一部分，因此不应让个人章节或家庭章节失效。
@@ -241,12 +273,6 @@ export function updatePersonalShareTargets(
   return next;
 }
 
-export function resetDemoRoom(): FamilyRoomState {
-  const initial = createDemoRoomState();
-  saveRoomState(initial);
-  return initial;
-}
-
 export function resetCurrentRoom(): FamilyRoomState {
   const initial = createEmptyRoomState();
   saveRoomState(initial);
@@ -256,6 +282,13 @@ export function resetCurrentRoom(): FamilyRoomState {
 
 const CURRENT_MEMBER_KEY = "shiguang-current-member-v1";
 const DEFAULT_MEMBER_ID = "owner";
+const EMPTY_MEMBER: FamilyMember = {
+  id: "",
+  name: "",
+  relation: "",
+  avatarText: "",
+  role: "owner",
+};
 
 /**
  * 黑客松阶段用本地"演示身份"代替真实微信身份。
@@ -280,6 +313,7 @@ export function loadCurrentMember(state: FamilyRoomState = loadRoomState()): Fam
   return (
     state.members.find((member) => member.id === memberId) ??
     state.members.find((member) => member.id === DEFAULT_MEMBER_ID) ??
-    state.members[0]
+    state.members[0] ??
+    EMPTY_MEMBER
   );
 }

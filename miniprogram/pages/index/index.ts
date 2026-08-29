@@ -160,6 +160,7 @@ Page({
   recommendationOffset: 0,
 
   data: {
+    hasProfile: false,
     memberName: "",
     memberAvatarText: "",
     bookTitle: "",
@@ -188,8 +189,11 @@ Page({
   async refresh(state?: FamilyRoomState) {
     const currentState = state ?? await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(currentState);
-    const personal = personalBookContributions(currentState.contributions, member.id);
-    const draft = currentState.personalDrafts?.[member.id];
+    const hasProfile = Boolean(member.id);
+    const personal = hasProfile
+      ? personalBookContributions(currentState.contributions, member.id)
+      : [];
+    const draft = hasProfile ? currentState.personalDrafts?.[member.id] : undefined;
     const recentStories = recentStoriesFor(personal);
     const recommendedQuestion = recommendedQuestionFor(
       latestContribution(personal),
@@ -197,10 +201,11 @@ Page({
     );
 
     this.setData({
+      hasProfile,
       memberName: member.name,
       memberAvatarText: member.avatarText,
-      bookTitle: `${member.name}的人生之书`,
-      coverSubtitle: draft?.title ?? "还没有整理成章节",
+      bookTitle: hasProfile ? `${member.name}的人生之书` : "人生之书",
+      coverSubtitle: hasProfile ? (draft?.title ?? "还没有整理成章节") : "先建立一个档案",
       memoryCount: personal.filter((memory) => (memory.memoryType ?? "note") === "note").length,
       memoirCount: personal.filter((memory) => memory.memoryType === "memoir").length,
       familyMemberCount: currentState.members.length,
@@ -217,11 +222,25 @@ Page({
   },
 
   startInterview() {
+    if (!this.data.memberName) {
+      wx.showToast({ title: "请先创建一个档案", icon: "none" });
+      wx.navigateTo({ url: "/pages/profiles/profiles" });
+      return;
+    }
     wx.navigateTo({ url: "/pages/interview/interview" });
   },
 
   openProfiles() {
     this.setData({ profileChooserOpen: !this.data.profileChooserOpen });
+  },
+
+  createFirstProfile() {
+    wx.navigateTo({ url: "/pages/profiles/profiles" });
+  },
+
+  addFamilyMember() {
+    this.setData({ profileChooserOpen: false });
+    wx.navigateTo({ url: "/pages/profiles/profiles" });
   },
 
   async chooseProfile(event: {

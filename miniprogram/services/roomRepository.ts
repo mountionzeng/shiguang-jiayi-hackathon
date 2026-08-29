@@ -1,25 +1,24 @@
 import type { ShiguangAppOptions } from "../app";
 import {
   BiographyDraft,
-  createEmptyRoomState,
   FamilyMember,
   FamilyRoomState,
-  isUntouchedDemoRoomState,
   MemoryContribution,
 } from "../domain/biography";
 import { CLOUD_DATABASE_ENABLED } from "../config/runtime";
 import {
+  addCloudFamilyMember,
   appendCloudContribution,
   deleteCloudContribution,
   loadCloudRoomState,
   replaceCloudContribution,
   resetCloudCurrentUserRoom,
-  resetCloudDemoRoom,
   saveCloudDraftIfSourcesUnchanged,
   saveCloudPersonalDraftIfSourcesUnchanged,
   updateCloudPersonalShareTargets,
 } from "./cloudRoomStorage";
 import {
+  addFamilyMember,
   appendContribution,
   deleteContribution,
   loadCurrentMember,
@@ -27,7 +26,6 @@ import {
   loadRoomState,
   replaceContribution,
   resetCurrentRoom,
-  resetDemoRoom,
   saveDraftIfSourcesUnchanged,
   savePersonalDraftIfSourcesUnchanged,
   updatePersonalShareTargets,
@@ -49,8 +47,6 @@ export async function loadRoomStateRemoteFirst(): Promise<FamilyRoomState> {
       return await loadCloudRoomState();
     } catch (error) {
       console.warn("云端家庭房间不可用，将临时使用本地缓存", error);
-      const localState = loadRoomState();
-      return isUntouchedDemoRoomState(localState) ? createEmptyRoomState() : localState;
     }
   }
 
@@ -79,6 +75,21 @@ export async function appendContributionRemoteFirst(
   }
 
   return appendContribution(contribution, loadRoomState());
+}
+
+export async function addFamilyMemberRemoteFirst(
+  name: string,
+  relation: string,
+): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) {
+    try {
+      return await addCloudFamilyMember(name, relation);
+    } catch (error) {
+      console.warn("云端新增家庭成员失败，将临时保存到本地", error);
+    }
+  }
+
+  return addFamilyMember(name, relation, loadRoomState());
 }
 
 export async function replaceContributionRemoteFirst(
@@ -159,18 +170,6 @@ export async function updatePersonalShareTargetsRemoteFirst(
   }
 
   return updatePersonalShareTargets(contributionId, actor, targetMemberIds);
-}
-
-export async function resetDemoRoomRemoteFirst(): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) {
-    try {
-      return await resetCloudDemoRoom();
-    } catch (error) {
-      console.warn("云端重置失败，将重置本地演示数据", error);
-    }
-  }
-
-  return resetDemoRoom();
 }
 
 export async function resetCurrentUserRoomRemoteFirst(): Promise<FamilyRoomState> {

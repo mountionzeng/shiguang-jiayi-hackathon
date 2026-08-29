@@ -5,10 +5,10 @@ import {
   biographySourceFingerprint,
   BiographyDraft,
   createContribution,
-  createInitialRoomState,
   personalBookSourceFingerprint,
   reviewContribution,
 } from "../miniprogram/domain/biography";
+import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 import {
   appendContribution,
   loadRoomState,

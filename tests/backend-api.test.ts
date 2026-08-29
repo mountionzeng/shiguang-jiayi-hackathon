@@ -9,9 +9,9 @@ import {
 } from "../miniprogram/services/backendApi";
 import {
   createContribution,
-  createInitialRoomState,
   reviewContribution,
 } from "../miniprogram/domain/biography";
+import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 const fixedNow = new Date("2026-08-28T06:00:00.000Z");
 
