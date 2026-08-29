@@ -309,7 +309,7 @@ test("tidying includes text still sitting in the composer", async (context) => {
     inputText: "这一句还在输入框里。",
   });
 
-  callPage(page, "finish");
+  await callPage(page, "finish");
   assert.equal(page.data.stage, "save");
   assert.equal(page.data.inputText, "");
   assert.equal(page.data.draftText, "我已经发送了第一句话。 这一句还在输入框里。");
@@ -326,7 +326,7 @@ test("returning from organize and continuing chat unloads the newest transcript"
   const page = instantiate(await pageDefinition("interview"));
   await callPage(page, "onLoad");
   page.setData({ answers: ["第一段已经讲完。"] });
-  callPage(page, "finish");
+  await callPage(page, "finish");
   callPage(page, "backToChat");
   page.setData({ inputText: "回到聊天后又想起的一句。" });
   await callPage(page, "saveRecoverableAnswers", [

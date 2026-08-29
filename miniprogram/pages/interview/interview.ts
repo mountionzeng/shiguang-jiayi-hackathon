@@ -7,6 +7,7 @@ import {
   MAX_MEMORY_LENGTH,
   MemoryType,
   normalizeMemoryText,
+  OrganizationMode,
 } from "../../domain/biography";
 import {
   detectCoveredDimensions,
@@ -19,6 +20,7 @@ import {
 } from "../../domain/interview";
 import { CLOUD_AI_ENABLED } from "../../config/runtime";
 import { generateInterviewPrompt } from "../../services/interviewService";
+import { organizeMemory } from "../../services/memoryOrganizerService";
 import {
   appendContributionRemoteFirst,
   loadCurrentMemberRemoteFirst,
@@ -129,12 +131,18 @@ Page({
 
     inputText: "",
     asking: false,
+    organizing: false,
     scrollIntoView: "",
 
     stage: "choose" as "choose" | "chat" | "save",
     draftTitle: "",
+    draftSummary: "",
     draftText: "",
     draftLength: 0,
+    draftEmotions: [] as string[],
+    draftPeople: [] as string[],
+    draftPlaces: [] as string[],
+    draftOrganizationMode: "local-demo" as OrganizationMode,
     tooLong: false,
     dateLabel: "",
     coveredChips: [] as string[],
@@ -297,7 +305,8 @@ Page({
     }
   },
 
-  finish() {
+  async finish() {
+    if (this.data.organizing) return;
     const unsentText = this.data.inputText.trim();
     const answers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (answers.length === 0) {
@@ -305,20 +314,34 @@ Page({
       return;
     }
 
-    // 本地演示整理只做原话拼接，不改写、不补写，界面上如实说明。
-    const draftText = answers.join(" ");
-    const covered = detectCoveredDimensions(draftText);
+    this.setData({ organizing: true });
+    try {
+      const draft = await organizeMemory({
+        transcript: answers,
+        memoryType: this.data.memoryType,
+        memberName: this.data.memberName,
+        storyTitle: this.data.storyTitle,
+      });
+      const covered = detectCoveredDimensions(draft.body);
 
-    this.setData({
-      stage: "save",
-      answers,
-      inputText: "",
-      draftTitle: draftTitleFromAnswers(answers),
-      draftText,
-      draftLength: draftText.length,
-      tooLong: draftText.length > MAX_MEMORY_LENGTH,
-      coveredChips: covered.map((dimension) => DIMENSION_CHIPS[dimension]),
-    });
+      this.setData({
+        stage: "save",
+        answers,
+        inputText: "",
+        draftTitle: draft.title || draftTitleFromAnswers(answers),
+        draftSummary: draft.summary,
+        draftText: draft.body,
+        draftLength: draft.body.length,
+        draftEmotions: draft.emotions,
+        draftPeople: draft.people,
+        draftPlaces: draft.places,
+        draftOrganizationMode: draft.generationMode,
+        tooLong: draft.body.length > MAX_MEMORY_LENGTH,
+        coveredChips: covered.map((dimension) => DIMENSION_CHIPS[dimension]),
+      });
+    } finally {
+      this.setData({ organizing: false });
+    }
   },
 
   backToChat() {
@@ -445,6 +468,11 @@ Page({
           relation: member.relation,
           text: this.data.draftText,
           title: this.data.draftTitle,
+          summary: this.data.draftSummary,
+          emotions: this.data.draftEmotions,
+          people: this.data.draftPeople,
+          places: this.data.draftPlaces,
+          organizationMode: this.data.draftOrganizationMode,
           memoryType: this.data.memoryType,
           storyTitle: this.data.storyTitle,
           relatedMemberIds: this.data.relatedMemberIds,

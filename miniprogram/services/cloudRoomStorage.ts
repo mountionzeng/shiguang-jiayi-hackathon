@@ -45,6 +45,11 @@ interface CloudMemory {
   relation: string;
   text: string;
   title?: string;
+  summary?: string;
+  emotions?: string[];
+  people?: string[];
+  places?: string[];
+  organizationMode?: MemoryContribution["organizationMode"];
   memoryType?: MemoryContribution["memoryType"];
   storyTitle?: string;
   relatedMemberIds?: string[];
@@ -137,6 +142,11 @@ async function saveContribution(contribution: MemoryContribution): Promise<void>
       sourceType: "text",
       rawText: contribution.text,
       title: contribution.title,
+      summary: contribution.summary,
+      emotions: contribution.emotions,
+      people: contribution.people,
+      places: contribution.places,
+      organizationMode: contribution.organizationMode,
       memoryType: contribution.memoryType,
       storyTitle: contribution.storyTitle,
       relatedMemberIds: contributionRelatedMemberIds(contribution),
@@ -159,6 +169,11 @@ async function saveContribution(contribution: MemoryContribution): Promise<void>
       relation: contribution.relation,
       text: contribution.text,
       title: contribution.title,
+      summary: contribution.summary,
+      emotions: contribution.emotions,
+      people: contribution.people,
+      places: contribution.places,
+      organizationMode: contribution.organizationMode,
       memoryType: contribution.memoryType,
       storyTitle: contribution.storyTitle,
       relatedMemberIds: contributionRelatedMemberIds(contribution),
@@ -285,6 +300,11 @@ export async function loadCloudRoomState(): Promise<FamilyRoomState> {
       relation: memory.relation,
       text: memory.text,
       title: memory.title,
+      summary: memory.summary,
+      emotions: memory.emotions,
+      people: memory.people,
+      places: memory.places,
+      organizationMode: memory.organizationMode,
       memoryType: memory.memoryType,
       storyTitle: memory.storyTitle,
       relatedMemberIds: memory.relatedMemberIds,

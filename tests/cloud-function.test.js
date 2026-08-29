@@ -6,6 +6,10 @@ const {
   main: chatInterviewMain,
   _test: chatInterviewTest,
 } = require("../cloudfunctions/chatInterview/index.js");
+const {
+  main: organizeMemoryMain,
+  _test: organizeMemoryTest,
+} = require("../cloudfunctions/organizeMemory/index.js");
 
 test("the cloud boundary rejects empty and oversized source batches", () => {
   assert.throws(() => _test.validateMemories([]), /NO_CONFIRMED_MEMORIES/);
@@ -254,4 +258,98 @@ test("the interview cloud parser accepts plain text fallback", () => {
 
   assert.equal(result.dimension, "event");
   assert.equal(result.text, "后来你又想起了哪个细节？");
+});
+
+test("the organize cloud function rejects missing credentials or empty transcripts", async () => {
+  const previousKey = process.env.ORGANIZE_AI_API_KEY;
+  const previousModel = process.env.ORGANIZE_AI_MODEL;
+  const previousChatKey = process.env.CHAT_AI_API_KEY;
+  const previousChatModel = process.env.CHAT_AI_MODEL;
+  const previousSharedKey = process.env.AI_API_KEY;
+  const previousSharedModel = process.env.AI_MODEL;
+  delete process.env.ORGANIZE_AI_API_KEY;
+  delete process.env.ORGANIZE_AI_MODEL;
+  delete process.env.CHAT_AI_API_KEY;
+  delete process.env.CHAT_AI_MODEL;
+  delete process.env.AI_API_KEY;
+  delete process.env.AI_MODEL;
+
+  try {
+    await assert.rejects(
+      () => organizeMemoryMain({ transcript: ["一段回忆"], memoryType: "note" }),
+      /AI_NOT_CONFIGURED/,
+    );
+  } finally {
+    if (previousKey === undefined) delete process.env.ORGANIZE_AI_API_KEY;
+    else process.env.ORGANIZE_AI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.ORGANIZE_AI_MODEL;
+    else process.env.ORGANIZE_AI_MODEL = previousModel;
+    if (previousChatKey === undefined) delete process.env.CHAT_AI_API_KEY;
+    else process.env.CHAT_AI_API_KEY = previousChatKey;
+    if (previousChatModel === undefined) delete process.env.CHAT_AI_MODEL;
+    else process.env.CHAT_AI_MODEL = previousChatModel;
+    if (previousSharedKey === undefined) delete process.env.AI_API_KEY;
+    else process.env.AI_API_KEY = previousSharedKey;
+    if (previousSharedModel === undefined) delete process.env.AI_MODEL;
+    else process.env.AI_MODEL = previousSharedModel;
+  }
+
+  assert.throws(() => organizeMemoryTest.buildLocalCard([], "note"), /EMPTY_TRANSCRIPT/);
+});
+
+test("the organize cloud function returns a structured memory card", async () => {
+  const previousFetch = global.fetch;
+  const previousKey = process.env.ORGANIZE_AI_API_KEY;
+  const previousModel = process.env.ORGANIZE_AI_MODEL;
+  const previousBaseUrl = process.env.ORGANIZE_AI_BASE_URL;
+  let requestBody;
+
+  process.env.ORGANIZE_AI_API_KEY = "test-organize-key";
+  process.env.ORGANIZE_AI_MODEL = "memory-card-model";
+  process.env.ORGANIZE_AI_BASE_URL = "https://organize-model.invalid/v1";
+  global.fetch = async (_url, options) => {
+    requestBody = JSON.parse(options.body);
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                title: "外公护着我",
+                summary: "外公在家里护着我",
+                body: "小时候，父母责骂我时，外公会在屋里把我护在身后。",
+                emotions: ["安心", "委屈"],
+                people: ["外公", "父母"],
+                places: ["屋里"],
+              }),
+            },
+          },
+        ],
+      }),
+    };
+  };
+
+  try {
+    const result = await organizeMemoryMain({
+      transcript: ["小时候爸妈骂我时，外公总会把我护在身后。", "是在屋里。"],
+      memoryType: "note",
+      memberName: "林岚",
+    });
+
+    assert.equal(result.generationMode, "cloud-ai");
+    assert.equal(result.memoryType, "note");
+    assert.equal(result.title, "外公护着我");
+    assert.deepEqual(result.emotions, ["安心", "委屈"]);
+    assert.match(requestBody.messages[1].content, /外公总会把我护在身后/);
+    assert.doesNotMatch(JSON.stringify(requestBody), /test-organize-key/);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.ORGANIZE_AI_API_KEY;
+    else process.env.ORGANIZE_AI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.ORGANIZE_AI_MODEL;
+    else process.env.ORGANIZE_AI_MODEL = previousModel;
+    if (previousBaseUrl === undefined) delete process.env.ORGANIZE_AI_BASE_URL;
+    else process.env.ORGANIZE_AI_BASE_URL = previousBaseUrl;
+  }
 });

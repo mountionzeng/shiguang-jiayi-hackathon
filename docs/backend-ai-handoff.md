@@ -42,6 +42,7 @@
 
 - `cloudfunctions/generateBiography`：适合作为 `memoir_review` 的第一版章节生成入口。
 - `cloudfunctions/chatInterview`：适合作为“和 AI 聊聊”的追问生成入口。
+- `cloudfunctions/organizeMemory`：适合作为“整理成片段”的结构化入口，把聊天原文整理成可复核的记忆卡片。
 
 API key 应只放在云函数环境变量中，不能写入小程序代码或提交到 GitHub。
 
@@ -58,6 +59,16 @@ API key 应只放在云函数环境变量中，不能写入小程序代码或提
 - `CHAT_AI_API_KEY`
 
 如果 `CHAT_AI_*` 未配置，`chatInterview` 会尝试复用 `AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY`。
+
+“整理成片段”可以单独配置：
+
+- `ORGANIZE_AI_BASE_URL`
+- `ORGANIZE_AI_MODEL`
+- `ORGANIZE_AI_API_KEY`
+
+如果 `ORGANIZE_AI_*` 未配置，`organizeMemory` 会依次尝试复用 `CHAT_AI_*`、`AI_*`。这意味着黑客松体验版可以先不额外填第三套 key，直接让整理片段复用 Kimi 或 DeepSeek。
+
+`organizeMemory` 会把讲述者昵称、随手记/回忆录类型、故事名和本轮聊天文字发送给配置的模型，用于生成 `title`、`summary`、`body`、`emotions`、`people`、`places`。模型失败时前端会退回“保留原话”的可编辑草稿，不会丢内容。
 
 ## 当前云开发配置
 

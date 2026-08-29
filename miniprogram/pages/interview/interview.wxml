@@ -160,9 +160,9 @@
         <view class="tool-chip tool-chip-off" bindtap="notYet">语音 · 赛后接入</view>
         <view class="tool-spacer"></view>
         <view
-          class="tidy-btn {{answers.length === 0 ? 'tidy-btn-off' : ''}}"
+          class="tidy-btn {{(answers.length === 0 || organizing) ? 'tidy-btn-off' : ''}}"
           bindtap="finish"
-        >整理成片段</view>
+        >{{organizing ? '正在整理…' : '整理成片段'}}</view>
       </view>
     </view>
   </block>
@@ -172,7 +172,7 @@
     <scroll-view class="chat-scroll" scroll-y>
       <view class="chat-inner">
         <text class="tidy-label">
-          {{localDemoOnly ? '本地演示整理 · 保留你说的原话' : 'AI 云整理 · 需要复核'}}
+          {{draftOrganizationMode === 'cloud-ai' ? 'AI 云整理 · 需要复核' : '本地演示整理 · 保留你说的原话'}}
         </text>
 
         <textarea
@@ -191,6 +191,16 @@
         <view class="draft-meta">
           <text class="meta-date">{{dateLabel}}</text>
           <text class="meta-chip" wx:for="{{coveredChips}}" wx:key="*this" wx:for-item="chip">{{chip}}</text>
+        </view>
+
+        <view class="draft-summary" wx:if="{{draftSummary}}">
+          {{draftSummary}}
+        </view>
+
+        <view class="draft-tags" wx:if="{{draftEmotions.length || draftPeople.length || draftPlaces.length}}">
+          <text class="draft-tag draft-tag-emotion" wx:for="{{draftEmotions}}" wx:key="*this" wx:for-item="tag">情绪 {{tag}}</text>
+          <text class="draft-tag" wx:for="{{draftPeople}}" wx:key="*this" wx:for-item="tag">人物 {{tag}}</text>
+          <text class="draft-tag draft-tag-place" wx:for="{{draftPlaces}}" wx:key="*this" wx:for-item="tag">地点 {{tag}}</text>
         </view>
 
         <view class="draft-rule"></view>

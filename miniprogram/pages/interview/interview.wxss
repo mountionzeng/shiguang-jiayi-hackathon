@@ -565,6 +565,42 @@
   background: var(--line);
 }
 
+.draft-summary {
+  margin-top: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 20rpx;
+  background: var(--paper-sunk);
+  color: var(--ink-soft);
+  font-size: 27rpx;
+  line-height: 1.6;
+}
+
+.draft-tags {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 12rpx;
+}
+
+.draft-tag {
+  margin: 8rpx 10rpx 0 0;
+  padding: 7rpx 14rpx;
+  border-radius: 999rpx;
+  background: var(--jade-soft);
+  color: var(--jade);
+  font-size: 22rpx;
+  line-height: 1.35;
+}
+
+.draft-tag-emotion {
+  background: var(--apricot-soft);
+  color: var(--apricot);
+}
+
+.draft-tag-place {
+  background: rgba(77, 124, 138, 0.12);
+  color: #4d7c8a;
+}
+
 .draft-hint {
   margin-top: 22rpx;
   font-size: 25rpx;

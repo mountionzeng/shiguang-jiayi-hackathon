@@ -3,6 +3,7 @@ export type ReviewStatus = "pending" | "confirmed" | "rejected" | "conflict";
 export type ReviewerRole = "elder" | "owner" | "contributor";
 export type GenerationMode = "local-demo" | "cloud-ai";
 export type MemoryScope = "personal" | "family";
+export type OrganizationMode = "local-demo" | "cloud-ai";
 
 /**
  * 片段类型，沿用队友原型的「随手记 / 回忆录」两种写法。
@@ -26,6 +27,11 @@ export interface MemoryContribution {
   relation: string;
   text: string;
   title?: string;
+  summary?: string;
+  emotions?: string[];
+  people?: string[];
+  places?: string[];
+  organizationMode?: OrganizationMode;
   memoryType?: MemoryType;
   /**
    * 可选的故事名称。没有名称时，它仍是一条完整保存的「未整理片段」。
@@ -76,6 +82,11 @@ export interface CreateContributionInput {
   relation: string;
   text: string;
   title?: string;
+  summary?: string;
+  emotions?: string[];
+  people?: string[];
+  places?: string[];
+  organizationMode?: OrganizationMode;
   memoryType?: MemoryType;
   storyTitle?: string;
   relatedMemberIds?: string[];
@@ -143,6 +154,19 @@ function normalizeMemberIds(memberIds: unknown, excludedMemberId?: string): stri
   ).filter((memberId) => memberId !== excludedMemberId);
 }
 
+function normalizeTextTags(tags: unknown, maxCount: number): string[] {
+  if (!Array.isArray(tags)) return [];
+  return Array.from(
+    new Set(
+      tags
+        .filter((tag): tag is string => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .map((tag) => tag.slice(0, 12)),
+    ),
+  ).slice(0, maxCount);
+}
+
 export function createContribution(input: CreateContributionInput): MemoryContribution {
   const text = input.preserveNormalizedText
     ? input.text
@@ -169,6 +193,9 @@ export function createContribution(input: CreateContributionInput): MemoryContri
     input.relatedMemberIds,
     input.authorMemberId,
   );
+  const emotions = normalizeTextTags(input.emotions, 4);
+  const people = normalizeTextTags(input.people, 8);
+  const places = normalizeTextTags(input.places, 8);
 
   return {
     id,
@@ -177,6 +204,11 @@ export function createContribution(input: CreateContributionInput): MemoryContri
     relation: input.relation,
     text,
     title: input.title?.trim() || undefined,
+    summary: input.summary?.trim().slice(0, 60) || undefined,
+    emotions: emotions.length > 0 ? emotions : undefined,
+    people: people.length > 0 ? people : undefined,
+    places: places.length > 0 ? places : undefined,
+    organizationMode: input.organizationMode,
     memoryType: input.memoryType ?? "note",
     storyTitle: input.storyTitle?.trim() || undefined,
     relatedMemberIds: relatedMemberIds.length > 0 ? relatedMemberIds : undefined,
