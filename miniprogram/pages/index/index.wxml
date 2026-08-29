@@ -14,9 +14,6 @@
     <view class="member-avatar serif">{{memberInitial}}</view>
   </view>
 
-  <view class="greeting serif">{{greeting}}</view>
-  <view class="today">{{todayLabel}} · 今天也可以慢慢说</view>
-
   <view class="book-stage">
     <view class="book">
       <image
