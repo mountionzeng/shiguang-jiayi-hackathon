@@ -572,6 +572,22 @@ test("the home book opens the memory archive after its animation", async (contex
   assert.equal(last(storage.navigations), "/pages/archive/archive");
 });
 
+test("the home book shortcuts open their matching memory spaces", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+
+  callPage(page, "openArchiveTab", { currentTarget: { dataset: { tab: "note" } } });
+  callPage(page, "openArchiveTab", { currentTarget: { dataset: { tab: "memoir" } } });
+  callPage(page, "openMemoryHome");
+
+  assert.deepEqual(storage.navigations.slice(-3), [
+    "/pages/archive/archive?tab=note",
+    "/pages/archive/archive?tab=memoir",
+    "/pages/room/room",
+  ]);
+});
+
 test("the memory archive shows only the current profile's quick notes", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -585,6 +601,29 @@ test("the memory archive shows only the current profile's quick notes", async (c
     ["demo-personal-rain"],
   );
   assert.equal(page.data.hasNotes, true);
+});
+
+test("the memory archive switches to memoirs without mixing in quick notes", async (context) => {
+  const state = createInitialRoomState();
+  state.contributions.push(createContribution({
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "自己",
+    text: "我慢慢讲起那年夏天的故事。",
+    memoryType: "memoir",
+    scope: "personal",
+    visibility: "private",
+  }));
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+
+  callPage(page, "onLoad", { tab: "memoir" });
+  callPage(page, "refresh", state);
+
+  assert.equal(page.data.activeTab, "memoir");
+  assert.equal(page.data.memoirCount, 1);
+  assert.equal((page.data.archiveItems as Array<{ text: string }>).length, 1);
 });
 
 test("choosing a profile changes the active personal archive", async (context) => {

@@ -51,6 +51,7 @@
 
 .archive-tabs {
   display: flex;
+  gap: 14rpx;
   margin-top: 42rpx;
 }
 
@@ -58,9 +59,18 @@
   display: flex;
   align-items: center;
   min-height: 74rpx;
+  margin: 0;
   padding: 0 24rpx;
+  border: 2rpx solid rgba(129, 117, 93, 0.16);
   border-radius: 38rpx;
+  background: rgba(255, 253, 247, 0.58);
+  color: var(--ink-faint);
+  line-height: 1;
 }
+
+.archive-tab::after { border: 0; }
+
+.archive-tab:active { transform: translateY(2rpx) scale(0.97); }
 
 .archive-tab-current {
   background: rgba(229, 239, 233, 0.78);

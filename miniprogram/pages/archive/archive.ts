@@ -8,6 +8,8 @@ import {
   loadRoomState,
 } from "../../services/roomStorage";
 
+type ArchiveTab = "note" | "memoir";
+
 interface NoteView {
   id: string;
   title: string;
@@ -35,17 +37,34 @@ Page({
     notes: [] as NoteView[],
     noteCount: 0,
     hasNotes: false,
+    memoirCount: 0,
+    activeTab: "note" as ArchiveTab,
+    archiveItems: [] as NoteView[],
+    hasItems: false,
+  },
+
+  onLoad(options: { tab?: string }) {
+    this.setData({ activeTab: options.tab === "memoir" ? "memoir" : "note" });
   },
 
   onShow() {
     this.refresh();
   },
 
+  selectArchiveTab(event: {
+    currentTarget: { dataset: { tab: ArchiveTab } };
+  }) {
+    const activeTab = event.currentTarget.dataset.tab === "memoir" ? "memoir" : "note";
+    this.setData({ activeTab });
+    this.refresh();
+  },
+
   refresh() {
     const state = loadRoomState();
     const member = loadCurrentMember(state);
-    const notes = personalBookContributions(state.contributions, member.id)
-      .filter((memory) => (memory.memoryType ?? "note") === "note")
+    const personal = personalBookContributions(state.contributions, member.id);
+    const toViews = (memoryType: ArchiveTab) => personal
+      .filter((memory) => (memory.memoryType ?? "note") === memoryType)
       .slice()
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .map((memory) => {
@@ -58,12 +77,18 @@ Page({
           archiveLabel: storyTitle ? `已归入「${storyTitle}」` : "尚未归入故事",
         };
       });
+    const notes = toViews("note");
+    const memoirs = toViews("memoir");
+    const archiveItems = this.data.activeTab === "memoir" ? memoirs : notes;
 
     this.setData({
       memberName: member.name,
       notes,
       noteCount: notes.length,
       hasNotes: notes.length > 0,
+      memoirCount: memoirs.length,
+      archiveItems,
+      hasItems: archiveItems.length > 0,
     });
   },
 });

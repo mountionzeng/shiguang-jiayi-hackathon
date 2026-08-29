@@ -121,6 +121,17 @@ Page({
     }, 620);
   },
 
+  openArchiveTab(event: {
+    currentTarget: { dataset: { tab: "note" | "memoir" } };
+  }) {
+    const tab = event.currentTarget.dataset.tab === "memoir" ? "memoir" : "note";
+    wx.navigateTo({ url: `/pages/archive/archive?tab=${tab}` });
+  },
+
+  openMemoryHome() {
+    wx.navigateTo({ url: "/pages/room/room" });
+  },
+
   continueStory(event: {
     currentTarget: { dataset: { id: string; title: string } };
   }) {

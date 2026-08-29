@@ -9,18 +9,22 @@
   <view class="archive-heading">
     <view class="archive-eyebrow typewriter">{{memberName}}的记忆档案</view>
     <view class="archive-title serif">管理记忆档案</view>
-    <view class="archive-intro">先从随手记开始。这里收着你写下的短片段，无论它是否已经归入一个故事。</view>
+    <view class="archive-intro">{{activeTab === 'note' ? '这里收着你写下的短片段，无论它是否已经归入一个故事。' : '这里收着你慢慢讲开的回忆，它们可以继续整理成完整的故事。'}}</view>
   </view>
 
   <view class="archive-tabs" role="tablist" aria-label="记忆档案类型">
-    <view class="archive-tab archive-tab-current" role="tab" aria-selected="true">
+    <button class="archive-tab {{activeTab === 'note' ? 'archive-tab-current' : ''}}" data-tab="note" bindtap="selectArchiveTab" hover-class="none" role="tab" aria-selected="{{activeTab === 'note'}}">
       <text class="archive-tab-title typewriter">随手记</text>
       <text class="archive-tab-count">{{noteCount}}</text>
-    </view>
+    </button>
+    <button class="archive-tab {{activeTab === 'memoir' ? 'archive-tab-current' : ''}}" data-tab="memoir" bindtap="selectArchiveTab" hover-class="none" role="tab" aria-selected="{{activeTab === 'memoir'}}">
+      <text class="archive-tab-title typewriter">回忆录</text>
+      <text class="archive-tab-count">{{memoirCount}}</text>
+    </button>
   </view>
 
-  <view class="note-list" wx:if="{{hasNotes}}">
-    <view class="note-paper" wx:for="{{notes}}" wx:key="id">
+  <view class="note-list" wx:if="{{hasItems}}">
+    <view class="note-paper" wx:for="{{archiveItems}}" wx:key="id">
       <view class="note-pin"></view>
       <view class="note-date">{{item.dateLabel}}</view>
       <view class="note-title serif">{{item.title}}</view>
@@ -30,7 +34,7 @@
   </view>
 
   <view class="archive-empty" wx:else>
-    <view class="archive-empty-title serif">还没有随手记</view>
+    <view class="archive-empty-title serif">还没有{{activeTab === 'note' ? '随手记' : '回忆录'}}</view>
     <view class="archive-empty-note">从首页“记下此刻”开始说几句，保存后会出现在这里。</view>
   </view>
 

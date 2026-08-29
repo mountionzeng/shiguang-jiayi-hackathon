@@ -202,22 +202,59 @@
 .book-stats {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 8rpx;
   margin-top: 15rpx;
-  padding-top: 13rpx;
-  border-top: 2rpx solid rgba(129, 117, 93, 0.18);
-  color: var(--ink-faint);
-  font-size: 18rpx;
+  padding-top: 11rpx;
 }
 
-.book-stats > text {
-  white-space: nowrap;
+.book-stat-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  width: 92rpx;
+  min-height: 68rpx;
+  margin: 0;
+  padding: 7rpx 4rpx 6rpx;
+  border: 1rpx solid rgba(93, 97, 78, 0.23);
+  border-radius: 10rpx 17rpx 12rpx 8rpx;
+  background: rgba(255, 253, 246, 0.76);
+  box-shadow: 2rpx 4rpx 8rpx rgba(80, 74, 55, 0.08);
+  color: var(--ink);
+  line-height: 1;
+  overflow: visible;
+}
+
+.book-stat-action::after { border: 0; }
+
+.book-stat-note { transform: rotate(-2.2deg); }
+.book-stat-memoir { transform: translateY(-5rpx) rotate(1.4deg); }
+.book-stat-home { transform: rotate(2.2deg); }
+
+.book-stat-action:active {
+  transform: translateY(3rpx) scale(0.95);
+  box-shadow: none;
 }
 
 .book-stat-num {
   color: var(--jade);
-  font-size: 23rpx;
+  font-family: "ShiguangBookType", "Songti SC", STSong, serif;
+  font-size: 25rpx;
+  font-weight: 600;
 }
+
+.book-stat-label {
+  margin-top: 5rpx;
+  color: var(--ink-soft);
+  font-size: 18rpx;
+  letter-spacing: 1rpx;
+  white-space: nowrap;
+}
+
+.book-stat-memoir .book-stat-num { color: #80633a; }
+.book-stat-home .book-stat-num { color: #4a6e88; }
 
 .book-open-label {
   margin-top: -12rpx;

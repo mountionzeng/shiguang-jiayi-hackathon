@@ -45,12 +45,36 @@
           <view class="book-copy">
             <view class="book-title typewriter">{{bookTitle}}</view>
             <view class="book-subtitle">{{coverSubtitle}}</view>
-            <view class="book-stats">
-              <text><text class="book-stat-num">{{fragmentCount}}</text> 片段</text>
-              <text>·</text>
-              <text><text class="book-stat-num">{{storyCount}}</text> 故事</text>
-              <text>·</text>
-              <text><text class="book-stat-num">{{chapterCount}}</text> 章节</text>
+            <view class="book-stats" role="group" aria-label="快速打开故事空间">
+              <button
+                class="book-stat-action book-stat-note"
+                catchtap="openArchiveTab"
+                data-tab="note"
+                hover-class="none"
+                aria-label="打开随手记"
+              >
+                <text class="book-stat-num">{{fragmentCount}}</text>
+                <text class="book-stat-label">随手记</text>
+              </button>
+              <button
+                class="book-stat-action book-stat-memoir"
+                catchtap="openArchiveTab"
+                data-tab="memoir"
+                hover-class="none"
+                aria-label="打开回忆录"
+              >
+                <text class="book-stat-num">{{storyCount}}</text>
+                <text class="book-stat-label">回忆录</text>
+              </button>
+              <button
+                class="book-stat-action book-stat-home"
+                catchtap="openMemoryHome"
+                hover-class="none"
+                aria-label="打开记忆之家"
+              >
+                <text class="book-stat-num">{{chapterCount}}</text>
+                <text class="book-stat-label">记忆之家</text>
+              </button>
             </view>
           </view>
         </view>
