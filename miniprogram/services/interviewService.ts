@@ -1,5 +1,8 @@
 import type { ShiguangAppOptions } from "../app";
 import {
+  MemoryType,
+} from "../domain/biography";
+import {
   InterviewDimension,
   InterviewMode,
   InterviewPrompt,
@@ -56,6 +59,7 @@ export interface GenerateInterviewPromptInput {
   answer: string;
   askedDimensions: InterviewDimension[];
   mode?: InterviewMode;
+  memoryType?: MemoryType;
   memberName?: string;
   storyTitle?: string;
   previousAnswers?: string[];
@@ -73,6 +77,7 @@ export async function generateInterviewPrompt(
         answer: input.answer,
         askedDimensions: input.askedDimensions,
         mode: input.mode ?? "personal",
+        memoryType: input.memoryType ?? "note",
         memberName: input.memberName,
         storyTitle: input.storyTitle,
         previousAnswers: input.previousAnswers ?? [],

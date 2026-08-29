@@ -297,6 +297,7 @@ Page({
         answer,
         askedDimensions: this.data.askedDimensions,
         mode: "personal",
+        memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
         previousAnswers: this.data.answers,

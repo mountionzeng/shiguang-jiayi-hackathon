@@ -231,6 +231,7 @@ test("the interview cloud function returns one safe follow-up", async () => {
       memberName: "林岚",
       storyTitle: "老屋门口",
       previousAnswers: ["那时候天很冷。"],
+      memoryType: "memoir",
     });
 
     assert.equal(result.generationMode, "cloud-ai");
@@ -238,6 +239,8 @@ test("the interview cloud function returns one safe follow-up", async () => {
     assert.equal(result.text, "现在想起那天，你最清楚的感觉是什么？");
     assert.equal(requestBody.model, "smart-chat-model");
     assert.match(requestBody.messages[1].content, /老屋门口/);
+    assert.match(requestBody.messages[0].content, /传记访谈助手/);
+    assert.match(requestBody.messages[1].content, /内容类型：回忆录/);
     assert.doesNotMatch(JSON.stringify(requestBody), /test-chat-key/);
   } finally {
     global.fetch = previousFetch;
@@ -248,6 +251,18 @@ test("the interview cloud function returns one safe follow-up", async () => {
     if (previousBaseUrl === undefined) delete process.env.CHAT_AI_BASE_URL;
     else process.env.CHAT_AI_BASE_URL = previousBaseUrl;
   }
+});
+
+test("the interview cloud function separates note and memoir prompts", () => {
+  const note = chatInterviewTest.interviewBrief("note");
+  const memoir = chatInterviewTest.interviewBrief("memoir");
+
+  assert.equal(chatInterviewTest.validateMemoryType("memoir"), "memoir");
+  assert.equal(chatInterviewTest.validateMemoryType("unknown"), "note");
+  assert.match(note.rule, /1 到 2 轮追问/);
+  assert.match(note.rule, /不要引导成长意义/);
+  assert.match(memoir.rule, /正式传记/);
+  assert.match(memoir.rule, /后来影响/);
 });
 
 test("the interview cloud parser accepts plain text fallback", () => {
@@ -369,6 +384,8 @@ test("the organize cloud function returns a structured memory card", async () =>
     assert.equal(result.title, "外公护着我");
     assert.deepEqual(result.emotions, ["安心", "委屈"]);
     assert.match(requestBody.messages[1].content, /外公总会把我护在身后/);
+    assert.match(requestBody.messages[0].content, /生活记忆编辑/);
+    assert.match(requestBody.messages[1].content, /随手记：整理成近期记忆卡片/);
     assert.doesNotMatch(JSON.stringify(requestBody), /test-organize-key/);
   } finally {
     global.fetch = previousFetch;
@@ -379,4 +396,14 @@ test("the organize cloud function returns a structured memory card", async () =>
     if (previousBaseUrl === undefined) delete process.env.ORGANIZE_AI_BASE_URL;
     else process.env.ORGANIZE_AI_BASE_URL = previousBaseUrl;
   }
+});
+
+test("the organize cloud function separates note cards and memoir chapters", () => {
+  const note = organizeMemoryTest.organizationBrief("note");
+  const memoir = organizeMemoryTest.organizationBrief("memoir");
+
+  assert.match(note.rule, /近期记忆卡片/);
+  assert.match(note.rule, /不要升华成正式传记/);
+  assert.match(memoir.rule, /正式传记章节素材/);
+  assert.match(memoir.system, /传记编辑/);
 });

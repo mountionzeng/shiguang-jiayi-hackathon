@@ -57,6 +57,7 @@ test("cloud interview prompt uses chatInterview when available", async (context)
     memberName: "林岚",
     storyTitle: "老屋门口",
     previousAnswers: ["那时候天很冷。"],
+    memoryType: "memoir",
   });
 
   assert.equal(prompt.dimension, "feeling");
@@ -65,6 +66,7 @@ test("cloud interview prompt uses chatInterview when available", async (context)
     "person",
     "time",
   ]);
+  assert.equal((requestData as { memoryType: string }).memoryType, "memoir");
 });
 
 test("cloud interview prompt falls back to local rules", async (context) => {
