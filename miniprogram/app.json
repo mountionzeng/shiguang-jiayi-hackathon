@@ -1,6 +1,8 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/profiles/profiles",
+    "pages/archive/archive",
     "pages/interview/interview",
     "pages/room/room",
     "pages/review/review",
@@ -14,6 +16,9 @@
     "navigationBarTitleText": "拾光Ai"
   },
   "style": "v2",
+  "usingComponents": {
+    "story-switcher": "/components/story-switcher/story-switcher"
+  },
   "sitemapLocation": "sitemap.json",
   "lazyCodeLoading": "requiredComponents"
 }

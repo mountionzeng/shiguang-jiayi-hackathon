@@ -1,4 +1,4 @@
-<view class="shell page-enter">
+<view class="shell shell-with-bar page-enter">
   <view class="branch-bar">
     <text class="branch-title serif">人生之书</text>
     <button class="branch-exit" bindtap="goHome">退出</button>
@@ -73,3 +73,5 @@
     </view>
   </block>
 </view>
+
+<story-switcher current="personal"></story-switcher>

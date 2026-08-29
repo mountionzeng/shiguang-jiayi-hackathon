@@ -1,0 +1,143 @@
+.profiles-page {
+  position: relative;
+  min-height: 100vh;
+  padding: 54rpx 44rpx calc(64rpx + env(safe-area-inset-bottom));
+  background: #fbf8f1;
+}
+
+.profiles-paper {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.profiles-heading,
+.profile-list,
+.profiles-footnote {
+  position: relative;
+  z-index: 1;
+}
+
+.profiles-title {
+  color: var(--ink);
+  font-size: 52rpx;
+  font-weight: 500;
+  letter-spacing: 2rpx;
+}
+
+.profiles-note {
+  margin-top: 10rpx;
+  color: var(--ink-faint);
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
+.profile-list {
+  margin-top: 42rpx;
+}
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 126rpx;
+  padding: 18rpx 18rpx 18rpx 14rpx;
+  border: 2rpx solid transparent;
+  border-radius: 28rpx;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.profile-card + .profile-card {
+  margin-top: 12rpx;
+}
+
+.profile-card:active {
+  background: rgba(229, 239, 233, 0.58);
+  transform: scale(0.985);
+}
+
+.profile-card-current {
+  border-color: rgba(79, 127, 107, 0.16);
+  background: rgba(255, 253, 247, 0.74);
+  box-shadow: 0 12rpx 30rpx rgba(79, 127, 107, 0.06);
+}
+
+.profile-avatar {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 88rpx;
+  height: 88rpx;
+  border: 2rpx solid rgba(79, 127, 107, 0.22);
+  border-radius: 50%;
+  background: rgba(229, 239, 233, 0.92);
+  color: var(--jade);
+  font-size: 32rpx;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.profile-avatar-backdrop {
+  position: absolute;
+  top: -38rpx;
+  left: -22rpx;
+  width: 132rpx;
+  height: 172rpx;
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+.profile-avatar-letter {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-copy {
+  flex: 1;
+  min-width: 0;
+  margin-left: 22rpx;
+}
+
+.profile-name {
+  color: var(--ink);
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.profile-relation {
+  margin-top: 5rpx;
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: 23rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-state {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  color: var(--jade);
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.profiles-footnote {
+  margin-top: 42rpx;
+  padding: 24rpx 26rpx;
+  border-radius: 24rpx;
+  background: rgba(245, 239, 225, 0.68);
+  color: var(--ink-faint);
+  font-size: 23rpx;
+  line-height: 1.7;
+}

@@ -1,0 +1,131 @@
+<view class="story-switcher" role="navigation" aria-label="故事空间切换">
+  <image
+    class="switcher-branch"
+    src="/assets/illustrations/story-switcher-curved-branch.png"
+    mode="aspectFit"
+    aria-hidden="true"
+  ></image>
+  <image
+    class="switcher-book-edges"
+    src="/assets/illustrations/story-switcher-book-edges.png"
+    mode="aspectFit"
+    aria-hidden="true"
+  ></image>
+
+  <button
+    class="story-tab story-tab-personal {{current === 'personal' ? 'story-tab-current' : ''}}"
+    bindtap="openPersonal"
+    hover-class="none"
+    aria-label="切换到人生之书，我的故事"
+  >
+    <image
+      class="tab-art tab-art-personal"
+      src="/assets/illustrations/story-tab-personal.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    ></image>
+    <view class="tab-title tab-title-personal" aria-label="人生之书">
+      <text class="arc-char arc-1">人</text>
+      <text class="arc-char arc-2">生</text>
+      <text class="arc-char arc-3">之</text>
+      <text class="arc-char arc-4">书</text>
+    </view>
+  </button>
+
+  <button
+    class="story-tab story-tab-chat"
+    bindtap="startInterview"
+    hover-class="none"
+    aria-label="记下此刻，记录一段故事"
+  >
+    <image
+      class="tab-art tab-art-chat"
+      src="/assets/illustrations/story-tab-chat.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    ></image>
+    <view class="tab-title tab-title-chat tab-chat-title" aria-label="记下此刻">
+      <text class="arc-char arc-1">记</text>
+      <text class="arc-char arc-2">下</text>
+      <text class="arc-char arc-3">此</text>
+      <text class="arc-char arc-4">刻</text>
+    </view>
+  </button>
+
+  <button
+    class="story-tab story-tab-family {{current === 'family' ? 'story-tab-current' : ''}}"
+    bindtap="openFamily"
+    hover-class="none"
+    aria-label="切换到记忆之家，我和亲友的故事"
+  >
+    <image
+      class="tab-art tab-art-family"
+      src="/assets/illustrations/story-tab-family.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    ></image>
+    <view class="tab-title tab-title-family" aria-label="记忆之家">
+      <text class="arc-char arc-1">记</text>
+      <text class="arc-char arc-2">忆</text>
+      <text class="arc-char arc-3">之</text>
+      <text class="arc-char arc-4">家</text>
+    </view>
+  </button>
+</view>
+
+<view
+  class="capture-mask"
+  wx:if="{{chooserOpen}}"
+  bindtap="closeChooser"
+  aria-label="关闭记录方式选择"
+></view>
+
+<view
+  class="capture-sheet"
+  wx:if="{{chooserOpen}}"
+  catchtap="keepChooserOpen"
+  role="dialog"
+  aria-label="选择记录方式"
+>
+  <view class="capture-heading">
+    <view class="capture-title typewriter">这次怎么记？</view>
+  </view>
+
+  <view class="capture-options">
+    <button
+      class="capture-choice capture-choice-note"
+      data-type="note"
+      bindtap="chooseCaptureMode"
+      hover-class="none"
+      aria-label="选择随手记，先留下几句话"
+    >
+      <image
+        class="capture-art capture-art-note"
+        src="/assets/illustrations/capture-note-paper.png"
+        mode="aspectFit"
+        aria-hidden="true"
+      ></image>
+      <view class="capture-copy capture-copy-note">
+        <view class="capture-choice-title typewriter">随手记</view>
+      </view>
+    </button>
+
+    <button
+      class="capture-choice capture-choice-memoir"
+      data-type="memoir"
+      bindtap="chooseCaptureMode"
+      hover-class="none"
+      aria-label="选择回忆录，和小忆慢慢聊"
+    >
+      <image
+        class="capture-art capture-art-memoir"
+        src="/assets/illustrations/capture-memoir-book.png"
+        mode="aspectFit"
+        aria-hidden="true"
+      ></image>
+      <view class="capture-copy capture-copy-memoir">
+        <view class="capture-choice-title typewriter">回忆录</view>
+      </view>
+    </button>
+  </view>
+</view>

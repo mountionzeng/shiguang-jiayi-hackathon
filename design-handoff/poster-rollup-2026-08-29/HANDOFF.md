@@ -135,11 +135,21 @@
 
 这些文件只用于复现微信小程序或做屏幕尺寸演示，不能放大用于印刷。包括：背景、书封水彩、鸟、树枝、384px 鸟窝、480 × 720 的线装古籍书体和 128 × 128 的小忆头像。
 
+新增三枚 384 × 384 透明底异形按钮：`story-tab-personal.png`、`story-tab-chat.png`、`story-tab-family.png`。从左到右对应“人生之书、记下此刻、记忆之家”；按钮图中不烘焙文字，中文标签继续由小程序原生文字叠加。左右图案按初版约 1.5 倍展示，中间 LOGO 按初版约 2 倍展示并略微上浮，三者刻意错落、不做等距同高排列。
+
+`story-switcher-curved-branch.png` 是底部三入口专用的透明弧形水彩树枝压缩版，印刷母版为 `assets/masters/story-switcher-curved-branch-master.png`。树枝负责连接三枚图案，不得再叠加顶部横线、当前页下划线或规则矩形 Tab Bar；中间 LOGO 只保留一层很轻的柔和阴影。
+
+`story-switcher-book-edges.png` 是底部三入口背后的透明手绘古籍页边装饰，印刷母版为 `assets/masters/story-switcher-book-edges-master.png`。它仅以低对比度衬托三枚入口，须置于树枝、小鸟与 LOGO 下层；不能作为白色卡片、规则边框或文字底板。入口文字以原生文字逐字排成浅弧，沿各自图案的下缘走，须保持较大、较粗且清晰易读。
+
+“开始聊聊”底部弹层新增两枚透明古籍按钮：`capture-note-paper.png` 是轻薄散页，对应“随手记”；`capture-memoir-book.png` 是交错线装册，对应“回忆录”。两张图都不烘焙文字，避免小尺寸中文发糊。
+
 ### 界面参考：`references/`
 
 - `homepage-current-devtools.png`：当前首页整体结构参考，不是海报底图。
 - `xiaoyi-avatar-target-reference.png`：用户确认的“小忆”头像关系参考；正式头像使用母版文件。
 - `family-birds-before-nest.png`：用户确认有趣的三只互动小鸟；正式设计须保留三只鸟的大小关系，并在它们后方增加鸟窝。
+- `persistent-bottom-switcher-reference.png`：用户确认的底部三入口构图方向；弧形树枝和鸟群作为长期存在的切换引导，入口需保持自然错落。
+- `center-chat-logo-reference.png`：用户确认的“开始聊聊”中心 LOGO 原图；必须直接使用，不得以生成近似图替代。
 
 ### 不采用素材：`archive-do-not-use/`
 
@@ -176,6 +186,8 @@
 
 - [ ] “拾光Ai”大小写正确。
 - [ ] “人生之书”和“记忆之家”视觉权重相等。
+- [ ] 底部三枚异形入口等宽可点，中间 LOGO 打开“开始聊聊”的记录方式选择弹层。
+- [ ] 点击中间 LOGO 后，两枚古籍按钮从底部弹出；散页和线装册在小屏上仍能一眼区分。
 - [ ] 一只鸟与互动鸟群都清楚可辨，鸟群有大有小但不幼稚。
 - [ ] “记忆之家”的鸟窝位于三只鸟后层，空窝无蛋，不遮挡鸟脸，也没有让右侧视觉失衡。
 - [ ] 小忆头像使用 `xiaoyi-avatar-master.png`。

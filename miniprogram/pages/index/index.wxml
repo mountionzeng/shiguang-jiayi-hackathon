@@ -1,4 +1,4 @@
-<view class="home page-enter entry-{{entryAnimation}}">
+<view class="home page-enter">
   <image
     class="home-paper"
     src="/assets/illustrations/home-paper.jpg"
@@ -7,104 +7,57 @@
   ></image>
 
   <view class="topline">
-    <view class="wordmark">
-      <view class="brand-mark wordmark-icon"></view>
-      <text class="wordmark-text typewriter">拾光Ai</text>
-    </view>
-    <view class="member-avatar serif">{{memberInitial}}</view>
+    <button
+      class="profile-entry"
+      bindtap="openProfiles"
+      hover-class="none"
+      aria-label="打开切换档案"
+    >
+      <view class="member-avatar serif">
+        <image
+          class="member-avatar-backdrop"
+          src="/assets/illustrations/book-wash.png"
+          mode="aspectFill"
+          aria-hidden="true"
+        ></image>
+        <text class="member-avatar-letter">{{memberAvatarText}}</text>
+      </view>
+    </button>
   </view>
 
   <view class="book-stage">
-    <view class="book">
-      <image
-        class="ancient-book-art"
-        src="/assets/illustrations/ancient-book-shell.png"
-        mode="aspectFit"
-        aria-hidden="true"
-      ></image>
-      <view class="book-cover-copy">
-        <text class="book-kicker typewriter">拾 光 录</text>
-        <view class="book-copy">
-          <view class="book-title typewriter">{{bookTitle}}</view>
-          <view class="book-subtitle">{{coverSubtitle}}</view>
-          <view class="book-stats">
-            <text><text class="book-stat-num">{{fragmentCount}}</text> 片段</text>
-            <text>·</text>
-            <text><text class="book-stat-num">{{storyCount}}</text> 故事</text>
-            <text>·</text>
-            <text><text class="book-stat-num">{{chapterCount}}</text> 章节</text>
+    <view
+      class="book {{bookOpening ? 'book-opening' : ''}}"
+      bindtap="openMemoryArchive"
+      role="button"
+      aria-label="打开管理记忆档案"
+    >
+      <view class="book-pages-under"></view>
+      <view class="book-cover-leaf">
+        <image
+          class="ancient-book-art"
+          src="/assets/illustrations/ancient-book-shell.png"
+          mode="aspectFit"
+          aria-hidden="true"
+        ></image>
+        <view class="book-cover-copy">
+          <text class="book-kicker typewriter">拾 光 录</text>
+          <view class="book-copy">
+            <view class="book-title typewriter">{{bookTitle}}</view>
+            <view class="book-subtitle">{{coverSubtitle}}</view>
+            <view class="book-stats">
+              <text><text class="book-stat-num">{{fragmentCount}}</text> 片段</text>
+              <text>·</text>
+              <text><text class="book-stat-num">{{storyCount}}</text> 故事</text>
+              <text>·</text>
+              <text><text class="book-stat-num">{{chapterCount}}</text> 章节</text>
+            </view>
           </view>
         </view>
       </view>
     </view>
+    <view class="book-open-label typewriter">轻触打开记忆档案</view>
   </view>
-
-  <view class="branch-scene">
-    <image
-      class="memory-branch"
-      src="/assets/illustrations/memory-branch.png"
-      mode="aspectFit"
-      aria-hidden="true"
-    ></image>
-
-    <button
-      class="branch-choice branch-choice-personal"
-      bindtap="openBook"
-      hover-class="none"
-      aria-label="进入人生之书"
-    >
-      <image
-        class="bird-art bird-art-personal"
-        src="/assets/illustrations/memory-bird.png"
-        mode="aspectFit"
-        aria-hidden="true"
-      ></image>
-      <view class="branch-copy">
-        <view class="branch-label typewriter">人生之书</view>
-        <view class="branch-note">我的故事</view>
-      </view>
-    </button>
-
-    <button
-      class="branch-choice branch-choice-family"
-      bindtap="openMemoryHome"
-      hover-class="none"
-      aria-label="进入记忆之家"
-    >
-      <view class="family-flock">
-        <image
-          class="family-nest"
-          src="/assets/illustrations/memory-nest.png"
-          mode="aspectFit"
-          aria-hidden="true"
-        ></image>
-        <view class="family-bird bird-family-one">
-          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
-        </view>
-        <view class="family-bird bird-family-two">
-          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
-        </view>
-        <view class="family-bird bird-family-three">
-          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
-        </view>
-      </view>
-      <view class="branch-copy">
-        <view class="branch-label typewriter">记忆之家</view>
-        <view class="branch-note">我和亲友</view>
-      </view>
-    </button>
-  </view>
-
-  <button
-    class="start-chat"
-    bindtap="startInterview"
-    hover-class="start-chat-pressed"
-    hover-stay-time="110"
-    aria-label="开始聊聊，记录此刻的故事"
-  >
-    <text class="start-chat-plus">＋</text>
-    <text class="typewriter">开始聊聊</text>
-  </button>
 
   <view class="recent" wx:if="{{hasRecentStories}}">
     <view class="recent-head">
@@ -134,3 +87,5 @@
     <view class="home-empty-note">不用想好从哪里开始，先说一句就好。</view>
   </view>
 </view>
+
+<story-switcher current="home"></story-switcher>

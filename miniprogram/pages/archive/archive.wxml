@@ -1,0 +1,38 @@
+<view class="archive-page page-enter">
+  <image
+    class="archive-paper"
+    src="/assets/illustrations/home-paper.jpg"
+    mode="scaleToFill"
+    aria-hidden="true"
+  ></image>
+
+  <view class="archive-heading">
+    <view class="archive-eyebrow typewriter">{{memberName}}的记忆档案</view>
+    <view class="archive-title serif">管理记忆档案</view>
+    <view class="archive-intro">先从随手记开始。这里收着你写下的短片段，无论它是否已经归入一个故事。</view>
+  </view>
+
+  <view class="archive-tabs" role="tablist" aria-label="记忆档案类型">
+    <view class="archive-tab archive-tab-current" role="tab" aria-selected="true">
+      <text class="archive-tab-title typewriter">随手记</text>
+      <text class="archive-tab-count">{{noteCount}}</text>
+    </view>
+  </view>
+
+  <view class="note-list" wx:if="{{hasNotes}}">
+    <view class="note-paper" wx:for="{{notes}}" wx:key="id">
+      <view class="note-pin"></view>
+      <view class="note-date">{{item.dateLabel}}</view>
+      <view class="note-title serif">{{item.title}}</view>
+      <view class="note-excerpt">{{item.excerpt}}</view>
+      <view class="note-archive">{{item.archiveLabel}}</view>
+    </view>
+  </view>
+
+  <view class="archive-empty" wx:else>
+    <view class="archive-empty-title serif">还没有随手记</view>
+    <view class="archive-empty-note">从首页“记下此刻”开始说几句，保存后会出现在这里。</view>
+  </view>
+
+  <view class="archive-version-note">当前版本先支持查看；移动、改名和删除会在下一版补充。</view>
+</view>

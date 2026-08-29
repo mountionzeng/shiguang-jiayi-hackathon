@@ -1,0 +1,44 @@
+<view class="profiles-page page-enter">
+  <image
+    class="profiles-paper"
+    src="/assets/illustrations/home-paper.jpg"
+    mode="scaleToFill"
+    aria-hidden="true"
+  ></image>
+
+  <view class="profiles-heading">
+    <view class="profiles-title serif">切换档案</view>
+    <view class="profiles-note">选择这次要以谁的身份记录和阅读故事</view>
+  </view>
+
+  <view class="profile-list">
+    <button
+      class="profile-card {{item.current ? 'profile-card-current' : ''}}"
+      wx:for="{{profiles}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="chooseProfile"
+      hover-class="none"
+      aria-label="切换到{{item.name}}的档案"
+    >
+      <view class="profile-avatar serif">
+        <image
+          class="profile-avatar-backdrop"
+          src="/assets/illustrations/book-wash.png"
+          mode="aspectFill"
+          aria-hidden="true"
+        ></image>
+        <text class="profile-avatar-letter">{{item.avatarText}}</text>
+      </view>
+      <view class="profile-copy">
+        <view class="profile-name serif">{{item.name}}</view>
+        <view class="profile-relation">{{item.relation}} · {{item.roleLabel}}</view>
+      </view>
+      <view class="profile-state">{{item.current ? '当前' : '切换'}}</view>
+    </button>
+  </view>
+
+  <view class="profiles-footnote">
+    黑客松阶段使用本地演示档案。每个档案的人生之书、故事与阅读权限彼此独立。
+  </view>
+</view>

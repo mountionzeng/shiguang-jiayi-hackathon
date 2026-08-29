@@ -22,7 +22,7 @@ interface TestPageInstance extends TestPageDefinition {
 
 const definitions = new Map<string, TestPageDefinition>();
 
-async function pageDefinition(name: "index" | "interview" | "room" | "book"): Promise<TestPageDefinition> {
+async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive"): Promise<TestPageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
 
@@ -43,8 +43,12 @@ async function pageDefinition(name: "index" | "interview" | "room" | "book"): Pr
       await import("../miniprogram/pages/interview/interview");
     } else if (name === "room") {
       await import("../miniprogram/pages/room/room");
-    } else {
+    } else if (name === "book") {
       await import("../miniprogram/pages/book/book");
+    } else if (name === "profiles") {
+      await import("../miniprogram/pages/profiles/profiles");
+    } else {
+      await import("../miniprogram/pages/archive/archive");
     }
   } finally {
     if (previous) Object.defineProperty(globalThis, "Page", previous);
@@ -83,6 +87,7 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
   const toasts: string[] = [];
   const navigations: string[] = [];
   const relaunches: string[] = [];
+  let backCount = 0;
   const previous = Object.getOwnPropertyDescriptor(globalThis, "wx");
 
   Object.defineProperty(globalThis, "wx", {
@@ -96,7 +101,9 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
       showToast: ({ title }: { title: string }) => toasts.push(title),
       showModal: ({ success }: { success?: (result: { confirm: boolean; cancel: boolean }) => void }) =>
         success?.({ confirm: true, cancel: false }),
-      navigateBack: () => undefined,
+      navigateBack: () => {
+        backCount += 1;
+      },
       navigateTo: ({ url }: { url: string }) => navigations.push(url),
       switchTab: () => undefined,
       reLaunch: ({ url }: { url: string }) => relaunches.push(url),
@@ -109,6 +116,7 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
     toasts,
     navigations,
     relaunches,
+    backCount: () => backCount,
     restore: () => {
       if (previous) Object.defineProperty(globalThis, "wx", previous);
       else delete (globalThis as Record<string, unknown>).wx;
@@ -233,19 +241,16 @@ test("a new conversation chooses a telling style before chat", async (context) =
 
   callPage(interview, "beginInterview");
   assert.equal(interview.data.stage, "chat");
+
+  const selectedInterview = instantiate(await pageDefinition("interview"));
+  await callPage(selectedInterview, "onLoad", { memoryType: "memoir" });
+  assert.equal(selectedInterview.data.stage, "chat");
+  assert.equal(selectedInterview.data.memoryType, "memoir");
 });
 
-test("home opens both content branches and each branch exits back home", async (context) => {
+test("each content branch exits back home", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
-
-  const home = instantiate(await pageDefinition("index"));
-  withImmediateTimeouts(() => callPage(home, "openBook"));
-  withImmediateTimeouts(() => callPage(home, "openMemoryHome"));
-  assert.deepEqual(storage.navigations, [
-    "/pages/book/book",
-    "/pages/room/room",
-  ]);
 
   const book = instantiate(await pageDefinition("book"));
   callPage(book, "goHome");
@@ -288,9 +293,7 @@ test("leaving chat preserves unsent text as a private unorganized fragment", asy
   callPage(page, "onInput", {
     detail: { value: "这句话还没有按发送，但也不应该丢失。" },
   });
-  await callPage(page, "saveRecoverableAnswers", [
-    "这句话还没有按发送，但也不应该丢失。",
-  ]);
+  await callPage(page, "saveRecoverableAnswers", ["这句话还没有按发送，但也不应该丢失。"]);
 
   const saved = last(storage.roomState().contributions);
   assert.equal(saved?.text, "这句话还没有按发送，但也不应该丢失。");
@@ -329,10 +332,7 @@ test("returning from organize and continuing chat unloads the newest transcript"
   await callPage(page, "finish");
   callPage(page, "backToChat");
   page.setData({ inputText: "回到聊天后又想起的一句。" });
-  await callPage(page, "saveRecoverableAnswers", [
-    "第一段已经讲完。",
-    "回到聊天后又想起的一句。",
-  ]);
+  await callPage(page, "saveRecoverableAnswers", ["第一段已经讲完。", "回到聊天后又想起的一句。"]);
 
   assert.equal(
     last(storage.roomState().contributions)?.text,
@@ -404,9 +404,9 @@ test("malformed cached story names do not block the home or interview", async (c
   context.after(storage.restore);
 
   const interview = instantiate(await pageDefinition("interview"));
-  await assert.doesNotReject(() => Promise.resolve(callPage(interview, "onLoad")));
+  await assert.doesNotReject(async () => callPage(interview, "onLoad"));
   const home = instantiate(await pageDefinition("index"));
-  await assert.doesNotReject(() => Promise.resolve(callPage(home, "refresh", corrupted)));
+  await assert.doesNotReject(async () => callPage(home, "refresh", corrupted));
   assert.equal((home.data.recentStories as unknown[]).length, 1);
   assert.equal(
     (home.data.recentStories as Array<{ title: string }>)[0]?.title,
@@ -549,4 +549,63 @@ test("home shows only the current member's own recent stories", async (context) 
   );
   assert.equal(page.data.bookTitle, "林秋的人生之书");
   assert.equal(storage.currentMemberId(), "member-1");
+});
+
+test("the home avatar opens a profile switcher", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+
+  callPage(page, "openProfiles");
+
+  assert.equal(last(storage.navigations), "/pages/profiles/profiles");
+});
+
+test("the home book opens the memory archive after its animation", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+
+  await withImmediateTimeouts(() => callPage(page, "openMemoryArchive"));
+
+  assert.equal(page.data.bookOpening, false);
+  assert.equal(last(storage.navigations), "/pages/archive/archive");
+});
+
+test("the memory archive shows only the current profile's quick notes", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+
+  await callPage(page, "refresh");
+
+  assert.equal(page.data.memberName, "林岚");
+  assert.deepEqual(
+    (page.data.notes as Array<{ id: string }>).map((note) => note.id),
+    ["demo-personal-rain"],
+  );
+  assert.equal(page.data.hasNotes, true);
+});
+
+test("choosing a profile changes the active personal archive", async (context) => {
+  const state = createInitialRoomState();
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("profiles"));
+
+  await callPage(page, "refresh", state);
+  assert.equal(
+    (page.data.profiles as Array<{ id: string; current: boolean }>).find(
+      (profile) => profile.id === "owner",
+    )?.current,
+    true,
+  );
+
+  await callPage(page, "chooseProfile", {
+    currentTarget: { dataset: { id: "member-1" } },
+  });
+
+  assert.equal(storage.currentMemberId(), "member-1");
+  assert.equal(last(storage.toasts), "已切换到林秋");
+  assert.equal(storage.backCount(), 1);
 });

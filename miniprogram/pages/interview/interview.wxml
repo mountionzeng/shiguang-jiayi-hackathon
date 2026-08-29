@@ -92,10 +92,6 @@
       scroll-into-view="{{scrollIntoView}}"
     >
       <view class="chat-inner">
-        <view class="source-note" wx:if="{{localDemoOnly}}">
-          未连云端，以下追问来自本地提问规则，不是 AI 生成。
-        </view>
-
         <block wx:for="{{messages}}" wx:key="id">
           <!-- 追问：单独的卡片，和普通气泡区分开 -->
           <view class="ask-card" wx:if="{{item.kind === 'followup'}}" id="{{item.id}}">
@@ -171,10 +167,6 @@
   <block wx:else>
     <scroll-view class="chat-scroll" scroll-y>
       <view class="chat-inner">
-        <text class="tidy-label">
-          {{draftOrganizationMode === 'cloud-ai' ? 'AI 云整理 · 需要复核' : '本地演示整理 · 保留你说的原话'}}
-        </text>
-
         <textarea
           class="draft-title serif"
           value="{{draftTitle}}"

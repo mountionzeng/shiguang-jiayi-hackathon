@@ -18,7 +18,6 @@ import {
   pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
-import { CLOUD_AI_ENABLED } from "../../config/runtime";
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
 import {
@@ -51,6 +50,7 @@ interface MemberOptionView {
 interface InterviewLoadOptions {
   sourceId?: string;
   storyTitle?: string;
+  memoryType?: string;
 }
 
 function decodeQueryValue(value = ""): string {
@@ -159,7 +159,6 @@ Page({
     saved: false,
 
     keyboardHeight: 0,
-    localDemoOnly: !CLOUD_AI_ENABLED,
   },
 
   messageSeq: 0,
@@ -170,6 +169,12 @@ Page({
     const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");
     const requestedStoryTitle = decodeQueryValue(options.storyTitle);
     const requestedSourceId = decodeQueryValue(options.sourceId);
+    const requestedMemoryType: MemoryType | undefined =
+      options.memoryType === "memoir"
+        ? "memoir"
+        : options.memoryType === "note"
+          ? "note"
+          : undefined;
     const source = state.contributions.find((memory) => (
       memory.id === requestedSourceId &&
       memory.authorMemberId === member.id &&
@@ -184,12 +189,15 @@ Page({
       ? storyTitle
         ? `我们继续聊「${storyTitle}」吧。\n上次你讲到：“${sourcePreview}”\n这一次，你还想补充什么？`
         : `我们接着这段往下聊吧。\n上次你讲到：“${sourcePreview}”\n后来你又想起了什么？`
-      : `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`;
+      : requestedMemoryType === "note"
+        ? "先把这一刻想到的留下来吧。几句话也可以，聊完后再决定放进哪个故事。"
+        : `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`;
 
     this.setData({
       memberName: member.name,
       memberRelation: member.relation,
-      stage: source || storyTitle ? "chat" : "choose",
+      stage: source || storyTitle || requestedMemoryType ? "chat" : "choose",
+      memoryType: requestedMemoryType ?? this.data.memoryType,
       dateLabel: today(),
       storyTitle,
       storyOptions: storyOptionsFor(state.contributions, member.id, storyTitle),
@@ -215,12 +223,12 @@ Page({
 
   async saveRecoverableAnswers(rawAnswers: string[]) {
     try {
-      const currentState = await loadRoomStateRemoteFirst();
-      const member = await loadCurrentMemberRemoteFirst(currentState);
+      const state = await loadRoomStateRemoteFirst();
+      const member = await loadCurrentMemberRemoteFirst(state);
       const recoverableText = normalizeMemoryText(
         this.data.stage === "save" && this.data.draftText
           ? this.data.draftText
-          : rawAnswers.join(" ")
+          : rawAnswers.join(" "),
       );
       const chunks = splitRecoverableText(recoverableText);
 
@@ -233,7 +241,7 @@ Page({
           title: chunks.length === 1
             ? this.data.draftTitle || draftTitleFromAnswers(rawAnswers)
             : draftTitleFromAnswers([text]),
-          memoryType: "note",
+          memoryType: this.data.memoryType,
           preserveNormalizedText: true,
           scope: "personal",
           visibility: "private",
@@ -297,15 +305,11 @@ Page({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
-      this.pushMessage(
-        "followup",
-        prompt.text,
-        DIMENSION_LABELS[prompt.dimension],
-      );
+      this.pushMessage("followup", prompt.text, DIMENSION_LABELS[prompt.dimension]);
     } catch (error) {
-      console.warn("生成追问失败", error);
+      console.warn("追问生成失败", error);
       this.setData({ asking: false });
-      wx.showToast({ title: "暂时问不出来，稍后再试", icon: "none" });
+      wx.showToast({ title: "小忆刚刚走神了，再试一次", icon: "none" });
     }
   },
 
@@ -319,6 +323,7 @@ Page({
     }
 
     this.setData({ organizing: true });
+
     try {
       const draft = await organizeMemory({
         transcript: answers,
@@ -332,7 +337,7 @@ Page({
         stage: "save",
         answers,
         inputText: "",
-        draftTitle: draft.title || draftTitleFromAnswers(answers),
+        draftTitle: draft.title,
         draftSummary: draft.summary,
         draftText: draft.body,
         draftLength: draft.body.length,
@@ -343,6 +348,9 @@ Page({
         tooLong: draft.body.length > MAX_MEMORY_LENGTH,
         coveredChips: covered.map((dimension) => DIMENSION_CHIPS[dimension]),
       });
+    } catch (error) {
+      console.warn("整理成片段失败", error);
+      wx.showToast({ title: "暂时无法整理，请稍后再试", icon: "none" });
     } finally {
       this.setData({ organizing: false });
     }
