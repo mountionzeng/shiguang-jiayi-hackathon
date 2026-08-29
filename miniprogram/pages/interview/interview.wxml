@@ -1,6 +1,6 @@
 <view class="interview-page" style="bottom: {{keyboardHeight}}px">
 
-  <view class="who-bar">
+  <view class="who-bar" wx:if="{{stage !== 'choose'}}">
     <view class="who-copy">
       <view class="who-title">
         <image
@@ -18,8 +18,73 @@
     </text>
   </view>
 
+  <!-- ============ 选择讲述方式：只决定怎么聊，不提前归类故事 ============ -->
+  <block wx:if="{{stage === 'choose'}}">
+    <view class="mode-picker">
+      <view class="mode-intro">
+        <image
+          class="mode-avatar"
+          src="/assets/illustrations/xiaoyi-avatar.png"
+          mode="aspectFit"
+          aria-label="小忆"
+        ></image>
+        <view class="mode-eyebrow typewriter">拾起这一刻</view>
+        <view class="mode-title serif">你想怎么开始？</view>
+        <view class="mode-note">无论选哪一种，小忆都会先听你讲。聊完以后，再决定放进哪个故事。</view>
+      </view>
+
+      <view class="mode-grid">
+        <button
+          class="mode-choice {{memoryType === 'note' ? 'mode-choice-on' : ''}}"
+          data-type="note"
+          bindtap="chooseType"
+          hover-class="none"
+          aria-label="选择随手记，先留下几句话"
+        >
+          <view class="mode-seal typewriter">记</view>
+          <view class="mode-choice-copy">
+            <view class="mode-choice-title typewriter">随手记</view>
+            <view class="mode-choice-note">
+              <text>先留下几句话</text>
+              <text>以后再慢慢补充</text>
+            </view>
+          </view>
+          <view class="mode-check">{{memoryType === 'note' ? '✓' : ''}}</view>
+        </button>
+
+        <button
+          class="mode-choice {{memoryType === 'memoir' ? 'mode-choice-on' : ''}}"
+          data-type="memoir"
+          bindtap="chooseType"
+          hover-class="none"
+          aria-label="选择回忆录，和小忆多聊几轮"
+        >
+          <view class="mode-seal mode-seal-memoir typewriter">聊</view>
+          <view class="mode-choice-copy">
+            <view class="mode-choice-title typewriter">回忆录</view>
+            <view class="mode-choice-note">
+              <text>和小忆多聊几轮</text>
+              <text>把故事慢慢讲开</text>
+            </view>
+          </view>
+          <view class="mode-check">{{memoryType === 'memoir' ? '✓' : ''}}</view>
+        </button>
+      </view>
+
+      <button
+        class="mode-start"
+        bindtap="beginInterview"
+        hover-class="mode-start-pressed"
+        hover-stay-time="100"
+      >
+        <text>{{memoryType === 'note' ? '开始随手记' : '开始聊回忆'}}</text>
+        <text class="mode-start-arrow">→</text>
+      </button>
+    </view>
+  </block>
+
   <!-- ============ 对话 ============ -->
-  <block wx:if="{{stage === 'chat'}}">
+  <block wx:elif="{{stage === 'chat'}}">
     <scroll-view
       class="chat-scroll"
       scroll-y

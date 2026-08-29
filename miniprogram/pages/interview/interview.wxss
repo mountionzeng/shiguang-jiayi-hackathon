@@ -11,6 +11,216 @@
   background: var(--paper);
 }
 
+/* ---- 开始前：选择讲述方式 ---- */
+
+.mode-picker {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 76rpx 40rpx calc(54rpx + env(safe-area-inset-bottom));
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 82% 12%, rgba(232, 238, 242, 0.9), transparent 34%),
+    radial-gradient(circle at 10% 88%, rgba(234, 241, 237, 0.86), transparent 30%),
+    var(--paper);
+}
+
+.mode-intro {
+  position: relative;
+  padding: 0 8rpx;
+}
+
+.mode-avatar {
+  display: block;
+  width: 82rpx;
+  height: 82rpx;
+  margin-bottom: 24rpx;
+  border-radius: 50%;
+  box-shadow: 0 10rpx 28rpx rgba(79, 127, 107, 0.12);
+  animation: mode-avatar-arrive 620ms ease-out both;
+}
+
+.mode-eyebrow {
+  color: var(--jade);
+  font-size: 22rpx;
+  letter-spacing: 6rpx;
+}
+
+.mode-title {
+  margin-top: 8rpx;
+  color: var(--ink);
+  font-size: 48rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 2rpx;
+}
+
+.mode-note {
+  max-width: 600rpx;
+  margin-top: 12rpx;
+  color: var(--ink-soft);
+  font-size: 26rpx;
+  line-height: 1.7;
+}
+
+.mode-grid {
+  display: flex;
+  margin-top: 48rpx;
+}
+
+.mode-choice {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 292rpx;
+  padding: 28rpx 24rpx 26rpx;
+  border: 2rpx solid rgba(129, 117, 93, 0.18);
+  border-radius: 8rpx;
+  background: rgba(255, 254, 251, 0.78);
+  text-align: left;
+  box-shadow: 0 12rpx 34rpx rgba(61, 67, 62, 0.05);
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.mode-choice + .mode-choice {
+  margin-left: 20rpx;
+}
+
+.mode-choice:active {
+  transform: translateY(2rpx) scale(0.985);
+}
+
+.mode-choice-on {
+  border-color: rgba(79, 127, 107, 0.62);
+  background: rgba(234, 241, 237, 0.74);
+  box-shadow: 0 14rpx 34rpx rgba(79, 127, 107, 0.1);
+  transform: translateY(-4rpx);
+}
+
+.mode-choice-on:active {
+  transform: translateY(-1rpx) scale(0.985);
+}
+
+.mode-seal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68rpx;
+  height: 68rpx;
+  border: 2rpx solid rgba(176, 130, 57, 0.38);
+  border-radius: 50%;
+  background: var(--apricot-soft);
+  color: var(--apricot);
+  font-size: 29rpx;
+  font-weight: 600;
+  transform: rotate(-4deg);
+  transition: transform 220ms ease;
+}
+
+.mode-seal-memoir {
+  border-color: rgba(74, 110, 136, 0.34);
+  background: var(--lake-soft);
+  color: var(--lake);
+  transform: rotate(4deg);
+}
+
+.mode-choice-on .mode-seal {
+  transform: rotate(0) scale(1.06);
+}
+
+.mode-choice-copy {
+  margin-top: 26rpx;
+}
+
+.mode-choice-title {
+  color: var(--ink);
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 2rpx;
+}
+
+.mode-choice-note {
+  margin-top: 10rpx;
+  color: var(--ink-faint);
+  font-size: 24rpx;
+  line-height: 1.65;
+}
+
+.mode-choice-note text {
+  display: block;
+}
+
+.mode-check {
+  position: absolute;
+  top: 24rpx;
+  right: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36rpx;
+  height: 36rpx;
+  border: 2rpx solid rgba(79, 127, 107, 0.24);
+  border-radius: 50%;
+  color: var(--jade);
+  font-size: 23rpx;
+  line-height: 1;
+}
+
+.mode-choice-on .mode-check {
+  border-color: var(--jade);
+  background: var(--jade);
+  color: #fffefb;
+}
+
+.mode-start {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 356rpx;
+  min-height: 88rpx;
+  margin: 54rpx auto 0;
+  padding: 0 30rpx 0 34rpx;
+  border: 2rpx solid rgba(79, 127, 107, 0.48);
+  border-radius: 12rpx;
+  background: rgba(255, 254, 251, 0.72);
+  color: var(--jade);
+  font-size: 29rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  box-shadow: 0 10rpx 28rpx rgba(71, 92, 80, 0.08);
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.mode-start-pressed {
+  background: var(--jade-soft);
+  transform: translateY(2rpx) scale(0.985);
+}
+
+.mode-start-arrow {
+  font-size: 36rpx;
+  font-weight: 400;
+  transition: transform 180ms ease;
+}
+
+.mode-start-pressed .mode-start-arrow {
+  transform: translateX(6rpx);
+}
+
+@keyframes mode-avatar-arrive {
+  from { opacity: 0; transform: translateY(12rpx) rotate(-5deg) scale(0.92); }
+  to { opacity: 1; transform: translateY(0) rotate(0) scale(1); }
+}
+
 /* ---- 抬头 ---- */
 
 .who-bar {

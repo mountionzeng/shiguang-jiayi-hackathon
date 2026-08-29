@@ -209,11 +209,30 @@ test("continuing a recent story opens the interview with its existing context", 
     sourceId: query.get("sourceId") ?? "",
     storyTitle: query.get("storyTitle") ?? "",
   });
+  assert.equal(interview.data.stage, "chat");
   assert.equal(interview.data.storyTitle, "外公接我放学");
   assert.match(
     (interview.data.messages as Array<{ text: string }>)[0]?.text ?? "",
     /继续聊「外公接我放学」/,
   );
+});
+
+test("a new conversation chooses a telling style before chat", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+
+  const interview = instantiate(await pageDefinition("interview"));
+  callPage(interview, "onLoad");
+  assert.equal(interview.data.stage, "choose");
+  assert.equal(interview.data.memoryType, "note");
+
+  callPage(interview, "chooseType", {
+    currentTarget: { dataset: { type: "memoir" } },
+  });
+  assert.equal(interview.data.memoryType, "memoir");
+
+  callPage(interview, "beginInterview");
+  assert.equal(interview.data.stage, "chat");
 });
 
 test("home opens both content branches and each branch exits back home", async (context) => {

@@ -132,7 +132,7 @@ Page({
     asking: false,
     scrollIntoView: "",
 
-    stage: "chat" as "chat" | "save",
+    stage: "choose" as "choose" | "chat" | "save",
     draftTitle: "",
     draftText: "",
     draftLength: 0,
@@ -182,6 +182,7 @@ Page({
     this.setData({
       memberName: member.name,
       memberRelation: member.relation,
+      stage: source || storyTitle ? "chat" : "choose",
       dateLabel: today(),
       storyTitle,
       storyOptions: storyOptionsFor(state.contributions, member.id, storyTitle),
@@ -331,6 +332,10 @@ Page({
 
   chooseType(event: { currentTarget: { dataset: { type: MemoryType } } }) {
     this.setData({ memoryType: event.currentTarget.dataset.type });
+  },
+
+  beginInterview() {
+    this.setData({ stage: "chat" });
   },
 
   chooseFragment() {
