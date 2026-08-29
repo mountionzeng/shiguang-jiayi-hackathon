@@ -28,12 +28,12 @@
 
 .switcher-book-edges {
   position: absolute;
-  bottom: -4rpx;
-  left: -10%;
+  bottom: -12rpx;
+  left: -14%;
   z-index: 0;
-  width: 120%;
-  height: 204rpx;
-  opacity: 0.38;
+  width: 128%;
+  height: 320rpx;
+  opacity: 0.24;
   pointer-events: none;
 }
 
