@@ -14,6 +14,9 @@
     "navigationBarTitleText": "拾光Ai"
   },
   "style": "v2",
+  "usingComponents": {
+    "story-switcher": "/components/story-switcher/story-switcher"
+  },
   "sitemapLocation": "sitemap.json",
   "lazyCodeLoading": "requiredComponents"
 }

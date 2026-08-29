@@ -1,0 +1,56 @@
+<view class="story-switcher" role="navigation" aria-label="故事空间切换">
+  <image
+    class="switcher-branch"
+    src="/assets/illustrations/memory-branch.png"
+    mode="aspectFit"
+    aria-hidden="true"
+  ></image>
+
+  <button
+    class="story-tab story-tab-personal {{current === 'personal' ? 'story-tab-current' : ''}}"
+    bindtap="openPersonal"
+    hover-class="none"
+    aria-label="切换到人生之书，我的故事"
+  >
+    <image
+      class="tab-art tab-art-personal"
+      src="/assets/illustrations/story-tab-personal.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    ></image>
+    <view class="tab-title">人生之书</view>
+    <view class="tab-note">我的故事</view>
+  </button>
+
+  <button
+    class="story-tab story-tab-chat"
+    bindtap="startInterview"
+    hover-class="none"
+    aria-label="开始聊聊，记录一段故事"
+  >
+    <image
+      class="tab-art tab-art-chat"
+      src="/assets/illustrations/story-tab-chat.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    ></image>
+    <view class="tab-title tab-chat-title">开始聊聊</view>
+    <view class="tab-note">记下此刻</view>
+  </button>
+
+  <button
+    class="story-tab story-tab-family {{current === 'family' ? 'story-tab-current' : ''}}"
+    bindtap="openFamily"
+    hover-class="none"
+    aria-label="切换到记忆之家，我和亲友的故事"
+  >
+    <image
+      class="tab-art tab-art-family"
+      src="/assets/illustrations/story-tab-family.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    ></image>
+    <view class="tab-title">记忆之家</view>
+    <view class="tab-note">我和亲友</view>
+  </button>
+</view>

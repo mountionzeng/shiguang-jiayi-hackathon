@@ -74,7 +74,6 @@ Page({
     chapterCount: 0,
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
-    entryAnimation: "" as "" | "personal" | "family",
   },
 
   onShow() {
@@ -100,33 +99,11 @@ Page({
       chapterCount: draft ? 1 : 0,
       recentStories,
       hasRecentStories: recentStories.length > 0,
-      entryAnimation: "",
     });
   },
 
   startInterview() {
     wx.navigateTo({ url: "/pages/interview/interview" });
-  },
-
-  openBook() {
-    this.animateEntry("personal", "/pages/book/book");
-  },
-
-  openMemoryHome() {
-    this.animateEntry("family", "/pages/room/room");
-  },
-
-  animateEntry(
-    entryAnimation: "personal" | "family",
-    url: "/pages/book/book" | "/pages/room/room",
-  ) {
-    if (this.data.entryAnimation) return;
-
-    this.setData({ entryAnimation });
-    setTimeout(() => {
-      wx.navigateTo({ url });
-      this.setData({ entryAnimation: "" });
-    }, 620);
   },
 
   continueStory(event: {

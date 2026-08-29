@@ -1,0 +1,115 @@
+:host {
+  display: block;
+}
+
+.story-switcher {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  height: calc(196rpx + env(safe-area-inset-bottom));
+  padding: 0 28rpx env(safe-area-inset-bottom);
+  border-top: 2rpx solid rgba(129, 117, 93, 0.12);
+  background: rgba(251, 248, 241, 0.96);
+  box-shadow: 0 -14rpx 34rpx rgba(65, 70, 65, 0.05);
+  overflow: hidden;
+}
+
+.switcher-branch {
+  position: absolute;
+  top: 14rpx;
+  right: 18rpx;
+  left: 18rpx;
+  width: calc(100% - 36rpx);
+  height: 86rpx;
+  opacity: 0.52;
+  pointer-events: none;
+}
+
+.story-tab {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  height: 196rpx;
+  padding-top: 96rpx;
+  background: transparent;
+  color: #2a2e2b;
+  text-align: center;
+  overflow: visible;
+}
+
+.story-tab:active .tab-art {
+  transform: translateY(-5rpx) scale(1.035);
+}
+
+.story-tab-current::after {
+  position: absolute;
+  right: 80rpx;
+  bottom: 12rpx;
+  left: 80rpx;
+  height: 3rpx;
+  border-radius: 3rpx;
+  background: #4f7f6b;
+  content: "";
+}
+
+.tab-art {
+  position: absolute;
+  top: -2rpx;
+  left: 50%;
+  display: block;
+  width: 154rpx;
+  height: 96rpx;
+  margin-left: -77rpx;
+  transition: transform 220ms ease;
+}
+
+.tab-art-chat {
+  top: -4rpx;
+  width: 112rpx;
+  height: 100rpx;
+  margin-left: -56rpx;
+  animation: logo-breathe 4.2s ease-in-out infinite;
+}
+
+.tab-chat-title {
+  color: #4f7f6b;
+}
+
+.tab-title {
+  font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
+  font-size: 29rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 2rpx;
+}
+
+.tab-note {
+  margin-top: 3rpx;
+  color: #8a8e88;
+  font-size: 21rpx;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.story-tab-current .tab-title,
+.story-tab-current .tab-note {
+  color: #4f7f6b;
+}
+
+.story-tab-current .tab-art {
+  animation: current-bird 3.8s ease-in-out infinite;
+}
+
+@keyframes current-bird {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-4rpx) scale(1.018); }
+}
+
+@keyframes logo-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3rpx) scale(1.025); }
+}

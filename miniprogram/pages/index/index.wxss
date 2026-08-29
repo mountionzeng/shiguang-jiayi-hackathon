@@ -1,9 +1,9 @@
-/* 首页：当代书籍装帧 + 树枝双入口。 */
+/* 首页：当代书籍装帧；三入口固定在底部切换栏。 */
 
 .home {
   position: relative;
   min-height: 100vh;
-  padding: 36rpx 48rpx calc(72rpx + env(safe-area-inset-bottom));
+  padding: 36rpx 48rpx calc(230rpx + env(safe-area-inset-bottom));
   background: #fbf8f1;
 }
 

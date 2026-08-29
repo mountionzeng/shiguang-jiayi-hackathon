@@ -1,4 +1,4 @@
-<view class="shell page-enter">
+<view class="shell shell-with-bar page-enter">
 
   <view class="branch-bar">
     <text class="branch-title serif">记忆之家</text>
@@ -85,6 +85,8 @@
     真实的微信邀请和跨设备权限还没有接入，当前亲友与阅读范围是本地演示数据。
   </view>
 </view>
+
+<story-switcher current="family"></story-switcher>
 
 <!-- 详情面板 -->
 <view class="sheet-mask" wx:if="{{detail}}" bindtap="closeDetail"></view>

@@ -235,17 +235,9 @@ test("a new conversation chooses a telling style before chat", async (context) =
   assert.equal(interview.data.stage, "chat");
 });
 
-test("home opens both content branches and each branch exits back home", async (context) => {
+test("each content branch exits back home", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
-
-  const home = instantiate(await pageDefinition("index"));
-  withImmediateTimeouts(() => callPage(home, "openBook"));
-  withImmediateTimeouts(() => callPage(home, "openMemoryHome"));
-  assert.deepEqual(storage.navigations, [
-    "/pages/book/book",
-    "/pages/room/room",
-  ]);
 
   const book = instantiate(await pageDefinition("book"));
   callPage(book, "goHome");

@@ -1,4 +1,4 @@
-<view class="home page-enter entry-{{entryAnimation}}">
+<view class="home page-enter">
   <image
     class="home-paper"
     src="/assets/illustrations/home-paper.jpg"
@@ -39,73 +39,6 @@
     </view>
   </view>
 
-  <view class="branch-scene">
-    <image
-      class="memory-branch"
-      src="/assets/illustrations/memory-branch.png"
-      mode="aspectFit"
-      aria-hidden="true"
-    ></image>
-
-    <button
-      class="branch-choice branch-choice-personal"
-      bindtap="openBook"
-      hover-class="none"
-      aria-label="进入人生之书"
-    >
-      <image
-        class="bird-art bird-art-personal"
-        src="/assets/illustrations/memory-bird.png"
-        mode="aspectFit"
-        aria-hidden="true"
-      ></image>
-      <view class="branch-copy">
-        <view class="branch-label typewriter">人生之书</view>
-        <view class="branch-note">我的故事</view>
-      </view>
-    </button>
-
-    <button
-      class="branch-choice branch-choice-family"
-      bindtap="openMemoryHome"
-      hover-class="none"
-      aria-label="进入记忆之家"
-    >
-      <view class="family-flock">
-        <image
-          class="family-nest"
-          src="/assets/illustrations/memory-nest.png"
-          mode="aspectFit"
-          aria-hidden="true"
-        ></image>
-        <view class="family-bird bird-family-one">
-          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
-        </view>
-        <view class="family-bird bird-family-two">
-          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
-        </view>
-        <view class="family-bird bird-family-three">
-          <image class="family-bird-art" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
-        </view>
-      </view>
-      <view class="branch-copy">
-        <view class="branch-label typewriter">记忆之家</view>
-        <view class="branch-note">我和亲友</view>
-      </view>
-    </button>
-  </view>
-
-  <button
-    class="start-chat"
-    bindtap="startInterview"
-    hover-class="start-chat-pressed"
-    hover-stay-time="110"
-    aria-label="开始聊聊，记录此刻的故事"
-  >
-    <text class="start-chat-plus">＋</text>
-    <text class="typewriter">开始聊聊</text>
-  </button>
-
   <view class="recent" wx:if="{{hasRecentStories}}">
     <view class="recent-head">
       <text class="recent-title serif">最近聊过</text>
@@ -134,3 +67,5 @@
     <view class="home-empty-note">不用想好从哪里开始，先说一句就好。</view>
   </view>
 </view>
+
+<story-switcher current="home"></story-switcher>
