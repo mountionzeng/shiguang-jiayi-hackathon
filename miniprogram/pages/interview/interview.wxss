@@ -30,6 +30,19 @@
   padding-right: 16rpx;
 }
 
+.who-title {
+  display: flex;
+  align-items: center;
+}
+
+.who-ai-avatar {
+  flex-shrink: 0;
+  width: 52rpx;
+  height: 52rpx;
+  margin-right: 12rpx;
+  border-radius: 50%;
+}
+
 .who-name {
   font-size: 30rpx;
   font-weight: 600;
@@ -80,9 +93,10 @@
 .ask-card {
   margin: 0 0 28rpx 0;
   padding: 22rpx 24rpx;
+  border: 2rpx solid var(--line);
   border-left: 6rpx solid var(--apricot);
-  border-radius: 0 22rpx 22rpx 0;
-  background: var(--apricot-soft);
+  border-radius: 4rpx 24rpx 24rpx 24rpx;
+  background: var(--paper-card);
 }
 
 .ask-label {
@@ -100,17 +114,12 @@
 }
 
 .ai-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   flex-shrink: 0;
-  width: 56rpx;
-  height: 56rpx;
+  width: 64rpx;
+  height: 64rpx;
   margin-right: 16rpx;
-  border-radius: 28rpx;
-  background: var(--jade);
-  color: #fbfdfc;
-  font-size: 26rpx;
+  border-radius: 50%;
 }
 
 .bubble {
@@ -220,7 +229,7 @@
   width: 96rpx;
   height: 96rpx;
   border-radius: 48rpx;
-  background: var(--coral);
+  background: var(--jade);
 }
 
 .send-btn:active {
@@ -267,8 +276,9 @@
   min-height: 76rpx;
   padding: 0 26rpx;
   border-radius: 22rpx;
-  border: 2rpx solid var(--coral);
-  color: var(--coral);
+  border: 2rpx solid var(--apricot);
+  background: var(--apricot-soft);
+  color: var(--apricot);
   font-size: 28rpx;
   font-weight: 600;
 }

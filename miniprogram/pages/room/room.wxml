@@ -1,6 +1,7 @@
 <view class="shell page-enter">
 
   <view class="branch-bar">
+    <text class="branch-title serif">记忆之家</text>
     <button class="branch-exit" bindtap="goHome">退出</button>
   </view>
 

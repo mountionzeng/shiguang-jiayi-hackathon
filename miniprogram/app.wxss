@@ -1,33 +1,33 @@
 /**
- * 拾光 · 全局视觉变量与基础组件
- * 视觉方向：明亮国画、朦胧彩铅、点彩颗粒、大面积留白。
+ * 拾光Ai · 全局视觉变量与基础组件
+ * 视觉方向：当代中文书籍装帧、象牙纸、朦胧彩铅与克制留白。
  * 约束：肌理只服务封面与氛围区；正文、事实原文和操作区必须保持高对比与大触控。
  */
 page {
   /* 纸与墨 */
-  --paper: #fbf8f2;
-  --paper-sunk: #f4efe4;
-  --paper-card: #ffffff;
-  --ink: #1f3a34;
-  --ink-soft: #4c6159;
-  --ink-faint: #7c8b84;
-  --line: #e5dfd2;
+  --paper: #fbf8f1;
+  --paper-sunk: #f5f2e9;
+  --paper-card: #fffefb;
+  --ink: #2a2e2b;
+  --ink-soft: #6a6e68;
+  --ink-faint: #8a8e88;
+  --line: #ede7da;
 
   /* 玉石绿：已确认、完成、品牌 */
-  --jade: #176b54;
-  --jade-soft: #e3f0ea;
+  --jade: #4f7f6b;
+  --jade-soft: #eaf1ed;
 
   /* 湖水蓝：封面氛围与家庭共享 */
-  --lake: #2f6e8f;
-  --lake-soft: #e2edf3;
+  --lake: #4a6e88;
+  --lake-soft: #e8eef2;
 
   /* 杏黄：今日问题、提示与温暖记忆 */
-  --apricot: #a56f14;
-  --apricot-soft: #fbeecd;
+  --apricot: #b08239;
+  --apricot-soft: #f7f0e4;
 
   /* 珊瑚红：主要行动与提醒 */
-  --coral: #c7452e;
-  --coral-soft: #fae3dd;
+  --coral: #b4503c;
+  --coral-soft: #f8e7e2;
 
   min-height: 100%;
   background: var(--paper);
@@ -68,7 +68,7 @@ button::after {
 
 .shell {
   min-height: 100vh;
-  padding: 24rpx 32rpx 48rpx;
+  padding: 24rpx 48rpx 56rpx;
 }
 
 .shell-with-bar {
@@ -79,14 +79,22 @@ button::after {
 .branch-bar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  min-height: 54rpx;
-  margin-bottom: 18rpx;
+  justify-content: space-between;
+  min-height: 88rpx;
+  margin-bottom: 16rpx;
+}
+
+.branch-title {
+  color: var(--ink);
+  font-size: 38rpx;
+  font-weight: 500;
+  letter-spacing: 3rpx;
 }
 
 .branch-exit {
-  min-height: 54rpx;
-  padding: 0 4rpx 0 20rpx;
+  min-width: 88rpx;
+  min-height: 88rpx;
+  padding: 0 0 0 20rpx;
   background: transparent;
   color: var(--jade);
   font-size: 26rpx;
@@ -142,11 +150,9 @@ button::after {
   overflow: hidden;
   background-color: var(--paper-card);
   background-image:
-    radial-gradient(circle at 14% 16%, rgba(47, 110, 143, 0.30), transparent 44%),
-    radial-gradient(circle at 88% 6%, rgba(23, 107, 84, 0.26), transparent 40%),
-    radial-gradient(circle at 74% 94%, rgba(199, 69, 46, 0.20), transparent 46%),
-    radial-gradient(circle at 34% 78%, rgba(165, 111, 20, 0.22), transparent 48%),
-    radial-gradient(circle at 58% 44%, rgba(255, 255, 255, 0.55), transparent 58%);
+    radial-gradient(circle at 16% 18%, rgba(79, 127, 107, 0.22), transparent 44%),
+    radial-gradient(circle at 86% 20%, rgba(74, 110, 136, 0.18), transparent 42%),
+    radial-gradient(circle at 70% 90%, rgba(201, 160, 94, 0.14), transparent 44%);
 }
 
 .wash::after {
@@ -157,22 +163,22 @@ button::after {
   bottom: 0;
   left: 0;
   pointer-events: none;
-  background-image: radial-gradient(rgba(31, 58, 52, 0.085) 1.5rpx, transparent 1.5rpx);
-  background-size: 11rpx 11rpx;
+  background-image: radial-gradient(rgba(42, 46, 43, 0.045) 1rpx, transparent 1rpx);
+  background-size: 12rpx 12rpx;
 }
 
 /* ---------- 卡片 ---------- */
 
 .card {
   padding: 32rpx;
-  border-radius: 28rpx;
+  border-radius: 24rpx;
   background: var(--paper-card);
   border: 2rpx solid var(--line);
 }
 
 .card-flat {
   padding: 32rpx;
-  border-radius: 28rpx;
+  border-radius: 24rpx;
   background: var(--paper-sunk);
 }
 
@@ -184,13 +190,13 @@ button::after {
   justify-content: center;
   min-height: 96rpx;
   padding: 0 32rpx;
-  border-radius: 26rpx;
-  font-size: 34rpx;
-  font-weight: 600;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  font-weight: 500;
 }
 
 .btn-primary {
-  background: var(--coral);
+  background: var(--jade);
   color: #fffdfb;
 }
 

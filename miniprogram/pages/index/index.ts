@@ -24,6 +24,19 @@ function formatDate(iso: string): string {
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
+function homeGreeting(now: Date = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 5) return "夜深了";
+  if (hour < 11) return "早安";
+  if (hour < 14) return "午安";
+  if (hour < 18) return "下午好";
+  return "晚上好";
+}
+
+function homeDate(now: Date = new Date()): string {
+  return `${now.getMonth() + 1}月${now.getDate()}日`;
+}
+
 /**
  * 首页只展示最近聊过的故事，不承担书稿、权限或成员管理。
  * 同名故事聚合成一项；未命名片段聚合成一个可以继续聊的入口。
@@ -66,6 +79,9 @@ function recentStoriesFor(
 Page({
   data: {
     memberName: "",
+    memberInitial: "",
+    greeting: "",
+    todayLabel: "",
     bookTitle: "",
     coverSubtitle: "",
     fragmentCount: 0,
@@ -73,6 +89,7 @@ Page({
     chapterCount: 0,
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
+    entryAnimation: "" as "" | "personal" | "family",
   },
 
   onShow() {
@@ -90,6 +107,9 @@ Page({
 
     this.setData({
       memberName: member.name,
+      memberInitial: member.name.slice(0, 1),
+      greeting: homeGreeting(),
+      todayLabel: homeDate(),
       bookTitle: `${member.name}的人生之书`,
       coverSubtitle: draft?.title ?? "还没有整理成章节",
       fragmentCount: personal.filter((memory) => !contributionStoryTitle(memory)).length,
@@ -97,6 +117,7 @@ Page({
       chapterCount: draft ? 1 : 0,
       recentStories,
       hasRecentStories: recentStories.length > 0,
+      entryAnimation: "",
     });
   },
 
@@ -105,11 +126,24 @@ Page({
   },
 
   openBook() {
-    wx.navigateTo({ url: "/pages/book/book" });
+    this.animateEntry("personal", "/pages/book/book");
   },
 
   openMemoryHome() {
-    wx.navigateTo({ url: "/pages/room/room" });
+    this.animateEntry("family", "/pages/room/room");
+  },
+
+  animateEntry(
+    entryAnimation: "personal" | "family",
+    url: "/pages/book/book" | "/pages/room/room",
+  ) {
+    if (this.data.entryAnimation) return;
+
+    this.setData({ entryAnimation });
+    setTimeout(() => {
+      wx.navigateTo({ url });
+      this.setData({ entryAnimation: "" });
+    }, 620);
   },
 
   continueStory(event: {

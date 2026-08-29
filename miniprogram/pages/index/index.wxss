@@ -1,332 +1,502 @@
-/* 首页只负责两件事：开始聊天，继续最近的故事。 */
+/* 首页：当代书籍装帧 + 树枝双入口。 */
 
 .home {
+  position: relative;
   min-height: 100vh;
-  padding: 38rpx 40rpx calc(60rpx + env(safe-area-inset-bottom));
+  padding: 36rpx 48rpx calc(72rpx + env(safe-area-inset-bottom));
+  background: #fbf8f1;
 }
 
-.home-head {
-  padding-top: 4rpx;
+.home-paper {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.72;
+  pointer-events: none;
 }
 
-.topline {
-  display: flex;
-  align-items: center;
+.home > view,
+.home > button {
+  position: relative;
+  z-index: 1;
 }
 
+.topline,
 .wordmark {
   display: flex;
   align-items: center;
 }
 
+.topline {
+  justify-content: space-between;
+  min-height: 72rpx;
+}
+
 .wordmark-icon {
-  width: 42rpx;
-  height: 42rpx;
-  margin-right: 12rpx;
+  width: 46rpx;
+  height: 46rpx;
+  margin-right: 14rpx;
 }
 
 .wordmark-text {
   color: var(--ink);
-  font-size: 32rpx;
-  font-weight: 600;
-  letter-spacing: 7rpx;
+  font-size: 36rpx;
+  font-weight: 500;
+  letter-spacing: 5rpx;
 }
 
-.home-cover {
-  margin-top: 34rpx;
-  padding: 38rpx 34rpx 24rpx;
-  border: 2rpx solid var(--line);
-  border-radius: 34rpx;
-}
-
-.home-cover-label,
-.home-cover-title,
-.home-cover-sub,
-.home-cover-stats,
-.home-cover-open {
-  position: relative;
-  z-index: 1;
-}
-
-.home-cover-label {
-  color: var(--lake);
-  font-size: 23rpx;
-  letter-spacing: 3rpx;
-}
-
-.home-cover-title {
-  margin-top: 14rpx;
-  color: var(--ink);
-  font-size: 52rpx;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.home-cover-sub {
-  margin-top: 8rpx;
-  color: var(--ink-soft);
-  font-size: 27rpx;
-}
-
-.home-cover-stats {
+.member-avatar {
   display: flex;
-  align-items: stretch;
-  margin-top: 30rpx;
-  padding-top: 14rpx;
-  border-top: 2rpx solid rgba(31, 58, 52, 0.12);
-}
-
-.home-cover-stat {
-  display: flex;
-  flex: 1;
   align-items: center;
-  flex-direction: column;
   justify-content: center;
-  min-height: 94rpx;
-}
-
-.home-cover-num {
-  color: var(--ink);
-  font-size: 42rpx;
+  width: 68rpx;
+  height: 68rpx;
+  border: 2rpx solid rgba(79, 127, 107, 0.24);
+  border-radius: 50%;
+  background: rgba(229, 239, 233, 0.82);
+  color: var(--jade);
+  font-size: 28rpx;
   font-weight: 600;
-  line-height: 1.2;
+  box-shadow: 0 8rpx 20rpx rgba(79, 127, 107, 0.08);
 }
 
-.home-cover-stat-label {
-  margin-top: 3rpx;
-  color: var(--ink-soft);
-  font-size: 22rpx;
+.greeting {
+  margin-top: 30rpx;
+  color: var(--ink);
+  font-size: 58rpx;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 2rpx;
 }
 
-.home-cover-line {
-  width: 2rpx;
-  margin: 22rpx 0;
-  background: rgba(31, 58, 52, 0.12);
+.today {
+  margin-top: 6rpx;
+  color: var(--ink-faint);
+  font-size: 26rpx;
+  letter-spacing: 2rpx;
 }
 
-.branch-buttons {
+/* ---- 可触碰的书封 ---- */
+
+.book-stage {
   display: flex;
-  gap: 16rpx;
-  margin-top: 18rpx;
+  justify-content: center;
+  margin-top: 28rpx;
 }
 
-.branch-button {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  min-width: 0;
-  min-height: 142rpx;
-  padding: 20rpx 18rpx;
-  border: 2rpx solid var(--line);
-  border-radius: 26rpx;
-  background: var(--paper-card);
-  text-align: left;
-}
-
-.branch-button:active {
-  background: var(--paper-sunk);
-  transform: scale(0.985);
-}
-
-.branch-motif {
+.book {
   position: relative;
-  flex-shrink: 0;
-  width: 72rpx;
-  height: 66rpx;
-  margin-right: 14rpx;
+  width: 370rpx;
+  height: 555rpx;
 }
 
-.book-page {
+.book:active {
+  opacity: 0.86;
+  transform: translateY(2rpx) scale(0.99);
+}
+
+.ancient-book-art {
   position: absolute;
-  bottom: 8rpx;
-  width: 31rpx;
-  height: 43rpx;
-  border: 3rpx solid var(--jade);
-  background: var(--jade-soft);
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.book-page-left {
-  left: 5rpx;
-  border-right: 0;
-  border-radius: 5rpx 0 3rpx 12rpx;
-  transform: skewY(7deg);
-}
-
-.book-page-right {
-  right: 5rpx;
-  border-left: 0;
-  border-radius: 0 5rpx 12rpx 3rpx;
-  transform: skewY(-7deg);
-}
-
-.book-spine {
+.book-cover-copy {
   position: absolute;
-  bottom: 8rpx;
-  left: 34rpx;
-  width: 3rpx;
-  height: 45rpx;
-  border-radius: 2rpx;
-  background: var(--jade);
-}
-
-.book-sun {
-  position: absolute;
-  top: 3rpx;
-  right: 4rpx;
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  background: var(--apricot);
-}
-
-.home-roof {
-  position: absolute;
-  top: 8rpx;
-  left: 18rpx;
-  width: 36rpx;
-  height: 36rpx;
-  border-top: 3rpx solid var(--lake);
-  border-left: 3rpx solid var(--lake);
-  border-radius: 4rpx 0 0;
-  transform: rotate(45deg);
-}
-
-.home-body {
-  position: absolute;
-  bottom: 7rpx;
-  left: 13rpx;
-  width: 46rpx;
-  height: 34rpx;
-  border-right: 3rpx solid var(--lake);
-  border-bottom: 3rpx solid var(--lake);
-  border-left: 3rpx solid var(--lake);
-  border-radius: 0 0 9rpx 9rpx;
-  background: var(--lake-soft);
-}
-
-.home-person {
-  position: absolute;
-  bottom: 19rpx;
-  z-index: 1;
-  width: 11rpx;
-  height: 11rpx;
-  border-radius: 50%;
-}
-
-.home-person::after {
-  position: absolute;
-  top: 11rpx;
-  left: -2rpx;
-  width: 15rpx;
-  height: 12rpx;
-  border-radius: 8rpx 8rpx 3rpx 3rpx;
-  content: "";
-  background: inherit;
-}
-
-.home-person-one {
-  left: 23rpx;
-  background: var(--jade);
-}
-
-.home-person-two {
-  right: 22rpx;
-  background: var(--lake);
-}
-
-.branch-copy {
+  top: 0;
+  right: 36rpx;
+  bottom: 88rpx;
+  left: 74rpx;
   display: flex;
-  flex: 1;
   flex-direction: column;
-  min-width: 0;
+  justify-content: space-between;
+  padding: 44rpx 8rpx 0;
+  pointer-events: none;
 }
 
-.branch-name {
+.book-kicker {
+  align-self: flex-end;
+  color: rgba(79, 127, 107, 0.68);
+  font-size: 17rpx;
+  letter-spacing: 8rpx;
+}
+
+.book-copy {
+  position: relative;
+  z-index: 1;
+  padding: 0 2rpx 2rpx;
+}
+
+.book-title {
   color: var(--ink);
-  font-size: 29rpx;
-  font-weight: 600;
+  font-size: 33rpx;
+  font-weight: 500;
+  line-height: 1.34;
+  letter-spacing: 1rpx;
+}
+
+.book-subtitle {
+  margin-top: 6rpx;
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: 20rpx;
+  line-height: 1.5;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.branch-note {
-  margin-top: 3rpx;
+.book-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 15rpx;
+  padding-top: 13rpx;
+  border-top: 2rpx solid rgba(129, 117, 93, 0.18);
   color: var(--ink-faint);
+  font-size: 17rpx;
+}
+
+.book-stats > text {
+  white-space: nowrap;
+}
+
+.book-stat-num {
+  color: var(--jade);
   font-size: 21rpx;
 }
 
+/* ---- 树枝与双入口 ---- */
+
+.branch-scene {
+  position: relative;
+  height: 420rpx;
+  margin: 4rpx -12rpx 0;
+}
+
+.memory-branch {
+  position: absolute;
+  top: 34rpx;
+  left: -26rpx;
+  z-index: 0;
+  width: 724rpx;
+  height: 242rpx;
+  opacity: 0.82;
+  transform-origin: center center;
+  animation: branch-reveal 900ms ease-out both;
+}
+
+.branch-choice {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 50%;
+  padding-bottom: 8rpx;
+  background: transparent;
+  transition: opacity 180ms ease;
+}
+
+.branch-choice-personal {
+  left: 0;
+}
+
+.branch-choice-family {
+  right: 0;
+}
+
+.branch-choice:active {
+  opacity: 0.66;
+  transform: scale(0.985);
+}
+
+.branch-choice[disabled] {
+  opacity: 1;
+}
+
+.branch-label {
+  color: var(--ink);
+  font-size: 36rpx;
+  font-weight: 500;
+  letter-spacing: 3rpx;
+}
+
+.branch-note {
+  margin-top: 6rpx;
+  color: var(--ink-faint);
+  font-size: 25rpx;
+  letter-spacing: 1rpx;
+}
+
+.bird-art {
+  position: absolute;
+  display: block;
+  transform-origin: 50% 70%;
+  will-change: opacity, transform;
+}
+
+.bird-art-personal {
+  top: 70rpx;
+  left: 72rpx;
+  width: 178rpx;
+  height: 119rpx;
+  animation:
+    bird-arrive 820ms cubic-bezier(0.2, 0.72, 0.3, 1) 360ms both,
+    bird-idle 5.2s ease-in-out 1.6s infinite;
+}
+
+.family-flock {
+  position: absolute;
+  top: 60rpx;
+  left: 8rpx;
+  width: 316rpx;
+  height: 184rpx;
+}
+
+.family-nest {
+  position: absolute;
+  top: 56rpx;
+  left: 48rpx;
+  z-index: 0;
+  display: block;
+  width: 224rpx;
+  height: 149rpx;
+  opacity: 0.78;
+}
+
+.family-bird {
+  position: absolute;
+  z-index: 1;
+  transform-origin: 50% 72%;
+  will-change: opacity, transform;
+}
+
+.family-bird-art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.bird-family-one {
+  top: 38rpx;
+  left: 0;
+  width: 132rpx;
+  height: 88rpx;
+  animation:
+    bird-arrive 700ms cubic-bezier(0.2, 0.72, 0.3, 1) 680ms both,
+    family-watch 4.2s ease-in-out 1.7s infinite;
+}
+
+.bird-family-two {
+  top: 92rpx;
+  left: 116rpx;
+  width: 76rpx;
+  height: 51rpx;
+  animation:
+    bird-arrive 700ms cubic-bezier(0.2, 0.72, 0.3, 1) 820ms both,
+    family-chirp 4.2s ease-in-out 1.9s infinite;
+}
+
+.bird-family-three {
+  top: 58rpx;
+  left: 184rpx;
+  width: 116rpx;
+  height: 77rpx;
+  animation:
+    bird-arrive 700ms cubic-bezier(0.2, 0.72, 0.3, 1) 960ms both,
+    family-answer 4.2s ease-in-out 1.9s infinite;
+}
+
+.bird-family-three .family-bird-art {
+  transform: scaleX(-1);
+}
+
+.entry-personal .bird-art-personal {
+  animation: personal-flight 620ms cubic-bezier(0.42, 0, 0.18, 1) both;
+}
+
+.entry-personal .branch-choice-family,
+.entry-family .branch-choice-personal {
+  opacity: 0.34;
+}
+
+.entry-personal .ancient-book-art {
+  animation: book-receive 620ms ease-out both;
+}
+
+.entry-family .memory-branch {
+  animation: branch-answer 620ms ease-in-out both;
+}
+
+.entry-family .bird-family-one {
+  animation: family-flight-one 620ms cubic-bezier(0.42, 0, 0.18, 1) both;
+}
+
+.entry-family .bird-family-two {
+  animation: family-flight-two 620ms cubic-bezier(0.42, 0, 0.18, 1) both;
+}
+
+.entry-family .bird-family-three {
+  animation: family-flight-three 620ms cubic-bezier(0.42, 0, 0.18, 1) both;
+}
+
+@keyframes branch-reveal {
+  from { opacity: 0; transform: translateY(12rpx) scaleX(0.94); }
+  to { opacity: 0.82; transform: translateY(0) scaleX(1); }
+}
+
+@keyframes bird-arrive {
+  0% { opacity: 0; transform: translate(18rpx, -34rpx) rotate(-7deg) scale(0.88); }
+  68% { opacity: 1; transform: translate(0, 5rpx) rotate(2deg) scale(1.02); }
+  100% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+}
+
+@keyframes bird-idle {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-5rpx) rotate(-1deg); }
+}
+
+@keyframes family-watch {
+  0%, 30%, 100% { transform: translate(0, 0) rotate(0); }
+  43%, 57% { transform: translate(3rpx, 2rpx) rotate(2deg); }
+}
+
+@keyframes family-chirp {
+  0%, 30%, 68%, 100% { transform: translate(0, 0) rotate(0); }
+  40% { transform: translate(8rpx, -8rpx) rotate(-4deg); }
+  48% { transform: translate(12rpx, -2rpx) rotate(2deg); }
+  57% { transform: translate(8rpx, 0) rotate(0); }
+}
+
+@keyframes family-answer {
+  0%, 32%, 68%, 100% { transform: translate(0, 0) rotate(0); }
+  43%, 57% { transform: translate(-7rpx, 1rpx) rotate(-3deg); }
+}
+
+@keyframes personal-flight {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+  28% { opacity: 1; transform: translate(-8rpx, -12rpx) rotate(-8deg) scale(1.05); }
+  100% { opacity: 0; transform: translate(152rpx, -312rpx) rotate(-18deg) scale(0.42); }
+}
+
+@keyframes book-receive {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  56% { opacity: 0.72; transform: scale(1.08); }
+}
+
+@keyframes branch-answer {
+  0%, 100% { opacity: 0.82; transform: rotate(0) scaleX(1); }
+  46% { opacity: 1; transform: rotate(-1deg) scaleX(1.012); }
+}
+
+@keyframes family-flight-one {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+  36% { opacity: 1; transform: translate(74rpx, -28rpx) rotate(-8deg) scale(1.02); }
+  100% { opacity: 0; transform: translate(206rpx, -170rpx) rotate(-16deg) scale(0.52); }
+}
+
+@keyframes family-flight-two {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+  36% { opacity: 1; transform: translate(-4rpx, -46rpx) rotate(-5deg) scale(1.03); }
+  100% { opacity: 0; transform: translate(108rpx, -190rpx) rotate(-14deg) scale(0.5); }
+}
+
+@keyframes family-flight-three {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+  36% { opacity: 1; transform: translate(-72rpx, -24rpx) rotate(-7deg) scale(1.02); }
+  100% { opacity: 0; transform: translate(18rpx, -172rpx) rotate(-17deg) scale(0.48); }
+}
+
+/* ---- 继续说与最近故事 ---- */
+
 .start-chat {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 88rpx;
-  margin-top: 24rpx;
-  padding: 0 28rpx;
-  border: 2rpx solid rgba(23, 107, 84, 0.34);
-  border-radius: 44rpx;
-  background: transparent;
-  color: var(--jade);
-  font-size: 29rpx;
-  font-weight: 600;
+  width: 100%;
+  min-height: 96rpx;
+  margin-top: 26rpx;
+  border-radius: 48rpx;
+  background: var(--jade);
+  color: #fbf8f1;
+  font-size: 30rpx;
+  font-weight: 500;
+  box-shadow: 0 16rpx 38rpx rgba(79, 127, 107, 0.16);
 }
 
 .start-chat:active {
-  background: var(--jade-soft);
+  opacity: 0.84;
   transform: scale(0.985);
 }
 
 .start-chat-plus {
-  margin-right: 8rpx;
-  font-size: 34rpx;
-  font-weight: 400;
+  margin-right: 10rpx;
+  font-size: 38rpx;
+  font-weight: 300;
 }
 
 .recent {
-  margin-top: 64rpx;
+  margin-top: 72rpx;
 }
 
 .recent-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding-bottom: 16rpx;
+  padding-bottom: 18rpx;
   border-bottom: 2rpx solid var(--line);
 }
 
 .recent-title {
   color: var(--ink);
-  font-size: 32rpx;
-  font-weight: 600;
+  font-size: 34rpx;
+  font-weight: 500;
 }
 
 .recent-note {
   color: var(--ink-faint);
-  font-size: 24rpx;
+  font-size: 23rpx;
 }
 
 .story-row {
   display: flex;
   align-items: center;
-  min-height: 214rpx;
-  padding: 30rpx 0;
+  min-height: 196rpx;
+  padding: 28rpx 0;
   border-bottom: 2rpx solid var(--line);
 }
 
 .story-row:active {
-  opacity: 0.66;
+  opacity: 0.64;
 }
 
 .story-copy {
   flex: 1;
   min-width: 0;
-  padding-right: 28rpx;
+  padding-right: 24rpx;
 }
 
 .story-title {
   overflow: hidden;
   color: var(--ink);
-  font-size: 35rpx;
-  font-weight: 600;
-  line-height: 1.45;
+  font-size: 32rpx;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -334,26 +504,26 @@
 .story-excerpt {
   display: -webkit-box;
   overflow: hidden;
-  margin-top: 10rpx;
+  margin-top: 8rpx;
   color: var(--ink-soft);
-  font-size: 29rpx;
+  font-size: 27rpx;
   line-height: 1.65;
+  word-break: break-word;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 .story-meta {
-  margin-top: 10rpx;
+  margin-top: 8rpx;
   color: var(--ink-faint);
-  font-size: 23rpx;
+  font-size: 22rpx;
 }
 
 .story-continue {
   flex-shrink: 0;
-  padding: 14rpx 0 14rpx 18rpx;
   color: var(--jade);
   font-size: 27rpx;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .story-continue::after {
@@ -361,19 +531,19 @@
 }
 
 .home-empty {
-  margin-top: 88rpx;
-  padding-top: 30rpx;
+  margin-top: 64rpx;
+  padding: 36rpx 0;
   border-top: 2rpx solid var(--line);
 }
 
 .home-empty-title {
   color: var(--ink);
-  font-size: 36rpx;
-  font-weight: 600;
+  font-size: 34rpx;
+  font-weight: 500;
 }
 
 .home-empty-note {
-  margin-top: 10rpx;
-  color: var(--ink-soft);
-  font-size: 28rpx;
+  margin-top: 8rpx;
+  color: var(--ink-faint);
+  font-size: 26rpx;
 }

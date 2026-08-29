@@ -221,8 +221,8 @@ test("home opens both content branches and each branch exits back home", async (
   context.after(storage.restore);
 
   const home = instantiate(await pageDefinition("index"));
-  callPage(home, "openBook");
-  callPage(home, "openMemoryHome");
+  withImmediateTimeouts(() => callPage(home, "openBook"));
+  withImmediateTimeouts(() => callPage(home, "openMemoryHome"));
   assert.deepEqual(storage.navigations, [
     "/pages/book/book",
     "/pages/room/room",

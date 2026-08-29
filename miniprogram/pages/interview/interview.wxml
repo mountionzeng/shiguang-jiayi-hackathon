@@ -2,8 +2,16 @@
 
   <view class="who-bar">
     <view class="who-copy">
-      <text class="who-name">{{memberName}} · {{memberRelation}}</text>
-      <text class="who-note">AI 记忆访谈 · 先讲，不急着分类</text>
+      <view class="who-title">
+        <image
+          class="who-ai-avatar"
+          src="/assets/illustrations/xiaoyi-avatar.png"
+          mode="aspectFit"
+          aria-label="小忆"
+        ></image>
+        <text class="who-name">和小忆聊聊</text>
+      </view>
+      <text class="who-note">{{memberName}} · {{memberRelation}} · 先讲，不急着分类</text>
     </view>
     <text class="tag tag-apricot">
       <text class="tag-mark">聊</text>正在倾听
@@ -35,13 +43,23 @@
           </view>
 
           <view class="row row-ai" wx:else id="{{item.id}}">
-            <view class="ai-mark serif">问</view>
+            <image
+              class="ai-mark"
+              src="/assets/illustrations/xiaoyi-avatar.png"
+              mode="aspectFit"
+              aria-label="小忆"
+            ></image>
             <view class="bubble bubble-ai serif">{{item.text}}</view>
           </view>
         </block>
 
         <view class="row row-ai" wx:if="{{asking}}">
-          <view class="ai-mark serif">问</view>
+          <image
+            class="ai-mark"
+            src="/assets/illustrations/xiaoyi-avatar.png"
+            mode="aspectFit"
+            aria-label="小忆"
+          ></image>
           <view class="bubble bubble-ai typing">
             <text class="dot"></text><text class="dot"></text><text class="dot"></text>
           </view>
