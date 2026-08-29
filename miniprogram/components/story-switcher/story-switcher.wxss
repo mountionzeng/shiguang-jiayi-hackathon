@@ -35,6 +35,8 @@
   height: 320rpx;
   opacity: 0.24;
   pointer-events: none;
+  transform: scale(2);
+  transform-origin: 50% 100%;
 }
 
 .story-tab {
