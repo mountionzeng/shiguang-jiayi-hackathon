@@ -50,8 +50,8 @@
     <button
       class="branch-choice branch-choice-personal"
       bindtap="openBook"
+      hover-class="none"
       aria-label="进入人生之书"
-      disabled="{{entryAnimation !== ''}}"
     >
       <image
         class="bird-art bird-art-personal"
@@ -68,8 +68,8 @@
     <button
       class="branch-choice branch-choice-family"
       bindtap="openMemoryHome"
+      hover-class="none"
       aria-label="进入记忆之家"
-      disabled="{{entryAnimation !== ''}}"
     >
       <view class="family-flock">
         <image
