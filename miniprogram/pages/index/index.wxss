@@ -3,7 +3,7 @@
 .home {
   position: relative;
   min-height: 100vh;
-  padding: 36rpx 48rpx calc(230rpx + env(safe-area-inset-bottom));
+  padding: 36rpx 48rpx calc(276rpx + env(safe-area-inset-bottom));
   background: #fbf8f1;
 }
 
@@ -26,28 +26,11 @@
   z-index: 1;
 }
 
-.topline,
-.wordmark {
+.topline {
   display: flex;
   align-items: center;
-}
-
-.topline {
-  justify-content: space-between;
+  justify-content: flex-end;
   min-height: 72rpx;
-}
-
-.wordmark-icon {
-  width: 46rpx;
-  height: 46rpx;
-  margin-right: 14rpx;
-}
-
-.wordmark-text {
-  color: var(--ink);
-  font-size: 36rpx;
-  font-weight: 500;
-  letter-spacing: 5rpx;
 }
 
 .member-avatar {

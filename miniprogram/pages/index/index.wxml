@@ -7,10 +7,6 @@
   ></image>
 
   <view class="topline">
-    <view class="wordmark">
-      <view class="brand-mark wordmark-icon"></view>
-      <text class="wordmark-text typewriter">拾光Ai</text>
-    </view>
     <view class="member-avatar serif">{{memberInitial}}</view>
   </view>
 
