@@ -452,29 +452,65 @@
 /* ---- 继续说与最近故事 ---- */
 
 .start-chat {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  min-height: 96rpx;
-  margin-top: 26rpx;
-  border-radius: 48rpx;
-  background: var(--jade);
-  color: #fbf8f1;
-  font-size: 30rpx;
-  font-weight: 500;
-  box-shadow: 0 16rpx 38rpx rgba(79, 127, 107, 0.16);
+  width: 312rpx;
+  min-height: 88rpx;
+  margin: 24rpx auto 0;
+  border: 2rpx solid rgba(79, 127, 107, 0.5);
+  border-radius: 12rpx;
+  background: rgba(255, 254, 251, 0.66);
+  color: var(--jade);
+  font-size: 29rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  box-shadow: 0 10rpx 28rpx rgba(71, 92, 80, 0.08);
+  overflow: hidden;
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
 }
 
-.start-chat:active {
-  opacity: 0.84;
-  transform: scale(0.985);
+.start-chat::before {
+  position: absolute;
+  top: 10rpx;
+  bottom: 10rpx;
+  left: 12rpx;
+  width: 4rpx;
+  border-radius: 4rpx;
+  background: rgba(79, 127, 107, 0.22);
+  content: "";
+}
+
+.start-chat-pressed {
+  background: var(--jade-soft);
+  box-shadow: 0 5rpx 16rpx rgba(71, 92, 80, 0.1);
+  transform: translateY(2rpx) scale(0.985);
 }
 
 .start-chat-plus {
-  margin-right: 10rpx;
-  font-size: 38rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48rpx;
+  height: 48rpx;
+  margin-right: 14rpx;
+  border-radius: 50%;
+  background: rgba(79, 127, 107, 0.1);
+  font-size: 32rpx;
   font-weight: 300;
+  line-height: 1;
+  transition: background-color 180ms ease, color 180ms ease, transform 220ms ease;
+}
+
+.start-chat-pressed .start-chat-plus {
+  background: var(--jade);
+  color: #fffefb;
+  transform: rotate(90deg);
 }
 
 .recent {

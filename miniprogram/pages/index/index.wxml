@@ -95,7 +95,13 @@
     </button>
   </view>
 
-  <button class="start-chat" bindtap="startInterview">
+  <button
+    class="start-chat"
+    bindtap="startInterview"
+    hover-class="start-chat-pressed"
+    hover-stay-time="110"
+    aria-label="开始聊聊，记录此刻的故事"
+  >
     <text class="start-chat-plus">＋</text>
     <text class="typewriter">开始聊聊</text>
   </button>
