@@ -18,7 +18,7 @@
 
 .switcher-branch {
   position: absolute;
-  top: 2rpx;
+  top: 18rpx;
   left: -6%;
   width: 112%;
   height: 190rpx;
@@ -28,13 +28,15 @@
 
 .switcher-book-edges {
   position: absolute;
-  top: 18rpx;
-  left: -8%;
+  bottom: -12rpx;
+  left: -14%;
   z-index: 0;
-  width: 116%;
-  height: 194rpx;
-  opacity: 0.38;
+  width: 128%;
+  height: 320rpx;
+  opacity: 0.24;
   pointer-events: none;
+  transform: scale(2);
+  transform-origin: 50% 100%;
 }
 
 .story-tab {
@@ -55,16 +57,16 @@
 }
 
 .story-tab-personal {
-  transform: translate(-12rpx, 16rpx) rotate(-1.5deg);
+  transform: translate(-12rpx, 32rpx) rotate(-1.5deg);
 }
 
 .story-tab-chat {
   z-index: 3;
-  transform: translate(2rpx, -20rpx);
+  transform: translate(2rpx, -4rpx);
 }
 
 .story-tab-family {
-  transform: translate(-8rpx, 7rpx) rotate(1.2deg);
+  transform: translate(-8rpx, 23rpx) rotate(1.2deg);
 }
 
 .tab-art {
