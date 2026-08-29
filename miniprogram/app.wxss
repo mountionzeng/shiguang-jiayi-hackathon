@@ -75,6 +75,27 @@ button::after {
   padding-bottom: calc(210rpx + env(safe-area-inset-bottom));
 }
 
+/* 分支内容页没有常驻导航，只提供一个明确的退出动作回到首页。 */
+.branch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 54rpx;
+  margin-bottom: 18rpx;
+}
+
+.branch-exit {
+  min-height: 54rpx;
+  padding: 0 4rpx 0 20rpx;
+  background: transparent;
+  color: var(--jade);
+  font-size: 26rpx;
+}
+
+.branch-exit:active {
+  opacity: 0.58;
+}
+
 .stack-l > view + view,
 .stack-l > button + view,
 .stack-l > view + button {

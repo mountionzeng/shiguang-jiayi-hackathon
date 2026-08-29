@@ -1,4 +1,7 @@
 <view class="shell page-enter">
+  <view class="branch-bar">
+    <button class="branch-exit" bindtap="goHome">退出</button>
+  </view>
 
   <!-- 没有合格来源：解释缺什么，不生成虚构内容 -->
   <block wx:if="{{sourceCount === 0}}">
@@ -7,7 +10,7 @@
       <view class="no-source-note">
         人生之书只能用 {{protagonistName}} 亲自讲述的经历写成。家人的共同记忆不会混进来；现在还没有个人片段，所以这里不会编一段占位。
       </view>
-      <button class="btn btn-ghost no-source-btn" bindtap="goBack">回去先讲一段</button>
+      <button class="btn btn-jade no-source-btn" bindtap="startInterview">开始聊聊</button>
     </view>
   </block>
 
@@ -44,7 +47,7 @@
     </view>
 
     <button
-      class="btn btn-primary gen-btn"
+      class="btn btn-jade gen-btn"
       loading="{{generating}}"
       disabled="{{generating}}"
       bindtap="generateChapter"
@@ -67,7 +70,5 @@
         </view>
       </block>
     </view>
-
-    <button class="btn btn-quiet" bindtap="goBack">回去</button>
   </block>
 </view>

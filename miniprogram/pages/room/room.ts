@@ -90,12 +90,6 @@ Page({
   },
 
   onShow() {
-    const tabBar = (this as unknown as { getTabBar?: () => { setData: (d: object) => void } | undefined })
-      .getTabBar;
-    if (typeof tabBar === "function") {
-      const bar = tabBar.call(this);
-      if (bar) bar.setData({ selected: 1 });
-    }
     void this.refresh();
   },
 
@@ -257,6 +251,6 @@ Page({
   },
 
   goHome() {
-    wx.switchTab({ url: "/pages/index/index" });
+    wx.reLaunch({ url: "/pages/index/index" });
   },
 });
