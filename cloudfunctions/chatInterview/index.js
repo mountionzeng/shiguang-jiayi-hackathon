@@ -61,7 +61,11 @@ function parseJsonObject(content) {
 
 function localFallbackDimension(askedDimensions) {
   const last = askedDimensions[askedDimensions.length - 1];
-  return DIMENSIONS.find((dimension) => dimension !== last) || "event";
+  return (
+    DIMENSIONS.find((dimension) => !askedDimensions.includes(dimension)) ||
+    DIMENSIONS.find((dimension) => dimension !== last) ||
+    "event"
+  );
 }
 
 function providerLabel(baseUrl) {
@@ -280,26 +284,31 @@ function buildOutputMessages({
 }
 
 async function requestChatCompletion({ baseUrl, apiKey, model, messages, temperature, signal }) {
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    signal,
-    body: JSON.stringify({
-      model,
-      temperature,
-      messages,
-    }),
-  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal,
+      body: JSON.stringify({
+        model,
+        temperature,
+        messages,
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(`MODEL_REQUEST_FAILED_${response.status}`);
+    if (!response.ok) {
+      throw new Error(`MODEL_REQUEST_FAILED_${response.status}`);
+    }
+
+    const payload = await response.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    if (sanitizeText(content, 4000)) return content;
   }
 
-  const payload = await response.json();
-  return payload?.choices?.[0]?.message?.content;
+  throw new Error("EMPTY_MODEL_OUTPUT");
 }
 
 async function main(event) {
@@ -336,29 +345,15 @@ async function main(event) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20_000);
   try {
-    const analysisContent = await requestChatCompletion({
-      baseUrl,
-      apiKey,
-      model,
-      temperature: 0.2,
-      signal: controller.signal,
-      messages: buildAnalysisMessages({
-        answer,
-        askedDimensions,
-        previousAnswers,
-        mode,
-        memoryType,
-        memberName,
-        storyTitle,
-      }),
-    });
-    const analysis = parseAnalysis(analysisContent);
-    const strategy = decideStrategy(analysis, askedDimensions);
+    const strategy = {
+      dimension: fallbackDimension,
+      instruction: `顺着用户刚说的内容，只追问一个${DIMENSION_LABELS[fallbackDimension]}方向的具体细节。`,
+    };
     const content = await requestChatCompletion({
       baseUrl,
       apiKey,
       model,
-      temperature: 0.85,
+      temperature: 0.7,
       signal: controller.signal,
       messages: buildOutputMessages({
         answer,
@@ -367,7 +362,14 @@ async function main(event) {
         memoryType,
         memberName,
         storyTitle,
-        analysis,
+        analysis: {
+          inputType: "信息片段",
+          emotionIntensity: "低",
+          newInfo: {},
+          keyDetail: null,
+          missingInfo: [],
+          suggestedFocus: "",
+        },
         strategy,
       }),
     });
@@ -386,6 +388,7 @@ module.exports = {
     buildAnalysisMessages,
     buildOutputMessages,
     interviewBrief,
+    localFallbackDimension,
     providerLabel,
     validateAskedDimensions,
     validateMemoryType,

@@ -109,7 +109,7 @@ async function main(event) {
   const brief = organizationBrief(memoryType);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25_000);
+  const timeoutId = setTimeout(() => controller.abort(), 28_000);
   let response;
   try {
     response = await fetch(`${baseUrl}/chat/completions`, {
@@ -121,7 +121,6 @@ async function main(event) {
       signal: controller.signal,
       body: JSON.stringify({
         model,
-        temperature: 1,
         messages: [
           {
             role: "system",
@@ -142,6 +141,11 @@ async function main(event) {
         ],
       }),
     });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      return buildLocalCard(transcript, memoryType);
+    }
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }

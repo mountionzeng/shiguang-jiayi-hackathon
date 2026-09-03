@@ -2,9 +2,9 @@
 
 本文档用于测试当前 `dev_backend` 分支的小程序体验版。目标是先把小版本跑稳：文字投稿、云端保存、老人确认、生成第一章，并保留原始来源。
 
-## 需要先建的云数据库集合
+## 云数据库集合
 
-在微信开发者工具或微信云开发控制台中，进入环境 `cloud1-d0g8c8yg0513a6068`，确认存在这些集合：
+环境 `cloud1-d0g8c8yg0513a6068` 已创建文字 MVP 必需的集合：
 
 - `families`
 - `family_members`
@@ -12,6 +12,8 @@
 - `memories`
 - `biography_drafts`
 - `generated_artifacts`
+
+`ensureCloudCollections` 仅供部署维护使用，不由小程序客户端调用。调用前必须在云函数环境变量中临时设置至少 24 位的 `COLLECTION_BOOTSTRAP_TOKEN`，并随事件传入相同的 `bootstrapToken`；完成后应移除环境变量。初始化是幂等的，集合已存在时不会清空或覆盖其中的数据。
 
 后面要接图片、语音、视频和 AI 任务时，再使用：
 
