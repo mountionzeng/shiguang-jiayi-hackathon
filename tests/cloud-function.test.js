@@ -297,10 +297,11 @@ test("the interview cloud function returns one safe follow-up", async () => {
     );
     assert.equal(requests.length, 1);
     assert.equal(requests[0].model, "smart-chat-model");
-    assert.equal(requests[0].temperature, 0.7);
+    assert.equal(requests[0].temperature, 0.65);
+    assert.equal(requests[0].max_tokens, 160);
     assert.match(requests[0].messages[0].content, /记忆采访者/);
     assert.match(requests[0].messages[1].content, /老屋门口/);
-    assert.match(requests[0].messages[1].content, /本轮策略/);
+    assert.match(requests[0].messages[1].content, /已追问方向：人物、时间/);
     assert.match(requests[0].messages[1].content, /内容类型：回忆录/);
     assert.doesNotMatch(JSON.stringify(requests), /test-chat-key/);
   } finally {
@@ -311,6 +312,60 @@ test("the interview cloud function returns one safe follow-up", async () => {
     else process.env.CHAT_AI_MODEL = previousModel;
     if (previousBaseUrl === undefined) delete process.env.CHAT_AI_BASE_URL;
     else process.env.CHAT_AI_BASE_URL = previousBaseUrl;
+  }
+});
+
+test("the interview cloud function keeps long answers on the model path", async () => {
+  const previousFetch = global.fetch;
+  const previousKey = process.env.CHAT_AI_API_KEY;
+  const previousModel = process.env.CHAT_AI_MODEL;
+  const requests = [];
+  const longAnswer = Array.from(
+    { length: 45 },
+    (_, index) => `第${index + 1}句，我说起小时候跟家人在老屋里过年的细节。`,
+  ).join("");
+
+  process.env.CHAT_AI_API_KEY = "test-chat-key";
+  process.env.CHAT_AI_MODEL = "smart-chat-model";
+  global.fetch = async (_url, options) => {
+    const requestBody = JSON.parse(options.body);
+    requests.push(requestBody);
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                dimension: "feeling",
+                text: "老屋过年的细节已经很满了。那一刻你最舍不得的是什么？",
+              }),
+            },
+          },
+        ],
+      }),
+    };
+  };
+
+  try {
+    const result = await chatInterviewMain({
+      answer: longAnswer,
+      askedDimensions: ["place", "person"],
+      memberName: "讲述者",
+      previousAnswers: [longAnswer],
+    });
+
+    assert.equal(result.generationMode, "cloud-ai");
+    assert.equal(result.dimension, "feeling");
+    assert.equal(requests.length, 1);
+    assert.match(requests[0].messages[1].content, /不要再按题库补地点\/人物/);
+    assert.ok(requests[0].messages[1].content.length > 1200);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.CHAT_AI_API_KEY;
+    else process.env.CHAT_AI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.CHAT_AI_MODEL;
+    else process.env.CHAT_AI_MODEL = previousModel;
   }
 });
 
