@@ -23,7 +23,7 @@ export const INTERVIEW_DIMENSIONS: InterviewDimension[] = [
  * 追问卡片上的标签。不再显示「追问人物 / 追问时候」这类方向名，
  * 方向只在内部用来避免连续问同一类事，不让用户觉得在填表。
  */
-export const FOLLOW_UP_LABEL = "小忆想知道";
+export const FOLLOW_UP_LABEL = "再聊聊";
 
 /** 五个方向都问过一轮后，只顺着经过和心里的感受往下聊，不再回头问事实。 */
 const REFLECTIVE_DIMENSIONS: InterviewDimension[] = ["event", "feeling"];
