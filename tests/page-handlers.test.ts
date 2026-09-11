@@ -646,6 +646,45 @@ test("the home page recommends a follow-up from the latest memory", async (conte
   assert.deepEqual(interview.data.askedDimensions, [query.get("dimension")]);
 });
 
+test("a recommended question from a quick note opens chat with that exact question", async (context) => {
+  const initial = createInitialRoomState();
+  const note = createContribution({
+    id: "quick-note-dress",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "我喜欢和一样喜欢漂亮衣服的小姑娘在一起。当然有啦。 已经是很小的时候的事情了 学校。",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-09-11T08:00:00.000Z"),
+  });
+  const storage = installWxMock({
+    ...initial,
+    contributions: initial.contributions.concat(note),
+  });
+  context.after(storage.restore);
+
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh");
+  assert.equal(home.data.recommendedSourceId, "quick-note-dress");
+  const question = String(home.data.recommendedQuestion);
+  assert.doesNotMatch(question, /哪一年|多大/, "已经说过“很小的时候”，不该再问时间");
+
+  callPage(home, "continueRecommendedQuestion");
+  const url = last(storage.navigations);
+  assert.ok(url);
+  // 真机上 onLoad 拿到的可能还是编码过的原始值，这里不先解码。
+  const rawOptions = Object.fromEntries(
+    url.split("?")[1].split("&").map((pair) => pair.split("=") as [string, string]),
+  );
+
+  const interview = instantiate(await pageDefinition("interview"));
+  await callPage(interview, "onLoad", rawOptions);
+  assert.equal(interview.data.stage, "chat");
+  const opening = (interview.data.messages as Array<{ text: string }>)[0]?.text ?? "";
+  assert.ok(opening.endsWith(question), opening);
+});
+
 test("the personal home page summarizes the active profile", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
