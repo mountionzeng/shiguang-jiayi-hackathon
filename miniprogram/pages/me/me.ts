@@ -1,6 +1,7 @@
 import {
   contributionScope,
   FamilyRoomState,
+  memoryPool,
   personalBookContributions,
 } from "../../domain/biography";
 import {
@@ -39,7 +40,7 @@ Page({
       memberName: member.name,
       memberRelation: member.relation,
       memberAvatarText: member.avatarText,
-      memoryCount: personal.length,
+      memoryCount: memoryPool(currentState.contributions).length,
       sharedCount,
       familyCount,
     });

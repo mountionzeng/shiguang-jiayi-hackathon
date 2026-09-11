@@ -3,6 +3,7 @@ import {
   FamilyMember,
   FamilyRoomState,
   MemoryContribution,
+  memoryPool,
   personalBookContributions,
 } from "../../domain/biography";
 import {
@@ -220,8 +221,9 @@ Page({
       memberAvatarText: member.avatarText,
       bookTitle: hasProfile ? `${member.name}的人生之书` : "人生之书",
       coverSubtitle: hasProfile ? (draft?.title ?? "还没有整理成章节") : "先建立一个档案",
-      memoryCount: personal.length,
-      memoirCount: new Set(personal.map(contributionStoryTitle).filter(Boolean)).size,
+      // The counts open the memory and story lists, which show the shared pool.
+      memoryCount: memoryPool(currentState.contributions).length,
+      memoirCount: new Set(memoryPool(currentState.contributions).map(contributionStoryTitle).filter(Boolean)).size,
       familyMemberCount: currentState.members.filter(item => item.id !== member.id && item.kind !== "recording-profile").length,
       profileOptions: profileOptionsFor(currentState.members, member.id),
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",

@@ -1,7 +1,7 @@
 <view class="archive-page page-enter">
   <image class="archive-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true" />
   <view class="archive-heading">
-    <view class="archive-eyebrow typewriter">{{memberName}}的人生之书</view>
+    <view class="archive-eyebrow typewriter">记忆库 · 所有档案共用</view>
     <view class="archive-title serif">{{editingId ? '编辑记忆' : '记忆'}}</view>
     <view class="archive-intro">每一段原始记录都留在这里。可以独立保存，也可以归入故事。</view>
     <view class="archive-intro">{{storageLabel}}</view>

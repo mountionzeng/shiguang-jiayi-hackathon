@@ -724,7 +724,7 @@ test("the home book shortcuts open their matching memory spaces", async (context
   ]);
 });
 
-test("the memory archive shows only the current profile's quick notes", async (context) => {
+test("the memory archive lists quick notes from the shared memory pool", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("archive"));

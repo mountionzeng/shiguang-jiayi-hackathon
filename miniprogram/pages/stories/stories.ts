@@ -1,5 +1,5 @@
-import { contributionStoryTitle, MemoryContribution, personalBookContributions } from "../../domain/biography";
-import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst } from "../../services/roomRepository";
+import { contributionStoryTitle, MemoryContribution, memoryPool } from "../../domain/biography";
+import { loadRoomStateRemoteFirst } from "../../services/roomRepository";
 Page({
   data: {
     stories: [] as Array<{ title: string; count: number; excerpt: string }>,
@@ -8,8 +8,7 @@ Page({
   onShow() { void this.refresh().catch(() => this.setData({ loadError: "故事暂时未加载成功，请重试。" })); },
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
-    const member = await loadCurrentMemberRemoteFirst(state);
-    const personal = personalBookContributions(state.contributions, member.id);
+    const personal = memoryPool(state.contributions);
     const groups = new Map<string, MemoryContribution[]>();
     personal.forEach(memory => {
       const title = contributionStoryTitle(memory);

@@ -1,7 +1,7 @@
 import {
   contributionStoryTitle,
   MemoryContribution,
-  personalBookContributions,
+  memoryPool,
   normalizeMemoryText,
   MAX_MEMORY_LENGTH,
 } from "../../domain/biography";
@@ -83,19 +83,21 @@ Page({
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(state);
-    const personal = personalBookContributions(state.contributions, member.id);
+    // One pool for every profile: memories told under another profile are listed too.
+    const personal = memoryPool(state.contributions);
     const toViews = (memoryType?: ArchiveTab) => personal
       .filter((memory) => !memoryType || (memory.memoryType ?? "note") === memoryType)
       .slice()
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .map((memory) => {
         const storyTitle = contributionStoryTitle(memory);
+        const narrator = memory.authorMemberId === member.id ? "" : `${memory.authorName} 讲述 · `;
         return {
           id: memory.id,
           title: noteTitle(memory),
           excerpt: memory.text,
           dateLabel: formatDate(memory.createdAt),
-          archiveLabel: storyTitle ? `已归入「${storyTitle}」` : "尚未归入故事",
+          archiveLabel: narrator + (storyTitle ? `已归入「${storyTitle}」` : "尚未归入故事"),
         };
       });
     const notes = toViews("note");
@@ -135,8 +137,7 @@ Page({
     if (this.data.swipedItemId) { this.closeSwipe(); return; }
     try {
       const state = await loadRoomStateRemoteFirst();
-      const member = await loadCurrentMemberRemoteFirst(state);
-      const memory = personalBookContributions(state.contributions, member.id).find(item => item.id === event.currentTarget.dataset.id);
+      const memory = memoryPool(state.contributions).find(item => item.id === event.currentTarget.dataset.id);
       if (!memory) throw new Error("这段记忆已不存在，请刷新列表");
       this.showEditor(memory);
     } catch (error) { wx.showToast({ title: error instanceof Error ? error.message : "加载失败，请重试", icon: "none" }); }
@@ -169,8 +170,7 @@ Page({
       const text = normalizeMemoryText(this.data.editText);
       if (!text || text.length > MAX_MEMORY_LENGTH) throw new Error("请保留 1—500 字的记忆");
       const state = await loadRoomStateRemoteFirst();
-      const member = await loadCurrentMemberRemoteFirst(state);
-      const latest = personalBookContributions(state.contributions, member.id).find(item => item.id === this.data.editingId);
+      const latest = memoryPool(state.contributions).find(item => item.id === this.data.editingId);
       if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
       const original = this.editingOriginal;
       if (latest.text !== original.text || latest.title !== original.title || latest.storyTitle !== original.storyTitle) {
