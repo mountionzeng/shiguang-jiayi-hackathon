@@ -3,7 +3,7 @@ import { loadRoomStateRemoteFirst, usesCloudStorage } from "./roomRepository";
 import { saveCloudManuscriptRevision } from "./cloudRoomStorage";
 import { saveRoomState } from "./roomStorage";
 import { contentFromDelta, contentToDelta } from "./bookImages";
-import { copyChapter, validateManuscriptDraft } from "./chapters";
+import { addChapter, copyChapter, draftWithChapters, validateManuscriptDraft } from "./chapters";
 
 /** Photo references in reading order, including markers left inside older text-only drafts. */
 export function manuscriptPhotoIds(draft: BiographyDraft): string[] {
@@ -16,13 +16,23 @@ export function manuscriptPhotoIds(draft: BiographyDraft): string[] {
  * reference stay; photos keep their order after the new text.
  */
 export function adoptCandidateDraft(current: BiographyDraft | undefined, candidate: BiographyDraft) {
-  if (!current) return { draft: candidate, keptPhotoIds: [] as string[] };
+  if (!current) return { draft: candidate, keptPhotoIds: [] as string[], newChapter: false };
+  if (current.chapters?.length) {
+    // A chaptered book never has its chapters replaced wholesale: the AI text becomes a new last chapter.
+    const chapters = addChapter(current.chapters);
+    const added = chapters[chapters.length - 1];
+    added.content = [{ text: candidate.paragraphs.join("\n\n") + "\n" }];
+    added.generationMode = candidate.generationMode;
+    added.generatedAt = candidate.generatedAt;
+    return { draft: draftWithChapters({ ...candidate, title: current.title }, chapters), keptPhotoIds: [] as string[], newChapter: true };
+  }
   const keptPhotoIds = manuscriptPhotoIds(current);
   const content: ManuscriptContent[] = [{ text: candidate.paragraphs.join("\n\n") + "\n" }];
   for (const photoId of keptPhotoIds) content.push({ photoId }, { text: "\n" });
   return {
     draft: { ...candidate, title: current.title.trim() || candidate.title, content },
     keptPhotoIds,
+    newChapter: false,
   };
 }
 

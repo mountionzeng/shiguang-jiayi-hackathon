@@ -872,6 +872,73 @@ test("adopting an AI candidate keeps photos from an older marker-only draft", as
   assert.deepEqual(adoptCandidateDraft(undefined, candidate).draft, candidate);
 });
 
+test("chapters: an older book becomes chapter one and chapter changes leave other chapters untouched", async context => {
+  const state = createInitialRoomState();
+  const original = { title: "外公和雨天", paragraphs: ["原文"], content: [{ text: "原文\n" }, { photoId: "photo-keep" }], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const };
+  state.personalDrafts = { owner: original };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  assert.equal(page.data.view, "chapter", "a single-chapter book opens straight into its text");
+  assert.equal(page.data.chapterLabelText, "第一章");
+  assert.deepEqual((page.data.unassigned as any[]).map(item => item.id), ["demo-personal-rain"]);
+  callPage(page, "onBack");
+  assert.equal(page.data.view, "contents");
+
+  await callPage(page, "createChapter", { currentTarget: { dataset: { story: "外公接我放学" } } });
+  let draft = page.data.draft as any;
+  assert.equal(draft.chapters.length, 2);
+  assert.equal(page.data.view, "chapter");
+  assert.equal(page.data.chapterLabelText, "第二章");
+  assert.deepEqual(draft.chapters[1].memoryIds, ["demo-personal-rain"]);
+  assert.equal((page.data.unassigned as any[]).length, 0);
+  const firstChapter = structuredClone(draft.chapters[0]);
+  assert.ok(firstChapter.content.some((item: any) => item.photoId === "photo-keep"));
+
+  callPage(page, "onEditChapterTitle", { detail: { value: "雨天的巷口" } });
+  callPage(page, "onEditorInput", { detail: { delta: { ops: [{ insert: "新的一章正文\n" }] }, text: "新的一章正文\n" } });
+  await callPage(page, "saveEdits");
+  draft = page.data.draft as any;
+  assert.equal(draft.title, "外公和雨天", "the book title is separate from chapter titles");
+  assert.equal(draft.chapters[1].title, "雨天的巷口");
+  assert.equal(draft.chapters[1].handEdited, true);
+  assert.deepEqual(draft.chapters[0], firstChapter, "editing chapter two leaves chapter one and its photo untouched");
+  assert.equal(draft.paragraphs[0], "第一章");
+
+  await callPage(page, "removeFromChapter", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  callPage(page, "backToContents");
+  callPage(page, "chooseChapterFor", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  assert.equal(page.data.panel, "assign");
+  await callPage(page, "assignTo", { currentTarget: { dataset: { id: "chapter-1" } } });
+  draft = page.data.draft as any;
+  assert.deepEqual(draft.chapters[0].memoryIds, ["demo-personal-rain"]);
+  assert.deepEqual(draft.chapters[0].content, firstChapter.content, "placing a memory does not rewrite text");
+
+  callPage(page, "openChapter", { currentTarget: { dataset: { id: draft.chapters[1].id } } });
+  await callPage(page, "deleteActiveChapter");
+  draft = page.data.draft as any;
+  assert.equal(draft.chapters.length, 1);
+  assert.equal(page.data.view, "contents");
+  const revisions = storage.roomState().manuscriptRevisions!;
+  assert.ok(revisions.some(item => item.draft.chapters?.some(chapter => chapter.title === "雨天的巷口")), "the deleted chapter stays in history");
+  assert.deepEqual(revisions.find(item => item.id === "legacy-owner")!.draft, original, "the older book version is never rewritten");
+});
+
+test("an empty book can start with a first chapter from a story", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  assert.equal(page.data.draft, null);
+  assert.deepEqual(page.data.storyOptions, [{ title: "外公接我放学", count: 1 }]);
+  await callPage(page, "createChapter", { currentTarget: { dataset: { story: "外公接我放学" } } });
+  const draft = page.data.draft as any;
+  assert.equal(draft.title, "林岚的人生之书");
+  assert.equal(draft.chapters[0].title, "外公接我放学");
+  assert.equal(page.data.view, "chapter");
+});
+
 test("manuscript typing keeps native text and cursor ownership instead of echoing the document", async context => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -1015,12 +1082,12 @@ test("native photo picker inserts into the manuscript and saved local photo orde
   assert.equal(page.data.pickingPhoto, false);
   await callPage(page, "saveEdits");
   assert.equal(page.data.saveNotice, "修改已保存");
-  const saved = (page.data.draft as any).content;
+  const saved = (page.data.draft as any).chapters[0].content;
   assert.ok(saved[1].photoId);
-  assert.ok(!JSON.stringify(saved).includes("wxfile"));
+  assert.ok(!JSON.stringify(page.data.draft).includes("wxfile"));
   const reopened = instantiate(await pageDefinition("book"));
   await callPage(reopened, "refresh");
-  assert.deepEqual((reopened.data.draft as any).content, saved);
+  assert.deepEqual((reopened.data.draft as any).chapters[0].content, saved);
   assert.equal((reopened.photoPaths as any)[saved[1].photoId], "wxfile://usr/photo.jpg");
 });
 

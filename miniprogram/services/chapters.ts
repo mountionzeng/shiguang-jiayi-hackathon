@@ -59,6 +59,59 @@ export function draftWithChapters(base: BiographyDraft, chapters: ManuscriptChap
   return { ...base, chapters: chapters.map(copyChapter), ...flattenChapters(chapters) };
 }
 
+/** Adds a chapter at the end. A memory lives in one chapter, so the listed memories move here. */
+export function addChapter(chapters: ManuscriptChapter[], title = "", memoryIds: string[] = [], id = newChapterId()): ManuscriptChapter[] {
+  if (chapters.length >= MAX_CHAPTERS) throw new Error("一本书稿最多 " + MAX_CHAPTERS + " 章");
+  const moving = new Set(memoryIds);
+  return [
+    ...chapters.map(chapter => ({ ...copyChapter(chapter), memoryIds: chapter.memoryIds.filter(memoryId => !moving.has(memoryId)) })),
+    { id, title: title.trim().slice(0, 40), memoryIds: [...moving], content: [] },
+  ];
+}
+
+/** Removing a chapter only affects the next version; its memories become unassigned. */
+export function removeChapter(chapters: ManuscriptChapter[], id: string): ManuscriptChapter[] {
+  if (chapters.length <= 1) throw new Error("至少要保留一章");
+  return chapters.filter(chapter => chapter.id !== id).map(copyChapter);
+}
+
+export function moveChapter(chapters: ManuscriptChapter[], id: string, offset: number): ManuscriptChapter[] {
+  const next = chapters.map(copyChapter);
+  const from = next.findIndex(chapter => chapter.id === id);
+  const to = from + offset;
+  if (from < 0 || to < 0 || to >= next.length) return next;
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
+}
+
+/** Puts a memory into one chapter (or none, with an empty chapter id); text is not touched. */
+export function assignMemory(chapters: ManuscriptChapter[], memoryId: string, chapterId: string): ManuscriptChapter[] {
+  return chapters.map(chapter => {
+    const memoryIds = chapter.memoryIds.filter(id => id !== memoryId);
+    if (chapter.id === chapterId) memoryIds.push(memoryId);
+    return { ...copyChapter(chapter), memoryIds };
+  });
+}
+
+export function unassignedMemoryIds(chapters: ManuscriptChapter[], memoryIds: string[]) {
+  const used = new Set(chapters.flatMap(chapter => chapter.memoryIds));
+  return memoryIds.filter(id => !used.has(id));
+}
+
+/** Replaces one chapter's name and/or text; every other chapter is copied unchanged. */
+export function updateChapter(chapters: ManuscriptChapter[], id: string, patch: { title?: string; content?: ManuscriptContent[] }): ManuscriptChapter[] {
+  return chapters.map(chapter => {
+    if (chapter.id !== id) return copyChapter(chapter);
+    const next = copyChapter(chapter);
+    if (patch.title !== undefined) next.title = patch.title.trim().slice(0, 40);
+    if (patch.content && JSON.stringify(patch.content) !== JSON.stringify(chapter.content)) {
+      next.content = patch.content.map(item => ({ ...item }));
+      next.handEdited = true;
+    }
+    return next;
+  });
+}
+
 export function validateChapters(chapters: unknown) {
   if (!Array.isArray(chapters) || !chapters.length || chapters.length > MAX_CHAPTERS) throw new Error("一本书稿最多 " + MAX_CHAPTERS + " 章");
   const ids = new Set<string>();

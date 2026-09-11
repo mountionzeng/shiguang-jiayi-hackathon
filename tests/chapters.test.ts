@@ -74,6 +74,27 @@ test("a long book near the limits still saves because the flattened copy is not 
   await assert.rejects(saveManuscriptRevision(makeRevision("owner", tooManyPhotos, "", "version", "十张照片"), ""), /最多放 9 张照片/);
 });
 
+test("chapter operations keep one memory in one chapter and never touch other chapters' text", async () => {
+  const { addChapter, assignMemory, moveChapter, removeChapter, unassignedMemoryIds, updateChapter } = await import("../miniprogram/services/chapters");
+  const one = { ...chapter("chapter-1", "一", "第一章正文\n", ["photo-a"]), memoryIds: ["m1", "m2"] };
+  const two = { ...chapter("chapter-2", "二", "第二章正文\n"), memoryIds: ["m3"] };
+  const added = addChapter([one, two], "三", ["m2"], "chapter-3");
+  assert.deepEqual(added.map(item => item.memoryIds), [["m1"], ["m3"], ["m2"]], "a memory moves instead of being copied");
+  assert.deepEqual(added[0].content, one.content);
+  assert.deepEqual(assignMemory(added, "m1", "chapter-2").map(item => item.memoryIds), [[], ["m3", "m1"], ["m2"]]);
+  assert.deepEqual(unassignedMemoryIds(assignMemory(added, "m1", ""), ["m1", "m2", "m3", "m4"]), ["m1", "m4"]);
+  assert.deepEqual(moveChapter(added, "chapter-3", -1).map(item => item.id), ["chapter-1", "chapter-3", "chapter-2"]);
+  assert.deepEqual(moveChapter(added, "chapter-1", -1).map(item => item.id), ["chapter-1", "chapter-2", "chapter-3"]);
+  assert.deepEqual(removeChapter(added, "chapter-2").map(item => item.id), ["chapter-1", "chapter-3"]);
+  assert.throws(() => removeChapter([one], "chapter-1"), /至少要保留一章/);
+  const edited = updateChapter(added, "chapter-2", { title: " 新名字 ", content: [{ text: "改过的\n" }] });
+  assert.equal(edited[1].title, "新名字");
+  assert.equal(edited[1].handEdited, true);
+  assert.deepEqual(edited[0], added[0]);
+  assert.equal(updateChapter(added, "chapter-2", { title: "只改名" })[1].handEdited, undefined);
+  assert.deepEqual(one.memoryIds, ["m1", "m2"], "inputs are never mutated");
+});
+
 test("chapter structure is checked before saving", () => {
   const good = chapter("chapter-1", "章名", "正文\n");
   assert.throws(() => validateManuscriptDraft(draftWithChapters(base, [good, { ...good }])), /章节编号无效/);
