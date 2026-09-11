@@ -249,6 +249,11 @@
 .sort-button::after,
 .trash-toggle::after { border: 0; }
 
+/* Built-in buttons default to a fixed width; let each row size its buttons. */
+.profile-card .profile-main,
+.profile-card .profile-delete,
+.sort-row .sort-button { width: auto; }
+
 .profile-delete {
   flex-shrink: 0;
   height: 56rpx;

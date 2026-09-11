@@ -288,6 +288,10 @@
 .profile-menu-main::after,
 .profile-menu-delete::after { border: 0; }
 
+/* Built-in buttons default to a fixed width; without this the delete button fills the row. */
+.profile-menu-item .profile-menu-main,
+.profile-menu-item .profile-menu-delete { width: auto; }
+
 .profile-menu-delete {
   flex-shrink: 0;
   height: 44rpx;
