@@ -41,6 +41,16 @@ export function needsClassification(member: FamilyMember): boolean {
   return isActiveMember(member) && !member.kind;
 }
 
+/**
+ * 本账号的主人：首页头像、「我的」和聊天默认的讲述人都是他/她。
+ * 优先认「自己」这本书，其次是账号建的第一个档案（role 为 owner）。
+ */
+export function accountOwner(members: FamilyMember[]): FamilyMember | undefined {
+  const profiles = members.filter(isRecordingProfile);
+  return profiles.find((member) => member.relation === "自己") ??
+    profiles.find((member) => member.role === "owner");
+}
+
 export interface MemoryContribution {
   id: string;
   authorMemberId: string;
