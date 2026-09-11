@@ -92,14 +92,14 @@ function storyOptionsFor(
   }));
 }
 
-/** 「涉及的人」「谁可以看」：除了正在讲的人，其他人都可以选。 */
+/** 「涉及的人」「谁可以看」：除了你自己，其他人都可以选。 */
 function memberOptionsFor(
   members: FamilyMember[],
-  narratorId: string,
+  authorId: string,
   selectedIds: string[] = [],
 ): MemberOptionView[] {
   return members
-    .filter((member) => member.id !== narratorId && isActiveMember(member))
+    .filter((member) => member.id !== authorId && isActiveMember(member))
     .map((member) => ({
       id: member.id,
       name: member.name,
@@ -109,30 +109,12 @@ function memberOptionsFor(
     }));
 }
 
-interface NarratorOptionView {
-  id: string;
-  name: string;
-  relation: string;
-  label: string;
-}
-
-function narratorOptionsFor(members: FamilyMember[]): NarratorOptionView[] {
-  return members.filter(isActiveMember).map((member) => ({
-    id: member.id,
-    name: member.name,
-    relation: member.relation,
-    label: member.relation ? `${member.name}（${member.relation}）` : member.name,
-  }));
-}
-
 /**
- * 谁在讲：默认是账号主人；家人拿同一台手机讲时，在聊天页顶部换人。
- * 换人只记在这段记忆上，不切换别的东西。
+ * 这台手机上讲的都记在账号主人名下，不分是谁讲的（用户说讲述人标签没有意义）；
+ * 家人想自己讲，以后用邀请在他们自己的微信里讲。
  */
-function narratorFor(state: FamilyRoomState, narratorId: string, fallback: FamilyMember): FamilyMember {
-  return state.members.find((member) => member.id === narratorId && isActiveMember(member)) ??
-    accountOwner(state.members) ??
-    fallback;
+function authorFor(state: FamilyRoomState, fallback: FamilyMember): FamilyMember {
+  return accountOwner(state.members) ?? fallback;
 }
 
 /** 按 Unicode 码点分片，避免在 500 字边界把 emoji 的代理项拆成乱码。 */
@@ -152,12 +134,8 @@ function splitRecoverableText(text: string): string[] {
 
 Page({
   data: {
-    // memberName / memberRelation 是正在讲的人。
     memberName: "",
     memberRelation: "",
-    narratorId: "",
-    narratorOptions: [] as NarratorOptionView[],
-    narratorIndex: 0,
 
     messages: [] as MessageView[],
     askedDimensions: [] as InterviewDimension[],
@@ -201,20 +179,16 @@ Page({
 
   messageSeq: 0,
   pendingContribution: undefined as MemoryContribution | undefined,
-  /** Everyone who can be picked on this page, as loaded; the narrator is picked from these too. */
-  members: [] as FamilyMember[],
 
   async onLoad(options: InterviewLoadOptions = {}) {
     try {
     const state = await loadRoomStateRemoteFirst();
-    const member = narratorFor(state, "", await loadCurrentMemberRemoteFirst(state));
+    const member = authorFor(state, await loadCurrentMemberRemoteFirst(state));
     if (!member.id) {
       wx.showToast({ title: "先写下你的名字，就可以开始聊了", icon: "none" });
       wx.redirectTo({ url: "/pages/profiles/profiles" });
       return;
     }
-    this.members = state.members;
-    const narratorOptions = narratorOptionsFor(state.members);
     const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");
     const requestedStoryTitle = decodeQueryValue(options.storyTitle);
     const requestedSourceId = decodeQueryValue(options.sourceId);
@@ -249,9 +223,6 @@ Page({
     this.setData({
       memberName: member.name,
       memberRelation: member.relation,
-      narratorId: member.id,
-      narratorOptions,
-      narratorIndex: Math.max(0, narratorOptions.findIndex((option) => option.id === member.id)),
       stage: source || storyTitle || requestedMemoryType ? "chat" : "choose",
       memoryType: requestedMemoryType ?? this.data.memoryType,
       askedDimensions: requestedQuestion && requestedDimension ? [requestedDimension] : [],
@@ -266,26 +237,6 @@ Page({
     } catch (error) {
       wx.showModal({ title: "暂时无法加载", content: "请返回后重新打开，不会切换到另一份本地数据。", showCancel: false, success: () => wx.navigateBack() });
     }
-  },
-
-  /** 换一个人讲：正在讲的人不能同时是「涉及的人」或「谁可以看」。 */
-  chooseNarrator(event: { detail: { value: string | number } }) {
-    const narratorIndex = Number(event.detail.value);
-    const option = this.data.narratorOptions[narratorIndex];
-    if (!option || option.id === this.data.narratorId) return;
-    const relatedMemberIds = this.data.relatedMemberIds.filter((id) => id !== option.id);
-    const audienceMemberIds = this.data.audienceMemberIds.filter((id) => id !== option.id);
-    this.setData({
-      narratorId: option.id,
-      narratorIndex,
-      memberName: option.name,
-      memberRelation: option.relation,
-      relatedMemberIds,
-      audienceMemberIds,
-      relatedOptions: memberOptionsFor(this.members, option.id, relatedMemberIds),
-      audienceOptions: memberOptionsFor(this.members, option.id, audienceMemberIds),
-    });
-    wx.showToast({ title: `这段记为${option.name}讲的`, icon: "none" });
   },
 
   /**
@@ -308,7 +259,7 @@ Page({
         return;
       }
       const state = await loadRoomStateRemoteFirst();
-      const member = narratorFor(state, this.data.narratorId, await loadCurrentMemberRemoteFirst(state));
+      const member = authorFor(state, await loadCurrentMemberRemoteFirst(state));
       const recoverableText = normalizeMemoryText(
         this.data.stage === "save" && this.data.draftText
           ? this.data.draftText
@@ -553,7 +504,7 @@ Page({
 
     try {
       const state = await loadRoomStateRemoteFirst();
-      const member = narratorFor(state, this.data.narratorId, await loadCurrentMemberRemoteFirst(state));
+      const member = authorFor(state, await loadCurrentMemberRemoteFirst(state));
       if (!member.id) throw new Error("请先写下你的名字");
       const availableMemberIds = new Set(
         state.members

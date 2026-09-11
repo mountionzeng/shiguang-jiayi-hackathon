@@ -711,32 +711,24 @@ test("人生之书 lists every story; a book-only story opens its chapters for t
   assert.equal(storage.roomState().manuscriptRevisions?.length, 1, "opening the list writes nothing");
 });
 
-test("chat defaults to the account owner as narrator, and switching the narrator only labels that memory", async (context) => {
+test("chat always saves under the account owner, whichever book was open last", async (context) => {
   const storage = installWxMock(createInitialRoomState(), "member-1");
   context.after(storage.restore);
   const interview = instantiate(await pageDefinition("interview"));
   await callPage(interview, "onLoad", { storyTitle: "外公接我放学" });
 
-  assert.equal(interview.data.memberName, "林岚", "the owner speaks by default even when another book was open");
-  const narrators = interview.data.narratorOptions as Array<{ id: string; label: string }>;
-  assert.equal(narrators[interview.data.narratorIndex as number]?.id, "owner");
-  const related = () => (interview.data.relatedOptions as Array<{ id: string }>).map((option) => option.id);
-  assert.ok(!related().includes("owner"));
-  assert.ok(related().includes("member-1"), "every other person can be picked, whatever kind of record they were");
+  assert.equal(interview.data.memberName, "林岚");
+  assert.ok(!("narratorOptions" in interview.data), "there is no narrator to pick");
+  const related = (interview.data.relatedOptions as Array<{ id: string }>).map((option) => option.id);
+  assert.ok(!related.includes("owner"));
+  assert.ok(related.includes("member-1"), "every other person can be picked, whatever kind of record they were");
 
-  interview.setData({ relatedMemberIds: ["member-1"] });
-  callPage(interview, "chooseNarrator", { detail: { value: narrators.findIndex((option) => option.id === "member-1") } });
-  assert.equal(interview.data.memberName, "林秋");
-  assert.deepEqual(interview.data.relatedMemberIds, [], "the narrator is not also a person mentioned");
-  assert.ok(!related().includes("member-1"));
-  assert.ok(related().includes("owner"));
-
-  interview.setData({ stage: "save", draftTitle: "测试", draftText: "林秋拿着手机讲的一段虚构记忆。" });
+  interview.setData({ stage: "save", draftTitle: "测试", draftText: "在这台手机上讲的一段虚构记忆。" });
   await callPage(interview, "save");
-  const saved = storage.roomState().contributions.find((memory) => memory.text === "林秋拿着手机讲的一段虚构记忆。");
-  assert.equal(saved?.authorMemberId, "member-1");
+  const saved = storage.roomState().contributions.find((memory) => memory.text === "在这台手机上讲的一段虚构记忆。");
+  assert.equal(saved?.authorMemberId, "owner");
   assert.equal(saved?.storyTitle, "外公接我放学");
-  assert.equal(storage.currentMemberId(), "member-1", "changing the narrator switches nothing else");
+  assert.equal(storage.currentMemberId(), "member-1", "chatting switches nothing else");
 });
 
 test("the memory archive lists quick notes from the shared memory pool", async (context) => {

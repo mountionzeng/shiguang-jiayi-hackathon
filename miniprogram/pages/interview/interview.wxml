@@ -11,16 +11,7 @@
         ></image>
         <text class="who-name">和小忆聊聊</text>
       </view>
-      <picker
-        mode="selector"
-        range="{{narratorOptions}}"
-        range-key="label"
-        value="{{narratorIndex}}"
-        bindchange="chooseNarrator"
-        aria-label="现在是{{memberName}}在讲，点这里换一个人讲"
-      >
-        <text class="who-note">{{memberName}}在讲 · 点这里换人 ⌄</text>
-      </picker>
+      <text class="who-note">先讲，不急着分类</text>
     </view>
     <text class="tag tag-apricot">
       <text class="tag-mark">聊</text>正在倾听
