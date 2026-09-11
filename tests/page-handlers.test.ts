@@ -842,6 +842,9 @@ test("people management never impersonates a person and changes only the selecte
   const page = instantiate(await pageDefinition("profiles"));
   callPage(page, "onLoad", { mode: "people" });
   await callPage(page, "refresh");
+  // Legacy records appear in the people list only after being sorted as a person.
+  assert.ok(!(page.data.profiles as Array<{ id: string }>).some(item => item.id === "member-1"));
+  await callPage(page, "classify", { currentTarget: { dataset: { id: "member-1", kind: "person" } } });
   await callPage(page, "chooseProfile", { currentTarget: { dataset: { id: "member-1" } } });
   assert.equal(storage.currentMemberId(), "owner");
   const before = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
@@ -1091,8 +1094,9 @@ test("choosing a profile changes the active personal archive", async (context) =
   const page = instantiate(await pageDefinition("profiles"));
 
   await callPage(page, "refresh", state);
+  // Unsorted legacy profiles wait in the sorting list and are still switchable.
   assert.equal(
-    (page.data.profiles as Array<{ id: string; current: boolean }>).find(
+    (page.data.pending as Array<{ id: string; current: boolean }>).find(
       (profile) => profile.id === "owner",
     )?.current,
     true,

@@ -2,6 +2,8 @@ import {
   contributionStoryTitle,
   FamilyMember,
   FamilyRoomState,
+  isPerson,
+  isRecordingProfile,
   MemoryContribution,
   memoryPool,
   personalBookContributions,
@@ -17,6 +19,7 @@ import {
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
 import { currentManuscript } from "../../services/manuscript";
+import { deleteMemberWithConfirm } from "../../services/memberActions";
 
 interface RecentStoryView {
   id: string;
@@ -33,6 +36,8 @@ interface ProfileOptionView {
   relation: string;
   avatarText: string;
   selected: boolean;
+  /** Legacy record not yet sorted into a recording profile or a person. */
+  pending: boolean;
 }
 
 interface RecommendedQuestionView {
@@ -101,12 +106,13 @@ function profileOptionsFor(
   members: FamilyMember[],
   currentMemberId: string,
 ): ProfileOptionView[] {
-  return members.filter(member => member.kind !== "person").map((member) => ({
+  return members.filter(isRecordingProfile).map((member) => ({
     id: member.id,
     name: member.name,
     relation: member.relation,
     avatarText: member.avatarText,
     selected: member.id === currentMemberId,
+    pending: !member.kind,
   }));
 }
 
@@ -224,7 +230,7 @@ Page({
       // The counts open the memory and story lists, which show the shared pool.
       memoryCount: memoryPool(currentState.contributions).length,
       memoirCount: new Set(memoryPool(currentState.contributions).map(contributionStoryTitle).filter(Boolean)).size,
-      familyMemberCount: currentState.members.filter(item => item.id !== member.id && item.kind !== "recording-profile").length,
+      familyMemberCount: currentState.members.filter(isPerson).length,
       profileOptions: profileOptionsFor(currentState.members, member.id),
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
       recommendedQuestionContext: recommendedQuestion?.context ?? "",
@@ -265,7 +271,7 @@ Page({
   }) {
     const memberId = event.currentTarget.dataset.id;
     const state = await loadRoomStateRemoteFirst();
-    const member = state.members.find((item) => item.id === memberId && item.kind !== "person");
+    const member = state.members.find((item) => item.id === memberId && isRecordingProfile(item));
 
     if (!member) {
       wx.showToast({ title: "没有找到这个档案", icon: "none" });
@@ -275,6 +281,25 @@ Page({
     saveCurrentMemberIdLocal(member.id);
     this.setData({ profileChooserOpen: false });
     await this.refresh(state);
+    // Each profile has its own book; say whose book is open now.
+    wx.showToast({ title: `现在是${member.name}的人生之书`, icon: "none" });
+  },
+
+  async deleteProfile(event: {
+    currentTarget: { dataset: { id: string } };
+  }) {
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      const member = state.members.find((item) => item.id === event.currentTarget.dataset.id && isRecordingProfile(item));
+      if (!member) {
+        wx.showToast({ title: "没有找到这个档案", icon: "none" });
+        return;
+      }
+      const next = await deleteMemberWithConfirm(member, state);
+      if (next) await this.refresh(next);
+    } catch {
+      wx.showToast({ title: "数据加载失败，请重试", icon: "none" });
+    }
   },
 
   openMyHome() {

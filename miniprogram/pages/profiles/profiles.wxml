@@ -8,8 +8,21 @@
 
   <view class="profiles-heading">
     <view class="profiles-title serif">{{managingPeople ? '亲友与权限' : '切换档案'}}</view>
-    <view class="profiles-note">{{managingPeople ? '提到某位亲友，不等于向他开放内容。每段记忆单独设置。' : '这里切换的是本账号内记录档案，不是登录其他人的微信账号。'}}</view>
+    <view class="profiles-note">{{managingPeople ? '提到某位亲友，不等于向他开放内容。每段记忆单独设置。' : '每个记录档案有自己的一本书；记忆库所有档案共用。这里切换的是本账号内的记录档案，不是登录其他人的微信账号。'}}</view>
     <view wx:if="{{loadError}}" class="profiles-note">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
+  </view>
+
+  <view class="profile-create" wx:if="{{pending.length}}">
+    <view class="profile-create-title">这些是旧版数据，请分一下类</view>
+    <view class="profiles-note">记录档案：出现在首页「切换档案」里，有自己的一本书。亲友：只出现在亲友名单里。只改分类，其他内容都不动。</view>
+    <view class="sort-row" wx:for="{{pending}}" wx:key="id">
+      <view class="sort-copy">
+        <view class="profile-name serif">{{item.name}}</view>
+        <view class="profile-relation">{{item.relation}}{{item.current ? ' · 正在使用' : ''}}</view>
+      </view>
+      <button class="sort-button" data-id="{{item.id}}" data-kind="recording-profile" bindtap="classify" disabled="{{!!busyId}}" hover-class="none">记录档案</button>
+      <button class="sort-button" data-id="{{item.id}}" data-kind="person" bindtap="classify" disabled="{{!!busyId || item.current}}" hover-class="none">亲友</button>
+    </view>
   </view>
 
   <view class="profile-create">
@@ -37,34 +50,47 @@
   </view>
 
   <view class="profile-list">
-    <button
+    <view
       class="profile-card {{item.current ? 'profile-card-current' : ''}}"
       wx:for="{{profiles}}"
       wx:key="id"
-      data-id="{{item.id}}"
-      bindtap="chooseProfile"
-      hover-class="none"
-      aria-label="{{managingPeople ? '管理' : '切换到'}}{{item.name}}的档案"
     >
-      <view class="profile-avatar serif">
-        <image
-          class="profile-avatar-backdrop"
-          src="/assets/illustrations/book-wash.png"
-          mode="aspectFill"
-          aria-hidden="true"
-        ></image>
-        <text class="profile-avatar-letter">{{item.avatarText}}</text>
-      </view>
-      <view class="profile-copy">
-        <view class="profile-name serif">{{item.name}}</view>
-        <view class="profile-relation">{{item.relation}} · {{item.roleLabel}}</view>
-      </view>
-      <view class="profile-state">{{managingPeople ? '管理' : (item.current ? '当前' : '切换')}}</view>
-    </button>
+      <button
+        class="profile-main"
+        data-id="{{item.id}}"
+        bindtap="chooseProfile"
+        hover-class="none"
+        aria-label="{{managingPeople ? '管理' : '切换到'}}{{item.name}}的档案"
+      >
+        <view class="profile-avatar serif">
+          <image
+            class="profile-avatar-backdrop"
+            src="/assets/illustrations/book-wash.png"
+            mode="aspectFill"
+            aria-hidden="true"
+          ></image>
+          <text class="profile-avatar-letter">{{item.avatarText}}</text>
+        </view>
+        <view class="profile-copy">
+          <view class="profile-name serif">{{item.name}}</view>
+          <view class="profile-relation">{{item.relation}} · {{item.roleLabel}}</view>
+        </view>
+        <view class="profile-state">{{managingPeople ? '管理' : (item.current ? '正在使用' : '切换')}}</view>
+      </button>
+      <button
+        wx:if="{{!item.current}}"
+        class="profile-delete"
+        data-id="{{item.id}}"
+        bindtap="removeMember"
+        disabled="{{!!busyId}}"
+        hover-class="none"
+        aria-label="删除{{item.name}}"
+      >删除</button>
+    </view>
   </view>
 
   <view class="profile-empty" wx:if="{{!hasProfiles}}">
-    {{managingPeople ? '还没有亲友。添加后可关联记忆或设置档案阅读范围。' : '还没有记录档案。创建后开始记录你自己的故事。'}}
+    {{pending.length ? '先在上面给旧版数据分一下类。' : (managingPeople ? '还没有亲友。添加后可关联记忆或设置档案阅读范围。' : '还没有记录档案。创建后开始记录你自己的故事。')}}
   </view>
 
   <view class="profile-create" wx:if="{{managingPeople && selectedPersonId}}">
@@ -77,6 +103,22 @@
     </view>
     <view wx:if="{{!permissions.length}}" class="profiles-note">先记录一段自己的记忆，再选择阅读范围。</view>
     <view class="profiles-note">真实亲友协作尚未接入。接入后，亲友只提交补充或修改建议，由你确认后写入正文；不会直接改动你的书稿。</view>
+  </view>
+
+  <view class="profile-create" wx:if="{{trash.length}}">
+    <button class="trash-toggle" bindtap="toggleTrash" hover-class="none">
+      <text>最近删除 · {{trash.length}}</text><text>{{trashOpen ? '收起' : '展开'}}</text>
+    </button>
+    <block wx:if="{{trashOpen}}">
+      <view class="profiles-note">{{managingPeople ? '恢复后，ta 在记忆里的「涉及的人」和「谁可以看」需要重新设置。' : '恢复后，档案和它的书稿、各个版本原样回来。'}}</view>
+      <view class="sort-row" wx:for="{{trash}}" wx:key="id">
+        <view class="sort-copy">
+          <view class="profile-name serif">{{item.name}}</view>
+          <view class="profile-relation">{{item.relation}} · {{item.deletedLabel}}</view>
+        </view>
+        <button class="sort-button" data-id="{{item.id}}" bindtap="restoreMember" disabled="{{!!busyId}}" hover-class="none">恢复</button>
+      </view>
+    </block>
   </view>
 
   <view class="profile-danger-zone" wx:if="{{!managingPeople}}">

@@ -229,3 +229,79 @@
   line-height: 1.7;
 }
 .permission-row { padding: 24rpx 0; border-bottom: 1rpx solid #e4ddca; color: var(--ink); font-size: 30rpx; }
+
+/* A card holds two buttons side by side: open/switch, and delete. */
+.profile-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  line-height: normal;
+  text-align: left;
+}
+
+.profile-main::after,
+.profile-delete::after,
+.sort-button::after,
+.trash-toggle::after { border: 0; }
+
+.profile-delete {
+  flex-shrink: 0;
+  height: 56rpx;
+  margin: 0 0 0 14rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid rgba(199, 82, 69, 0.22);
+  border-radius: 28rpx;
+  background: rgba(255, 247, 244, 0.86);
+  color: #b64a40;
+  font-size: 23rpx;
+  line-height: 52rpx;
+}
+
+.sort-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #e4ddca;
+}
+
+.sort-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.sort-button {
+  flex-shrink: 0;
+  height: 60rpx;
+  margin: 0 0 0 12rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid rgba(79, 127, 107, 0.24);
+  border-radius: 30rpx;
+  background: rgba(229, 239, 233, 0.7);
+  color: var(--jade);
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 56rpx;
+}
+
+.sort-button[disabled] {
+  opacity: 0.4;
+}
+
+.trash-toggle {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: left;
+}
