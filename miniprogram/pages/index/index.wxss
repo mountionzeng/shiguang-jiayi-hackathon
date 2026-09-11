@@ -397,6 +397,8 @@
   gap: 10rpx;
   margin-top: 18rpx;
   padding-top: 14rpx;
+  /* 封面文字层整体 pointer-events: none（点封面就翻开书），这三格得单独接住点击。 */
+  pointer-events: auto;
 }
 
 .book-stat-action {
