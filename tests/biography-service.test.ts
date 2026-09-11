@@ -9,6 +9,7 @@ import { generateBiography } from "../miniprogram/services/biographyService";
 import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 function installGlobal(name: "getApp" | "wx", value: unknown): () => void {
+  if (name === "wx") value = { showModal: ({ success }: any) => success({ confirm: true, cancel: false }), ...(value as object) };
   const previous = Object.getOwnPropertyDescriptor(globalThis, name);
   Object.defineProperty(globalThis, name, {
     configurable: true,

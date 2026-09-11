@@ -21,6 +21,7 @@ function readStoredRoom(key: string): FamilyRoomState | undefined {
   if (stored && Array.isArray(stored.contributions) && Array.isArray(stored.members)) {
     return stored;
   }
+  if (stored) throw new Error("已有本机数据格式异常，不会用空档案覆盖");
   return undefined;
 }
 
@@ -74,7 +75,7 @@ export function loadRoomState(): FamilyRoomState {
       return migrated;
     }
   } catch (error) {
-    console.warn("无法读取本地家庭房间，将使用演示数据", error);
+    throw new Error("本地记录读取失败，请重试；不会覆盖已有记录");
   }
 
   const initial = createEmptyRoomState();
@@ -127,7 +128,7 @@ export function appendContribution(
 ): FamilyRoomState {
   const memberIds = new Set(state.members.map((member) => member.id));
   if (!memberIds.has(contribution.authorMemberId)) {
-    throw new Error("讲述者已不在当前亲友空间");
+    throw new Error("请先创建或选择自己的记录档案");
   }
   const referencedMemberIds = contributionRelatedMemberIds(contribution).concat(
     personalShareTargetMemberIds(contribution),
@@ -143,7 +144,8 @@ export function appendContribution(
 
   const next = {
     ...state,
-    contributions: [...state.contributions, contribution],
+    contributions: [...state.contributions.filter(item => item.id !== contribution.id), contribution],
+    legacyPersonalDrafts: { ...state.legacyPersonalDrafts, ...state.personalDrafts },
     personalDrafts,
     draft: contributionScope(contribution) === "family" ? undefined : state.draft,
   };
@@ -155,12 +157,19 @@ export function replaceContribution(
   contribution: MemoryContribution,
   state = loadRoomState(),
 ): FamilyRoomState {
+  if (!state.contributions.some(item => item.id === contribution.id)) {
+    throw new Error("这段记忆已不存在，请刷新列表");
+  }
+  const personalDrafts = { ...(state.personalDrafts ?? {}) };
+  delete personalDrafts[contribution.authorMemberId];
   const next = {
     ...state,
+    legacyPersonalDrafts: { ...state.legacyPersonalDrafts, ...state.personalDrafts },
     contributions: state.contributions.map((item) =>
       item.id === contribution.id ? contribution : item,
     ),
     draft: undefined,
+    personalDrafts,
   };
   saveRoomState(next);
   return next;
@@ -172,7 +181,7 @@ export function deleteContribution(
 ): FamilyRoomState {
   const contribution = state.contributions.find((item) => item.id === contributionId);
   if (!contribution) {
-    throw new Error("没有找到这段记忆");
+    return state;
   }
 
   const personalDrafts = { ...(state.personalDrafts ?? {}) };
@@ -182,6 +191,7 @@ export function deleteContribution(
 
   const next = {
     ...state,
+    legacyPersonalDrafts: { ...state.legacyPersonalDrafts, ...state.personalDrafts },
     contributions: state.contributions.filter((item) => item.id !== contributionId),
     draft: contributionScope(contribution) === "family" ? undefined : state.draft,
     personalDrafts,
@@ -194,6 +204,7 @@ export function addFamilyMember(
   name: string,
   relation: string,
   state = loadRoomState(),
+  kind?: FamilyMember["kind"],
 ): FamilyRoomState {
   const trimmedName = name.trim();
   const trimmedRelation = relation.trim() || "家人";
@@ -208,12 +219,16 @@ export function addFamilyMember(
   }
 
   const firstProfile = state.members.length === 0;
+  if (kind === "person" && !state.members.some(member => member.kind !== "person")) {
+    throw new Error("请先在切换档案中创建自己的记录档案");
+  }
   const member: FamilyMember = {
     id: firstProfile ? DEFAULT_MEMBER_ID : `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: trimmedName,
     relation: (firstProfile && !relation.trim() ? "自己" : trimmedRelation).slice(0, 12),
     avatarText: trimmedName.slice(0, 1),
     role: firstProfile ? "owner" : "contributor",
+    ...(kind ? { kind } : {}),
   };
   const next = {
     ...state,
@@ -310,10 +325,11 @@ export function saveCurrentMemberId(memberId: string): void {
 
 export function loadCurrentMember(state: FamilyRoomState = loadRoomState()): FamilyMember {
   const memberId = loadCurrentMemberId();
+  const profiles = state.members.filter(member => member.kind !== "person");
   return (
-    state.members.find((member) => member.id === memberId) ??
-    state.members.find((member) => member.id === DEFAULT_MEMBER_ID) ??
-    state.members[0] ??
+    profiles.find((member) => member.id === memberId) ??
+    profiles.find((member) => member.id === DEFAULT_MEMBER_ID) ??
+    profiles[0] ??
     EMPTY_MEMBER
   );
 }

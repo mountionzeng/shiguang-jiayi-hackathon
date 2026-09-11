@@ -7,22 +7,24 @@
   ></image>
 
   <view class="profiles-heading">
-    <view class="profiles-title serif">切换档案</view>
-    <view class="profiles-note">选择这次要以谁的身份记录和阅读故事</view>
+    <view class="profiles-title serif">{{managingPeople ? '亲友与权限' : '切换档案'}}</view>
+    <view class="profiles-note">{{managingPeople ? '提到某位亲友，不等于向他开放内容。每段记忆单独设置。' : '这里切换的是本账号内记录档案，不是登录其他人的微信账号。'}}</view>
+    <view wx:if="{{loadError}}" class="profiles-note">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
   </view>
 
   <view class="profile-create">
-    <view class="profile-create-title serif">创建家庭成员档案</view>
+    <view class="profile-create-title serif">{{managingPeople ? '添加亲友' : '新建记录档案'}}</view>
     <input
       class="profile-input"
       value="{{memberNameInput}}"
       bindinput="onMemberNameInput"
       maxlength="12"
-      placeholder="名字"
+      placeholder="{{managingPeople ? '亲友的名字' : '记录档案名称'}}"
       placeholder-class="profile-input-placeholder"
     />
     <input
       class="profile-input"
+      wx:if="{{managingPeople}}"
       value="{{relationInput}}"
       bindinput="onRelationInput"
       maxlength="12"
@@ -30,7 +32,7 @@
       placeholder-class="profile-input-placeholder"
     />
     <button class="profile-create-button" bindtap="addProfile" hover-class="none">
-      新增档案
+      {{managingPeople ? '添加亲友，不切换档案' : '创建并切换到新档案'}}
     </button>
   </view>
 
@@ -42,7 +44,7 @@
       data-id="{{item.id}}"
       bindtap="chooseProfile"
       hover-class="none"
-      aria-label="切换到{{item.name}}的档案"
+      aria-label="{{managingPeople ? '管理' : '切换到'}}{{item.name}}的档案"
     >
       <view class="profile-avatar serif">
         <image
@@ -57,15 +59,27 @@
         <view class="profile-name serif">{{item.name}}</view>
         <view class="profile-relation">{{item.relation}} · {{item.roleLabel}}</view>
       </view>
-      <view class="profile-state">{{item.current ? '当前' : '切换'}}</view>
+      <view class="profile-state">{{managingPeople ? '管理' : (item.current ? '当前' : '切换')}}</view>
     </button>
   </view>
 
   <view class="profile-empty" wx:if="{{!hasProfiles}}">
-    还没有家庭成员档案。先创建一个自己的档案，再慢慢把家人加进来。
+    {{managingPeople ? '还没有亲友。添加后可关联记忆或设置档案阅读范围。' : '还没有记录档案。创建后开始记录你自己的故事。'}}
   </view>
 
-  <view class="profile-danger-zone">
+  <view class="profile-create" wx:if="{{managingPeople && selectedPersonId}}">
+    <view class="profile-create-title">{{selectedPersonName}}的档案阅读范围</view>
+    <view class="profiles-note">以下设置只作用于本微信账号内的档案演示，不会发出邀请，也不授予真实微信账号访问权。</view>
+    <view class="permission-row" wx:for="{{permissions}}" wx:key="id">
+      <view>{{item.title}}</view>
+      <view class="profiles-note">{{item.related ? '记忆中提到了这位亲友' : '记忆未关联这位亲友'}}</view>
+      <button class="profile-create-button" data-id="{{item.id}}" bindtap="toggleReading" disabled="{{permissionSaving}}">{{item.canRead ? '已允许档案阅读 · 点击收回' : '仅自己 · 允许此档案阅读'}}</button>
+    </view>
+    <view wx:if="{{!permissions.length}}" class="profiles-note">先记录一段自己的记忆，再选择阅读范围。</view>
+    <view class="profiles-note">真实亲友协作尚未接入。接入后，亲友只提交补充或修改建议，由你确认后写入正文；不会直接改动你的书稿。</view>
+  </view>
+
+  <view class="profile-danger-zone" wx:if="{{!managingPeople}}">
     <button
       class="profile-clear-button"
       bindtap="clearCurrentFamilyData"
@@ -76,6 +90,6 @@
   </view>
 
   <view class="profiles-footnote">
-    每个档案的人生之书、故事与阅读权限彼此独立。
+    {{managingPeople ? '当前书稿仍仅由你编辑。真实微信邀请与建议审核尚未开放。' : '本账号内可以切换档案，不是不同微信用户之间的安全隔离。'}}
   </view>
 </view>

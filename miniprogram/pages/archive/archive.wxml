@@ -1,65 +1,41 @@
 <view class="archive-page page-enter">
-  <image
-    class="archive-paper"
-    src="/assets/illustrations/home-paper.jpg"
-    mode="scaleToFill"
-    aria-hidden="true"
-  ></image>
-
+  <image class="archive-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true" />
   <view class="archive-heading">
-    <view class="archive-eyebrow typewriter">{{memberName}}的记忆档案</view>
-    <view class="archive-title serif">管理记忆档案</view>
-    <view class="archive-intro">{{activeTab === 'note' ? '这里收着你写下的短片段，无论它是否已经归入一个故事。' : '这里收着你慢慢讲开的回忆，它们可以继续整理成完整的故事。'}}</view>
+    <view class="archive-eyebrow typewriter">{{memberName}}的人生之书</view>
+    <view class="archive-title serif">{{editingId ? '编辑记忆' : '记忆'}}</view>
+    <view class="archive-intro">每一段原始记录都留在这里。可以独立保存，也可以归入故事。</view>
+    <view class="archive-intro">{{storageLabel}}</view>
   </view>
-
-  <view class="archive-tabs" role="tablist" aria-label="记忆档案类型">
-    <button class="archive-tab {{activeTab === 'note' ? 'archive-tab-current' : ''}}" data-tab="note" bindtap="selectArchiveTab" hover-class="none" role="tab" aria-selected="{{activeTab === 'note'}}">
-      <text class="archive-tab-title typewriter">随手记</text>
-      <text class="archive-tab-count">{{noteCount}}</text>
-    </button>
-    <button class="archive-tab {{activeTab === 'memoir' ? 'archive-tab-current' : ''}}" data-tab="memoir" bindtap="selectArchiveTab" hover-class="none" role="tab" aria-selected="{{activeTab === 'memoir'}}">
-      <text class="archive-tab-title typewriter">回忆录</text>
-      <text class="archive-tab-count">{{memoirCount}}</text>
-    </button>
+  <view class="archive-empty" wx:if="{{loadError}}">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
+  <view class="memory-editor" wx:if="{{editingId}}">
+    <view class="editor-label">标题</view>
+    <input class="memory-input" value="{{editTitle}}" maxlength="40" bindinput="onEditTitle" disabled="{{savingEdit}}" />
+    <view class="editor-label">原始记忆</view>
+    <textarea class="memory-text serif" value="{{editText}}" maxlength="500" auto-height bindinput="onEditText" disabled="{{savingEdit}}" cursor-spacing="48" />
+    <view class="editor-label">归入故事（可留空）</view>
+    <input class="memory-input" value="{{editStory}}" maxlength="30" bindinput="onEditStory" placeholder="输入故事名，或从下面选择" disabled="{{savingEdit}}" />
+    <view class="story-choices">
+      <button class="story-chip" data-title="" bindtap="chooseEditStory" disabled="{{savingEdit}}">暂不归类</button>
+      <button class="story-chip" wx:for="{{storyOptions}}" wx:key="*this" data-title="{{item}}" bindtap="chooseEditStory" disabled="{{savingEdit}}">{{item}}</button>
+    </view>
+    <button class="btn btn-jade" bindtap="saveEdit" loading="{{savingEdit}}" disabled="{{savingEdit}}">保存修改</button>
+    <button class="btn btn-ghost" bindtap="closeEditor" disabled="{{savingEdit}}">返回记忆列表</button>
   </view>
-
-  <view class="note-list" wx:if="{{hasItems}}">
-    <view class="note-swipe" wx:for="{{archiveItems}}" wx:key="id">
-      <button
-        class="note-delete"
-        data-id="{{item.id}}"
-        data-title="{{item.title}}"
-        bindtap="deleteMemory"
-        hover-class="none"
-        aria-label="删除{{item.title}}"
-      >
-        <view class="note-delete-badge">
-          <view class="note-trash">
-            <view class="note-trash-lid"></view>
-            <view class="note-trash-can"></view>
-          </view>
+  <block wx:elif="{{!loadError}}">
+    <view class="note-list" wx:if="{{hasItems}}">
+      <view class="note-swipe" wx:for="{{archiveItems}}" wx:key="id">
+        <button class="note-delete" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="deleteMemory" disabled="{{!!deletingItemId}}" aria-label="删除{{item.title}}"><view class="note-delete-badge">删除</view></button>
+        <view class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}" data-id="{{item.id}}" bindtouchstart="onNoteTouchStart" bindtouchend="onNoteTouchEnd" bindtap="openMemory" role="button" aria-label="编辑{{item.title}}">
+          <view class="note-pin"></view>
+          <view class="note-date">{{item.dateLabel}}</view>
+          <view class="note-title serif">{{item.title}}</view>
+          <view class="note-excerpt">{{item.excerpt}}</view>
+          <view class="note-archive">{{item.archiveLabel}} · 点开编辑</view>
         </view>
-      </button>
-      <view
-        class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}"
-        data-id="{{item.id}}"
-        bindtouchstart="onNoteTouchStart"
-        bindtouchend="onNoteTouchEnd"
-        bindtap="closeSwipe"
-      >
-        <view class="note-pin"></view>
-        <view class="note-date">{{item.dateLabel}}</view>
-        <view class="note-title serif">{{item.title}}</view>
-        <view class="note-excerpt">{{item.excerpt}}</view>
-        <view class="note-archive">{{item.archiveLabel}}</view>
       </view>
     </view>
-  </view>
-
-  <view class="archive-empty" wx:else>
-    <view class="archive-empty-title serif">还没有{{activeTab === 'note' ? '随手记' : '回忆录'}}</view>
-    <view class="archive-empty-note">从首页“记下此刻”开始说几句，保存后会出现在这里。</view>
-  </view>
-
-  <view class="archive-version-note">左滑记忆可以删除；移动和改名会在后续版本补充。</view>
+    <view class="archive-empty" wx:else><view class="archive-empty-title serif">从一句话开始</view><view class="archive-empty-note">随手记和慢慢聊留下的记录，都在这里。</view></view>
+    <view class="archive-version-note">点开可编辑与归类，左滑可删除。整理成故事不会移走原始记忆。删除原始记录不会删除已保存的书稿版本。</view>
+    <button class="btn btn-jade record-button" bindtap="startRecording">记录一段记忆</button>
+  </block>
 </view>

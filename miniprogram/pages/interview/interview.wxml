@@ -164,6 +164,15 @@
   </block>
 
   <!-- ============ 整理与保存 ============ -->
+  <block wx:elif="{{saved}}">
+    <view class="chat-inner">
+      <view class="organize-title serif">记忆已保存</view>
+      <view class="organize-note">{{saveMessage}}</view>
+      <view class="organize-note">{{storageLabel}}</view>
+      <button class="btn btn-primary" bindtap="viewSavedMemory">查看这段记忆</button>
+      <button class="btn btn-ghost" bindtap="leaveSavedMemory">返回</button>
+    </view>
+  </block>
   <block wx:else>
     <scroll-view class="chat-scroll" scroll-y>
       <view class="chat-inner">
@@ -199,6 +208,7 @@
 
         <textarea
           class="draft-field serif"
+          maxlength="500"
           value="{{draftText}}"
           auto-height
           fixed="{{true}}"
@@ -271,7 +281,7 @@
 
         <view class="organize-section">
           <view class="organize-title serif">谁可以看？</view>
-          <view class="organize-note">每一段记忆单独设置阅读权，可以多选，也可以只留给自己。</view>
+          <view class="organize-note">仅设置本账号内档案的阅读范围，不会发送微信邀请，也不代表其他微信用户已能访问。</view>
 
           <view
             class="person-choice {{audienceMemberIds.length === 0 ? 'choice-on' : ''}}"
@@ -308,11 +318,13 @@
     </scroll-view>
 
     <view class="composer">
+      <view wx:if="{{saveError}}" class="organize-note">{{saveError}}</view>
       <view class="save-row">
         <button class="btn btn-ghost save-back" bindtap="backToChat">继续编辑</button>
         <button
           class="btn btn-primary save-go {{(saving || tooLong) ? 'btn-disabled' : ''}}"
           bindtap="save"
+          disabled="{{saving || tooLong}}"
         >{{saving ? '正在保存…' : '保存这段记忆'}}</button>
       </view>
     </view>

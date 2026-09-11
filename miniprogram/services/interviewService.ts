@@ -9,6 +9,7 @@ import {
   nextInterviewPrompt,
 } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
+import { requestAiConsent } from "./aiConsent";
 
 interface CloudInterviewResult {
   dimension?: unknown;
@@ -69,6 +70,7 @@ export async function generateInterviewPrompt(
   input: GenerateInterviewPromptInput,
 ): Promise<InterviewPrompt> {
   if (!canUseCloudAi()) return localFallbackPrompt(input, "cloud-not-ready");
+  if (!await requestAiConsent()) return localFallbackPrompt(input, "cloud-not-ready");
 
   try {
     const response = await wx.cloud.callFunction({
@@ -92,10 +94,10 @@ export async function generateInterviewPrompt(
       };
     }
 
-    console.warn("AI 追问返回格式不完整，将使用本地追问规则", response.result);
+    console.warn("AI 追问返回格式不完整，将使用本地追问规则");
     return localFallbackPrompt(input, "invalid-result");
   } catch (error) {
-    console.warn("AI 追问不可用，将使用本地追问规则", error);
+    console.warn("AI 追问不可用，将使用本地追问规则");
     return localFallbackPrompt(input, "function-error");
   }
 }

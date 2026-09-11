@@ -6,6 +6,8 @@ import {
   personalBookContributions,
 } from "../domain/biography";
 import type { ShiguangAppOptions } from "../app";
+import { CLOUD_AI_ENABLED } from "../config/runtime";
+import { requestAiConsent } from "./aiConsent";
 
 interface CloudBiographyResult {
   title?: unknown;
@@ -38,7 +40,7 @@ export async function generateBiography(
   }
 
   const app = getApp<ShiguangAppOptions>();
-  if (app.globalData.cloudReady && wx.cloud) {
+  if (CLOUD_AI_ENABLED && app.globalData.cloudReady && wx.cloud && await requestAiConsent()) {
     try {
       const response = await wx.cloud.callFunction({
         name: "generateBiography",
@@ -57,9 +59,9 @@ export async function generateBiography(
         return response.result;
       }
 
-      console.warn("云函数返回格式不完整，将使用透明演示草稿", response.result);
+      console.warn("云函数返回格式不完整，将使用本地草稿");
     } catch (error) {
-      console.warn("AI 云生成不可用，将使用透明演示草稿", error);
+      console.warn("AI 云生成不可用，将使用本地草稿");
     }
   }
 

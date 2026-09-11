@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import {
   createContribution,
@@ -22,7 +23,7 @@ interface TestPageInstance extends TestPageDefinition {
 
 const definitions = new Map<string, TestPageDefinition>();
 
-async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me"): Promise<TestPageDefinition> {
+async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me" | "stories"): Promise<TestPageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
 
@@ -49,6 +50,8 @@ async function pageDefinition(name: "index" | "interview" | "room" | "book" | "p
       await import("../miniprogram/pages/profiles/profiles");
     } else if (name === "archive") {
       await import("../miniprogram/pages/archive/archive");
+    } else if (name === "stories") {
+      await import("../miniprogram/pages/stories/stories");
     } else {
       await import("../miniprogram/pages/me/me");
     }
@@ -107,6 +110,7 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
         backCount += 1;
       },
       navigateTo: ({ url }: { url: string }) => navigations.push(url),
+      redirectTo: ({ url }: { url: string }) => navigations.push(url),
       switchTab: () => undefined,
       reLaunch: ({ url }: { url: string }) => relaunches.push(url),
     },
@@ -190,6 +194,29 @@ test("one interview can stay a fragment or join a named story with independent p
   assert.equal(savedFragment?.relatedMemberIds, undefined);
   assert.equal(savedFragment?.sharedWithMemberIds, undefined);
   assert.equal(savedFragment?.reviewStatus, "confirmed");
+});
+
+test("a save with an uncertain acknowledgement retries the same record without unload duplicates", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad");
+  page.setData({ stage: "save", draftText: "测试保存回执丢失。", answers: ["测试保存回执丢失。"] });
+  const before = storage.roomState().contributions.length;
+  const originalSet = wx.setStorageSync;
+  wx.setStorageSync = (key, value) => {
+    originalSet(key, value);
+    if (key === ROOM_KEY) throw new Error("测试回执中断");
+  };
+  await callPage(page, "save");
+  assert.equal(page.data.saved, false);
+  wx.setStorageSync = originalSet;
+  await callPage(page, "save");
+  assert.equal(page.data.saved, true);
+  assert.equal(storage.roomState().contributions.length, before + 1);
+  callPage(page, "onUnload");
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(storage.roomState().contributions.length, before + 1);
 });
 
 test("continuing a recent story opens the interview with its existing context", async (context) => {
@@ -283,7 +310,7 @@ test("interview rejects related people or readers removed before save", async (c
 
   assert.equal(storage.roomState().contributions.length, beforeCount);
   assert.equal(page.data.saving, false);
-  assert.match(last(storage.toasts) ?? "", /已不在当前空间/);
+  assert.match(last(storage.toasts) ?? "", /亲友档案已变更/);
 });
 
 test("leaving chat preserves unsent text as a private unorganized fragment", async (context) => {
@@ -617,7 +644,7 @@ test("the personal home page summarizes the active profile", async (context) => 
   assert.equal(page.data.familyCount, 2);
 });
 
-test("the home book opens the memory archive after its animation", async (context) => {
+test("the home cover opens the editable manuscript after its animation", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("index"));
@@ -625,7 +652,7 @@ test("the home book opens the memory archive after its animation", async (contex
   await withImmediateTimeouts(() => callPage(page, "openMemoryArchive"));
 
   assert.equal(page.data.bookOpening, false);
-  assert.equal(last(storage.navigations), "/pages/archive/archive");
+  assert.equal(last(storage.navigations), "/pages/book/book");
 });
 
 test("the home book shortcuts open their matching memory spaces", async (context) => {
@@ -635,12 +662,12 @@ test("the home book shortcuts open their matching memory spaces", async (context
 
   callPage(page, "openArchiveTab", { currentTarget: { dataset: { tab: "note" } } });
   callPage(page, "openArchiveTab", { currentTarget: { dataset: { tab: "memoir" } } });
-  callPage(page, "openMemoryHome");
+  callPage(page, "openPeople");
 
   assert.deepEqual(storage.navigations.slice(-3), [
-    "/pages/archive/archive?tab=note",
-    "/pages/archive/archive?tab=memoir",
-    "/pages/room/room",
+    "/pages/archive/archive",
+    "/pages/stories/stories",
+    "/pages/profiles/profiles?mode=people",
   ]);
 });
 
@@ -686,7 +713,7 @@ test("the memory archive supports swipe reveal and deleting a quick note", async
   assert.equal(last(storage.toasts), "已删除");
 });
 
-test("the memory archive switches to memoirs without mixing in quick notes", async (context) => {
+test("the memory archive retains both telling styles as original records", async (context) => {
   const state = createInitialRoomState();
   state.contributions.push(createContribution({
     authorMemberId: "owner",
@@ -706,7 +733,194 @@ test("the memory archive switches to memoirs without mixing in quick notes", asy
 
   assert.equal(page.data.activeTab, "memoir");
   assert.equal(page.data.memoirCount, 1);
-  assert.equal((page.data.archiveItems as Array<{ text: string }>).length, 1);
+  assert.equal((page.data.archiveItems as Array<{ text: string }>).length, 2);
+});
+
+test("memory edits and story assignment preserve originals and independent readership", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  const original = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
+  const count = storage.roomState().contributions.length;
+  page.setData({ editTitle: "测试修改", editText: "这是修改后的虚构记忆。", editStory: "新的故事" });
+  await callPage(page, "saveEdit");
+  assert.equal(storage.roomState().contributions.length, count);
+  const updated = storage.roomState().contributions.find(item => item.id === original.id)!;
+  assert.equal(updated.storyTitle, "新的故事");
+  assert.deepEqual(updated.sharedWithMemberIds, original.sharedWithMemberIds);
+  const stories = instantiate(await pageDefinition("stories"));
+  await callPage(stories, "refresh");
+  assert.ok((stories.data.stories as Array<{ title: string }>).some(item => item.title === "新的故事"));
+  page.setData({ editStory: "" });
+  await callPage(page, "saveEdit");
+  assert.equal(storage.roomState().contributions.find(item => item.id === original.id)?.storyTitle, undefined);
+});
+
+test("creating a recording profile and adding a person are separate operations", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const profiles = instantiate(await pageDefinition("profiles"));
+  callPage(profiles, "onLoad");
+  profiles.setData({ memberNameInput: "新的记录档案" });
+  await callPage(profiles, "addProfile");
+  const profileId = storage.currentMemberId();
+  assert.equal(storage.roomState().members.find(item => item.id === profileId)?.kind, "recording-profile");
+  const people = instantiate(await pageDefinition("profiles"));
+  callPage(people, "onLoad", { mode: "people" });
+  people.setData({ memberNameInput: "测试朋友", relationInput: "朋友" });
+  await callPage(people, "addProfile");
+  assert.equal(storage.currentMemberId(), profileId);
+  const person = storage.roomState().members.find(item => item.name === "测试朋友")!;
+  assert.equal(person.kind, "person");
+  await callPage(profiles, "refresh");
+  assert.ok(!(profiles.data.profiles as Array<{id: string}>).some(item => item.id === person.id));
+  await callPage(people, "refresh");
+  assert.ok(!(people.data.profiles as Array<{id: string}>).some(item => item.id === profileId));
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh");
+  assert.ok(!(home.data.profileOptions as Array<{id: string}>).some(item => item.id === person.id));
+});
+
+test("people management never impersonates a person and changes only the selected record readership", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("profiles"));
+  callPage(page, "onLoad", { mode: "people" });
+  await callPage(page, "refresh");
+  await callPage(page, "chooseProfile", { currentTarget: { dataset: { id: "member-1" } } });
+  assert.equal(storage.currentMemberId(), "owner");
+  const before = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
+  const hadRead = before.sharedWithMemberIds?.includes("member-1") ?? false;
+  await callPage(page, "toggleReading", { currentTarget: { dataset: { id: before.id } } });
+  const after = storage.roomState().contributions.find(item => item.id === before.id)!;
+  assert.equal(after.sharedWithMemberIds?.includes("member-1") ?? false, !hadRead);
+  assert.deepEqual(after.relatedMemberIds, before.relatedMemberIds);
+  assert.equal(storage.currentMemberId(), "owner");
+});
+
+test("AI manuscript requires adoption; edits, saved versions and source changes preserve history", async context => {
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  const oldDraft = page.data.draft;
+  await callPage(page, "generateChapter");
+  assert.ok(page.data.candidate);
+  assert.equal(page.data.draft, oldDraft);
+  assert.equal(storage.roomState().manuscriptRevisions, undefined);
+  await callPage(page, "adoptCandidate");
+  assert.ok(page.data.draft);
+  const first = (page.data.history as Array<{ id: string }>)[0].id;
+  callPage(page, "onEditTitle", { detail: { value: "我亲手改的标题" } });
+  callPage(page, "onEditorInput", { detail: { delta: { ops: [{ insert: "我自己改写的正文。" }] }, text: "我自己改写的正文。" } });
+  await callPage(page, "saveEdits");
+  assert.equal((page.data.draft as { title: string }).title, "我亲手改的标题");
+  await callPage(page, "saveVersion");
+  assert.ok((page.data.history as Array<{ id: string }>).some(item => item.id === first));
+  const count = storage.roomState().manuscriptRevisions!.length;
+  const revision = storage.roomState().manuscriptRevisions!.find(item => item.id === first)!;
+  await callPage(page, "persist", revision.draft, revision.sourceFingerprint, "restore", "恢复测试版");
+  assert.equal(storage.roomState().manuscriptRevisions!.length, count + 1);
+  assert.ok(storage.roomState().manuscriptRevisions!.some(item => item.draft.title === "我亲手改的标题"));
+  const { appendContribution } = await import("../miniprogram/services/roomStorage");
+  appendContribution(createContribution({ authorMemberId: "owner", authorName: "测试者", relation: "自己", text: "新增的虚构记忆。", scope: "personal", visibility: "private" }));
+  await callPage(page, "refresh");
+  assert.ok(page.data.draft);
+  assert.equal(page.data.stale, true);
+});
+
+test("manuscript typing keeps native text and cursor ownership instead of echoing the document", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  page.setData({ draft: { title: "测试", paragraphs: ["原文"] }, editTitle: "测试", editBody: "原文" });
+  const updates: Record<string, unknown>[] = [];
+  page.setData = update => { updates.push(update); Object.assign(page.data, update); };
+  const text = "开头的修改\n\n" + "长文中段。".repeat(600);
+  callPage(page, "onEditorInput", { detail: { delta: { ops: [{ insert: text }] }, text } });
+  callPage(page, "onEditorInput", { detail: { delta: { ops: [{ insert: text + "结尾" }] }, text: text + "结尾" } });
+  callPage(page, "onEditTitle", { detail: { value: "新标题" } });
+  assert.equal(page.data.editing, true);
+  assert.equal(page.bodyBuffer, text + "结尾");
+  assert.equal(page.titleBuffer, "新标题");
+  assert.ok(updates.every(update => !("editBody" in update) && !("editTitle" in update)));
+  assert.equal(updates.length, 1, "only the first edit changes the dirty indicator");
+});
+
+test("keyboard resizes only the editor area and dirty manuscripts cannot be replaced by history", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  callPage(page, "onKeyboardHeight", { detail: { height: 300 } });
+  assert.equal(page.data.keyboardHeight, 300);
+  callPage(page, "onKeyboardHeight", { detail: { height: 0 } });
+  assert.equal(page.data.keyboardHeight, 0);
+  page.setData({ editing: true, showHistory: false });
+  callPage(page, "toggleHistory");
+  assert.equal(page.data.showHistory, false);
+  assert.ok(storage.toasts.some(text => text.includes("保存")));
+});
+
+test("keyboard layout subtracts height once even when Android shrinks its window", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const wxMock = (globalThis as any).wx;
+  let height = 760;
+  wxMock.getWindowInfo = () => ({ windowHeight: height, windowWidth: 390 });
+  wxMock.onKeyboardHeightChange = () => {};
+  wxMock.offKeyboardHeightChange = () => {};
+  const page = instantiate(await pageDefinition("book"));
+  callPage(page, "onLoad");
+  height = 460;
+  callPage(page, "onResize", { size: { windowHeight: height, windowWidth: 390 } });
+  callPage(page, "onKeyboardHeight", { detail: { height: 300 } });
+  assert.equal(page.data.viewportHeight, 460, "760 - 300, not shrunk viewport 460 - 300");
+  callPage(page, "onResize", { size: { windowHeight: height, windowWidth: 390 } });
+  assert.equal(page.data.viewportHeight, 460);
+  callPage(page, "onKeyboardHeight", { detail: { height: 0 } });
+  assert.equal(page.data.viewportHeight, 760);
+  callPage(page, "onUnload");
+});
+
+test("writing UI uses native fields without an expanding textarea or bottom navigation", () => {
+  const template = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
+  assert.match(template, /<input[^>]*bindinput="onEditTitle"/);
+  assert.match(template, /<editor[^>]*bindinput="onEditorInput"/);
+  assert.doesNotMatch(template, /writing-heading|writing-status/);
+  assert.match(template, /bindtap="addPhoto"/);
+  assert.match(template, /viewportHeight/);
+  assert.doesNotMatch(template, /100vh\s*-/, "do not subtract a keyboard from a shrinking CSS viewport");
+  const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");
+  assert.match(styles, /\.writing-toolbar > \.tool-button[^}]*width: 25%/);
+  assert.match(styles, /\.tool-button[^}]*white-space: nowrap/);
+  assert.ok(template.indexOf('bindtap="saveEdits"') < template.indexOf('class="writing-fields"'));
+  assert.doesNotMatch(template, /<story-switcher|bindtap="editManuscript"/);
+});
+
+test("discard restores native field seeds while a failed validation retains the typed draft", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "原稿", paragraphs: ["原文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  callPage(page, "onEditorInput", { detail: { delta: { ops: [{ insert: "还没保存的正文" }] }, text: "还没保存的正文" } });
+  callPage(page, "onEditTitle", { detail: { value: "" } });
+  await callPage(page, "saveEdits");
+  assert.equal(page.data.editing, true);
+  assert.equal(page.bodyBuffer, "还没保存的正文");
+  const editorKey = (page.data.editorKeys as number[])[0];
+  callPage(page, "cancelEdit");
+  assert.equal(page.data.editing, false);
+  assert.equal(page.bodyBuffer, "原文");
+  assert.equal(page.data.editTitle, "原稿");
+  assert.equal((page.data.editorKeys as number[])[0], editorKey + 1);
 });
 
 test("choosing a profile changes the active personal archive", async (context) => {
@@ -730,4 +944,92 @@ test("choosing a profile changes the active personal archive", async (context) =
   assert.equal(storage.currentMemberId(), "member-1");
   assert.equal(last(storage.toasts), "已切换到林秋");
   assert.equal(storage.backCount(), 1);
+});
+
+test("native photo picker inserts into the manuscript and saved local photo ordering survives reopen", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "图文测试", paragraphs: ["前文", "后文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const photoRecords = new Map<string, unknown>();
+  const wxMock = (globalThis as any).wx;
+  const getStorage = wxMock.getStorageSync;
+  const setStorage = wxMock.setStorageSync;
+  wxMock.env = { USER_DATA_PATH: "wxfile://usr" };
+  wxMock.getStorageSync = (key: string) => photoRecords.has(key) ? photoRecords.get(key) : getStorage(key);
+  wxMock.setStorageSync = (key: string, value: unknown) => key.startsWith("shiguang-local-photo-") ? photoRecords.set(key, value) : setStorage(key, value);
+  wxMock.chooseMedia = ({ success, mediaType }: any) => {
+    assert.deepEqual(mediaType, ["image"]);
+    success({ tempFiles: [{ tempFilePath: "wxfile://tmp/photo.jpg", size: 123 }] });
+  };
+  wxMock.getFileSystemManager = () => ({ saveFile: ({ success }: any) => success({ savedFilePath: "wxfile://usr/photo.jpg" }), accessSync: () => {} });
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  let delta: any = { ops: [{ insert: "前文\n" }, { insert: "后文\n" }] };
+  page.editorContext = {
+    getContents: ({ success }: any) => success({ delta, text: "前文\n后文\n" }),
+    insertImage: ({ src, success }: any) => { delta.ops.splice(1, 0, { insert: { image: src } }); success(); },
+    setContents: ({ delta: next, success }: any) => { delta = next; success(); },
+  };
+  page.setData({ editorReady: true });
+  await callPage(page, "addPhoto");
+  assert.equal(page.data.editing, true);
+  assert.equal(page.data.pickingPhoto, false);
+  await callPage(page, "saveEdits");
+  assert.equal(page.data.saveNotice, "修改已保存");
+  const saved = (page.data.draft as any).content;
+  assert.ok(saved[1].photoId);
+  assert.ok(!JSON.stringify(saved).includes("wxfile"));
+  const reopened = instantiate(await pageDefinition("book"));
+  await callPage(reopened, "refresh");
+  assert.deepEqual((reopened.data.draft as any).content, saved);
+  assert.equal((reopened.photoPaths as any)[saved[1].photoId], "wxfile://usr/photo.jpg");
+});
+
+test("reopening an old cached photo seeds an actual editor image, not its identifier", async context => {
+  const state = createInitialRoomState();
+  const id = "photo-old-cache";
+  const path = "wxfile://store_existing.jpg";
+  state.personalDrafts = { owner: { title: "旧照片", paragraphs: ["前文【本机照片：photo-old-cache】后文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const wxMock = (globalThis as any).wx;
+  wxMock.env = { USER_DATA_PATH: "wxfile://usr" };
+  wxMock.setStorageSync("shiguang-local-" + id, path);
+  wxMock.getFileSystemManager = () => ({
+    getSavedFileList: ({ success }: any) => success({ fileList: [{ filePath: path }] }),
+    accessSync: (value: string) => assert.equal(value, path),
+  });
+  const page = instantiate(await pageDefinition("book"));
+  let shown: any;
+  page.editorContext = { setContents: ({ delta, success }: any) => { shown = delta; success(); } };
+  await callPage(page, "refresh");
+  assert.deepEqual(shown.ops[1].insert, { image: path });
+  assert.ok(!JSON.stringify(shown).includes(id));
+  assert.equal(page.data.editorReady, true);
+  assert.equal(page.data.editing, false);
+});
+
+test("slow photo lookup never replaces text typed while a refresh was loading", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "图文测试", paragraphs: ["原文"], content: [{ text: "原文" }, { photoId: "photo-old-cache" }], sourceCount: 1, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const wxMock = (globalThis as any).wx;
+  wxMock.env = { USER_DATA_PATH: "wxfile://usr" };
+  wxMock.setStorageSync("shiguang-local-photo-old-cache", "wxfile://store_existing.jpg");
+  let finishLookup: any;
+  let started: () => void;
+  const lookupStarted = new Promise<void>(resolve => { started = resolve; });
+  wxMock.getFileSystemManager = () => ({ getSavedFileList: ({ success }: any) => { finishLookup = success; started(); }, accessSync: () => {} });
+  const page = instantiate(await pageDefinition("book"));
+  page.setData({ draft: state.personalDrafts.owner });
+  const loading = callPage(page, "refresh");
+  await lookupStarted;
+  callPage(page, "onEditorInput", { detail: { delta: { ops: [{ insert: "新输入的正文" }] }, text: "新输入的正文" } });
+  finishLookup({ fileList: [{ filePath: "wxfile://store_existing.jpg" }] });
+  await loading;
+  assert.equal(page.bodyBuffer, "新输入的正文");
+  assert.deepEqual(page.contentBuffer, [{ text: "新输入的正文" }]);
+  assert.equal(page.data.editing, true);
 });

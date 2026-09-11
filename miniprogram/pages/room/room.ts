@@ -90,7 +90,7 @@ Page({
   },
 
   onShow() {
-    void this.refresh();
+    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
   },
 
   async refresh(state?: FamilyRoomState) {
@@ -176,7 +176,7 @@ Page({
 
   chooseFilter(event: { currentTarget: { dataset: { id: string } } }) {
     this.setData({ activeFilter: event.currentTarget.dataset.id });
-    void this.refresh();
+    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
   },
 
   openDetail(event: { currentTarget: { dataset: { id: string } } }) {
