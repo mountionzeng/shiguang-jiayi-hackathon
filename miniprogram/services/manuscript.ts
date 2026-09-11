@@ -1,4 +1,4 @@
-import { BiographyDraft, FamilyRoomState, ManuscriptRevision } from "../domain/biography";
+import { BiographyDraft, FamilyRoomState, isRecordingProfile, ManuscriptRevision } from "../domain/biography";
 import { loadRoomStateRemoteFirst, usesCloudStorage } from "./roomRepository";
 import { saveCloudManuscriptRevision } from "./cloudRoomStorage";
 import { saveRoomState } from "./roomStorage";
@@ -46,7 +46,7 @@ export function makeRevision(memberId: string, draft: BiographyDraft, sourceFing
 
 export async function saveManuscriptRevision(revision: ManuscriptRevision, expectedRevisionId: string) {
   const state = await loadRoomStateRemoteFirst();
-  if (!state.members.some(member => member.id === revision.memberId && member.kind !== "person")) throw new Error("请先选择记录档案");
+  if (!state.members.some(member => member.id === revision.memberId && isRecordingProfile(member))) throw new Error("请先选择记录档案");
   validateManuscriptDraft(revision.draft);
   const existing = state.manuscriptRevisions?.find(item => item.id === revision.id);
   if (existing) {

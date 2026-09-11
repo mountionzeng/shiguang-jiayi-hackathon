@@ -102,7 +102,7 @@ function memberOptionsFor(
   selectedIds: string[] = [],
 ): MemberOptionView[] {
   return members
-    .filter((member) => member.id !== currentMemberId && member.kind !== "recording-profile")
+    .filter((member) => member.id !== currentMemberId && member.kind !== "recording-profile" && !member.deletedAt)
     .map((member) => ({
       id: member.id,
       name: member.name,
@@ -506,7 +506,7 @@ Page({
       if (!member.id) throw new Error("请先创建或选择自己的记录档案");
       const availableMemberIds = new Set(
         state.members
-          .filter((candidate) => candidate.id !== member.id)
+          .filter((candidate) => candidate.id !== member.id && !candidate.deletedAt)
           .map((candidate) => candidate.id),
       );
       const selectedMemberIds = this.data.relatedMemberIds.concat(

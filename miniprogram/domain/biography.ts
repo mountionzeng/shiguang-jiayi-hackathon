@@ -20,6 +20,25 @@ export interface FamilyMember {
   role: ReviewerRole;
   /** Missing on legacy demo profiles; preserve them until explicitly classified. */
   kind?: "recording-profile" | "person";
+  /** Soft delete: hidden everywhere and listed under "最近删除"; nothing else is removed. */
+  deletedAt?: string;
+}
+
+export function isActiveMember(member: FamilyMember): boolean {
+  return !member.deletedAt;
+}
+
+/** Profiles that own a book and can be switched to. Unclassified legacy profiles stay reachable. */
+export function isRecordingProfile(member: FamilyMember): boolean {
+  return isActiveMember(member) && member.kind !== "person";
+}
+
+export function isPerson(member: FamilyMember): boolean {
+  return isActiveMember(member) && member.kind === "person";
+}
+
+export function needsClassification(member: FamilyMember): boolean {
+  return isActiveMember(member) && !member.kind;
 }
 
 export interface MemoryContribution {
@@ -303,7 +322,15 @@ export function biographySourceContributions(
   );
 }
 
-/** 当前用户人生之书的素材：只取他/她亲自讲述的个人故事。 */
+/**
+ * 记忆库：本账号所有档案共用。任何一本书都可以取用其中任何一段，
+ * 删除某个档案也不会带走它讲过的记忆。家庭确认流程的旧投稿不在其中。
+ */
+export function memoryPool(contributions: MemoryContribution[]): MemoryContribution[] {
+  return contributions.filter((contribution) => contributionScope(contribution) === "personal");
+}
+
+/** 某个档案亲自讲述的个人故事（讲述人，而不是书的归属）。 */
 export function personalBookContributions(
   contributions: MemoryContribution[],
   memberId: string,
@@ -430,9 +457,11 @@ export function personalBookSourceFingerprint(
   state: FamilyRoomState,
   memberId: string,
 ): string {
+  // Every book draws from the shared pool. With one profile this equals the old
+  // own-stories fingerprint, so existing books are not flagged as changed.
   return JSON.stringify({
     memberId,
-    sources: personalBookContributions(state.contributions, memberId)
+    sources: memoryPool(state.contributions)
       .map((memory) => ({
         id: memory.id,
         text: memory.text,

@@ -6,11 +6,21 @@ import {
   createEmptyRoomState,
   FamilyMember,
   FamilyRoomState,
+  isActiveMember,
+  isRecordingProfile,
   MemoryContribution,
   personalShareTargetMemberIds,
   personalBookSourceFingerprint,
   setPersonalShareTargets,
 } from "../domain/biography";
+import {
+  applyMemberChange,
+  MemberChange,
+  MemberKind,
+  planClassify,
+  planDelete,
+  planRestore,
+} from "./memberLifecycle";
 
 const STORAGE_KEY = "shiguang-family-room-v5";
 const V3_STORAGE_KEY = "shiguang-family-room-v3";
@@ -126,7 +136,7 @@ export function appendContribution(
   contribution: MemoryContribution,
   state = loadRoomState(),
 ): FamilyRoomState {
-  const memberIds = new Set(state.members.map((member) => member.id));
+  const memberIds = new Set(state.members.filter(isActiveMember).map((member) => member.id));
   if (!memberIds.has(contribution.authorMemberId)) {
     throw new Error("请先创建或选择自己的记录档案");
   }
@@ -214,12 +224,13 @@ export function addFamilyMember(
   if (trimmedName.length > 12) {
     throw new Error("名字不能超过 12 个字");
   }
-  if (state.members.some((member) => member.name === trimmedName)) {
-    throw new Error("这个档案已经存在");
+  const sameName = state.members.find((member) => member.name === trimmedName);
+  if (sameName) {
+    throw new Error(sameName.deletedAt ? "这个名字在「最近删除」里，可以直接恢复" : "这个档案已经存在");
   }
 
   const firstProfile = state.members.length === 0;
-  if (kind === "person" && !state.members.some(member => member.kind !== "person")) {
+  if (kind === "person" && !state.members.some(isRecordingProfile)) {
     throw new Error("请先在切换档案中创建自己的记录档案");
   }
   const member: FamilyMember = {
@@ -262,7 +273,7 @@ export function updatePersonalShareTargets(
     uniqueTargetIds.some(
       (memberId) =>
         memberId === currentActor.id ||
-        !state.members.some((member) => member.id === memberId),
+        !state.members.some((member) => member.id === memberId && isActiveMember(member)),
     )
   ) {
     throw new Error("请选择仍在空间里的亲友");
@@ -286,6 +297,25 @@ export function updatePersonalShareTargets(
   };
   saveRoomState(next);
   return next;
+}
+
+function saveMemberChange(state: FamilyRoomState, change: MemberChange | undefined): FamilyRoomState {
+  if (!change) return state;
+  const next = applyMemberChange(state, change);
+  saveRoomState(next);
+  return next;
+}
+
+export function classifyMember(memberId: string, kind: MemberKind, state = loadRoomState()): FamilyRoomState {
+  return saveMemberChange(state, planClassify(state, memberId, kind, loadCurrentMember(state).id));
+}
+
+export function deleteMember(memberId: string, state = loadRoomState(), now = new Date()): FamilyRoomState {
+  return saveMemberChange(state, planDelete(state, memberId, loadCurrentMember(state).id, now));
+}
+
+export function restoreMember(memberId: string, state = loadRoomState()): FamilyRoomState {
+  return saveMemberChange(state, planRestore(state, memberId));
 }
 
 export function resetCurrentRoom(): FamilyRoomState {
@@ -325,7 +355,7 @@ export function saveCurrentMemberId(memberId: string): void {
 
 export function loadCurrentMember(state: FamilyRoomState = loadRoomState()): FamilyMember {
   const memberId = loadCurrentMemberId();
-  const profiles = state.members.filter(member => member.kind !== "person");
+  const profiles = state.members.filter(isRecordingProfile);
   return (
     profiles.find((member) => member.id === memberId) ??
     profiles.find((member) => member.id === DEFAULT_MEMBER_ID) ??

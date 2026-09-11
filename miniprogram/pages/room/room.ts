@@ -114,7 +114,7 @@ Page({
 
     const filters: MemberFilter[] = [
       { id: ALL, name: "全部", avatarText: "全", count: qualified.length, isElder: false },
-      ...currentState.members.map((member: FamilyMember) => ({
+      ...currentState.members.filter((member) => !member.deletedAt).map((member: FamilyMember) => ({
         id: member.id,
         name: member.name,
         avatarText: member.avatarText,
