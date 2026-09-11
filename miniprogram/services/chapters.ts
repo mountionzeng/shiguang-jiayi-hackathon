@@ -1,0 +1,94 @@
+import { BiographyDraft, ManuscriptChapter, ManuscriptContent } from "../domain/biography";
+import { contentFromDelta, contentToDelta, validateContent } from "./bookImages";
+
+const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
+const DIGITS = "零一二三四五六七八九";
+export const MAX_CHAPTERS = 30;
+export const MAX_BOOK_TEXT = 20000;
+
+export function chapterLabel(position: number) {
+  const tens = Math.floor(position / 10);
+  const ones = position % 10;
+  const number = position < 10 ? DIGITS[position]
+    : (tens > 1 ? DIGITS[tens] : "") + "十" + (ones ? DIGITS[ones] : "");
+  return "第" + number + "章";
+}
+
+export function newChapterId() {
+  return "chapter-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+export function copyChapter(chapter: ManuscriptChapter): ManuscriptChapter {
+  return { ...chapter, memoryIds: [...chapter.memoryIds], content: chapter.content.map(item => ({ ...item })) };
+}
+
+/** Memory ids a version was built from, read from its source fingerprint. */
+export function memoryIdsFromFingerprint(sourceFingerprint: string): string[] {
+  try {
+    const sources: unknown = JSON.parse(sourceFingerprint).sources;
+    return Array.isArray(sources) ? sources.flatMap(item => typeof item?.id === "string" ? [item.id] : []) : [];
+  } catch { return []; }
+}
+
+/**
+ * Chapters of a version. A flat (older) book reads as a single first chapter holding
+ * its content unchanged, photos included; nothing is written until the user saves.
+ */
+export function chaptersOf(draft: BiographyDraft, sourceFingerprint = ""): ManuscriptChapter[] {
+  if (Array.isArray(draft.chapters) && draft.chapters.length) return draft.chapters.map(copyChapter);
+  // Older text-only drafts may still carry photo markers inside their paragraphs.
+  const content = contentFromDelta(contentToDelta(draft.content ?? [{ text: draft.paragraphs.join("\n\n") + "\n" }], {}), {});
+  return [{ id: "chapter-1", title: "", memoryIds: memoryIdsFromFingerprint(sourceFingerprint), content }];
+}
+
+/** The whole book as one flattened text/photo sequence, with a heading line per chapter. */
+export function flattenChapters(chapters: ManuscriptChapter[]) {
+  const content: ManuscriptContent[] = [];
+  chapters.forEach((chapter, index) => {
+    const name = chapter.title.trim();
+    content.push({ text: (index ? "\n" : "") + chapterLabel(index + 1) + (name ? "　" + name : "") + "\n\n" });
+    content.push(...chapter.content.map(item => ({ ...item })));
+    const last = content[content.length - 1];
+    if (typeof last.text !== "string" || !last.text.endsWith("\n")) content.push({ text: "\n" });
+  });
+  const paragraphs = content.map(item => item.text ?? "").join("").split(/\n\s*\n/).map(text => text.trim()).filter(Boolean);
+  return { content, paragraphs };
+}
+
+export function draftWithChapters(base: BiographyDraft, chapters: ManuscriptChapter[]): BiographyDraft {
+  return { ...base, chapters: chapters.map(copyChapter), ...flattenChapters(chapters) };
+}
+
+export function validateChapters(chapters: unknown) {
+  if (!Array.isArray(chapters) || !chapters.length || chapters.length > MAX_CHAPTERS) throw new Error("一本书稿最多 " + MAX_CHAPTERS + " 章");
+  const ids = new Set<string>();
+  const all: ManuscriptContent[] = [];
+  for (const chapter of chapters as ManuscriptChapter[]) {
+    if (!chapter || typeof chapter.id !== "string" || !CHAPTER_ID.test(chapter.id) || ids.has(chapter.id)) throw new Error("章节编号无效，请重新打开书稿");
+    ids.add(chapter.id);
+    if (typeof chapter.title !== "string" || chapter.title.length > 40) throw new Error("章节标题最多 40 字");
+    if (!Array.isArray(chapter.memoryIds) || chapter.memoryIds.length > 500 ||
+      !chapter.memoryIds.every(id => typeof id === "string" && id.length <= 120)) throw new Error("章节里的记忆列表无效");
+    if (!Array.isArray(chapter.content)) throw new Error("图文内容格式无效");
+    all.push(...chapter.content);
+  }
+  // Limits count each chapter once. The flattened copy for older clients is derived, not counted again.
+  validateContent(all);
+  if (all.reduce((total, item) => total + (item.text?.length ?? 0), 0) > MAX_BOOK_TEXT) throw new Error("正文最多 " + MAX_BOOK_TEXT + " 字");
+}
+
+export function validateManuscriptDraft(draft: BiographyDraft) {
+  if (!draft.chapters) {
+    validateContent(draft.content);
+    if (!draft.title.trim() || !draft.paragraphs.some(text => text.trim())) throw new Error("书稿标题和正文不能为空");
+    if (draft.title.length > 80 || draft.paragraphs.join("\n").length > MAX_BOOK_TEXT) throw new Error("书稿标题最多 80 字，正文最多 20000 字");
+    return;
+  }
+  if (!draft.title.trim()) throw new Error("书稿标题不能为空");
+  if (draft.title.length > 80) throw new Error("书稿标题最多 80 字");
+  validateChapters(draft.chapters);
+  const flat = flattenChapters(draft.chapters);
+  if (JSON.stringify(flat.content) !== JSON.stringify(draft.content) || JSON.stringify(flat.paragraphs) !== JSON.stringify(draft.paragraphs)) {
+    throw new Error("章节和全文不一致，请重新打开书稿");
+  }
+}

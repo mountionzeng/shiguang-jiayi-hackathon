@@ -174,6 +174,27 @@ test("cloud manuscripts preserve legacy versions, tolerate lost acknowledgements
   } finally { f.restore(); }
 });
 
+test("cloud versions keep their chapters across reload and acknowledgement loss", async () => {
+  const f = fixture();
+  try {
+    const { draftWithChapters } = await import("../miniprogram/services/chapters");
+    const draft = draftWithChapters({ title: "我的书", paragraphs: [], sourceCount: 1, generatedAt: "", generationMode: "local-demo" }, [
+      { id: "chapter-1", title: "雨天", memoryIds: ["memory-a"], content: [{ text: "第一段\n" }, { photoId: "photo-a" }], handEdited: true },
+      { id: "chapter-2", title: "", memoryIds: [], content: [{ text: "第二段\n" }] },
+    ]);
+    const revision = makeRevision("owner", draft, "", "version", "分章节");
+    f.failures.add("biography_drafts:ack");
+    await assert.rejects(saveManuscriptRevision(revision, ""), /permission denied/);
+    f.failures.delete("biography_drafts:ack");
+    await saveManuscriptRevision(revision, "");
+    const state = await loadRoomStateRemoteFirst();
+    assert.equal(state.manuscriptRevisions?.length, 1, "retry after a lost acknowledgement adds no copy");
+    assert.deepEqual(currentManuscript(state, "owner").draft?.chapters, draft.chapters);
+    const changed = { ...revision, draft: draftWithChapters(revision.draft, revision.draft.chapters!.map(item => ({ ...item, title: "改名" }))) };
+    await assert.rejects(saveManuscriptRevision(changed, ""), /编号冲突/);
+  } finally { f.restore(); }
+});
+
 test("cloud initialization failure blocks saving instead of silently switching datasets", async () => {
   const f = fixture();
   try {

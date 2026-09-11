@@ -68,9 +68,29 @@ export interface BiographyDraft {
   generationMode: GenerationMode;
   /** Text and opaque local-photo references only. No device paths or photo bytes go to cloud. */
   content?: ManuscriptContent[];
+  /**
+   * The book's own table of contents; `title` stays the book title. When present,
+   * `paragraphs`/`content` hold a derived flattened copy so older clients still read
+   * the whole book, photos included.
+   */
+  chapters?: ManuscriptChapter[];
 }
 
 export type ManuscriptContent = { text: string; photoId?: never } | { photoId: string; text?: never };
+
+export interface ManuscriptChapter {
+  /** Stable across versions so a rearranged version still refers to the same chapter. */
+  id: string;
+  /** Chapter name only; "第X章" follows the chapter order and is never stored. */
+  title: string;
+  /** Raw memories arranged into this chapter in this version. */
+  memoryIds: string[];
+  content: ManuscriptContent[];
+  /** The user rewrote this chapter by hand; AI must not replace it without asking. */
+  handEdited?: boolean;
+  generationMode?: GenerationMode;
+  generatedAt?: string;
+}
 
 export interface FamilyRoomState {
   importedCloudRooms?: string[];

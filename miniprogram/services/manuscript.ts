@@ -2,7 +2,8 @@ import { BiographyDraft, FamilyRoomState, ManuscriptContent, ManuscriptRevision 
 import { loadRoomStateRemoteFirst, usesCloudStorage } from "./roomRepository";
 import { saveCloudManuscriptRevision } from "./cloudRoomStorage";
 import { saveRoomState } from "./roomStorage";
-import { contentFromDelta, contentToDelta, validateContent } from "./bookImages";
+import { contentFromDelta, contentToDelta } from "./bookImages";
+import { copyChapter, validateManuscriptDraft } from "./chapters";
 
 /** Photo references in reading order, including markers left inside older text-only drafts. */
 export function manuscriptPhotoIds(draft: BiographyDraft): string[] {
@@ -30,7 +31,9 @@ function revisionContent(revision: ManuscriptRevision) {
   const { draft } = revision;
   return JSON.stringify([revision.id, revision.memberId, revision.kind, revision.label,
     revision.savedAt, revision.sourceFingerprint, draft.title, draft.paragraphs,
-    draft.sourceCount, draft.generatedAt, draft.generationMode, draft.content ?? null]);
+    draft.sourceCount, draft.generatedAt, draft.generationMode, draft.content ?? null,
+    draft.chapters?.map(chapter => [chapter.id, chapter.title, chapter.memoryIds, chapter.content,
+      chapter.handEdited ?? null, chapter.generationMode ?? null, chapter.generatedAt ?? null]) ?? null]);
 }
 
 export function manuscriptHistory(state: FamilyRoomState, memberId: string) {
@@ -55,16 +58,18 @@ export function makeRevision(memberId: string, draft: BiographyDraft, sourceFing
   return {
     id: `revision-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     memberId, kind, label, sourceFingerprint, savedAt: new Date().toISOString(),
-    draft: { ...draft, paragraphs: [...draft.paragraphs], ...(draft.content ? { content: draft.content.map(item => ({ ...item })) } : {}) },
+    draft: {
+      ...draft, paragraphs: [...draft.paragraphs],
+      ...(draft.content ? { content: draft.content.map(item => ({ ...item })) } : {}),
+      ...(draft.chapters ? { chapters: draft.chapters.map(copyChapter) } : {}),
+    },
   };
 }
 
 export async function saveManuscriptRevision(revision: ManuscriptRevision, expectedRevisionId: string) {
   const state = await loadRoomStateRemoteFirst();
-  validateContent(revision.draft.content);
   if (!state.members.some(member => member.id === revision.memberId && member.kind !== "person")) throw new Error("请先选择记录档案");
-  if (!revision.draft.title.trim() || !revision.draft.paragraphs.some(text => text.trim())) throw new Error("书稿标题和正文不能为空");
-  if (revision.draft.title.length > 80 || revision.draft.paragraphs.join("\n").length > 20000) throw new Error("书稿标题最多 80 字，正文最多 20000 字");
+  validateManuscriptDraft(revision.draft);
   const existing = state.manuscriptRevisions?.find(item => item.id === revision.id);
   if (existing) {
     if (revisionContent(existing) !== revisionContent(revision)) throw new Error("保存编号冲突，请重新打开书稿");
