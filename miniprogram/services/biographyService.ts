@@ -1,5 +1,6 @@
 import {
   BiographyDraft,
+  buildLocalChapterDraft,
   buildLocalPersonalBiographyDraft,
   FamilyMember,
   FamilyRoomState,
@@ -50,14 +51,26 @@ export async function generateBiography(
   return (await generateBiographyWithStatus(state, member)).draft;
 }
 
+/** Organize one chapter from chosen memories, keeping the chapter's name and current text in view. */
+export interface ChapterRequest {
+  memoryIds: string[];
+  chapterTitle?: string;
+  existingText?: string;
+}
+
 export async function generateBiographyWithStatus(
   state: FamilyRoomState,
   member: FamilyMember,
+  chapter?: ChapterRequest,
 ): Promise<{ draft: BiographyDraft; fallbackReason?: BiographyFallbackReason }> {
-  const personal = personalBookContributions(state.contributions, member.id);
+  const own = personalBookContributions(state.contributions, member.id);
+  // Chosen ids can only narrow the member's own stories, never reach someone else's.
+  const personal = chapter ? own.filter((memory) => chapter.memoryIds.includes(memory.id)) : own;
   if (personal.length === 0) {
-    throw new Error("至少写下一段自己的经历后才能生成章节");
+    throw new Error(chapter ? "先勾选要整理的记忆" : "至少写下一段自己的经历后才能生成章节");
   }
+  if (chapter && personal.length > 20) throw new Error("一次最多整理 20 条记忆");
+  const existingText = (chapter?.existingText ?? "").slice(0, 4000);
 
   const app = getApp<ShiguangAppOptions>();
   let fallbackReason: BiographyFallbackReason;
@@ -76,6 +89,7 @@ export async function generateBiographyWithStatus(
             relation: "本人",
             text: memory.text,
           })),
+          ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),
         },
       });
 
@@ -92,7 +106,9 @@ export async function generateBiographyWithStatus(
   }
 
   return {
-    draft: buildLocalPersonalBiographyDraft(member.name, member.id, state.contributions),
+    draft: chapter
+      ? buildLocalChapterDraft(personal, existingText, chapter.chapterTitle)
+      : buildLocalPersonalBiographyDraft(member.name, member.id, state.contributions),
     fallbackReason,
   };
 }

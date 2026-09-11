@@ -95,6 +95,24 @@ test("chapter operations keep one memory in one chapter and never touch other ch
   assert.deepEqual(one.memoryIds, ["m1", "m2"], "inputs are never mutated");
 });
 
+test("organizing replaces only the target chapter's text, keeps its photos (even old markers) and moves the chosen memories", async () => {
+  const { applyOrganized, organizedChapterTitle } = await import("../miniprogram/services/chapters");
+  const [first] = chaptersOf({ ...base, paragraphs: ["前文【本机照片：photo-legacy】后文"] });
+  const second = { ...chapter("chapter-2", "二", "第二章正文\n", ["photo-b"]), memoryIds: ["m1"], handEdited: true };
+  const ai = { ...base, title: "第一章｜我记得的那一天", paragraphs: ["新正文"] };
+  const result = applyOrganized([first, { ...second }], "chapter-1", ai, ["m1"]);
+  assert.deepEqual(result.keptPhotoIds, ["photo-legacy"]);
+  assert.deepEqual(result.chapters[0].content, [{ text: "新正文\n" }, { photoId: "photo-legacy" }, { text: "\n" }]);
+  assert.equal(result.chapters[0].title, "", "template AI titles never become chapter names");
+  assert.deepEqual(result.chapters[0].memoryIds, ["m1"]);
+  assert.deepEqual(result.chapters[1], { ...second, memoryIds: [] }, "other chapters keep their text, photos and hand edits");
+  const created = applyOrganized([first], "new", { ...ai, title: "第二章｜雨天的巷口" }, []);
+  assert.equal(created.chapters.length, 2);
+  assert.equal(created.chapters[1].title, "雨天的巷口");
+  assert.deepEqual(created.chapters[0], first);
+  assert.equal(organizedChapterTitle("被记住的日常"), "");
+});
+
 test("chapter structure is checked before saving", () => {
   const good = chapter("chapter-1", "章名", "正文\n");
   assert.throws(() => validateManuscriptDraft(draftWithChapters(base, [good, { ...good }])), /章节编号无效/);

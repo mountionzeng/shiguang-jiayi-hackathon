@@ -93,6 +93,18 @@ test("a single-block model response uses a safe default title without duplicatin
   assert.deepEqual(result.paragraphs, ["只有一段正文，没有单独标题。"]);
 });
 
+test("chapter organizing names one chapter and treats its existing text as data", () => {
+  const memories = [{ authorName: "林岚", relation: "本人", text: "新的回忆" }];
+  const chapter = _test.buildUserMessage({ protagonistName: "林岚", chapterTitle: "雨天", existingText: "作者改过的正文" }, memories);
+  assert.match(chapter, /其中一章（章名：雨天）/);
+  assert.match(chapter, /不要写书名/);
+  assert.match(chapter, /作者改过的正文/);
+  assert.match(chapter, /新的回忆/);
+  assert.doesNotMatch(chapter, /传记第一章/);
+  const older = _test.buildUserMessage({ protagonistName: "林致远" }, memories);
+  assert.match(older, /请为林致远整理传记第一章/, "older clients without chapter fields keep the original request");
+});
+
 test("the cloud function rejects generation when model credentials are absent", async () => {
   const previousKey = process.env.AI_API_KEY;
   const previousModel = process.env.AI_MODEL;

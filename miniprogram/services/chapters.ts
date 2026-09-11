@@ -112,6 +112,37 @@ export function updateChapter(chapters: ManuscriptChapter[], id: string, patch: 
   });
 }
 
+const TEMPLATE_TITLES = /^(被记住的日常|我记得的那一天)$/;
+
+/** Chapter name from an AI title: drop a "第X章｜" prefix and the generators' template names. */
+export function organizedChapterTitle(aiTitle: string) {
+  const name = aiTitle.replace(/^第[一二三四五六七八九十百零〇\d]+章\s*[｜|:：·—-]?\s*/, "").trim();
+  return TEMPLATE_TITLES.test(name) ? "" : name.slice(0, 40);
+}
+
+/**
+ * Writes an organized text into one chapter (or a new one). Only that chapter's text
+ * changes: its photos stay after the new text in their order, the chosen memories move
+ * into it, and every other chapter is copied unchanged.
+ */
+export function applyOrganized(chapters: ManuscriptChapter[], targetId: string, organized: BiographyDraft, memoryIds: string[]) {
+  const creating = !chapters.some(chapter => chapter.id === targetId);
+  let next = creating ? addChapter(chapters, organizedChapterTitle(organized.title), memoryIds) : chapters.map(copyChapter);
+  const chapterId = creating ? next[next.length - 1].id : targetId;
+  for (const memoryId of memoryIds) next = assignMemory(next, memoryId, chapterId);
+  let keptPhotoIds: string[] = [];
+  next = next.map(chapter => {
+    if (chapter.id !== chapterId) return chapter;
+    keptPhotoIds = chapter.content.flatMap(item => item.photoId ? [item.photoId] : []);
+    const content: ManuscriptContent[] = [{ text: organized.paragraphs.join("\n\n") + "\n" }];
+    for (const photoId of keptPhotoIds) content.push({ photoId }, { text: "\n" });
+    const written = { ...chapter, title: chapter.title || organizedChapterTitle(organized.title), content, generationMode: organized.generationMode, generatedAt: organized.generatedAt };
+    delete written.handEdited;
+    return written;
+  });
+  return { chapters: next, chapterId, keptPhotoIds };
+}
+
 export function validateChapters(chapters: unknown) {
   if (!Array.isArray(chapters) || !chapters.length || chapters.length > MAX_CHAPTERS) throw new Error("一本书稿最多 " + MAX_CHAPTERS + " 章");
   const ids = new Set<string>();

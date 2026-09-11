@@ -800,7 +800,7 @@ test("people management never impersonates a person and changes only the selecte
   assert.equal(storage.currentMemberId(), "owner");
 });
 
-test("AI manuscript requires adoption; edits, saved versions and source changes preserve history", async context => {
+test("AI organizing starts a book; edits, saved versions and source changes preserve history", async context => {
   const previousApp = (globalThis as any).getApp;
   (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
   context.after(() => { (globalThis as any).getApp = previousApp; });
@@ -808,13 +808,20 @@ test("AI manuscript requires adoption; edits, saved versions and source changes 
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("book"));
   await callPage(page, "refresh");
-  const oldDraft = page.data.draft;
-  await callPage(page, "generateChapter");
-  assert.ok(page.data.candidate);
-  assert.equal(page.data.draft, oldDraft);
+  callPage(page, "selectTool", { currentTarget: { dataset: { action: "generate" } } });
+  assert.equal(page.data.panel, "organize");
+  assert.equal(page.data.organizeTarget, "new");
+  assert.deepEqual((page.data.organizeRows as any[]).map(row => [row.id, row.checked, row.where]), [["demo-personal-rain", true, "还没放进"]]);
   assert.equal(storage.roomState().manuscriptRevisions, undefined);
-  await callPage(page, "adoptCandidate");
-  assert.ok(page.data.draft);
+  await callPage(page, "runOrganize");
+  const organized = page.data.draft as any;
+  assert.equal(organized.title, "林岚的人生之书", "the AI never names the book");
+  assert.equal(organized.chapters[0].title, "外公接我放学");
+  assert.deepEqual(organized.chapters[0].memoryIds, ["demo-personal-rain"]);
+  assert.doesNotMatch(JSON.stringify(organized.chapters[0].content), /认真地收在这里|“/, "no template filler or quotes");
+  assert.equal(page.data.view, "chapter");
+  assert.equal(page.data.panel, "");
+  assert.equal(page.data.canUndo, false, "nothing to undo into for a brand-new book");
   const first = (page.data.history as Array<{ id: string }>)[0].id;
   callPage(page, "onEditTitle", { detail: { value: "我亲手改的标题" } });
   callPage(page, "onEditorInput", { detail: { delta: { ops: [{ insert: "我自己改写的正文。" }] }, text: "我自己改写的正文。" } });
@@ -834,13 +841,13 @@ test("AI manuscript requires adoption; edits, saved versions and source changes 
   assert.equal(page.data.stale, true);
 });
 
-test("adopting an AI candidate keeps the user's title and every photo reference", async context => {
+test("AI organizing a chapter keeps the book title and every photo, and can be undone", async context => {
   const previousApp = (globalThis as any).getApp;
   (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
   context.after(() => { (globalThis as any).getApp = previousApp; });
   const state = createInitialRoomState();
   const original = {
-    title: "外公和雨天", paragraphs: ["前文", "中段【本机照片：photo-legacy】"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const,
+    title: "外公和雨天", paragraphs: ["前文", "中段"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const,
     content: [{ text: "前文\n" }, { photoId: "photo-first" }, { text: "中段\n" }, { photoId: "photo-second" }],
   };
   state.personalDrafts = { owner: original };
@@ -848,28 +855,24 @@ test("adopting an AI candidate keeps the user's title and every photo reference"
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("book"));
   await callPage(page, "refresh");
-  await callPage(page, "generateChapter");
-  assert.equal(page.data.candidatePhotoCount, 2);
-  assert.match(page.data.candidateNote as string, /微信云开发还没连上/);
-  await callPage(page, "adoptCandidate");
-  const adopted = page.data.draft as any;
-  assert.equal(adopted.title, "外公和雨天");
-  assert.deepEqual(adopted.content.filter((item: any) => item.photoId).map((item: any) => item.photoId), ["photo-first", "photo-second"]);
-  assert.match(adopted.content[0].text, /外公带着两把伞/);
+  callPage(page, "showOrganize");
+  assert.equal(page.data.organizeTarget, "chapter-1", "organizing from a chapter targets that chapter");
+  await callPage(page, "runOrganize");
+  const organized = page.data.draft as any;
+  assert.equal(organized.title, "外公和雨天");
+  const content = organized.chapters[0].content;
+  assert.deepEqual(content.filter((item: any) => item.photoId).map((item: any) => item.photoId), ["photo-first", "photo-second"]);
+  assert.match(content[0].text, /前文/, "the local fallback keeps the chapter's existing text");
+  assert.match(content[0].text, /外公带着两把伞/);
+  assert.match(page.data.saveNotice as string, /微信云开发还没连上/);
   assert.match(page.data.saveNotice as string, /2 张照片/);
+  assert.equal(page.data.canUndo, true);
+  await callPage(page, "undoOrganize");
+  assert.deepEqual((page.data.draft as any).content, original.content, "undo restores the book as it was");
+  assert.equal(page.data.canUndo, false);
   const revisions = storage.roomState().manuscriptRevisions!;
-  assert.deepEqual(revisions.find(item => item.id === "legacy-owner")!.draft.content, original.content);
-});
-
-test("adopting an AI candidate keeps photos from an older marker-only draft", async () => {
-  const { adoptCandidateDraft } = await import("../miniprogram/services/manuscript");
-  const current = { title: "旧稿", paragraphs: ["前文【本机照片：photo-legacy】后文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const };
-  const candidate = { title: "第一章｜我记得的那一天", paragraphs: ["新正文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const };
-  const { draft, keptPhotoIds } = adoptCandidateDraft(current, candidate);
-  assert.equal(draft.title, "旧稿");
-  assert.deepEqual(keptPhotoIds, ["photo-legacy"]);
-  assert.deepEqual(draft.content, [{ text: "新正文\n" }, { photoId: "photo-legacy" }, { text: "\n" }]);
-  assert.deepEqual(adoptCandidateDraft(undefined, candidate).draft, candidate);
+  assert.ok(revisions.some(item => item.label === "AI 整理第一章"), "the organized version stays in history");
+  assert.deepEqual(revisions.find(item => item.id === "legacy-owner")!.draft, original);
 });
 
 test("chapters: an older book becomes chapter one and chapter changes leave other chapters untouched", async context => {

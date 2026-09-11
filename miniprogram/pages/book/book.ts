@@ -4,10 +4,10 @@ import {
 } from "../../domain/biography";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel } from "../../services/roomRepository";
-import { adoptCandidateDraft, currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
+import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import { contentFromDelta, contentToDelta, readLocalPhoto, saveLocalPhoto, validateContent } from "../../services/bookImages";
 import {
-  addChapter, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, removeChapter, unassignedMemoryIds, updateChapter,
+  addChapter, applyOrganized, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, removeChapter, unassignedMemoryIds, updateChapter,
 } from "../../services/chapters";
 
 const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
@@ -32,7 +32,6 @@ Page({
     sourceCount: 0, draft: null as BiographyDraft | null,
     generating: false, saving: false, isCloudDraft: false, modeLabel: "", modeNote: "",
     stale: false, showSources: false, editing: false, editTitle: "", editBody: "",
-    candidate: null as BiographyDraft | null, candidateFingerprint: "", candidateNote: "", candidatePhotoCount: 0,
     history: [] as ManuscriptRevision[], showHistory: false,
     previewVersion: null as ManuscriptRevision | null,
     loadError: "", storageLabel: "", versionName: "", saveNotice: "",
@@ -44,6 +43,8 @@ Page({
     chapterLabelText: "", editChapterTitle: "",
     unassigned: [] as MemoryRow[], chapterMemories: [] as MemoryRow[],
     storyOptions: [] as Array<{ title: string; count: number }>, assignMemoryId: "",
+    // AI organizing: choose memories, choose a chapter, write it in directly; undo restores the version before.
+    organizeRows: [] as Array<{ id: string; text: string; where: string; checked: boolean }>, organizeTarget: "", canUndo: false,
   },
   // Native inputs own their live value/cursor. Do not echo the document on each keystroke.
   titleBuffer: "",
@@ -66,6 +67,8 @@ Page({
   revisionId: "",
   sourceFingerprint: "",
   pendingSave: undefined as ManuscriptRevision | undefined,
+  organizeSelection: [] as string[],
+  undoState: undefined as { draft: BiographyDraft; fingerprint: string } | undefined,
 
   onLoad() {
     this.unloaded = false;
@@ -97,7 +100,7 @@ Page({
     this.editorContext = undefined;
   },
   onShow() {
-    if (!this.data.editing && !this.data.candidate && !this.data.saving && !this.data.pickingPhoto) {
+    if (!this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
       void this.refresh().catch(() => this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }));
     }
   },
@@ -286,10 +289,7 @@ Page({
     switch (action) {
       case "history": this.toggleHistory(); break;
       case "version": this.setData({ panel: "version" }); break;
-      case "generate":
-        if (this.data.candidate) this.setData({ panel: "candidate" });
-        else void this.generateChapter();
-        break;
+      case "generate": this.showOrganize(); break;
       case "sources": this.toggleSources(); break;
       case "record": this.startInterview(); break;
       case "new-chapter": this.setData({ panel: "new-chapter" }); break;
@@ -340,7 +340,7 @@ Page({
       const state = await saveManuscriptRevision(this.pendingSave, this.revisionId);
       this.pendingSave = undefined;
       await this.refresh(state);
-      this.setData({ editing: false, saveNotice: kind === "draft" ? "修改已保存" : "版本已保存，旧版仍然保留" });
+      this.setData({ editing: false, canUndo: false, saveNotice: kind === "draft" ? "修改已保存" : "版本已保存，旧版仍然保留" });
       wx.disableAlertBeforeUnload();
       return true;
     } catch (error) {
@@ -351,11 +351,17 @@ Page({
   /** Saves a structural change (new chapter, order, memory placement) as its own version. */
   async saveChapters(chapters: ManuscriptChapter[], label: string) {
     if (!this.canLeaveEditor()) return false;
-    const base: BiographyDraft = this.data.draft ?? {
+    return this.persist(draftWithChapters(this.data.draft ?? this.newBookBase(), chapters), this.sourceFingerprint, "draft", label);
+  },
+  /** A first book gets a default title the user can change; never an AI chapter title. */
+  newBookBase(): BiographyDraft {
+    return {
       title: (this.data.protagonistName || "我") + "的人生之书", paragraphs: [], sourceCount: 0,
       generatedAt: new Date().toISOString(), generationMode: "local-demo",
     };
-    return this.persist(draftWithChapters(base, chapters), this.sourceFingerprint, "draft", label);
+  },
+  confirm(title: string, content: string) {
+    return new Promise<boolean>(resolve => wx.showModal({ title, content, success: result => resolve(result.confirm), fail: () => resolve(false) }));
   },
   async saveEdits() {
     if (!this.data.draft || this.data.saving || this.data.pickingPhoto || this.collecting) return;
@@ -466,47 +472,64 @@ Page({
       if (result.confirm) void this.persist(version.draft, version.sourceFingerprint, "restore", "恢复：" + version.label);
     } });
   },
-  async generateChapter() {
+  /** AI organizing: step 1 choose memories, step 2 choose a chapter. Defaults follow where the user is. */
+  showOrganize() {
+    if (!this.memories.length) { this.setData({ saveNotice: "先记录一段经历，再请 AI 整理" }); return; }
+    const active = this.data.view === "chapter" ? this.chapters.find(chapter => chapter.id === this.activeChapterId) : undefined;
+    const known = new Set(this.memories.map(memory => memory.id));
+    const inChapter = active?.memoryIds.filter(id => known.has(id)) ?? [];
+    this.organizeSelection = inChapter.length ? inChapter : unassignedMemoryIds(this.chapters, [...known]);
+    const where = new Map<string, string>();
+    this.chapters.forEach((chapter, index) => chapter.memoryIds.forEach(id => where.set(id, "在" + chapterLabel(index + 1))));
+    this.setData({
+      panel: "organize", organizeTarget: active ? active.id : "new",
+      organizeRows: this.memories.map(memory => ({ ...memoryRow(memory), where: where.get(memory.id) ?? "还没放进", checked: this.organizeSelection.includes(memory.id) })),
+    });
+  },
+  onOrganizeMemories(event: { detail: { value: string[] } }) { this.organizeSelection = event.detail.value; },
+  onOrganizeTarget(event: { detail: { value: string } }) { this.setData({ organizeTarget: event.detail.value }); },
+  async runOrganize() {
     if (this.data.generating || this.data.saving || this.data.editing) return;
-    this.setData({ generating: true, saveNotice: "" });
+    const memoryIds = this.organizeSelection.filter(id => this.memories.some(memory => memory.id === id));
+    if (!memoryIds.length) { this.setData({ saveNotice: "先勾选要整理的记忆" }); return; }
+    const target = this.chapters.find(chapter => chapter.id === this.data.organizeTarget);
+    if (target?.handEdited && plainText(target.content).trim() && !await this.confirm("这一章你亲手改过",
+      "AI 会重写这一章的正文，照片保留。原来的文字在历史版本里能找回，整理完也可以马上撤回。继续吗？")) return;
+    this.setData({ generating: true, saveNotice: "正在整理，请稍候…" });
     try {
       const state = await loadRoomStateRemoteFirst();
       const member = await loadCurrentMemberRemoteFirst(state);
-      if (!personalBookContributions(state.contributions, member.id).length) throw new Error("先记录一段经历，再请 AI 整理");
       const fingerprint = personalBookSourceFingerprint(state, member.id);
-      const { draft: candidate, fallbackReason } = await generateBiographyWithStatus(state, member);
+      const { draft: organized, fallbackReason } = await generateBiographyWithStatus(state, member, {
+        memoryIds, chapterTitle: target?.title ?? "", existingText: target ? plainText(target.content).trim() : "",
+      });
       const latest = await loadRoomStateRemoteFirst();
       if (fingerprint !== personalBookSourceFingerprint(latest, member.id)) throw new Error("素材刚刚变了，请重新整理");
-      this.setData({
-        candidate, candidateFingerprint: fingerprint, panel: "candidate",
-        candidateNote: fallbackReason ? "这次没有用上在线 AI（" + FALLBACK_REASONS[fallbackReason] + "），下面只是把原话按顺序排在一起的本地演示稿。" : "",
-        candidatePhotoCount: adoptCandidateDraft(this.data.draft ?? undefined, candidate).keptPhotoIds.length,
-      });
-    } catch (error) {
-      this.setData({ saveNotice: error instanceof Error ? error.message : "整理失败，请重试" });
-    } finally { this.setData({ generating: false }); }
-  },
-  async adoptCandidate() {
-    if (!this.data.candidate || !this.canLeaveEditor()) return;
-    try {
-      const latest = await loadRoomStateRemoteFirst();
-      if (this.data.candidateFingerprint !== personalBookSourceFingerprint(latest, this.data.memberId)) throw new Error("素材已变化，请重新生成候选稿");
-      const { draft, keptPhotoIds, newChapter } = adoptCandidateDraft(this.data.draft ?? undefined, this.data.candidate);
-      if (await this.persist(draft, this.data.candidateFingerprint, "version", "采用 AI 整理稿")) {
+      const { chapters, chapterId, keptPhotoIds } = applyOrganized(this.chapters, target?.id ?? "new", organized, memoryIds);
+      const before = this.data.draft ? { draft: this.data.draft, fingerprint: this.sourceFingerprint } : undefined;
+      const base = { ...(this.data.draft ?? this.newBookBase()), generationMode: organized.generationMode, generatedAt: organized.generatedAt };
+      const label = chapterLabel(chapters.findIndex(chapter => chapter.id === chapterId) + 1);
+      this.setData({ generating: false });
+      if (await this.persist(draftWithChapters(base, chapters), fingerprint, "version", "AI 整理" + label)) {
+        this.undoState = before;
+        this.openChapter({ currentTarget: { dataset: { id: chapterId } } });
         this.setData({
-          candidate: null, panel: "",
-          saveNotice: newChapter
-            ? "AI 整理稿放进了新的" + chapterLabel(draft.chapters!.length) + "，其他章节没有改动。旧版仍在历史版本里。"
-            : "已采用新整理稿，标题没变" + (keptPhotoIds.length ? "，原来的 " + keptPhotoIds.length + " 张照片放在正文最后" : "") + "。旧版仍在历史版本里。",
+          canUndo: !!before,
+          saveNotice: (fallbackReason ? "这次没有用上在线 AI（" + FALLBACK_REASONS[fallbackReason] + "），只是把原话放进了" + label + "。" : "已整理进" + label + "。")
+            + (keptPhotoIds.length ? "这一章原来的 " + keptPhotoIds.length + " 张照片放在正文最后。" : "")
+            + (before ? "不满意可以点「撤回这次整理」。" : ""),
         });
       }
-    } catch (error) { this.setData({ saveNotice: error instanceof Error ? error.message : "采用失败，请重试" }); }
+    } catch (error) {
+      this.setData({ saveNotice: error instanceof Error ? error.message : "整理失败，请重试" });
+    } finally { if (this.data.generating) this.setData({ generating: false }); }
   },
-  discardCandidate() {
-    if (!this.data.saving) {
-      this.pendingSave = undefined;
-      this.setData({ candidate: null, panel: "" });
-      this.onShow();
+  async undoOrganize() {
+    const undo = this.undoState;
+    if (!undo || !this.data.canUndo || !this.canLeaveEditor()) return;
+    if (await this.persist(undo.draft, undo.fingerprint, "restore", "撤回 AI 整理")) {
+      this.undoState = undefined;
+      this.setData({ saveNotice: "已撤回，回到整理前的样子。整理后的那一版仍在历史版本里。" });
     }
   },
   startInterview() { wx.navigateTo({ url: "/pages/interview/interview" }); },

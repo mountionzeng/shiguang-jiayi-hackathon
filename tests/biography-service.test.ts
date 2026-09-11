@@ -167,6 +167,39 @@ test("a local fallback reports why the online AI was not used", async (context) 
   clearAiConsent();
 });
 
+test("chapter organizing sends only the member's chosen memories with the chapter name and text", async (context) => {
+  const { generateBiographyWithStatus } = await import("../miniprogram/services/biographyService");
+  let requestData: any;
+  let cloudReady = true;
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady } }));
+  const restoreWx = installGlobal("wx", {
+    cloud: {
+      callFunction: async (request: { data: unknown }) => {
+        requestData = request.data;
+        return { result: { title: "第二章｜雨天", paragraphs: ["整理后的正文。"], sourceCount: 1, generatedAt: "2026-09-11T00:00:00.000Z", generationMode: "cloud-ai" } };
+      },
+    },
+  });
+  context.after(() => { restoreWx(); restoreGetApp(); });
+  const state = stateWithConfirmedMemory();
+  state.contributions.push(createContribution({ id: "second-personal", authorMemberId: "owner", authorName: "林岚", relation: "外孙女", text: "第二段自己的回忆。", scope: "personal", visibility: "private" }));
+  state.contributions.push(createContribution({ id: "someone-else", authorMemberId: "member-1", authorName: "林秋", relation: "女儿", text: "别人的故事。", scope: "personal", visibility: "private" }));
+  const request = { memoryIds: ["second-personal", "someone-else"], chapterTitle: "雨天", existingText: "已有正文" };
+
+  const cloud = await generateBiographyWithStatus(state, ownerOf(state), request);
+  assert.equal(cloud.draft.generationMode, "cloud-ai");
+  assert.deepEqual(requestData.memories.map((memory: { id: string }) => memory.id), ["second-personal"]);
+  assert.equal(requestData.chapterTitle, "雨天");
+  assert.equal(requestData.existingText, "已有正文");
+
+  cloudReady = false;
+  const local = await generateBiographyWithStatus(state, ownerOf(state), request);
+  assert.equal(local.fallbackReason, "cloud-not-ready");
+  assert.equal(local.draft.title, "雨天");
+  assert.deepEqual(local.draft.paragraphs, ["已有正文", "第二段自己的回忆。"]);
+  await assert.rejects(generateBiographyWithStatus(state, ownerOf(state), { memoryIds: ["someone-else"] }), /先勾选/);
+});
+
 test("malformed cloud output also falls back to the local draft", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({

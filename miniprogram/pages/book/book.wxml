@@ -26,12 +26,12 @@
   </view>
   <view class="notice" wx:if="{{saveNotice || loadError}}">{{saveNotice || loadError}}</view>
   <view class="panel-actions" wx:if="{{loadError}}"><button class="tool-button" bindtap="retryLoad">重新加载</button></view>
+  <view class="panel-actions" wx:if="{{canUndo && !panel && !editing}}">
+    <button class="tool-button" bindtap="undoOrganize" disabled="{{saving || generating}}">撤回这次整理</button>
+  </view>
   <view class="panel-actions" wx:if="{{panel}}">
-    <button class="tool-button" bindtap="closePanel" disabled="{{saving}}">{{view === 'chapter' ? '回到正文' : '回到目录'}}</button>
-    <block wx:if="{{panel === 'candidate'}}">
-      <button class="tool-button" bindtap="discardCandidate" disabled="{{saving}}">不采用</button>
-      <button class="tool-button save-button" bindtap="adoptCandidate" disabled="{{saving}}">采用</button>
-    </block>
+    <button class="tool-button" bindtap="closePanel" disabled="{{saving || generating}}">{{view === 'chapter' ? '回到正文' : '回到目录'}}</button>
+    <button wx:if="{{panel === 'organize'}}" class="tool-button save-button" bindtap="runOrganize" disabled="{{saving || generating}}">{{generating ? '整理中…' : '开始整理'}}</button>
     <button wx:if="{{panel === 'history' && previewVersion}}" class="tool-button save-button" bindtap="restoreVersion" disabled="{{saving}}">恢复此版</button>
     <button wx:if="{{panel === 'version'}}" class="tool-button save-button" bindtap="saveVersion" disabled="{{saving}}">存为版本</button>
   </view>
@@ -89,12 +89,28 @@
           </view>
         </view>
       </block>
-      <block wx:if="{{panel === 'candidate' && candidate}}">
-        <view class="panel-note">候选稿 · 采用后才会写进书稿，旧版仍保留</view>
-        <view class="panel-note" wx:if="{{candidateNote}}">{{candidateNote}}</view>
-        <view class="panel-note" wx:if="{{draft}}">{{draft.chapters ? '采用后会作为新的一章放在最后，其他章节不变。' : '采用后标题不变' + (candidatePhotoCount ? '，原来的 ' + candidatePhotoCount + ' 张照片会放在正文最后' : '') + '。'}}</view>
-        <view class="panel-title serif">{{draft ? draft.title : candidate.title}}</view>
-        <view class="chapter-para serif" wx:for="{{candidate.paragraphs}}" wx:key="index"><text selectable>{{item}}</text></view>
+      <block wx:if="{{panel === 'organize'}}">
+        <view class="panel-title serif">AI 整理记忆</view>
+        <view class="field-label">1. 勾选要整理的记忆</view>
+        <checkbox-group bindchange="onOrganizeMemories">
+          <label class="memory-row" wx:for="{{organizeRows}}" wx:key="id">
+            <checkbox value="{{item.id}}" checked="{{item.checked}}" />
+            <text class="memory-text">{{item.text}}</text>
+            <text class="version-date">{{item.where}}</text>
+          </label>
+        </checkbox-group>
+        <view class="field-label contents-label">2. 放进哪一章</view>
+        <radio-group bindchange="onOrganizeTarget">
+          <label class="memory-row" wx:for="{{chapterRows}}" wx:key="id">
+            <radio value="{{item.id}}" checked="{{organizeTarget === item.id}}" />
+            <text class="memory-text">{{item.label}}{{item.title ? '　' + item.title : ''}}</text>
+          </label>
+          <label class="memory-row">
+            <radio value="new" checked="{{organizeTarget === 'new'}}" />
+            <text class="memory-text">新开一章</text>
+          </label>
+        </radio-group>
+        <view class="panel-note">点「开始整理」后，AI 只重写你选的这一章，其他章节一个字都不动；这一章里的照片会保留。勾选的记忆会移到这一章。整理完不满意可以撤回。</view>
       </block>
       <block wx:if="{{panel === 'sources'}}">
         <view class="panel-title serif">原始记忆 · {{sourceCount}}</view>

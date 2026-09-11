@@ -496,6 +496,28 @@ export function buildLocalPersonalBiographyDraft(
   };
 }
 
+/**
+ * Offline fallback for one chapter: the chapter's existing text, then each chosen
+ * memory not already in it, verbatim. No quotes, no template filler.
+ */
+export function buildLocalChapterDraft(
+  memories: MemoryContribution[],
+  existingText = "",
+  chapterTitle = "",
+  now = new Date(),
+): BiographyDraft {
+  if (memories.length === 0) throw new Error("先勾选要整理的记忆");
+  const existing = existingText.split(/\n\s*\n/).map((text) => text.trim()).filter(Boolean);
+  const kept = existing.join("\n");
+  return {
+    title: chapterTitle.trim() || memories.map(contributionStoryTitle).find(Boolean) || "",
+    paragraphs: [...existing, ...memories.filter((memory) => !kept.includes(memory.text)).map((memory) => memory.text)],
+    sourceCount: memories.length,
+    generatedAt: now.toISOString(),
+    generationMode: "local-demo",
+  };
+}
+
 export function createEmptyRoomState(): FamilyRoomState {
   return {
     roomName: "我的拾光房间",
