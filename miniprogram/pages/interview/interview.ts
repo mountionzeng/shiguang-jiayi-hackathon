@@ -13,9 +13,11 @@ import {
 import {
   detectCoveredDimensions,
   DIMENSION_CHIPS,
-  DIMENSION_LABELS,
   draftTitleFromAnswers,
+  FOLLOW_UP_LABEL,
+  INTERVIEW_DIMENSIONS,
   InterviewDimension,
+  InterviewTurn,
   pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
@@ -53,6 +55,9 @@ interface InterviewLoadOptions {
   sourceId?: string;
   storyTitle?: string;
   memoryType?: string;
+  /** 首页推荐问：点进来后小忆第一句就问这个。 */
+  question?: string;
+  dimension?: string;
 }
 
 function decodeQueryValue(value = ""): string {
@@ -136,7 +141,8 @@ Page({
     organizing: false,
     scrollIntoView: "",
 
-    stage: "choose" as "choose" | "chat" | "save",
+    // 先等档案读完再决定显示哪一屏，免得从首页进来时先闪一下「选择讲述方式」。
+    stage: "loading" as "loading" | "choose" | "chat" | "save",
     draftTitle: "",
     draftSummary: "",
     draftText: "",
@@ -197,10 +203,17 @@ Page({
     const sourcePreview = source
       ? `${source.text.slice(0, 72)}${source.text.length > 72 ? "……" : ""}`
       : "";
+    // 从首页推荐问点进来时，第一句就是用户刚才点的那个问题，不换成泛泛的“后来你又想起了什么”。
+    const requestedQuestion = source ? decodeQueryValue(options.question).slice(0, 80) : "";
+    const requestedDimension = INTERVIEW_DIMENSIONS.find(
+      (dimension) => dimension === options.dimension,
+    );
+    const continuation = requestedQuestion ||
+      (storyTitle ? "这一次，你还想补充什么？" : "后来你又想起了什么？");
     const opening = source
       ? storyTitle
-        ? `我们继续聊「${storyTitle}」吧。\n上次你讲到：“${sourcePreview}”\n这一次，你还想补充什么？`
-        : `我们接着这段往下聊吧。\n上次你讲到：“${sourcePreview}”\n后来你又想起了什么？`
+        ? `我们继续聊「${storyTitle}」吧。\n上次你讲到：“${sourcePreview}”\n${continuation}`
+        : `我们接着这段往下聊吧。\n上次你讲到：“${sourcePreview}”\n${continuation}`
       : requestedMemoryType === "note"
         ? "先把这一刻想到的留下来吧。几句话也可以，聊完后再决定放进哪个故事。"
         : `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`;
@@ -210,6 +223,7 @@ Page({
       memberRelation: member.relation,
       stage: source || storyTitle || requestedMemoryType ? "chat" : "choose",
       memoryType: requestedMemoryType ?? this.data.memoryType,
+      askedDimensions: requestedQuestion && requestedDimension ? [requestedDimension] : [],
       dateLabel: today(),
       storyTitle,
       storyOptions: storyOptionsFor(state.contributions, member.id, storyTitle),
@@ -303,7 +317,13 @@ Page({
       return;
     }
 
-    const answers = this.data.answers.concat([answer]);
+    const previousAnswers = this.data.answers;
+    // 小忆问过的话也要交给 AI，它才知道哪些已经问过、用户已经答过。
+    const conversation: InterviewTurn[] = this.data.messages.map((message) => ({
+      role: message.kind === "answer" ? "user" : "assistant",
+      text: message.text,
+    }));
+    const answers = previousAnswers.concat([answer]);
     this.pushMessage("answer", answer);
     this.setData({ answers, inputText: "", asking: true });
 
@@ -319,13 +339,14 @@ Page({
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
-        previousAnswers: this.data.answers,
+        previousAnswers,
+        conversation,
       });
       this.setData({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
-      this.pushMessage("followup", prompt.text, DIMENSION_LABELS[prompt.dimension]);
+      this.pushMessage("followup", prompt.text, FOLLOW_UP_LABEL);
     } catch (error) {
       console.warn("追问生成失败", error);
       this.setData({ asking: false });

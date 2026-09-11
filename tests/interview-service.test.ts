@@ -58,6 +58,10 @@ test("cloud interview prompt uses chatInterview when available", async (context)
     memberName: "林岚",
     storyTitle: "老屋门口",
     previousAnswers: ["那时候天很冷。"],
+    conversation: [
+      { role: "assistant", text: "你最早记得的那个家，是什么样子？" },
+      { role: "user", text: "那时候天很冷。" },
+    ],
     memoryType: "memoir",
   });
 
@@ -68,6 +72,10 @@ test("cloud interview prompt uses chatInterview when available", async (context)
     "time",
   ]);
   assert.equal((requestData as { memoryType: string }).memoryType, "memoir");
+  assert.deepEqual((requestData as { conversation: unknown }).conversation, [
+    { role: "assistant", text: "你最早记得的那个家，是什么样子？" },
+    { role: "user", text: "那时候天很冷。" },
+  ]);
 });
 
 test("cloud interview prompt falls back to local rules", async (context) => {

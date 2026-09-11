@@ -19,14 +19,20 @@ export const INTERVIEW_DIMENSIONS: InterviewDimension[] = [
   "feeling",
 ];
 
-/** 追问卡片上的标签，沿用队友原型「追问人物 / 追问地点」的写法。 */
-export const DIMENSION_LABELS: Record<InterviewDimension, string> = {
-  person: "追问人物",
-  time: "追问时候",
-  place: "追问地点",
-  event: "追问经过",
-  feeling: "追问感受",
-};
+/**
+ * 追问卡片上的标签。不再显示「追问人物 / 追问时候」这类方向名，
+ * 方向只在内部用来避免连续问同一类事，不让用户觉得在填表。
+ */
+export const FOLLOW_UP_LABEL = "再聊聊";
+
+/** 五个方向都问过一轮后，只顺着经过和心里的感受往下聊，不再回头问事实。 */
+const REFLECTIVE_DIMENSIONS: InterviewDimension[] = ["event", "feeling"];
+
+/** 发给 AI 的一轮对话：小忆问的话，或用户的回答。 */
+export interface InterviewTurn {
+  role: "assistant" | "user";
+  text: string;
+}
 
 /** 保存页上「已经说到」的短标签。 */
 export const DIMENSION_CHIPS: Record<InterviewDimension, string> = {
@@ -164,12 +170,14 @@ const PERSONAL_FOLLOW_UP_TEMPLATES: Record<InterviewDimension, string[]> = {
     "当时你心里是什么感觉？",
     "现在回头想这件事，你是什么感觉？",
     "这件事给你留下了什么？",
+    "那一刻，你心里最先冒出来的念头是什么？",
+    "你觉得自己为什么一直记得这件事？",
   ],
 };
 
 const DIMENSION_KEYWORDS: Record<InterviewDimension, RegExp> = {
-  person: /爸|妈|父|母|爷|奶|外公|外婆|哥|姐|弟|妹|叔|姑|舅|婶|嫂|邻居|同事|同学|朋友|师傅|孩子|他|她/,
-  time: /年|月|日|岁|那时|后来|小时候|以前|从前|当时|冬|夏|春|秋|早上|晚上|中午|点钟|年代|解放|文革|改革/,
+  person: /爸|妈|父|母|爷|奶|外公|外婆|哥|姐|弟|妹|叔|姑|舅|婶|嫂|邻居|同事|同学|朋友|师傅|老师|孩子|他|她/,
+  time: /年|月|日|岁|那时|后来|时候|以前|从前|当时|冬|夏|春|秋|早上|晚上|中午|点钟|年代|解放|文革|改革/,
   place: /家|村|镇|城|巷|院|屋|房|厂|学校|医院|路|街|山|河|田|门口|老家|北京|上海|车站/,
   event: /做|去|买|走|干|修|带|送|结婚|上班|下乡|参军|搬|生|考|开|种|盖|挑|背|织/,
   feeling: /高兴|难过|想念|怕|喜欢|舍不得|心里|感觉|开心|委屈|踏实|着急|温柔|安心|遗憾|骄傲/,
@@ -194,16 +202,20 @@ export interface NextPromptInput {
   /** 之前已经追问过的方向，按提问顺序排列。 */
   askedDimensions: InterviewDimension[];
   mode?: InterviewMode;
+  /** 本轮之前的回答，已经说到的方向不再追问。 */
+  previousAnswers?: string[];
 }
 
 /**
  * 选出下一个追问方向：优先问回答里还没提到、且问得最少的方向，
- * 并且永远不会和上一轮是同一个方向。
+ * 并且永远不会和上一轮是同一个方向。五个方向都问过后不再回头问人物、时间、地点。
  */
 export function nextInterviewPrompt(input: NextPromptInput): InterviewPrompt {
   const { answer, askedDimensions } = input;
   const lastDimension = askedDimensions[askedDimensions.length - 1];
-  const covered = detectCoveredDimensions(answer);
+  const covered = detectCoveredDimensions(
+    (input.previousAnswers ?? []).concat([answer]).join("\n"),
+  );
 
   const askedCount = new Map<InterviewDimension, number>();
   INTERVIEW_DIMENSIONS.forEach((dimension) => askedCount.set(dimension, 0));
@@ -211,9 +223,11 @@ export function nextInterviewPrompt(input: NextPromptInput): InterviewPrompt {
     askedCount.set(dimension, (askedCount.get(dimension) ?? 0) + 1);
   });
 
-  const candidates = INTERVIEW_DIMENSIONS.filter(
-    (dimension) => dimension !== lastDimension,
+  const everyDirectionAsked = INTERVIEW_DIMENSIONS.every(
+    (dimension) => (askedCount.get(dimension) ?? 0) > 0,
   );
+  const candidates = (everyDirectionAsked ? REFLECTIVE_DIMENSIONS : INTERVIEW_DIMENSIONS)
+    .filter((dimension) => dimension !== lastDimension);
   const uncovered = candidates.filter((dimension) => !covered.includes(dimension));
   const pool = uncovered.length > 0 ? uncovered : candidates;
 

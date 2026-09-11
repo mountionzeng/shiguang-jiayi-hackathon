@@ -6,6 +6,7 @@ import {
   InterviewDimension,
   InterviewMode,
   InterviewPrompt,
+  InterviewTurn,
   nextInterviewPrompt,
 } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
@@ -50,6 +51,7 @@ function localFallbackPrompt(
       answer: input.answer,
       askedDimensions: input.askedDimensions,
       mode: input.mode,
+      previousAnswers: input.previousAnswers,
     }),
     generationMode: "local-fallback",
     fallbackReason,
@@ -63,7 +65,10 @@ export interface GenerateInterviewPromptInput {
   memoryType?: MemoryType;
   memberName?: string;
   storyTitle?: string;
+  /** 本轮之前的回答，不含 answer。 */
   previousAnswers?: string[];
+  /** 本轮之前小忆问过的话和用户的回答，按顺序排列。 */
+  conversation?: InterviewTurn[];
 }
 
 export async function generateInterviewPrompt(
@@ -83,6 +88,7 @@ export async function generateInterviewPrompt(
         memberName: input.memberName,
         storyTitle: input.storyTitle,
         previousAnswers: input.previousAnswers ?? [],
+        conversation: input.conversation ?? [],
       },
     });
 

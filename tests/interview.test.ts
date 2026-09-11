@@ -55,6 +55,36 @@ test("every direction eventually gets asked rather than looping over two", () =>
   assert.equal(new Set(asked).size, INTERVIEW_DIMENSIONS.length);
 });
 
+test("once every direction has been asked, the fallback stops going back to facts", () => {
+  let asked: InterviewDimension[] = [...INTERVIEW_DIMENSIONS];
+  for (let round = 0; round < 4; round += 1) {
+    const prompt = nextInterviewPrompt({ answer: "一个人。", askedDimensions: asked, mode: "personal" });
+    assert.ok(
+      ["event", "feeling"].includes(prompt.dimension),
+      `第 ${round + 1} 轮又回头问了 ${prompt.dimension}`,
+    );
+    assert.notEqual(prompt.dimension, asked[asked.length - 1]);
+    asked = asked.concat([prompt.dimension]);
+  }
+});
+
+test("a direction covered in an earlier answer is not asked again", () => {
+  const prompt = nextInterviewPrompt({
+    answer: "嗯。",
+    askedDimensions: ["event"],
+    previousAnswers: ["那年冬天我妈带我去了老家。"],
+    mode: "personal",
+  });
+
+  assert.equal(prompt.dimension, "feeling");
+});
+
+test("“很小的时候”算说过时间，“小姑娘”“老师”算说过人", () => {
+  assert.ok(detectCoveredDimensions("已经是很小的时候的事情了。").includes("time"));
+  assert.ok(detectCoveredDimensions("我喜欢和小姑娘在一起。").includes("person"));
+  assert.ok(detectCoveredDimensions("老师让我们排队。").includes("person"));
+});
+
 test("keyword detection recognises the directions an answer already covers", () => {
   assert.deepEqual(detectCoveredDimensions("那年冬天我妈带我去了老家。").sort(), [
     "event",
