@@ -811,49 +811,28 @@ test("memory edits and story assignment preserve originals and independent reade
   assert.equal(storage.roomState().contributions.find(item => item.id === original.id)?.storyTitle, undefined);
 });
 
-test("creating a recording profile and adding a person are separate operations", async context => {
+test("creating a book and adding a person are separate operations", async context => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
-  const profiles = instantiate(await pageDefinition("profiles"));
-  callPage(profiles, "onLoad");
-  profiles.setData({ memberNameInput: "新的记录档案" });
-  await callPage(profiles, "addProfile");
+  const books = instantiate(await pageDefinition("profiles"));
+  callPage(books, "onLoad", { mode: "new-book" });
+  books.setData({ nameInput: "新的记录档案" });
+  await callPage(books, "createBook");
   const profileId = storage.currentMemberId();
   assert.equal(storage.roomState().members.find(item => item.id === profileId)?.kind, "recording-profile");
   const people = instantiate(await pageDefinition("profiles"));
   callPage(people, "onLoad", { mode: "people" });
-  people.setData({ memberNameInput: "测试朋友", relationInput: "朋友" });
-  await callPage(people, "addProfile");
+  people.setData({ nameInput: "测试朋友", relationInput: "朋友" });
+  await callPage(people, "addPerson");
   assert.equal(storage.currentMemberId(), profileId);
   const person = storage.roomState().members.find(item => item.name === "测试朋友")!;
   assert.equal(person.kind, "person");
-  await callPage(profiles, "refresh");
-  assert.ok(!(profiles.data.profiles as Array<{id: string}>).some(item => item.id === person.id));
   await callPage(people, "refresh");
-  assert.ok(!(people.data.profiles as Array<{id: string}>).some(item => item.id === profileId));
+  assert.ok((people.data.people as Array<{id: string}>).some(item => item.id === person.id));
+  assert.ok(!(people.data.people as Array<{id: string}>).some(item => item.id === profileId), "the author's own book is not a listed person");
   const home = instantiate(await pageDefinition("index"));
   await callPage(home, "refresh");
   assert.ok(!(home.data.profileOptions as Array<{id: string}>).some(item => item.id === person.id));
-});
-
-test("people management never impersonates a person and changes only the selected record readership", async context => {
-  const storage = installWxMock(createInitialRoomState());
-  context.after(storage.restore);
-  const page = instantiate(await pageDefinition("profiles"));
-  callPage(page, "onLoad", { mode: "people" });
-  await callPage(page, "refresh");
-  // Legacy records appear in the people list only after being sorted as a person.
-  assert.ok(!(page.data.profiles as Array<{ id: string }>).some(item => item.id === "member-1"));
-  await callPage(page, "classify", { currentTarget: { dataset: { id: "member-1", kind: "person" } } });
-  await callPage(page, "chooseProfile", { currentTarget: { dataset: { id: "member-1" } } });
-  assert.equal(storage.currentMemberId(), "owner");
-  const before = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
-  const hadRead = before.sharedWithMemberIds?.includes("member-1") ?? false;
-  await callPage(page, "toggleReading", { currentTarget: { dataset: { id: before.id } } });
-  const after = storage.roomState().contributions.find(item => item.id === before.id)!;
-  assert.equal(after.sharedWithMemberIds?.includes("member-1") ?? false, !hadRead);
-  assert.deepEqual(after.relatedMemberIds, before.relatedMemberIds);
-  assert.equal(storage.currentMemberId(), "owner");
 });
 
 test("AI organizing starts a book; edits, saved versions and source changes preserve history", async context => {
@@ -1085,30 +1064,6 @@ test("discard restores native field seeds while a failed validation retains the 
   assert.equal(page.bodyBuffer, "原文");
   assert.equal(page.data.editTitle, "原稿");
   assert.equal((page.data.editorKeys as number[])[0], editorKey + 1);
-});
-
-test("choosing a profile changes the active personal archive", async (context) => {
-  const state = createInitialRoomState();
-  const storage = installWxMock(state);
-  context.after(storage.restore);
-  const page = instantiate(await pageDefinition("profiles"));
-
-  await callPage(page, "refresh", state);
-  // Unsorted legacy profiles wait in the sorting list and are still switchable.
-  assert.equal(
-    (page.data.pending as Array<{ id: string; current: boolean }>).find(
-      (profile) => profile.id === "owner",
-    )?.current,
-    true,
-  );
-
-  await callPage(page, "chooseProfile", {
-    currentTarget: { dataset: { id: "member-1" } },
-  });
-
-  assert.equal(storage.currentMemberId(), "member-1");
-  assert.equal(last(storage.toasts), "已切换到林秋");
-  assert.equal(storage.backCount(), 1);
 });
 
 test("native photo picker inserts into the manuscript and saved local photo ordering survives reopen", async context => {

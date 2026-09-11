@@ -2,7 +2,7 @@ import {
   contributionStoryTitle,
   FamilyMember,
   FamilyRoomState,
-  isPerson,
+  isActiveMember,
   isRecordingProfile,
   MemoryContribution,
   memoryPool,
@@ -230,7 +230,8 @@ Page({
       // The counts open the memory and story lists, which show the shared pool.
       memoryCount: memoryPool(currentState.contributions).length,
       memoirCount: new Set(memoryPool(currentState.contributions).map(contributionStoryTitle).filter(Boolean)).size,
-      familyMemberCount: currentState.members.filter(isPerson).length,
+      // Everyone in the group except the author (the account owner's own "自己" books).
+      familyMemberCount: currentState.members.filter(item => isActiveMember(item) && item.relation !== "自己").length,
       profileOptions: profileOptionsFor(currentState.members, member.id),
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
       recommendedQuestionContext: recommendedQuestion?.context ?? "",
@@ -263,7 +264,7 @@ Page({
 
   createRecordingProfile() {
     this.setData({ profileChooserOpen: false });
-    wx.navigateTo({ url: "/pages/profiles/profiles" });
+    wx.navigateTo({ url: "/pages/profiles/profiles?mode=new-book" });
   },
 
   async chooseProfile(event: {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createContribution, FamilyRoomState } from "../miniprogram/domain/biography";
+import { createContribution, createEmptyRoomState, FamilyRoomState } from "../miniprogram/domain/biography";
 import { makeRevision } from "../miniprogram/services/manuscript";
 import { createDemoRoomStateForTests } from "./fixtures";
 
@@ -30,13 +30,14 @@ async function loadPage(name: "index" | "profiles", options?: Record<string, str
 
 const call = (page: PageInstance, method: string, ...args: unknown[]) =>
   (page[method] as (...values: unknown[]) => unknown).apply(page, args);
-const tap = (id: string, kind?: string) => ({ currentTarget: { dataset: { id, ...(kind ? { kind } : {}) } } });
+const tap = (id: string) => ({ currentTarget: { dataset: { id } } });
 const ids = (items: unknown) => (items as Array<{ id: string }>).map((item) => item.id);
 
 function install(state: FamilyRoomState, currentMemberId = "owner") {
   const stored = new Map<string, unknown>([["shiguang-family-room-v5", state], ["shiguang-current-member-v1", currentMemberId]]);
   const toasts: string[] = [];
   const dialogs: string[] = [];
+  let backCount = 0;
   const previous = (globalThis as any).wx;
   (globalThis as any).wx = {
     getStorageSync: (key: string) => stored.get(key),
@@ -48,45 +49,69 @@ function install(state: FamilyRoomState, currentMemberId = "owner") {
       dialogs.push(title + "｜" + content);
       success?.({ confirm: true });
     },
-    navigateBack: () => undefined,
+    navigateBack: () => { backCount += 1; },
     navigateTo: () => undefined,
   };
   return {
     toasts, dialogs,
+    backCount: () => backCount,
+    current: () => stored.get("shiguang-current-member-v1"),
     room: () => stored.get("shiguang-family-room-v5") as FamilyRoomState,
     restore: () => { (globalThis as any).wx = previous; },
   };
 }
 
-test("legacy records wait in one sorting list and move into exactly one list once sorted", async (context) => {
-  const env = install(createDemoRoomStateForTests());
+test("the people page lists everyone except the author, labels access, and adds people without switching books", async (context) => {
+  const state = createDemoRoomStateForTests();
+  state.members.push({ id: "self-book", name: "岱", relation: "自己", avatarText: "岱", role: "owner", kind: "recording-profile" });
+  const env = install(state);
   context.after(env.restore);
-  const profiles = await loadPage("profiles", {});
-  const people = await loadPage("profiles", { mode: "people" });
-  await call(profiles, "refresh");
+  const people = await loadPage("profiles", {});
   await call(people, "refresh");
-  assert.equal((profiles.data.pending as unknown[]).length, 5);
-  assert.deepEqual(ids(profiles.data.profiles), []);
-  assert.deepEqual(ids(people.data.profiles), []);
+  assert.equal(people.data.view, "people");
+  const rows = people.data.people as Array<{ id: string; permission: string; canDelete: boolean }>;
+  assert.ok(!ids(rows).includes("self-book"), "the author's own book is not listed as a person");
+  assert.ok(rows.every((row) => row.permission === "还没邀请"), "nobody has access before real invitations exist");
+  assert.equal(rows.find((row) => row.id === "owner")?.canDelete, false, "the book being written cannot be deleted");
 
-  await call(people, "classify", tap("member-2", "person"));
-  await call(profiles, "classify", tap("member-1", "recording-profile"));
-  await call(profiles, "refresh");
-  await call(people, "refresh");
-  assert.deepEqual(ids(profiles.data.profiles), ["member-1"]);
-  assert.deepEqual(ids(people.data.profiles), ["member-2"]);
-  assert.ok(!ids(profiles.data.pending).includes("member-2"));
+  people.setData({ nameInput: "测试朋友", relationInput: "朋友" });
+  await call(people, "addPerson");
+  const friend = env.room().members.find((member) => member.name === "测试朋友")!;
+  assert.equal(friend.kind, "person");
+  assert.equal(env.current(), "owner", "adding a person never switches the book");
+  assert.ok(ids(people.data.people).includes(friend.id));
+
+  people.setData({ nameInput: "还是我", relationInput: "自己" });
+  await call(people, "addPerson");
+  assert.match(env.toasts[env.toasts.length - 1], /你自己就是主笔/);
 
   const home = await loadPage("index");
   await call(home, "refresh");
-  assert.ok(!ids(home.data.profileOptions).includes("member-2"), "a person never shows in the profile switcher");
-  assert.equal(home.data.familyMemberCount, 1);
-  await call(profiles, "classify", tap("owner", "person"));
-  assert.match(env.toasts[env.toasts.length - 1], /正在使用的档案/);
-  assert.equal(env.room().members.find((member) => member.id === "owner")?.kind, undefined);
+  assert.ok(!ids(home.data.profileOptions).includes(friend.id), "people never show in the book switcher");
+  assert.equal(home.data.familyMemberCount, 6);
 });
 
-test("the home switcher deletes another profile into Recently Deleted and the profiles page restores it", async (context) => {
+test("a new book starts from its own view, and an account without any book is sent there", async (context) => {
+  const env = install(createEmptyRoomState(), "");
+  context.after(env.restore);
+  const page = await loadPage("profiles", {});
+  await call(page, "refresh");
+  assert.equal(page.data.view, "new-book");
+  page.setData({ nameInput: "岱" });
+  await call(page, "createBook");
+  const own = env.room().members.find((member) => member.name === "岱")!;
+  assert.deepEqual([own.kind, own.relation, env.current(), env.backCount()], ["recording-profile", "自己", own.id, 1]);
+
+  const another = await loadPage("profiles", { mode: "new-book" });
+  await call(another, "refresh");
+  assert.equal(another.data.view, "new-book");
+  another.setData({ nameInput: "萍", relationInput: "妈妈" });
+  await call(another, "createBook");
+  const mom = env.room().members.find((member) => member.name === "萍")!;
+  assert.deepEqual([mom.kind, mom.relation, env.current()], ["recording-profile", "妈妈", mom.id]);
+});
+
+test("the home switcher deletes another book into Recently Deleted and the people page restores it", async (context) => {
   const state = createDemoRoomStateForTests();
   state.contributions.push(createContribution({
     id: "told-by-qiu", authorMemberId: "member-1", authorName: "林秋", relation: "女儿",
@@ -108,18 +133,18 @@ test("the home switcher deletes another profile into Recently Deleted and the pr
   await call(home, "deleteProfile", tap("owner"));
   assert.match(env.toasts[env.toasts.length - 1], /正在使用的档案不能删除/);
 
-  const profiles = await loadPage("profiles", {});
-  await call(profiles, "refresh");
-  assert.deepEqual(ids(profiles.data.trash), ["member-1"]);
-  await call(profiles, "restoreMember", tap("member-1"));
-  assert.deepEqual(ids(profiles.data.trash), []);
+  const people = await loadPage("profiles", {});
+  await call(people, "refresh");
+  assert.deepEqual(ids(people.data.trash), ["member-1"]);
+  await call(people, "restoreMember", tap("member-1"));
+  assert.deepEqual(ids(people.data.trash), []);
   await call(home, "refresh");
   assert.ok(ids(home.data.profileOptions).includes("member-1"));
   await call(home, "chooseProfile", tap("member-1"));
   assert.equal(env.toasts[env.toasts.length - 1], "现在是林秋的人生之书");
 });
 
-test("deleting a person from the people list clears its references and can be restored", async (context) => {
+test("deleting a person clears its references, keeps the memory, and can be restored", async (context) => {
   const state = createDemoRoomStateForTests();
   state.members = state.members.map((member) => member.id === "friend-1" ? { ...member, kind: "person" as const } : member);
   state.contributions.push(createContribution({
@@ -128,11 +153,11 @@ test("deleting a person from the people list clears its references and can be re
   }));
   const env = install(state);
   context.after(env.restore);
-  const people = await loadPage("profiles", { mode: "people" });
+  const people = await loadPage("profiles", {});
   await call(people, "refresh");
   await call(people, "removeMember", tap("friend-1"));
   assert.match(env.dialogs[env.dialogs.length - 1], /记忆本身不删/);
-  assert.deepEqual(ids(people.data.profiles), []);
+  assert.ok(!ids(people.data.people).includes("friend-1"));
   assert.deepEqual(ids(people.data.trash), ["friend-1"]);
   const memory = env.room().contributions.find((item) => item.id === "mentions-friend")!;
   assert.equal(memory.relatedMemberIds, undefined);
@@ -140,5 +165,5 @@ test("deleting a person from the people list clears its references and can be re
   assert.equal(memory.text, "提到周明的虚构记忆。");
 
   await call(people, "restoreMember", tap("friend-1"));
-  assert.deepEqual(ids(people.data.profiles), ["friend-1"]);
+  assert.ok(ids(people.data.people).includes("friend-1"));
 });
