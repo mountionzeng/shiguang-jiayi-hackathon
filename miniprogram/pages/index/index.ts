@@ -6,7 +6,7 @@ import {
   personalBookContributions,
 } from "../../domain/biography";
 import {
-  DIMENSION_LABELS,
+  FOLLOW_UP_LABEL,
   InterviewDimension,
   nextInterviewPrompt,
 } from "../../domain/interview";
@@ -141,7 +141,7 @@ function recommendedQuestionFor(
   });
 
   return {
-    label: DIMENSION_LABELS[prompt.dimension],
+    label: FOLLOW_UP_LABEL,
     context: compactContext(contribution),
     text: prompt.text,
     sourceId: contribution.id,

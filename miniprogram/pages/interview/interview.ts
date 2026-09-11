@@ -13,9 +13,10 @@ import {
 import {
   detectCoveredDimensions,
   DIMENSION_CHIPS,
-  DIMENSION_LABELS,
   draftTitleFromAnswers,
+  FOLLOW_UP_LABEL,
   InterviewDimension,
+  InterviewTurn,
   pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
@@ -303,7 +304,13 @@ Page({
       return;
     }
 
-    const answers = this.data.answers.concat([answer]);
+    const previousAnswers = this.data.answers;
+    // 小忆问过的话也要交给 AI，它才知道哪些已经问过、用户已经答过。
+    const conversation: InterviewTurn[] = this.data.messages.map((message) => ({
+      role: message.kind === "answer" ? "user" : "assistant",
+      text: message.text,
+    }));
+    const answers = previousAnswers.concat([answer]);
     this.pushMessage("answer", answer);
     this.setData({ answers, inputText: "", asking: true });
 
@@ -319,13 +326,14 @@ Page({
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
-        previousAnswers: this.data.answers,
+        previousAnswers,
+        conversation,
       });
       this.setData({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
-      this.pushMessage("followup", prompt.text, DIMENSION_LABELS[prompt.dimension]);
+      this.pushMessage("followup", prompt.text, FOLLOW_UP_LABEL);
     } catch (error) {
       console.warn("追问生成失败", error);
       this.setData({ asking: false });
