@@ -54,7 +54,7 @@ test("the persistent story switcher opens all three destinations", async () => {
     });
     definition.methods.openFamily.call(instance);
 
-    assert.deepEqual(relaunches, ["/pages/book/book", "/pages/room/room"]);
+    assert.deepEqual(relaunches, ["/pages/stories/stories", "/pages/room/room"]);
     assert.deepEqual(navigations, ["/pages/interview/interview?memoryType=memoir"]);
     assert.equal(instance.data.chooserOpen, false);
   } finally {

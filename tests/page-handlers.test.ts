@@ -6,6 +6,7 @@ import {
   createContribution,
   FamilyRoomState,
 } from "../miniprogram/domain/biography";
+import { makeRevision } from "../miniprogram/services/manuscript";
 import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 const ROOM_KEY = "shiguang-family-room-v5";
@@ -678,6 +679,36 @@ test("the home book shortcuts open their matching memory spaces", async (context
     "/pages/stories/stories",
     "/pages/profiles/profiles?mode=people",
   ]);
+});
+
+test("人生之书 lists every story; a book-only story opens its chapters for that profile", async (context) => {
+  const initial = createInitialRoomState();
+  const state = {
+    ...initial,
+    manuscriptRevisions: [makeRevision("member-1", {
+      title: "林秋的书", paragraphs: ["虚构正文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo",
+    }, "", "version", "第一版")],
+  };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("stories"));
+  await callPage(page, "refresh");
+
+  const rows = page.data.stories as Array<{ key: string; title: string; label: string }>;
+  assert.deepEqual(rows.map((row) => row.title).sort(), ["外公接我放学", "林秋的书"].sort());
+  assert.equal(rows.find((row) => row.key === "manuscript:member-1")?.label, "已整理 1 章");
+
+  await callPage(page, "openStory", { currentTarget: { dataset: { key: "story:外公接我放学" } } });
+  assert.equal(page.data.selectedTitle, "外公接我放学");
+  assert.deepEqual((page.data.memories as Array<{ id: string }>).map((memory) => memory.id), ["demo-personal-rain"]);
+  callPage(page, "continueStory");
+  assert.match(String(last(storage.navigations)), new RegExp(`storyTitle=${encodeURIComponent("外公接我放学")}`));
+
+  callPage(page, "backToStories");
+  await callPage(page, "openStory", { currentTarget: { dataset: { key: "manuscript:member-1" } } });
+  assert.equal(storage.currentMemberId(), "member-1", "the book page still reads the profile it belongs to");
+  assert.equal(last(storage.navigations), "/pages/book/book");
+  assert.equal(storage.roomState().manuscriptRevisions?.length, 1, "opening the list writes nothing");
 });
 
 test("the memory archive lists quick notes from the shared memory pool", async (context) => {

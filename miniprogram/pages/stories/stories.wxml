@@ -1,11 +1,12 @@
-<view class="archive-page page-enter">
+<view class="archive-page story-page page-enter">
   <image class="archive-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true" />
   <view class="story-content">
-    <view class="archive-eyebrow typewriter">人生之书 · 故事</view>
-    <view class="archive-title serif">{{selectedTitle || '把记忆连成故事'}}</view>
-    <view class="archive-intro">故事把相关记忆放在一起。原始记录仍保留，阅读权限不会因为归类而改变。</view>
+    <view class="archive-eyebrow typewriter">{{selectedKey ? '人生之书 · 一个故事' : '人生之书'}}</view>
+    <view class="archive-title serif">{{selectedTitle || '你所有的故事'}}</view>
+    <view class="archive-intro">{{selectedKey ? '这个故事里的记忆都在这里，原话不会被改动。' : '每个故事就是一本书。点开可以接着讲，也可以整理成章节。'}}</view>
     <view wx:if="{{loadError}}" class="archive-empty">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
-    <block wx:elif="{{selectedTitle}}">
+    <block wx:elif="{{selectedKey}}">
+      <button wx:if="{{selectedManuscriptMemberId}}" class="btn btn-jade" bindtap="openSelectedManuscript">打开整理好的章节</button>
       <view class="note-list">
         <button class="story-memory" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="editMemory">
           <view class="note-title serif">{{item.title || '一段记忆'}}</view><view class="note-excerpt">{{item.text}}</view><view class="note-archive">点开编辑或调整归类</view>
@@ -16,13 +17,17 @@
     </block>
     <block wx:else>
       <view class="note-list">
-        <button class="story-memory" wx:for="{{stories}}" wx:key="title" data-title="{{item.title}}" bindtap="openStory">
-          <view class="note-title serif">{{item.title}}</view><view class="note-excerpt">{{item.excerpt}}</view><view class="note-archive">{{item.count}} 段记忆 · 打开整理</view>
+        <button class="story-memory" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory">
+          <view class="note-title serif">{{item.title}}</view>
+          <view class="note-excerpt" wx:if="{{item.excerpt}}">{{item.excerpt}}</view>
+          <view class="note-archive">{{item.label}} · 打开</view>
         </button>
       </view>
-      <view class="archive-empty" wx:if="{{!stories.length}}">还没有归类的故事。打开一段记忆，填写故事名就能开始。</view>
-      <button class="btn btn-ghost" bindtap="openMemories">整理原始记忆 · {{ungroupedCount}} 段未归类</button>
+      <view class="archive-empty" wx:if="{{!stories.length}}">还没有故事。在首页「换一个故事聊」里开一个新故事，或者打开一段记忆填上故事名。</view>
+      <button class="btn btn-ghost" bindtap="openMemories">整理原始记忆 · {{ungroupedCount}} 段还没放进故事</button>
+      <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
     </block>
-    <button class="btn btn-jade" bindtap="openBook">打开整本书稿，编辑或请 AI 整理</button>
   </view>
 </view>
+
+<story-switcher current="personal"></story-switcher>

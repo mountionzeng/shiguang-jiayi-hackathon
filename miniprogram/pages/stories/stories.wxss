@@ -1,3 +1,4 @@
 @import "../archive/archive.wxss";
 .story-content { position: relative; z-index: 1; }
-.story-memory { margin: 20rpx 0; padding: 28rpx; text-align: left; background: #fffdf6; border-radius: 12rpx 24rpx 18rpx 10rpx; }
+/* 底部固定着三入口切换栏，内容要留出它的高度。 */
+.story-page { padding-bottom: calc(276rpx + env(safe-area-inset-bottom)); }.story-memory { margin: 20rpx 0; padding: 28rpx; text-align: left; background: #fffdf6; border-radius: 12rpx 24rpx 18rpx 10rpx; }
