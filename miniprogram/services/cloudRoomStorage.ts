@@ -492,12 +492,12 @@ export async function addCloudFamilyMember(
   }
   const sameName = state.members.find((member) => member.name === trimmedName);
   if (sameName) {
-    throw new Error(sameName.deletedAt ? "这个名字在「最近删除」里，可以直接恢复" : "这个档案已经存在");
+    throw new Error(sameName.deletedAt ? "这个名字在「最近删除」里，可以直接恢复" : "名单里已经有这个名字");
   }
 
   const firstProfile = state.members.length === 0;
   if (kind === "person" && !state.members.some(isRecordingProfile)) {
-    throw new Error("请先在切换档案中创建自己的记录档案");
+    throw new Error("请先新建一本书，再加人");
   }
   const member: FamilyMember = {
     id: firstProfile ? "owner" : `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

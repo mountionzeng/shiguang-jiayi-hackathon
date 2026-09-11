@@ -76,7 +76,7 @@ test("legacy records are sorted by changing only their kind", () => {
     assert.ok(isPerson(after) && !isRecordingProfile(after), "a person leaves the profile switcher");
     classifyMember("member-2", "person");
     assert.throws(() => classifyMember("member-2", "recording-profile"), /只能给旧版数据归类/);
-    assert.throws(() => classifyMember("owner", "person"), /正在使用的档案/);
+    assert.throws(() => classifyMember("owner", "person"), /这是你自己/);
     assert.equal(loadRoomState().members.find((member) => member.id === "owner")?.kind, undefined);
   } finally { restore(); }
 });
@@ -107,7 +107,7 @@ test("the active profile cannot be deleted and nothing is written", () => {
   const restore = installLocal(stateWithBook(), "member-1");
   try {
     const before = structuredClone(loadRoomState());
-    assert.throws(() => deleteMember("member-1"), /正在使用的档案不能删除/);
+    assert.throws(() => deleteMember("member-1"), /这是你自己，不能删除/);
     assert.deepEqual(loadRoomState(), before);
   } finally { restore(); }
 });
@@ -204,7 +204,7 @@ test("cloud delete writes references before the member, survives a failed write,
     state = await loadCloudRoomState();
     assert.equal(state.members.find((member) => member.id === "friend")?.deletedAt, "2026-09-11T08:00:00.000Z");
     assert.deepEqual(state.contributions.map((memory) => [memory.id, memory.relatedMemberIds, memory.sharedWithMemberIds]), [["memory-a", [], []]]);
-    await assert.rejects(deleteCloudMember("owner"), /正在使用的档案不能删除/);
+    await assert.rejects(deleteCloudMember("owner"), /这是你自己，不能删除/);
 
     await restoreCloudMember("friend");
     assert.equal(cloud.records("family_members").get(`${FAMILY}_friend`).deletedAt, undefined);

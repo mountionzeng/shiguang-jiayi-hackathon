@@ -14,7 +14,7 @@ export interface MemberChange {
 
 function findMember(state: FamilyRoomState, memberId: string): FamilyMember {
   const member = state.members.find((item) => item.id === memberId);
-  if (!member) throw new Error("没有找到这个档案或亲友，请刷新后重试");
+  if (!member) throw new Error("没有找到这个人，请刷新后重试");
   return member;
 }
 
@@ -49,7 +49,7 @@ export function planClassify(
   if (member.kind === kind) return undefined;
   if (member.kind) throw new Error("只能给旧版数据归类");
   if (kind === "person" && member.id === currentMemberId) {
-    throw new Error("正在使用的档案不能归为亲友，请先切换到别的档案");
+    throw new Error("这是你自己，不能改成亲友");
   }
   return { member: { ...member, kind }, contributions: [] };
 }
@@ -68,7 +68,7 @@ export function planDelete(
   const member = findMember(state, memberId);
   const contributions = withoutMemberReferences(state.contributions, memberId);
   if (member.deletedAt) return contributions.length ? { member, contributions } : undefined;
-  if (member.id === currentMemberId) throw new Error("正在使用的档案不能删除，请先切换到别的档案");
+  if (member.id === currentMemberId) throw new Error("这是你自己，不能删除");
   return { member: { ...member, deletedAt: now.toISOString() }, contributions };
 }
 

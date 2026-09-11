@@ -131,7 +131,7 @@ test("the home switcher deletes another book into Recently Deleted and the peopl
   assert.equal(env.room().manuscriptRevisions?.length, 1, "its book is kept");
 
   await call(home, "deleteProfile", tap("owner"));
-  assert.match(env.toasts[env.toasts.length - 1], /正在使用的档案不能删除/);
+  assert.match(env.toasts[env.toasts.length - 1], /这是你自己，不能删除/);
 
   const people = await loadPage("profiles", {});
   await call(people, "refresh");
