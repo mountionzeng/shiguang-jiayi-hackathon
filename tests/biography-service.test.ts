@@ -137,6 +137,36 @@ test("cloud failure falls back instead of breaking chapter generation", async (c
   assert.equal(draft.sourceCount, 1);
 });
 
+test("a local fallback reports why the online AI was not used", async (context) => {
+  const restoreWarnings = silenceExpectedWarnings();
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true } }));
+  const errors = [
+    [{ errMsg: "cloud.callFunction:fail -504002 functions execute fail. Error: AI_NOT_CONFIGURED" }, "ai-not-configured"],
+    [{ errMsg: "cloud.callFunction:fail -504003 Invoking task timed out after 3 seconds" }, "timeout"],
+    [{ errMsg: "cloud.callFunction:fail -501000 FunctionName parameter could not be found" }, "function-missing"],
+  ] as const;
+  const { generateBiographyWithStatus } = await import("../miniprogram/services/biographyService");
+  context.after(() => { restoreWarnings(); restoreGetApp(); });
+  for (const [error, reason] of errors) {
+    const restoreWx = installGlobal("wx", { cloud: { callFunction: async () => { throw error; } } });
+    const state = stateWithConfirmedMemory();
+    const result = await generateBiographyWithStatus(state, ownerOf(state));
+    restoreWx();
+    assert.equal(result.draft.generationMode, "local-demo");
+    assert.equal(result.fallbackReason, reason);
+  }
+  const { clearAiConsent } = await import("../miniprogram/services/aiConsent");
+  clearAiConsent();
+  const restoreWx = installGlobal("wx", {
+    showModal: ({ success }: any) => success({ confirm: false, cancel: true }),
+    cloud: { callFunction: async () => { throw new Error("must not be called"); } },
+  });
+  const state = stateWithConfirmedMemory();
+  assert.equal((await generateBiographyWithStatus(state, ownerOf(state))).fallbackReason, "consent-declined");
+  restoreWx();
+  clearAiConsent();
+});
+
 test("malformed cloud output also falls back to the local draft", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({

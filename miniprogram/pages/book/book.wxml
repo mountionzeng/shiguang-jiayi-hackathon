@@ -60,7 +60,9 @@
       </block>
       <block wx:if="{{panel === 'candidate' && candidate}}">
         <view class="panel-note">候选稿 · 采用后才会替换正文，旧版仍保留</view>
-        <view class="panel-title serif">{{candidate.title}}</view>
+        <view class="panel-note" wx:if="{{candidateNote}}">{{candidateNote}}</view>
+        <view class="panel-note" wx:if="{{draft}}">采用后标题不变{{candidatePhotoCount ? '，原来的 ' + candidatePhotoCount + ' 张照片会放在正文最后' : ''}}。</view>
+        <view class="panel-title serif">{{draft ? draft.title : candidate.title}}</view>
         <view class="chapter-para serif" wx:for="{{candidate.paragraphs}}" wx:key="index"><text selectable>{{item}}</text></view>
       </block>
       <block wx:if="{{panel === 'sources'}}">

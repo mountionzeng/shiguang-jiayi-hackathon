@@ -834,6 +834,44 @@ test("AI manuscript requires adoption; edits, saved versions and source changes 
   assert.equal(page.data.stale, true);
 });
 
+test("adopting an AI candidate keeps the user's title and every photo reference", async context => {
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const state = createInitialRoomState();
+  const original = {
+    title: "外公和雨天", paragraphs: ["前文", "中段【本机照片：photo-legacy】"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const,
+    content: [{ text: "前文\n" }, { photoId: "photo-first" }, { text: "中段\n" }, { photoId: "photo-second" }],
+  };
+  state.personalDrafts = { owner: original };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  await callPage(page, "generateChapter");
+  assert.equal(page.data.candidatePhotoCount, 2);
+  assert.match(page.data.candidateNote as string, /微信云开发还没连上/);
+  await callPage(page, "adoptCandidate");
+  const adopted = page.data.draft as any;
+  assert.equal(adopted.title, "外公和雨天");
+  assert.deepEqual(adopted.content.filter((item: any) => item.photoId).map((item: any) => item.photoId), ["photo-first", "photo-second"]);
+  assert.match(adopted.content[0].text, /外公带着两把伞/);
+  assert.match(page.data.saveNotice as string, /2 张照片/);
+  const revisions = storage.roomState().manuscriptRevisions!;
+  assert.deepEqual(revisions.find(item => item.id === "legacy-owner")!.draft.content, original.content);
+});
+
+test("adopting an AI candidate keeps photos from an older marker-only draft", async () => {
+  const { adoptCandidateDraft } = await import("../miniprogram/services/manuscript");
+  const current = { title: "旧稿", paragraphs: ["前文【本机照片：photo-legacy】后文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const };
+  const candidate = { title: "第一章｜我记得的那一天", paragraphs: ["新正文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const };
+  const { draft, keptPhotoIds } = adoptCandidateDraft(current, candidate);
+  assert.equal(draft.title, "旧稿");
+  assert.deepEqual(keptPhotoIds, ["photo-legacy"]);
+  assert.deepEqual(draft.content, [{ text: "新正文\n" }, { photoId: "photo-legacy" }, { text: "\n" }]);
+  assert.deepEqual(adoptCandidateDraft(undefined, candidate).draft, candidate);
+});
+
 test("manuscript typing keeps native text and cursor ownership instead of echoing the document", async context => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);

@@ -30,17 +30,41 @@ function isCloudBiographyResult(value: unknown): value is BiographyDraft {
   );
 }
 
+/** Why a candidate came from the local demo instead of the online AI. */
+export type BiographyFallbackReason =
+  | "cloud-disabled" | "cloud-not-ready" | "consent-declined"
+  | "ai-not-configured" | "function-missing" | "timeout" | "cloud-failed" | "malformed";
+
+function failureReason(error: unknown): BiographyFallbackReason {
+  const text = String((error as { errMsg?: unknown })?.errMsg ?? (error as Error)?.message ?? error);
+  if (/AI_NOT_CONFIGURED/.test(text)) return "ai-not-configured";
+  if (/FUNCTION_NOT_FOUND|-501000|could not be found/i.test(text)) return "function-missing";
+  if (/timed? ?out|timeout|-504003/i.test(text)) return "timeout";
+  return "cloud-failed";
+}
+
 export async function generateBiography(
   state: FamilyRoomState,
   member: FamilyMember,
 ): Promise<BiographyDraft> {
+  return (await generateBiographyWithStatus(state, member)).draft;
+}
+
+export async function generateBiographyWithStatus(
+  state: FamilyRoomState,
+  member: FamilyMember,
+): Promise<{ draft: BiographyDraft; fallbackReason?: BiographyFallbackReason }> {
   const personal = personalBookContributions(state.contributions, member.id);
   if (personal.length === 0) {
     throw new Error("至少写下一段自己的经历后才能生成章节");
   }
 
   const app = getApp<ShiguangAppOptions>();
-  if (CLOUD_AI_ENABLED && app.globalData.cloudReady && wx.cloud && await requestAiConsent()) {
+  let fallbackReason: BiographyFallbackReason;
+  if (!CLOUD_AI_ENABLED) fallbackReason = "cloud-disabled";
+  else if (!app.globalData.cloudReady || !wx.cloud) fallbackReason = "cloud-not-ready";
+  else if (!await requestAiConsent()) fallbackReason = "consent-declined";
+  else {
     try {
       const response = await wx.cloud.callFunction({
         name: "generateBiography",
@@ -56,18 +80,19 @@ export async function generateBiography(
       });
 
       if (isCloudBiographyResult(response.result)) {
-        return response.result;
+        return { draft: response.result };
       }
 
       console.warn("云函数返回格式不完整，将使用本地草稿");
+      fallbackReason = "malformed";
     } catch (error) {
       console.warn("AI 云生成不可用，将使用本地草稿");
+      fallbackReason = failureReason(error);
     }
   }
 
-  return buildLocalPersonalBiographyDraft(
-    member.name,
-    member.id,
-    state.contributions,
-  );
+  return {
+    draft: buildLocalPersonalBiographyDraft(member.name, member.id, state.contributions),
+    fallbackReason,
+  };
 }

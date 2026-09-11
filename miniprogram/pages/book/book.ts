@@ -1,8 +1,19 @@
 import { BiographyDraft, ManuscriptContent, ManuscriptRevision, personalBookContributions, personalBookSourceFingerprint } from "../../domain/biography";
-import { generateBiography } from "../../services/biographyService";
+import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel } from "../../services/roomRepository";
-import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
+import { adoptCandidateDraft, currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import { contentFromDelta, contentToDelta, readLocalPhoto, saveLocalPhoto, validateContent } from "../../services/bookImages";
+
+const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
+  "cloud-disabled": "这个版本关闭了在线 AI",
+  "cloud-not-ready": "微信云开发还没连上",
+  "consent-declined": "本次打开小程序时选了「暂不使用」在线 AI，重新打开小程序会再询问",
+  "ai-not-configured": "整理书稿的云函数还没配置模型",
+  "function-missing": "整理书稿的云函数还没部署",
+  timeout: "在线 AI 响应超时",
+  "cloud-failed": "在线 AI 暂时出错",
+  malformed: "在线 AI 返回的内容不完整",
+};
 
 Page({
   data: {
@@ -10,7 +21,7 @@ Page({
     sourceCount: 0, draft: null as BiographyDraft | null,
     generating: false, saving: false, isCloudDraft: false, modeLabel: "", modeNote: "",
     stale: false, showSources: false, editing: false, editTitle: "", editBody: "",
-    candidate: null as BiographyDraft | null, candidateFingerprint: "",
+    candidate: null as BiographyDraft | null, candidateFingerprint: "", candidateNote: "", candidatePhotoCount: 0,
     history: [] as ManuscriptRevision[], showHistory: false,
     previewVersion: null as ManuscriptRevision | null,
     loadError: "", storageLabel: "", versionName: "", saveNotice: "",
@@ -305,10 +316,14 @@ Page({
       const member = await loadCurrentMemberRemoteFirst(state);
       if (!personalBookContributions(state.contributions, member.id).length) throw new Error("先记录一段经历，再请 AI 整理");
       const fingerprint = personalBookSourceFingerprint(state, member.id);
-      const candidate = await generateBiography(state, member);
+      const { draft: candidate, fallbackReason } = await generateBiographyWithStatus(state, member);
       const latest = await loadRoomStateRemoteFirst();
       if (fingerprint !== personalBookSourceFingerprint(latest, member.id)) throw new Error("素材刚刚变了，请重新整理");
-      this.setData({ candidate, candidateFingerprint: fingerprint, panel: "candidate" });
+      this.setData({
+        candidate, candidateFingerprint: fingerprint, panel: "candidate",
+        candidateNote: fallbackReason ? "这次没有用上在线 AI（" + FALLBACK_REASONS[fallbackReason] + "），下面只是把原话按顺序排在一起的本地演示稿。" : "",
+        candidatePhotoCount: adoptCandidateDraft(this.data.draft ?? undefined, candidate).keptPhotoIds.length,
+      });
     } catch (error) {
       this.setData({ saveNotice: error instanceof Error ? error.message : "整理失败，请重试" });
     } finally { this.setData({ generating: false }); }
@@ -318,7 +333,13 @@ Page({
     try {
       const latest = await loadRoomStateRemoteFirst();
       if (this.data.candidateFingerprint !== personalBookSourceFingerprint(latest, this.data.memberId)) throw new Error("素材已变化，请重新生成候选稿");
-      if (await this.persist(this.data.candidate, this.data.candidateFingerprint, "version", "采用 AI 整理稿")) this.setData({ candidate: null, panel: "" });
+      const { draft, keptPhotoIds } = adoptCandidateDraft(this.data.draft ?? undefined, this.data.candidate);
+      if (await this.persist(draft, this.data.candidateFingerprint, "version", "采用 AI 整理稿")) {
+        this.setData({
+          candidate: null, panel: "",
+          saveNotice: "已采用新整理稿，标题没变" + (keptPhotoIds.length ? "，原来的 " + keptPhotoIds.length + " 张照片放在正文最后" : "") + "。旧版仍在历史版本里。",
+        });
+      }
     } catch (error) { this.setData({ saveNotice: error instanceof Error ? error.message : "采用失败，请重试" }); }
   },
   discardCandidate() {

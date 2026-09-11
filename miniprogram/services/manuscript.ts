@@ -1,8 +1,29 @@
-import { BiographyDraft, FamilyRoomState, ManuscriptRevision } from "../domain/biography";
+import { BiographyDraft, FamilyRoomState, ManuscriptContent, ManuscriptRevision } from "../domain/biography";
 import { loadRoomStateRemoteFirst, usesCloudStorage } from "./roomRepository";
 import { saveCloudManuscriptRevision } from "./cloudRoomStorage";
 import { saveRoomState } from "./roomStorage";
-import { validateContent } from "./bookImages";
+import { contentFromDelta, contentToDelta, validateContent } from "./bookImages";
+
+/** Photo references in reading order, including markers left inside older text-only drafts. */
+export function manuscriptPhotoIds(draft: BiographyDraft): string[] {
+  const content = draft.content ?? [{ text: draft.paragraphs.join("\n\n") }];
+  return contentFromDelta(contentToDelta(content, {}), {}).flatMap(item => item.photoId ? [item.photoId] : []);
+}
+
+/**
+ * An AI candidate replaces only the wording. The user's own title and every photo
+ * reference stay; photos keep their order after the new text.
+ */
+export function adoptCandidateDraft(current: BiographyDraft | undefined, candidate: BiographyDraft) {
+  if (!current) return { draft: candidate, keptPhotoIds: [] as string[] };
+  const keptPhotoIds = manuscriptPhotoIds(current);
+  const content: ManuscriptContent[] = [{ text: candidate.paragraphs.join("\n\n") + "\n" }];
+  for (const photoId of keptPhotoIds) content.push({ photoId }, { text: "\n" });
+  return {
+    draft: { ...candidate, title: current.title.trim() || candidate.title, content },
+    keptPhotoIds,
+  };
+}
 
 function revisionContent(revision: ManuscriptRevision) {
   // Database serializers may reorder object keys.
