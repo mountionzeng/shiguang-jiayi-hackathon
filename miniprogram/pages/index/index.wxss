@@ -65,7 +65,7 @@
   transform: translateY(2rpx) scale(0.96);
 }
 
-.profile-switch-wrap {
+.story-switch-wrap {
   position: absolute;
   top: 4rpx;
   left: 50%;
@@ -75,7 +75,7 @@
   transform: translateX(-50%);
 }
 
-.profile-switch {
+.story-switch {
   position: relative;
   display: flex;
   align-items: center;
@@ -92,9 +92,9 @@
   box-shadow: 0 14rpx 32rpx rgba(79, 127, 107, 0.08);
 }
 
-.profile-switch::after { border: 0; }
+.story-switch::after { border: 0; }
 
-.profile-switch-pressed {
+.story-switch-pressed {
   background: rgba(229, 239, 233, 0.72);
   transform: translateY(2rpx) scale(0.985);
 }
@@ -132,14 +132,14 @@
   z-index: 1;
 }
 
-.profile-switch-copy {
+.story-switch-copy {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
 }
 
-.profile-switch-name {
+.story-switch-name {
   overflow: hidden;
   color: var(--ink);
   font-size: 30rpx;
@@ -149,7 +149,7 @@
   white-space: nowrap;
 }
 
-.profile-switch-note {
+.story-switch-note {
   order: -1;
   margin-bottom: 3rpx;
   color: var(--ink-faint);
@@ -157,7 +157,7 @@
   line-height: 1.25;
 }
 
-.profile-switch-arrow {
+.story-switch-arrow {
   flex-shrink: 0;
   margin-left: 18rpx;
   color: rgba(79, 127, 107, 0.72);
@@ -165,7 +165,7 @@
   line-height: 1;
 }
 
-.profile-menu {
+.story-menu {
   position: absolute;
   top: 96rpx;
   right: 0;
@@ -180,7 +180,7 @@
   overflow: hidden;
 }
 
-.profile-menu-floating {
+.story-menu-floating {
   position: fixed;
   top: 100rpx;
   right: auto;
@@ -190,7 +190,7 @@
   transform: translateX(-50%);
 }
 
-.profile-menu-item {
+.story-menu-item {
   display: flex;
   align-items: center;
   width: 100%;
@@ -203,22 +203,22 @@
   text-align: left;
 }
 
-.profile-menu-item::after { border: 0; }
+.story-menu-item::after { border: 0; }
 
-.profile-menu-item + .profile-menu-item {
+.story-menu-item + .story-menu-item {
   margin-top: 4rpx;
 }
 
-.profile-menu-item-on {
+.story-menu-item-on {
   background: rgba(229, 239, 233, 0.76);
 }
 
-.profile-menu-add {
+.story-menu-add {
   margin-top: 8rpx;
   border-top: 2rpx solid rgba(129, 117, 93, 0.12);
 }
 
-.profile-menu-avatar {
+.story-menu-avatar {
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -232,14 +232,14 @@
   font-weight: 600;
 }
 
-.profile-menu-add-icon {
+.story-menu-add-icon {
   background: rgba(181, 145, 82, 0.14);
   color: #9b7334;
   font-size: 34rpx;
   font-weight: 500;
 }
 
-.profile-menu-copy {
+.story-menu-copy {
   display: flex;
   flex: 1;
   min-width: 0;
@@ -247,7 +247,7 @@
   margin-left: 16rpx;
 }
 
-.profile-menu-name {
+.story-menu-name {
   overflow: hidden;
   color: var(--ink);
   font-size: 25rpx;
@@ -257,51 +257,19 @@
   white-space: nowrap;
 }
 
-.profile-menu-relation {
+.story-menu-relation {
   margin-top: 4rpx;
   color: var(--ink-faint);
   font-size: 21rpx;
   line-height: 1.25;
 }
 
-.profile-menu-check {
+.story-menu-check {
   flex-shrink: 0;
   width: 28rpx;
   color: var(--jade);
   font-size: 24rpx;
   text-align: center;
-}
-
-/* 每一行是「切换」和「删除」两个并排按钮。 */
-.profile-menu-main {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  line-height: normal;
-  text-align: left;
-}
-
-.profile-menu-main::after,
-.profile-menu-delete::after { border: 0; }
-
-/* Built-in buttons default to a fixed width; without this the delete button fills the row. */
-.profile-menu-item .profile-menu-main,
-.profile-menu-item .profile-menu-delete { width: auto; }
-
-.profile-menu-delete {
-  flex-shrink: 0;
-  height: 44rpx;
-  margin: 0 0 0 8rpx;
-  padding: 0 14rpx;
-  border-radius: 22rpx;
-  background: rgba(255, 247, 244, 0.9);
-  color: #b64a40;
-  font-size: 20rpx;
-  line-height: 44rpx;
 }
 
 /* ---- 可触碰的书封 ---- */

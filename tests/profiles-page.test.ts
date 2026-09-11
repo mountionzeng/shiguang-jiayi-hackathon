@@ -87,8 +87,8 @@ test("the people page lists everyone except the author, labels access, and adds 
 
   const home = await loadPage("index");
   await call(home, "refresh");
-  assert.ok(!ids(home.data.profileOptions).includes(friend.id), "people never show in the book switcher");
-  assert.equal(home.data.familyMemberCount, 6);
+  assert.equal(home.data.ownerAvatarText, "岱", "the home avatar is the author");
+  assert.equal(home.data.peopleCount, 6);
 });
 
 test("a new book starts from its own view, and an account without any book is sent there", async (context) => {
@@ -111,7 +111,7 @@ test("a new book starts from its own view, and an account without any book is se
   assert.deepEqual([mom.kind, mom.relation, env.current()], ["recording-profile", "妈妈", mom.id]);
 });
 
-test("the home switcher deletes another book into Recently Deleted and the people page restores it", async (context) => {
+test("deleting another book hides its story on home, keeps its memories, and restoring brings it back", async (context) => {
   const state = createDemoRoomStateForTests();
   state.contributions.push(createContribution({
     id: "told-by-qiu", authorMemberId: "member-1", authorName: "林秋", relation: "女儿",
@@ -123,25 +123,27 @@ test("the home switcher deletes another book into Recently Deleted and the peopl
   const env = install(state);
   context.after(env.restore);
   const home = await loadPage("index");
+  const stories = () => (home.data.storyOptions as Array<{ title: string }>).map((item) => item.title);
   await call(home, "refresh");
-  await call(home, "deleteProfile", tap("member-1"));
-  assert.match(env.dialogs[env.dialogs.length - 1], /书稿和所有版本会放进「最近删除」.*记忆都还在记忆库里/);
-  assert.ok(!ids(home.data.profileOptions).includes("member-1"));
-  assert.equal(home.data.memoryCount, 2, "the memories it told stay in the shared pool");
-  assert.equal(env.room().manuscriptRevisions?.length, 1, "its book is kept");
-
-  await call(home, "deleteProfile", tap("owner"));
-  assert.match(env.toasts[env.toasts.length - 1], /这是你自己，不能删除/);
+  assert.ok(stories().includes("林秋的书"), "every profile's book is a story on home");
 
   const people = await loadPage("profiles", {});
   await call(people, "refresh");
+  await call(people, "removeMember", tap("member-1"));
+  assert.match(env.dialogs[env.dialogs.length - 1], /书稿和所有版本会放进「最近删除」.*记忆都还在记忆库里/);
+  await call(home, "refresh");
+  assert.ok(!stories().includes("林秋的书"));
+  assert.equal(home.data.memoryCount, 2, "the memories it told stay in the shared pool");
+  assert.equal(env.room().manuscriptRevisions?.length, 1, "its book is kept");
+
+  await call(people, "removeMember", tap("owner"));
+  assert.match(env.toasts[env.toasts.length - 1], /这是你自己，不能删除/);
+
   assert.deepEqual(ids(people.data.trash), ["member-1"]);
   await call(people, "restoreMember", tap("member-1"));
   assert.deepEqual(ids(people.data.trash), []);
   await call(home, "refresh");
-  assert.ok(ids(home.data.profileOptions).includes("member-1"));
-  await call(home, "chooseProfile", tap("member-1"));
-  assert.equal(env.toasts[env.toasts.length - 1], "现在是林秋的人生之书");
+  assert.ok(stories().includes("林秋的书"));
 });
 
 test("deleting a person clears its references, keeps the memory, and can be restored", async (context) => {

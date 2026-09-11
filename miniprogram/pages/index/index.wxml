@@ -12,7 +12,7 @@
         class="my-entry"
         bindtap="openMyHome"
         hover-class="none"
-        aria-label="打开我的首页"
+        aria-label="打开我的"
       >
         <view class="member-avatar serif">
           <image
@@ -21,25 +21,24 @@
             mode="aspectFill"
             aria-hidden="true"
           ></image>
-          <text class="member-avatar-letter">{{memberAvatarText}}</text>
+          <text class="member-avatar-letter">{{ownerAvatarText || '我'}}</text>
         </view>
       </button>
     </view>
 
-    <view class="profile-switch-wrap">
+    <view class="story-switch-wrap" wx:if="{{hasProfile}}">
       <button
-        class="profile-switch"
-        bindtap="openProfiles"
-        hover-class="profile-switch-pressed"
-        aria-label="切换当前讲述档案"
+        class="story-switch"
+        bindtap="toggleStoryChooser"
+        hover-class="story-switch-pressed"
+        aria-label="换一个故事聊，现在是{{currentStoryLabel}}"
       >
-        <view class="profile-switch-copy">
-          <text class="profile-switch-note">切换档案</text>
-          <text class="profile-switch-name serif">{{hasProfile ? memberName : '未创建档案'}}</text>
+        <view class="story-switch-copy">
+          <text class="story-switch-note">换一个故事聊</text>
+          <text class="story-switch-name serif">{{currentStoryLabel}}</text>
         </view>
-        <text class="profile-switch-arrow">{{profileChooserOpen ? '⌃' : '⌄'}}</text>
+        <text class="story-switch-arrow">{{storyChooserOpen ? '⌃' : '⌄'}}</text>
       </button>
-
     </view>
 
     <view class="book-stage">
@@ -47,7 +46,7 @@
         class="book {{bookOpening ? 'book-opening' : ''}}"
         bindtap="openMemoryArchive"
         role="button"
-        aria-label="阅读和编辑人生之书"
+        aria-label="打开人生之书，看你所有的故事"
       >
         <view class="book-pages-under"></view>
         <view class="book-cover-leaf">
@@ -62,7 +61,7 @@
             <view class="book-copy">
               <view class="book-title typewriter">{{bookTitle}}</view>
               <view class="book-subtitle">{{coverSubtitle}}</view>
-              <view class="book-stats" role="group" aria-label="快速打开故事空间">
+              <view class="book-stats" role="group" aria-label="快速打开记忆、故事和人">
                 <button
                   class="book-stat-action book-stat-note"
                   catchtap="openArchiveTab"
@@ -78,44 +77,45 @@
                   catchtap="openArchiveTab"
                   data-tab="memoir"
                   hover-class="none"
-                  aria-label="按故事整理记忆"
+                  aria-label="看你所有的故事"
                 >
-                  <text class="book-stat-num">{{memoirCount}}</text>
+                  <text class="book-stat-num">{{storyCount}}</text>
                   <text class="book-stat-label">个故事</text>
                 </button>
                 <button
                   class="book-stat-action book-stat-home"
                   catchtap="openPeople"
                   hover-class="none"
-                  aria-label="管理亲友档案"
+                  aria-label="管理家人和朋友"
                 >
-                  <text class="book-stat-num">{{familyMemberCount}}</text>
-                  <text class="book-stat-label">位亲友</text>
+                  <text class="book-stat-num">{{peopleCount}}</text>
+                  <text class="book-stat-label">个人</text>
                 </button>
               </view>
             </view>
           </view>
         </view>
       </view>
-      <view class="book-open-label typewriter">轻触阅读和编辑书稿</view>
+      <view class="book-open-label typewriter">轻触打开你所有的故事</view>
     </view>
 
     <view class="home-setup" wx:if="{{!hasProfile}}">
-      <view class="home-setup-title serif">先创建你的记录档案</view>
-      <view class="home-setup-note">从自己的名字开始，把你的人生经历慢慢留下来。</view>
+      <view class="home-setup-title serif">先写下你的名字</view>
+      <view class="home-setup-note">从你自己开始，把经历慢慢留下来。</view>
       <button
         class="home-setup-button"
         bindtap="createFirstProfile"
         hover-class="none"
       >
-        创建我的档案
+        写下我的名字
       </button>
     </view>
 
-    <view class="recommended" wx:if="{{hasRecommendedQuestion}}">
+    <view class="recommended" wx:if="{{hasProfile}}">
       <view class="recommended-head">
-        <text class="recommended-title serif">推荐问</text>
+        <text class="recommended-title serif">{{hasRecommendedQuestion ? '推荐问' : '开始聊'}}</text>
         <button
+          wx:if="{{hasRecommendedQuestion}}"
           class="recommended-refresh"
           bindtap="changeRecommendedQuestion"
           hover-class="none"
@@ -123,6 +123,7 @@
         >换一个问题</button>
       </view>
       <view
+        wx:if="{{hasRecommendedQuestion}}"
         class="recommended-card"
         bindtap="continueRecommendedQuestion"
         role="button"
@@ -132,6 +133,17 @@
         <view class="recommended-context">{{recommendedQuestionContext}}</view>
         <view class="recommended-question">{{recommendedQuestion}}</view>
         <view class="recommended-action">继续聊聊</view>
+      </view>
+      <view
+        wx:else
+        class="recommended-card"
+        bindtap="startCurrentStory"
+        role="button"
+        aria-label="开始聊{{currentStoryLabel}}"
+      >
+        <view class="recommended-label">{{currentStoryLabel}}</view>
+        <view class="recommended-question">{{startPrompt}}</view>
+        <view class="recommended-action">开始聊</view>
       </view>
     </view>
 
@@ -157,59 +169,55 @@
         <view class="story-continue">继续聊</view>
       </view>
     </view>
-
-    <view class="home-empty" wx:if="{{hasProfile && !hasRecentStories}}">
-      <view class="home-empty-title serif">还没有故事</view>
-      <view class="home-empty-note">不用想好从哪里开始，先说一句就好。</view>
-    </view>
   </view>
 </scroll-view>
 
 <scroll-view
-  class="profile-menu profile-menu-floating"
-  wx:if="{{profileChooserOpen}}"
+  class="story-menu story-menu-floating"
+  wx:if="{{storyChooserOpen}}"
   scroll-y
   enhanced
   show-scrollbar="{{false}}"
 >
-  <view
-    class="profile-menu-item {{item.selected ? 'profile-menu-item-on' : ''}}"
-    wx:for="{{profileOptions}}"
-    wx:key="id"
-  >
-    <button
-      class="profile-menu-main"
-      data-id="{{item.id}}"
-      bindtap="chooseProfile"
-      hover-class="none"
-      aria-label="切换到{{item.name}}的档案"
-    >
-      <view class="profile-menu-avatar serif">{{item.avatarText}}</view>
-      <view class="profile-menu-copy">
-        <text class="profile-menu-name">{{item.name}}</text>
-        <text class="profile-menu-relation">{{item.relation}}{{item.pending ? ' · 旧版待归类' : ''}}</text>
-      </view>
-      <text class="profile-menu-check">{{item.selected ? '✓' : ''}}</text>
-    </button>
-    <button
-      wx:if="{{!item.selected}}"
-      class="profile-menu-delete"
-      data-id="{{item.id}}"
-      bindtap="deleteProfile"
-      hover-class="none"
-      aria-label="删除{{item.name}}的档案"
-    >删除</button>
-  </view>
   <button
-    class="profile-menu-item profile-menu-add"
-    bindtap="createRecordingProfile"
+    class="story-menu-item {{item.selected ? 'story-menu-item-on' : ''}}"
+    wx:for="{{storyOptions}}"
+    wx:key="key"
+    data-title="{{item.title}}"
+    bindtap="chooseStory"
     hover-class="none"
-    aria-label="新建记录档案"
+    aria-label="换到{{item.title}}"
   >
-    <view class="profile-menu-avatar profile-menu-add-icon">+</view>
-    <view class="profile-menu-copy">
-      <text class="profile-menu-name">新建记录档案</text>
-      <text class="profile-menu-relation">新建一本人生之书的记录档案</text>
+    <view class="story-menu-avatar serif">{{item.avatarText}}</view>
+    <view class="story-menu-copy">
+      <text class="story-menu-name">{{item.title}}</text>
+      <text class="story-menu-relation">{{item.label}}</text>
+    </view>
+    <text class="story-menu-check">{{item.selected ? '✓' : ''}}</text>
+  </button>
+  <button
+    class="story-menu-item {{currentStoryTitle ? '' : 'story-menu-item-on'}}"
+    bindtap="chooseNoStory"
+    hover-class="none"
+    aria-label="先随便聊聊，不选故事"
+  >
+    <view class="story-menu-avatar serif">聊</view>
+    <view class="story-menu-copy">
+      <text class="story-menu-name">先随便聊聊</text>
+      <text class="story-menu-relation">不选故事，聊完再放</text>
+    </view>
+    <text class="story-menu-check">{{currentStoryTitle ? '' : '✓'}}</text>
+  </button>
+  <button
+    class="story-menu-item story-menu-add"
+    bindtap="startNewStory"
+    hover-class="none"
+    aria-label="开一个新故事"
+  >
+    <view class="story-menu-avatar story-menu-add-icon">+</view>
+    <view class="story-menu-copy">
+      <text class="story-menu-name">开一个新故事</text>
+      <text class="story-menu-relation">起个名字就能开始聊</text>
     </view>
   </button>
 </scroll-view>
