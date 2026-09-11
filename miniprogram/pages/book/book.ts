@@ -24,11 +24,7 @@ const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
 type MemoryRow = { id: string; text: string };
 const photoCount = (content: ManuscriptContent[]) => content.filter(item => item.photoId).length;
 const plainText = (content: ManuscriptContent[]) => content.map(item => item.text ?? "").join("");
-// The pool is shared by every profile; a memory told by someone else names its narrator.
-const memoryRow = (memory: MemoryContribution, memberId: string): MemoryRow => ({
-  id: memory.id,
-  text: (memory.authorMemberId !== memberId ? memory.authorName + "讲：" : "") + (memory.title ? memory.title + "：" : "") + memory.text.slice(0, 60),
-});
+const memoryRow = (memory: MemoryContribution): MemoryRow => ({ id: memory.id, text: (memory.title ? memory.title + "：" : "") + memory.text.slice(0, 60) });
 
 Page({
   data: {
@@ -58,7 +54,6 @@ Page({
   chapters: [] as ManuscriptChapter[],
   activeChapterId: "",
   memories: [] as MemoryContribution[],
-  activeMemberId: "",
   photoPaths: {} as Record<string, string>,
   imageIds: {} as Record<string, string>,
   editorContext: undefined as WechatMiniprogram.EditorContext | undefined,
@@ -138,7 +133,6 @@ Page({
     this.sourceFingerprint = current.sourceFingerprint;
     this.chapters = chapters;
     this.memories = qualified;
-    this.activeMemberId = member.id;
     this.titleBuffer = current.draft?.title ?? "";
     this.photoPaths = photoPaths;
     this.imageIds = imageIds;
@@ -176,8 +170,8 @@ Page({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
         memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: photoCount(chapter.content),
       })),
-      unassigned: unassignedMemoryIds(this.chapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!, this.activeMemberId)),
-      chapterMemories: active ? active.memoryIds.flatMap(id => known.has(id) ? [memoryRow(known.get(id)!, this.activeMemberId)] : []) : [],
+      unassigned: unassignedMemoryIds(this.chapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!)),
+      chapterMemories: active ? active.memoryIds.flatMap(id => known.has(id) ? [memoryRow(known.get(id)!)] : []) : [],
       chapterLabelText: active ? chapterLabel(this.chapters.indexOf(active) + 1) : "",
       storyOptions: Array.from(stories, ([title, count]) => ({ title, count })),
     };
@@ -489,7 +483,7 @@ Page({
     this.chapters.forEach((chapter, index) => chapter.memoryIds.forEach(id => where.set(id, "在" + chapterLabel(index + 1))));
     this.setData({
       panel: "organize", organizeTarget: active ? active.id : "new",
-      organizeRows: this.memories.map(memory => ({ ...memoryRow(memory, this.activeMemberId), where: where.get(memory.id) ?? "还没放进", checked: this.organizeSelection.includes(memory.id) })),
+      organizeRows: this.memories.map(memory => ({ ...memoryRow(memory), where: where.get(memory.id) ?? "还没放进", checked: this.organizeSelection.includes(memory.id) })),
     });
   },
   onOrganizeMemories(event: { detail: { value: string[] } }) { this.organizeSelection = event.detail.value; },

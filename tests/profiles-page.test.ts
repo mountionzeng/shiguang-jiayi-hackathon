@@ -125,7 +125,7 @@ test("the home switcher deletes another book into Recently Deleted and the peopl
   const home = await loadPage("index");
   await call(home, "refresh");
   await call(home, "deleteProfile", tap("member-1"));
-  assert.match(env.dialogs[env.dialogs.length - 1], /书稿和所有版本会放进「最近删除」.*1 段记忆留在记忆库里/);
+  assert.match(env.dialogs[env.dialogs.length - 1], /书稿和所有版本会放进「最近删除」.*记忆都还在记忆库里/);
   assert.ok(!ids(home.data.profileOptions).includes("member-1"));
   assert.equal(home.data.memoryCount, 2, "the memories it told stay in the shared pool");
   assert.equal(env.room().manuscriptRevisions?.length, 1, "its book is kept");

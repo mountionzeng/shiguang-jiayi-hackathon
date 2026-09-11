@@ -283,6 +283,10 @@
   line-height: 1.6;
   text-align: center;
 }
+.note-section-title,
+.note-section-empty { position: relative; z-index: 1; }
+.note-section-title { margin-top: 36rpx; color: var(--ink); font-size: 28rpx; font-weight: 600; }
+.note-section-empty { margin-top: 14rpx; color: var(--ink-faint); font-size: 24rpx; line-height: 1.6; }
 .memory-editor, .record-button { position: relative; z-index: 1; margin-top: 32rpx; }
 .editor-label { font-size: 27rpx; color: var(--ink-faint); margin: 24rpx 0 12rpx; }
 .memory-input, .memory-text { box-sizing: border-box; width: 100%; background: #fffdf6; border-radius: 12rpx; padding: 20rpx; color: var(--ink); font-size: 30rpx; }

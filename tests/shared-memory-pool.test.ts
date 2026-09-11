@@ -3,20 +3,27 @@ import test from "node:test";
 
 import { createContribution, FamilyRoomState } from "../miniprogram/domain/biography";
 import { generateBiographyWithStatus } from "../miniprogram/services/biographyService";
+import { makeRevision } from "../miniprogram/services/manuscript";
 import { createDemoRoomStateForTests } from "./fixtures";
 
 type PageDefinition = { data?: Record<string, unknown>; [key: string]: unknown };
 type PageInstance = PageDefinition & { data: Record<string, unknown>; setData(update: Record<string, unknown>): void };
 
+// A page module registers itself once; later instances reuse its definition.
+const definitions = new Map<string, PageDefinition>();
+
 async function loadPage(name: "archive" | "stories" | "book"): Promise<PageInstance> {
-  let captured: PageDefinition | undefined;
-  (globalThis as any).Page = (definition: PageDefinition) => { captured = definition; };
-  try {
-    if (name === "archive") await import("../miniprogram/pages/archive/archive");
-    else if (name === "stories") await import("../miniprogram/pages/stories/stories");
-    else await import("../miniprogram/pages/book/book");
-  } finally { delete (globalThis as any).Page; }
-  assert.ok(captured);
+  let captured = definitions.get(name);
+  if (!captured) {
+    (globalThis as any).Page = (definition: PageDefinition) => { captured = definition; };
+    try {
+      if (name === "archive") await import("../miniprogram/pages/archive/archive");
+      else if (name === "stories") await import("../miniprogram/pages/stories/stories");
+      else await import("../miniprogram/pages/book/book");
+    } finally { delete (globalThis as any).Page; }
+    assert.ok(captured);
+    definitions.set(name, captured);
+  }
   const page = { ...captured, data: structuredClone(captured.data ?? {}) } as PageInstance;
   page.setData = (update) => Object.assign(page.data, update);
   return page;
@@ -54,12 +61,33 @@ test("the memory and story lists show every profile's memories and name other na
   await (archive.refresh as () => Promise<void>).call(archive);
   const notes = archive.data.notes as Array<{ id: string; archiveLabel: string }>;
   assert.deepEqual(notes.map((note) => note.id).sort(), ["demo-personal-rain", "told-by-qiu"]);
-  assert.match(notes.find((note) => note.id === "told-by-qiu")!.archiveLabel, /^林秋 讲述/);
-  assert.doesNotMatch(notes.find((note) => note.id === "demo-personal-rain")!.archiveLabel, /讲述/);
+  // The account owner is the only author; memories carry no narrator label.
+  assert.ok(notes.every((note) => !note.archiveLabel.includes("讲述") && note.archiveLabel.endsWith("还没写进书")));
 
   const stories = await loadPage("stories");
   await (stories.refresh as () => Promise<void>).call(stories);
   assert.ok((stories.data.stories as Array<{ title: string }>).some((story) => story.title === "林秋的故事"));
+});
+
+test("the memory list splits written from not-yet-written memories, and one memory can sit in several books", async (context) => {
+  const state = stateWithTwoNarrators();
+  const book = (memoryIds: string[]) => ({
+    title: "书", paragraphs: [], sourceCount: 1, generatedAt: "", generationMode: "local-demo" as const,
+    chapters: [{ id: "chapter-a", title: "", memoryIds, content: [{ text: "正文\n" }] }],
+  });
+  state.manuscriptRevisions = [
+    makeRevision("owner", book(["told-by-qiu"]), "", "version", "第一版"),
+    makeRevision("member-1", book(["told-by-qiu"]), "", "version", "第一版"),
+  ];
+  const env = install(state);
+  context.after(env.restore);
+  const archive = await loadPage("archive");
+  await (archive.refresh as () => Promise<void>).call(archive);
+  const recorded = archive.data.recordedItems as Array<{ id: string; archiveLabel: string }>;
+  assert.deepEqual(recorded.map((item) => item.id), ["told-by-qiu"]);
+  assert.match(recorded[0].archiveLabel, /写进了 .*林岚的书第一章/);
+  assert.match(recorded[0].archiveLabel, /林秋的书第一章/);
+  assert.deepEqual((archive.data.unrecordedItems as Array<{ id: string }>).map((item) => item.id), ["demo-personal-rain"]);
 });
 
 test("every profile's book can use any memory in the pool", async (context) => {
@@ -69,8 +97,9 @@ test("every profile's book can use any memory in the pool", async (context) => {
   const book = await loadPage("book");
   await (book.refresh as () => Promise<void>).call(book);
   const rows = book.data.unassigned as Array<{ id: string; text: string }>;
-  assert.ok(rows.some((row) => row.id === "told-by-qiu" && row.text.startsWith("林秋讲：")));
-  assert.ok(rows.some((row) => row.id === "demo-personal-rain" && !row.text.includes("讲：")));
+  assert.ok(rows.some((row) => row.id === "told-by-qiu"));
+  assert.ok(rows.some((row) => row.id === "demo-personal-rain"));
+  assert.ok(rows.every((row) => !row.text.includes("讲：")), "memories carry no narrator label");
   assert.ok(!rows.some((row) => row.id === "demo-memory-rain"), "family-review submissions stay out of books");
 
   env.select("member-1");
