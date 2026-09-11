@@ -35,6 +35,7 @@ interface ProfileOptionView {
 }
 
 interface RecommendedQuestionView {
+  dimension: InterviewDimension;
   label: string;
   context: string;
   text: string;
@@ -144,17 +145,28 @@ function recommendedQuestionFor(
     label: FOLLOW_UP_LABEL,
     context: compactContext(contribution),
     text: prompt.text,
+    dimension: prompt.dimension,
     sourceId: contribution.id,
     storyTitle: contributionStoryTitle(contribution),
   };
 }
 
-function interviewUrl(sourceId: string, storyTitle: string): string {
+function interviewUrl(
+  sourceId: string,
+  storyTitle: string,
+  question?: { text: string; dimension: string },
+): string {
   const query = [
     `sourceId=${encodeURIComponent(sourceId)}`,
     `storyTitle=${encodeURIComponent(storyTitle)}`,
-  ].join("&");
-  return `/pages/interview/interview?${query}`;
+  ];
+  if (question?.text) {
+    query.push(
+      `question=${encodeURIComponent(question.text)}`,
+      `dimension=${encodeURIComponent(question.dimension)}`,
+    );
+  }
+  return `/pages/interview/interview?${query.join("&")}`;
 }
 
 Page({
@@ -177,6 +189,7 @@ Page({
     recommendedQuestion: "",
     recommendedSourceId: "",
     recommendedStoryTitle: "",
+    recommendedDimension: "",
     hasRecommendedQuestion: false,
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
@@ -216,6 +229,7 @@ Page({
       recommendedQuestion: recommendedQuestion?.text ?? "",
       recommendedSourceId: recommendedQuestion?.sourceId ?? "",
       recommendedStoryTitle: recommendedQuestion?.storyTitle ?? "",
+      recommendedDimension: recommendedQuestion?.dimension ?? "",
       hasRecommendedQuestion: Boolean(recommendedQuestion),
       recentStories,
       hasRecentStories: recentStories.length > 0,
@@ -301,8 +315,12 @@ Page({
       return;
     }
 
+    // 把用户点的这个问题一起带过去，采访页第一句就问它。
     wx.navigateTo({
-      url: interviewUrl(sourceId, this.data.recommendedStoryTitle || ""),
+      url: interviewUrl(sourceId, this.data.recommendedStoryTitle || "", {
+        text: this.data.recommendedQuestion || "",
+        dimension: this.data.recommendedDimension || "",
+      }),
     });
   },
 

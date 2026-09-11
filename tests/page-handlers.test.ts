@@ -624,12 +624,26 @@ test("the home page recommends a follow-up from the latest memory", async (conte
 
   callPage(page, "continueRecommendedQuestion");
 
-  assert.equal(
-    last(storage.navigations),
-    `/pages/interview/interview?sourceId=demo-personal-rain&storyTitle=${encodeURIComponent(
-      String(page.data.recommendedStoryTitle),
-    )}`,
-  );
+  const url = last(storage.navigations);
+  assert.ok(url);
+  const query = new URLSearchParams(url.split("?")[1]);
+  assert.equal(query.get("sourceId"), "demo-personal-rain");
+  assert.equal(query.get("storyTitle"), String(page.data.recommendedStoryTitle));
+  assert.equal(query.get("question"), String(page.data.recommendedQuestion));
+
+  // 点推荐问进来：不先闪一下「选择讲述方式」，小忆第一句就是刚才点的那个问题。
+  const interview = instantiate(await pageDefinition("interview"));
+  assert.equal(interview.data.stage, "loading");
+  await callPage(interview, "onLoad", {
+    sourceId: query.get("sourceId") ?? "",
+    storyTitle: query.get("storyTitle") ?? "",
+    question: query.get("question") ?? "",
+    dimension: query.get("dimension") ?? "",
+  });
+  assert.equal(interview.data.stage, "chat");
+  const opening = (interview.data.messages as Array<{ text: string }>)[0]?.text ?? "";
+  assert.ok(opening.endsWith(String(page.data.recommendedQuestion)), opening);
+  assert.deepEqual(interview.data.askedDimensions, [query.get("dimension")]);
 });
 
 test("the personal home page summarizes the active profile", async (context) => {

@@ -1,6 +1,6 @@
 <view class="interview-page" style="bottom: {{keyboardHeight}}px">
 
-  <view class="who-bar" wx:if="{{stage !== 'choose'}}">
+  <view class="who-bar" wx:if="{{stage === 'chat' || stage === 'save'}}">
     <view class="who-copy">
       <view class="who-title">
         <image
@@ -173,7 +173,7 @@
       <button class="btn btn-ghost" bindtap="leaveSavedMemory">返回</button>
     </view>
   </block>
-  <block wx:else>
+  <block wx:elif="{{stage === 'save'}}">
     <scroll-view class="chat-scroll" scroll-y>
       <view class="chat-inner">
         <textarea

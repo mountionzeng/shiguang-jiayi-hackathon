@@ -79,6 +79,12 @@ test("a direction covered in an earlier answer is not asked again", () => {
   assert.equal(prompt.dimension, "feeling");
 });
 
+test("“很小的时候”算说过时间，“小姑娘”“老师”算说过人", () => {
+  assert.ok(detectCoveredDimensions("已经是很小的时候的事情了。").includes("time"));
+  assert.ok(detectCoveredDimensions("我喜欢和小姑娘在一起。").includes("person"));
+  assert.ok(detectCoveredDimensions("老师让我们排队。").includes("person"));
+});
+
 test("keyword detection recognises the directions an answer already covers", () => {
   assert.deepEqual(detectCoveredDimensions("那年冬天我妈带我去了老家。").sort(), [
     "event",
