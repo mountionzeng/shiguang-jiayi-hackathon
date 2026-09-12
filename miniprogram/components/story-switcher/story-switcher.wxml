@@ -88,53 +88,52 @@
   aria-label="选择记录方式，点空白处关闭"
 >
   <view class="capture-heading">
-    <image
-      wx:if="{{memoirOpen}}"
-      class="capture-recall-art"
-      src="/assets/illustrations/memory-recall-sheet.png"
-      mode="aspectFit"
-      aria-hidden="true"
-    ></image>
-    <view wx:if="{{memoirOpen}}" class="capture-eyebrow">回忆</view>
     <view class="capture-title {{memoirOpen ? 'serif' : 'typewriter'}}">{{memoirOpen ? '想起了哪一段？' : '这次怎么记？'}}</view>
-    <view wx:if="{{memoirOpen}}" class="capture-subtitle">挑一段，接着说下去</view>
   </view>
 
   <!-- 回忆录：先挑一段已经讲过的，再接着聊 -->
   <scroll-view class="capture-recall" scroll-y wx:if="{{memoirOpen}}" catchtap="keepChooserOpen">
-    <button
-      class="capture-memory"
-      wx:for="{{recent}}"
-      wx:key="id"
-      data-id="{{item.id}}"
-      data-title="{{item.storyTitle}}"
-      bindtap="continueMemory"
-      hover-class="none"
-      aria-label="接着聊{{item.title}}"
-    >
-      <view class="capture-memory-index">{{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
-      <view class="capture-memory-copy">
-        <view class="capture-memory-title serif">{{item.title}}</view>
-        <view class="capture-memory-excerpt">{{item.excerpt}}</view>
-        <view class="capture-memory-meta">{{item.storyLabel}}</view>
-      </view>
-      <view class="capture-memory-next">接着聊 <text aria-hidden="true">›</text></view>
-    </button>
+    <view class="capture-memory-stack">
+      <button
+        class="capture-memory"
+        wx:for="{{recent}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        data-title="{{item.storyTitle}}"
+        bindtap="continueMemory"
+        hover-class="capture-memory-pressed"
+        aria-label="接着聊{{item.title}}"
+      >
+        <image
+          class="capture-memory-paper"
+          src="/assets/illustrations/memory-recall-sheet.png"
+          mode="scaleToFill"
+          aria-hidden="true"
+        ></image>
+        <view class="capture-memory-index">{{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
+        <view class="capture-memory-copy">
+          <view class="capture-memory-title serif">{{item.title}}</view>
+          <view class="capture-memory-excerpt">{{item.excerpt}}</view>
+          <view class="capture-memory-meta">{{item.storyLabel}}</view>
+        </view>
+        <view class="capture-memory-next">接着聊 <text aria-hidden="true">›</text></view>
+      </button>
 
-    <view class="capture-empty" wx:if="{{recentLoaded && !recent.length}}">还没有回忆，先随手记一段吧。</view>
-    <view class="capture-empty" wx:elif="{{recentError}}">{{recentError}}</view>
-    <view class="capture-empty" wx:elif="{{!recentLoaded}}">正在找你讲过的回忆…</view>
+      <view class="capture-empty" wx:if="{{recentLoaded && !recent.length}}">还没有回忆，先随手记一段吧。</view>
+      <view class="capture-empty" wx:elif="{{recentError}}">{{recentError}}</view>
+      <view class="capture-empty" wx:elif="{{!recentLoaded}}">正在找你讲过的回忆…</view>
 
-    <button
-      class="capture-all"
-      bindtap="openAllMemories"
-      hover-class="none"
-      aria-label="从全部回忆里挑一段"
-    >
-      <view class="capture-all-icon" aria-hidden="true"><view></view><view></view></view>
-      <view class="capture-all-copy"><text>全部回忆</text><text>从所有回忆里挑一段</text></view>
-      <text class="capture-all-arrow" aria-hidden="true">›</text>
-    </button>
+      <button
+        class="capture-all"
+        bindtap="openAllMemories"
+        hover-class="capture-all-pressed"
+        aria-label="从全部回忆里挑一段"
+      >
+        <view class="capture-all-icon" aria-hidden="true"><view></view><view></view></view>
+        <view class="capture-all-copy"><text>全部回忆</text><text>从所有回忆里挑一段</text></view>
+        <text class="capture-all-arrow" aria-hidden="true">›</text>
+      </button>
+    </view>
   </scroll-view>
 
   <view class="capture-options" wx:else catchtap="keepChooserOpen">
