@@ -34,20 +34,19 @@ import {
 function shouldUseCloudDatabase(): boolean {
   if (!CLOUD_DATABASE_ENABLED || !wx.cloud) return false;
   const app = getApp<ShiguangAppOptions>();
-  return Boolean(app.globalData.cloudReady);
+  if (!app.globalData.cloudReady) throw new Error("云端连接尚未就绪，请重新打开小程序后重试");
+  return true;
 }
 
+export const usesCloudStorage = shouldUseCloudDatabase;
+
 export function roomDataModeLabel(): string {
-  return shouldUseCloudDatabase() ? "数据：微信云端" : "数据：本地兜底";
+  return shouldUseCloudDatabase() ? "数据：微信云端" : "数据：本机存储";
 }
 
 export async function loadRoomStateRemoteFirst(): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await loadCloudRoomState();
-    } catch (error) {
-      console.warn("云端家庭房间不可用，将临时使用本地缓存", error);
-    }
+    return await loadCloudRoomState();
   }
 
   return loadRoomState();
@@ -67,11 +66,7 @@ export async function appendContributionRemoteFirst(
   contribution: MemoryContribution,
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await appendCloudContribution(contribution);
-    } catch (error) {
-      console.warn("云端投稿保存失败，将临时保存到本地", error);
-    }
+    return await appendCloudContribution(contribution);
   }
 
   return appendContribution(contribution, loadRoomState());
@@ -80,27 +75,20 @@ export async function appendContributionRemoteFirst(
 export async function addFamilyMemberRemoteFirst(
   name: string,
   relation: string,
+  kind?: FamilyMember["kind"],
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await addCloudFamilyMember(name, relation);
-    } catch (error) {
-      console.warn("云端新增家庭成员失败，将临时保存到本地", error);
-    }
+    return await addCloudFamilyMember(name, relation, kind);
   }
 
-  return addFamilyMember(name, relation, loadRoomState());
+  return addFamilyMember(name, relation, loadRoomState(), kind);
 }
 
 export async function replaceContributionRemoteFirst(
   contribution: MemoryContribution,
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await replaceCloudContribution(contribution);
-    } catch (error) {
-      console.warn("云端审核保存失败，将临时保存到本地", error);
-    }
+    return await replaceCloudContribution(contribution);
   }
 
   return replaceContribution(contribution, loadRoomState());
@@ -110,11 +98,7 @@ export async function deleteContributionRemoteFirst(
   contributionId: string,
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await deleteCloudContribution(contributionId);
-    } catch (error) {
-      console.warn("云端记忆删除失败，将临时删除本地缓存", error);
-    }
+    return await deleteCloudContribution(contributionId);
   }
 
   return deleteContribution(contributionId, loadRoomState());
@@ -125,11 +109,7 @@ export async function saveDraftIfSourcesUnchangedRemoteFirst(
   sourceFingerprint: string,
 ): Promise<FamilyRoomState | undefined> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await saveCloudDraftIfSourcesUnchanged(draft, sourceFingerprint);
-    } catch (error) {
-      console.warn("云端草稿保存失败，将临时保存到本地", error);
-    }
+    return await saveCloudDraftIfSourcesUnchanged(draft, sourceFingerprint);
   }
 
   return saveDraftIfSourcesUnchanged(draft, sourceFingerprint, loadRoomState());
@@ -141,11 +121,7 @@ export async function savePersonalDraftIfSourcesUnchangedRemoteFirst(
   memberId: string,
 ): Promise<FamilyRoomState | undefined> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await saveCloudPersonalDraftIfSourcesUnchanged(draft, sourceFingerprint, memberId);
-    } catch (error) {
-      console.warn("云端个人书稿保存失败，将临时保存到本地", error);
-    }
+    return await saveCloudPersonalDraftIfSourcesUnchanged(draft, sourceFingerprint, memberId);
   }
 
   return savePersonalDraftIfSourcesUnchanged(
@@ -162,11 +138,7 @@ export async function updatePersonalShareTargetsRemoteFirst(
   targetMemberIds: string[],
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await updateCloudPersonalShareTargets(contributionId, actor, targetMemberIds);
-    } catch (error) {
-      console.warn("云端阅读权限更新失败，将临时保存到本地", error);
-    }
+    return await updateCloudPersonalShareTargets(contributionId, actor, targetMemberIds);
   }
 
   return updatePersonalShareTargets(contributionId, actor, targetMemberIds);
@@ -174,11 +146,7 @@ export async function updatePersonalShareTargetsRemoteFirst(
 
 export async function resetCurrentUserRoomRemoteFirst(): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    try {
-      return await resetCloudCurrentUserRoom();
-    } catch (error) {
-      console.warn("云端当前账号清空失败，将只清空本地缓存", error);
-    }
+    return await resetCloudCurrentUserRoom();
   }
 
   return resetCurrentRoom();

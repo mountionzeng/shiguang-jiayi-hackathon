@@ -464,7 +464,7 @@ test("the persistence boundary rejects unknown authors, related people, and read
       ...baseInput,
       authorMemberId: "removed-author",
     }), state),
-    /讲述者已不在/,
+    /请先创建或选择/,
   );
   assert.throws(
     () => appendContribution(createContribution({

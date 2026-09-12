@@ -2,11 +2,15 @@ import {
   contributionStoryTitle,
   MemoryContribution,
   personalBookContributions,
+  normalizeMemoryText,
+  MAX_MEMORY_LENGTH,
 } from "../../domain/biography";
 import {
   loadCurrentMemberRemoteFirst,
   deleteContributionRemoteFirst,
   loadRoomStateRemoteFirst,
+  replaceContributionRemoteFirst,
+  roomDataModeLabel,
 } from "../../services/roomRepository";
 import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 
@@ -45,19 +49,29 @@ Page({
     hasItems: false,
     swipedItemId: "",
     deletingItemId: "",
+    editingId: "",
+    editTitle: "",
+    editText: "",
+    editStory: "",
+    storyOptions: [] as string[],
+    savingEdit: false,
+    loadError: "",
+    storageLabel: "",
   },
 
   swipeStartX: 0,
   swipeStartY: 0,
   swipeActiveId: "",
+  editingOriginal: undefined as MemoryContribution | undefined,
 
-  onLoad(options: { tab?: string }) {
+  onLoad(options: { tab?: string; id?: string }) {
     this.setData({ activeTab: options.tab === "memoir" ? "memoir" : "note" });
+    if (options.id) this.setData({ editingId: options.id });
   },
 
   onShow() {
     if (redirectToLegalNoticeIfNeeded()) return;
-    void this.refresh();
+    void this.refresh().catch(() => this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }));
   },
 
   selectArchiveTab(event: {
@@ -65,15 +79,15 @@ Page({
   }) {
     const activeTab = event.currentTarget.dataset.tab === "memoir" ? "memoir" : "note";
     this.setData({ activeTab, swipedItemId: "" });
-    void this.refresh();
+    this.onShow();
   },
 
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(state);
     const personal = personalBookContributions(state.contributions, member.id);
-    const toViews = (memoryType: ArchiveTab) => personal
-      .filter((memory) => (memory.memoryType ?? "note") === memoryType)
+    const toViews = (memoryType?: ArchiveTab) => personal
+      .filter((memory) => !memoryType || (memory.memoryType ?? "note") === memoryType)
       .slice()
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .map((memory) => {
@@ -88,7 +102,7 @@ Page({
       });
     const notes = toViews("note");
     const memoirs = toViews("memoir");
-    const archiveItems = this.data.activeTab === "memoir" ? memoirs : notes;
+    const archiveItems = toViews();
 
     this.setData({
       memberName: member.name,
@@ -98,8 +112,83 @@ Page({
       memoirCount: memoirs.length,
       archiveItems,
       hasItems: archiveItems.length > 0,
+      storyOptions: [...new Set(personal.map(contributionStoryTitle).filter(Boolean))],
+      storageLabel: roomDataModeLabel(),
+      loadError: "",
     });
+    if (this.data.editingId && !this.editingOriginal) {
+      const memory = personal.find(item => item.id === this.data.editingId);
+      if (memory) this.showEditor(memory);
+      else {
+        this.setData({ editingId: "" });
+        wx.showToast({ title: "这段记忆已不存在，请查看当前列表", icon: "none" });
+      }
+    }
   },
+
+  retryLoad() { this.onShow(); },
+
+  showEditor(memory: MemoryContribution) {
+    this.editingOriginal = memory;
+    this.setData({ editingId: memory.id, editTitle: memory.title || "", editText: memory.text, editStory: contributionStoryTitle(memory), swipedItemId: "" });
+  },
+
+  async openMemory(event: { currentTarget: { dataset: { id: string } } }) {
+    if (this.data.swipedItemId) { this.closeSwipe(); return; }
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      const member = await loadCurrentMemberRemoteFirst(state);
+      const memory = personalBookContributions(state.contributions, member.id).find(item => item.id === event.currentTarget.dataset.id);
+      if (!memory) throw new Error("这段记忆已不存在，请刷新列表");
+      this.showEditor(memory);
+    } catch (error) { wx.showToast({ title: error instanceof Error ? error.message : "加载失败，请重试", icon: "none" }); }
+  },
+
+  onEditTitle(event: WechatMiniprogram.Input) { this.setData({ editTitle: event.detail.value }); },
+  onEditText(event: WechatMiniprogram.Input) { this.setData({ editText: event.detail.value }); },
+  onEditStory(event: WechatMiniprogram.Input) { this.setData({ editStory: event.detail.value }); },
+  chooseEditStory(event: { currentTarget: { dataset: { title: string } } }) {
+    this.setData({ editStory: event.currentTarget.dataset.title || "" });
+  },
+  closeEditor() {
+    if (this.data.savingEdit) return;
+    const original = this.editingOriginal;
+    if (original && (this.data.editTitle !== (original.title || "") || this.data.editText !== original.text || this.data.editStory !== contributionStoryTitle(original))) {
+      wx.showModal({ title: "放弃本次修改？", content: "原来的记忆仍会保留。", success: result => { if (result.confirm) this.discardEditor(); } });
+      return;
+    }
+    this.discardEditor();
+  },
+  discardEditor() {
+    this.editingOriginal = undefined;
+    this.setData({ editingId: "" });
+    this.onShow();
+  },
+  async saveEdit() {
+    if (this.data.savingEdit || !this.editingOriginal) return;
+    this.setData({ savingEdit: true });
+    try {
+      const text = normalizeMemoryText(this.data.editText);
+      if (!text || text.length > MAX_MEMORY_LENGTH) throw new Error("请保留 1—500 字的记忆");
+      const state = await loadRoomStateRemoteFirst();
+      const member = await loadCurrentMemberRemoteFirst(state);
+      const latest = personalBookContributions(state.contributions, member.id).find(item => item.id === this.data.editingId);
+      if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
+      const original = this.editingOriginal;
+      if (latest.text !== original.text || latest.title !== original.title || latest.storyTitle !== original.storyTitle) {
+        throw new Error("这段记忆已有新修改，请重新打开后编辑");
+      }
+      const next = { ...latest, text, title: this.data.editTitle.trim().slice(0, 40) || undefined, storyTitle: this.data.editStory.trim().slice(0, 30) || undefined,
+        summary: text === latest.text ? latest.summary : undefined };
+      await replaceContributionRemoteFirst(next);
+      this.editingOriginal = next;
+      wx.showToast({ title: "修改已保存", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "修改未确认，请重试", icon: "none" });
+    } finally { this.setData({ savingEdit: false }); }
+  },
+
+  startRecording() { wx.navigateTo({ url: "/pages/interview/interview?memoryType=note" }); },
 
   onNoteTouchStart(event: {
     currentTarget: { dataset: { id: string } };
@@ -144,7 +233,7 @@ Page({
 
     wx.showModal({
       title: "删除记忆",
-      content: `确定删除「${title}」吗？删除后不可恢复。`,
+      content: `确定删除「${title}」这条原始记录吗？已保存的书稿与历史版本仍保留。原始记录删除后不可恢复。`,
       confirmText: "删除",
       confirmColor: "#c54d3f",
       success: (result) => {
@@ -163,6 +252,7 @@ Page({
       wx.showToast({ title: "已删除", icon: "none" });
     } catch (error) {
       this.setData({ deletingItemId: "" });
+      await this.refresh().catch(() => this.setData({ loadError: "删除结果尚未确认，请刷新后重试。" }));
       wx.showToast({
         title: error instanceof Error ? error.message : "暂时无法删除",
         icon: "none",

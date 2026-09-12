@@ -42,6 +42,7 @@
   </view>
 
   <view class="me-section-title">记忆管理</view>
+  <view class="local-storage-note">档案、人物、文字和版本使用原来的微信云端存储。照片文件仅保存在本机，换手机或清理小程序可能丢失；在线 AI 需另行授权。</view>
   <view class="me-list">
     <button class="me-row" bindtap="openArchive" hover-class="none">
       <text class="me-row-icon">书</text>
@@ -83,6 +84,14 @@
 
   <view class="me-section-title">账号</view>
   <view class="me-list">
+    <button class="me-row" bindtap="configureAiPrivacy" hover-class="none">
+      <text class="me-row-icon">私</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">在线 AI 授权</text>
+        <text class="me-row-note">本次允许或关闭文字处理，不发送照片</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
     <button class="me-row" bindtap="openLegalNotice" hover-class="none">
       <text class="me-row-icon">须</text>
       <view class="me-row-copy">
@@ -102,8 +111,8 @@
     <button class="me-row me-row-danger" bindtap="clearCurrentAccountData" hover-class="none">
       <text class="me-row-icon me-row-icon-danger">清</text>
       <view class="me-row-copy">
-        <text class="me-row-title">清空当前账号数据</text>
-        <text class="me-row-note">重新从空房间开始</text>
+        <text class="me-row-title">清空当前账号云端档案</text>
+        <text class="me-row-note">删除人物、记忆和书稿，无法撤销</text>
       </view>
       <text class="me-row-arrow">›</text>
     </button>

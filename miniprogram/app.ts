@@ -3,6 +3,7 @@ import {
   CLOUD_DATABASE_ENABLED,
   CLOUD_ENV_ID,
 } from "./config/runtime";
+import { clearAiConsent } from "./services/aiConsent";
 
 export interface ShiguangAppOptions {
   globalData: {
@@ -16,6 +17,7 @@ App<ShiguangAppOptions>({
   },
 
   onLaunch() {
+    clearAiConsent();
     if (!CLOUD_DATABASE_ENABLED && !CLOUD_AI_ENABLED) {
       console.info("云开发开关未启用，将使用本地演示数据");
       return;
@@ -27,10 +29,10 @@ App<ShiguangAppOptions>({
     }
 
     try {
-      wx.cloud.init({ env: CLOUD_ENV_ID, traceUser: true });
+      wx.cloud.init({ env: CLOUD_ENV_ID, traceUser: false });
       this.globalData.cloudReady = true;
     } catch (error) {
-      console.warn("微信云开发初始化失败，将使用本地演示草稿", error);
+      console.warn("微信云开发初始化失败，暂停云端数据读写，请重试", error);
     }
   },
 });

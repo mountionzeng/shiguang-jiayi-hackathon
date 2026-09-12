@@ -1,4 +1,5 @@
 export const CLOUD_ENV_ID = "cloud1-d0g8c8yg0513a6068";
+// Restore the existing cloud dataset. Do not switch storage without a continuity plan.
 export const CLOUD_DATABASE_ENABLED = true;
 export const CLOUD_AI_ENABLED = true;
 export const BACKEND_API_ENABLED = false;

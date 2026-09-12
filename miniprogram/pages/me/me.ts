@@ -8,6 +8,7 @@ import {
   loadRoomStateRemoteFirst,
   resetCurrentUserRoomRemoteFirst,
 } from "../../services/roomRepository";
+import { clearAiConsent, requestAiConsent } from "../../services/aiConsent";
 import {
   openWechatPrivacyContract,
   redirectToLegalNoticeIfNeeded,
@@ -25,7 +26,7 @@ Page({
 
   onShow() {
     if (redirectToLegalNoticeIfNeeded()) return;
-    void this.refresh();
+    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
   },
 
   async refresh(state?: FamilyRoomState) {
@@ -65,6 +66,12 @@ Page({
     wx.showToast({ title: "后续版本接入", icon: "none" });
   },
 
+  async configureAiPrivacy() {
+    clearAiConsent();
+    const allowed = await requestAiConsent();
+    wx.showToast({ title: allowed ? "本次可使用在线 AI" : "本次不使用在线 AI", icon: "none" });
+  },
+
   openLegalNotice() {
     wx.navigateTo({ url: "/pages/register/register?readonly=1" });
   },
@@ -80,8 +87,8 @@ Page({
 
   clearCurrentAccountData() {
     wx.showModal({
-      title: "清空当前账号数据",
-      content: "会删除当前微信账号下的家庭、档案、记忆和草稿，示例家庭不会受影响。",
+      title: "清空当前账号云端档案",
+      content: "将删除当前微信账号的云端档案、人物、记忆和书稿版本，无法撤销。本机照片文件不会一并删除。请确认已自行保留重要内容。",
       confirmText: "清空",
       confirmColor: "#c44738",
       success: (result) => {

@@ -16,6 +16,7 @@ import {
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
 import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
+import { currentManuscript } from "../../services/manuscript";
 
 interface RecentStoryView {
   id: string;
@@ -99,7 +100,7 @@ function profileOptionsFor(
   members: FamilyMember[],
   currentMemberId: string,
 ): ProfileOptionView[] {
-  return members.map((member) => ({
+  return members.filter(member => member.kind !== "person").map((member) => ({
     id: member.id,
     name: member.name,
     relation: member.relation,
@@ -185,7 +186,7 @@ Page({
   onShow() {
     if (redirectToLegalNoticeIfNeeded()) return;
     this.setData({ bookOpening: false });
-    void this.refresh();
+    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
   },
 
   async refresh(state?: FamilyRoomState) {
@@ -195,7 +196,7 @@ Page({
     const personal = hasProfile
       ? personalBookContributions(currentState.contributions, member.id)
       : [];
-    const draft = hasProfile ? currentState.personalDrafts?.[member.id] : undefined;
+    const draft = hasProfile ? currentManuscript(currentState, member.id).draft : undefined;
     const recentStories = recentStoriesFor(personal);
     const recommendedQuestion = recommendedQuestionFor(
       latestContribution(personal),
@@ -208,9 +209,9 @@ Page({
       memberAvatarText: member.avatarText,
       bookTitle: hasProfile ? `${member.name}的人生之书` : "人生之书",
       coverSubtitle: hasProfile ? (draft?.title ?? "还没有整理成章节") : "先建立一个档案",
-      memoryCount: personal.filter((memory) => (memory.memoryType ?? "note") === "note").length,
-      memoirCount: personal.filter((memory) => memory.memoryType === "memoir").length,
-      familyMemberCount: currentState.members.length,
+      memoryCount: personal.length,
+      memoirCount: new Set(personal.map(contributionStoryTitle).filter(Boolean)).size,
+      familyMemberCount: currentState.members.filter(item => item.id !== member.id && item.kind !== "recording-profile").length,
       profileOptions: profileOptionsFor(currentState.members, member.id),
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
       recommendedQuestionContext: recommendedQuestion?.context ?? "",
@@ -240,7 +241,7 @@ Page({
     wx.navigateTo({ url: "/pages/profiles/profiles" });
   },
 
-  addFamilyMember() {
+  createRecordingProfile() {
     this.setData({ profileChooserOpen: false });
     wx.navigateTo({ url: "/pages/profiles/profiles" });
   },
@@ -250,7 +251,7 @@ Page({
   }) {
     const memberId = event.currentTarget.dataset.id;
     const state = await loadRoomStateRemoteFirst();
-    const member = state.members.find((item) => item.id === memberId);
+    const member = state.members.find((item) => item.id === memberId && item.kind !== "person");
 
     if (!member) {
       wx.showToast({ title: "没有找到这个档案", icon: "none" });
@@ -271,7 +272,7 @@ Page({
     this.setData({ bookOpening: true });
     setTimeout(() => {
       this.setData({ bookOpening: false });
-      wx.navigateTo({ url: "/pages/archive/archive" });
+      wx.navigateTo({ url: "/pages/book/book" });
     }, 620);
   },
 
@@ -279,7 +280,11 @@ Page({
     currentTarget: { dataset: { tab: "note" | "memoir" } };
   }) {
     const tab = event.currentTarget.dataset.tab === "memoir" ? "memoir" : "note";
-    wx.navigateTo({ url: `/pages/archive/archive?tab=${tab}` });
+    wx.navigateTo({ url: tab === "memoir" ? "/pages/stories/stories" : "/pages/archive/archive" });
+  },
+
+  openPeople() {
+    wx.navigateTo({ url: "/pages/profiles/profiles?mode=people" });
   },
 
   openMemoryHome() {
@@ -288,7 +293,7 @@ Page({
 
   changeRecommendedQuestion() {
     this.recommendationOffset += 1;
-    void this.refresh();
+    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
   },
 
   continueRecommendedQuestion() {

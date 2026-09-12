@@ -6,6 +6,7 @@ import {
 } from "../domain/biography";
 import { draftTitleFromAnswers } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
+import { requestAiConsent } from "./aiConsent";
 
 export interface OrganizedMemoryDraft {
   title: string;
@@ -106,6 +107,7 @@ export async function organizeMemory(
   const transcript = input.transcript.map((item) => item.trim()).filter(Boolean);
   const fallback = localOrganizedDraft(transcript, input.memoryType);
   if (!canUseCloudAi()) return fallback;
+  if (!await requestAiConsent()) return fallback;
 
   try {
     const response = await wx.cloud.callFunction({
@@ -119,9 +121,9 @@ export async function organizeMemory(
     });
     const cloudDraft = parseCloudDraft(response.result, fallback);
     if (cloudDraft) return cloudDraft;
-    console.warn("AI 整理返回格式不完整，将保留原话草稿", response.result);
+    console.warn("AI 整理返回格式不完整，将保留原话草稿");
   } catch (error) {
-    console.warn("AI 整理不可用，将保留原话草稿", error);
+    console.warn("AI 整理不可用，将保留原话草稿");
   }
 
   return fallback;

@@ -47,7 +47,7 @@
         class="book {{bookOpening ? 'book-opening' : ''}}"
         bindtap="openMemoryArchive"
         role="button"
-        aria-label="打开管理记忆档案"
+        aria-label="阅读和编辑人生之书"
       >
         <view class="book-pages-under"></view>
         <view class="book-cover-leaf">
@@ -68,7 +68,7 @@
                   catchtap="openArchiveTab"
                   data-tab="note"
                   hover-class="none"
-                  aria-label="打开随手记"
+                  aria-label="查看和编辑所有记忆"
                 >
                   <text class="book-stat-num">{{memoryCount}}</text>
                   <text class="book-stat-label">篇记忆</text>
@@ -78,31 +78,31 @@
                   catchtap="openArchiveTab"
                   data-tab="memoir"
                   hover-class="none"
-                  aria-label="打开回忆录"
+                  aria-label="按故事整理记忆"
                 >
                   <text class="book-stat-num">{{memoirCount}}</text>
-                  <text class="book-stat-label">篇回忆录</text>
+                  <text class="book-stat-label">个故事</text>
                 </button>
                 <button
                   class="book-stat-action book-stat-home"
-                  catchtap="openMemoryHome"
+                  catchtap="openPeople"
                   hover-class="none"
-                  aria-label="打开记忆之家"
+                  aria-label="管理亲友档案"
                 >
                   <text class="book-stat-num">{{familyMemberCount}}</text>
-                  <text class="book-stat-label">个家庭成员</text>
+                  <text class="book-stat-label">位亲友</text>
                 </button>
               </view>
             </view>
           </view>
         </view>
       </view>
-      <view class="book-open-label typewriter">轻触打开记忆档案</view>
+      <view class="book-open-label typewriter">轻触阅读和编辑书稿</view>
     </view>
 
     <view class="home-setup" wx:if="{{!hasProfile}}">
-      <view class="home-setup-title serif">先创建你的家庭档案</view>
-      <view class="home-setup-note">从自己的名字开始，之后再把家人一个个加进来。</view>
+      <view class="home-setup-title serif">先创建你的记录档案</view>
+      <view class="home-setup-note">从自己的名字开始，把你的人生经历慢慢留下来。</view>
       <button
         class="home-setup-button"
         bindtap="createFirstProfile"
@@ -190,14 +190,14 @@
   </button>
   <button
     class="profile-menu-item profile-menu-add"
-    bindtap="addFamilyMember"
+    bindtap="createRecordingProfile"
     hover-class="none"
-    aria-label="添加家庭成员"
+    aria-label="新建记录档案"
   >
     <view class="profile-menu-avatar profile-menu-add-icon">+</view>
     <view class="profile-menu-copy">
-      <text class="profile-menu-name">家庭成员</text>
-      <text class="profile-menu-relation">添加新的家人档案</text>
+      <text class="profile-menu-name">新建记录档案</text>
+      <text class="profile-menu-relation">新建一本人生之书的记录档案</text>
     </view>
   </button>
 </scroll-view>

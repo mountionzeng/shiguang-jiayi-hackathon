@@ -18,6 +18,8 @@ export interface FamilyMember {
   relation: string;
   avatarText: string;
   role: ReviewerRole;
+  /** Missing on legacy demo profiles; preserve them until explicitly classified. */
+  kind?: "recording-profile" | "person";
 }
 
 export interface MemoryContribution {
@@ -64,16 +66,34 @@ export interface BiographyDraft {
   sourceCount: number;
   generatedAt: string;
   generationMode: GenerationMode;
+  /** Text and opaque local-photo references only. No device paths or photo bytes go to cloud. */
+  content?: ManuscriptContent[];
 }
 
+export type ManuscriptContent = { text: string; photoId?: never } | { photoId: string; text?: never };
+
 export interface FamilyRoomState {
+  importedCloudRooms?: string[];
   roomName: string;
   protagonistName: string;
   members: FamilyMember[];
   contributions: MemoryContribution[];
   personalDrafts?: Record<string, BiographyDraft>;
+  /** Retained generated text, even when its sources have changed. */
+  legacyPersonalDrafts?: Record<string, BiographyDraft>;
+  manuscriptRevisions?: ManuscriptRevision[];
   /** @deprecated 旧版以家庭主人公为中心的章节草稿，只保留用于缓存兼容。 */
   draft?: BiographyDraft;
+}
+
+export interface ManuscriptRevision {
+  id: string;
+  memberId: string;
+  kind: "draft" | "version" | "restore";
+  label: string;
+  savedAt: string;
+  sourceFingerprint: string;
+  draft: BiographyDraft;
 }
 
 export interface CreateContributionInput {

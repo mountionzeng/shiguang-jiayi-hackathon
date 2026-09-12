@@ -1,6 +1,9 @@
 import {
   FamilyMember,
   FamilyRoomState,
+  contributionRelatedMemberIds,
+  personalBookContributions,
+  personalShareTargetMemberIds,
 } from "../../domain/biography";
 import {
   addFamilyMemberRemoteFirst,
@@ -8,6 +11,7 @@ import {
   loadRoomStateRemoteFirst,
   resetCurrentUserRoomRemoteFirst,
   saveCurrentMemberIdLocal,
+  updatePersonalShareTargetsRemoteFirst,
 } from "../../services/roomRepository";
 import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 
@@ -21,7 +25,9 @@ interface ProfileView {
 }
 
 function roleLabel(member: FamilyMember): string {
-  return member.role === "elder" ? "人生之书主人公" : "亲友档案";
+  if (member.kind === "recording-profile") return "记录档案";
+  if (member.kind === "person") return "亲友";
+  return "旧版档案";
 }
 
 function profileViews(state: FamilyRoomState, currentMemberId: string): ProfileView[] {
@@ -41,20 +47,42 @@ Page({
     memberNameInput: "",
     relationInput: "",
     hasProfiles: false,
+    managingPeople: false,
+    selectedPersonId: "",
+    selectedPersonName: "",
+    permissions: [] as Array<{ id: string; title: string; related: boolean; canRead: boolean }>,
+    permissionSaving: false,
+    loadError: "",
+  },
+
+  onLoad(options: { mode?: string } = {}) {
+    this.setData({ managingPeople: options.mode === "people" });
   },
 
   onShow() {
     if (redirectToLegalNoticeIfNeeded()) return;
-    void this.refresh();
+    void this.refresh().catch(() => this.setData({ loadError: "亲友档案暂时未加载成功，请重试。" }));
   },
 
   async refresh(state?: FamilyRoomState) {
     const currentState = state ?? await loadRoomStateRemoteFirst();
     const currentMember = await loadCurrentMemberRemoteFirst(currentState);
-    const profiles = profileViews(currentState, currentMember.id);
+    const visibleState = { ...currentState, members: currentState.members.filter(member =>
+      this.data.managingPeople ? member.kind !== "recording-profile" : member.kind !== "person") };
+    const profiles = profileViews(visibleState, currentMember.id)
+      .filter(profile => !this.data.managingPeople || profile.id !== currentMember.id);
+    const selected = profiles.find(profile => profile.id === this.data.selectedPersonId);
     this.setData({
       profiles,
       hasProfiles: profiles.length > 0,
+      selectedPersonId: selected?.id || "",
+      selectedPersonName: selected?.name || "",
+      permissions: selected ? personalBookContributions(currentState.contributions, currentMember.id).map(memory => ({
+        id: memory.id, title: memory.title || memory.text.slice(0, 18),
+        related: contributionRelatedMemberIds(memory).includes(selected.id),
+        canRead: personalShareTargetMemberIds(memory).includes(selected.id),
+      })) : [],
+      loadError: "",
     });
   },
 
@@ -68,17 +96,17 @@ Page({
 
   async addProfile() {
     const name = this.data.memberNameInput.trim();
-    const relation = this.data.relationInput.trim();
+    const relation = this.data.managingPeople ? this.data.relationInput.trim() : "自己";
     if (!name) {
       wx.showToast({ title: "请填写名字", icon: "none" });
       return;
     }
 
     try {
-      const state = await addFamilyMemberRemoteFirst(name, relation);
+      const state = await addFamilyMemberRemoteFirst(name, relation, this.data.managingPeople ? "person" : "recording-profile");
       const member = state.members[state.members.length - 1];
-      if (member) saveCurrentMemberIdLocal(member.id);
-      wx.showToast({ title: "档案已创建", icon: "success" });
+      if (member && !this.data.managingPeople) saveCurrentMemberIdLocal(member.id);
+      wx.showToast({ title: this.data.managingPeople ? "亲友已添加" : "记录档案已创建", icon: "success" });
       this.setData({
         memberNameInput: "",
         relationInput: "",
@@ -94,8 +122,13 @@ Page({
 
   async chooseProfile(event: { currentTarget: { dataset: { id: string } } }) {
     const memberId = event.currentTarget.dataset.id;
+    if (this.data.managingPeople) {
+      this.setData({ selectedPersonId: memberId });
+      await this.refresh().catch(() => this.setData({ loadError: "读取失败，请重试" }));
+      return;
+    }
     const state = await loadRoomStateRemoteFirst();
-    const member = state.members.find((item) => item.id === memberId);
+    const member = state.members.find((item) => item.id === memberId && item.kind !== "person");
 
     if (!member) {
       wx.showToast({ title: "没有找到这个档案", icon: "none" });
@@ -105,6 +138,27 @@ Page({
     saveCurrentMemberIdLocal(member.id);
     wx.showToast({ title: `已切换到${member.name}`, icon: "none" });
     wx.navigateBack();
+  },
+
+  retryLoad() { this.onShow(); },
+
+  async toggleReading(event: { currentTarget: { dataset: { id: string } } }) {
+    if (this.data.permissionSaving || !this.data.selectedPersonId) return;
+    this.setData({ permissionSaving: true });
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      const actor = await loadCurrentMemberRemoteFirst(state);
+      const memory = personalBookContributions(state.contributions, actor.id).find(item => item.id === event.currentTarget.dataset.id);
+      if (!memory) throw new Error("这段记忆已不存在，请刷新");
+      const current = personalShareTargetMemberIds(memory);
+      const personId = this.data.selectedPersonId;
+      const targets = current.includes(personId) ? current.filter(id => id !== personId) : [...current, personId];
+      const next = await updatePersonalShareTargetsRemoteFirst(memory.id, actor, targets);
+      await this.refresh(next);
+      wx.showToast({ title: "档案阅读范围已更新", icon: "none" });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "修改失败，请重试", icon: "none" });
+    } finally { this.setData({ permissionSaving: false }); }
   },
 
   clearCurrentFamilyData() {

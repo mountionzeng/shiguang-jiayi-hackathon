@@ -219,3 +219,4 @@
   background: rgba(196, 71, 56, 0.1);
   color: #9d3b31;
 }
+.local-storage-note { margin: 20rpx 32rpx; font-size: 27rpx; color: var(--ink-soft); line-height: 1.7; }

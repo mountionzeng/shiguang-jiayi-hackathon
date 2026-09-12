@@ -5,6 +5,7 @@ import {
   FamilyMember,
   FamilyRoomState,
   MAX_MEMORY_LENGTH,
+  MemoryContribution,
   MemoryType,
   normalizeMemoryText,
   OrganizationMode,
@@ -25,6 +26,7 @@ import {
   appendContributionRemoteFirst,
   loadCurrentMemberRemoteFirst,
   loadRoomStateRemoteFirst,
+  roomDataModeLabel,
 } from "../../services/roomRepository";
 
 interface MessageView {
@@ -96,7 +98,7 @@ function memberOptionsFor(
   selectedIds: string[] = [],
 ): MemberOptionView[] {
   return members
-    .filter((member) => member.id !== currentMemberId)
+    .filter((member) => member.id !== currentMemberId && member.kind !== "recording-profile")
     .map((member) => ({
       id: member.id,
       name: member.name,
@@ -158,16 +160,26 @@ Page({
     audienceOptions: [] as MemberOptionView[],
     saving: false,
     saved: false,
+    saveMessage: "",
+    saveError: "",
+    storageLabel: "",
 
     keyboardHeight: 0,
   },
 
   messageSeq: 0,
+  pendingContribution: undefined as MemoryContribution | undefined,
 
   async onLoad(options: InterviewLoadOptions = {}) {
     if (redirectToLegalNoticeIfNeeded()) return;
+    try {
     const state = await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(state);
+    if (!member.id) {
+      wx.showToast({ title: "先创建自己的记录档案，就可以开始聊了", icon: "none" });
+      wx.redirectTo({ url: "/pages/profiles/profiles" });
+      return;
+    }
     const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");
     const requestedStoryTitle = decodeQueryValue(options.storyTitle);
     const requestedSourceId = decodeQueryValue(options.sourceId);
@@ -208,6 +220,9 @@ Page({
     });
 
     this.pushMessage("opening", opening);
+    } catch (error) {
+      wx.showModal({ title: "暂时无法加载记录档案", content: "请返回后重新打开，不会切换到另一份本地数据。", showCancel: false, success: () => wx.navigateBack() });
+    }
   },
 
   /**
@@ -218,13 +233,17 @@ Page({
     wx.disableAlertBeforeUnload();
     const unsentText = this.data.inputText.trim();
     const rawAnswers = this.data.answers.concat(unsentText ? [unsentText] : []);
-    if (this.data.saved || rawAnswers.length === 0) return;
+    if (this.data.saved || this.data.saving || rawAnswers.length === 0) return;
 
     void this.saveRecoverableAnswers(rawAnswers);
   },
 
   async saveRecoverableAnswers(rawAnswers: string[]) {
     try {
+      if (this.pendingContribution) {
+        await appendContributionRemoteFirst(this.pendingContribution);
+        return;
+      }
       const state = await loadRoomStateRemoteFirst();
       const member = await loadCurrentMemberRemoteFirst(state);
       const recoverableText = normalizeMemoryText(
@@ -268,7 +287,7 @@ Page({
     this.setData({ inputText });
     if (inputText.trim()) {
       wx.enableAlertBeforeUnload({
-        message: "现在离开的话，尚未发送的文字也会先存进未整理片段，仅你可见。",
+        message: "退出时会尝试保存。为避免网络失败，请先完成保存并确认成功。",
       });
     } else if (this.data.answers.length === 0) {
       wx.disableAlertBeforeUnload();
@@ -291,7 +310,7 @@ Page({
     this.setData({ answers, inputText: "", asking: true });
 
     wx.enableAlertBeforeUnload({
-      message: "现在离开的话，以上聊天会先存进你的未整理片段，仅你可见。",
+      message: "退出时会尝试保存。为避免网络失败，请先完成保存并确认成功。",
     });
 
     try {
@@ -459,12 +478,13 @@ Page({
   },
 
   async save() {
-    if (this.data.saving) return;
-    this.setData({ saving: true });
+    if (this.data.saving || this.data.saved) return;
+    this.setData({ saving: true, saveError: "" });
 
     try {
       const state = await loadRoomStateRemoteFirst();
       const member = await loadCurrentMemberRemoteFirst(state);
+      if (!member.id) throw new Error("请先创建或选择自己的记录档案");
       const availableMemberIds = new Set(
         state.members
           .filter((candidate) => candidate.id !== member.id)
@@ -474,10 +494,9 @@ Page({
         this.data.audienceMemberIds,
       );
       if (selectedMemberIds.some((memberId) => !availableMemberIds.has(memberId))) {
-        throw new Error("有亲友已不在当前空间，请重新选择");
+        throw new Error("所选亲友档案已变更，请重新打开本页选择");
       }
-      await appendContributionRemoteFirst(
-        createContribution({
+      const contribution = createContribution({
           authorMemberId: member.id,
           authorName: member.name,
           relation: member.relation,
@@ -494,10 +513,22 @@ Page({
           sharedWithMemberIds: this.data.audienceMemberIds,
           scope: "personal",
           visibility: "private",
-        }),
-      );
+        });
+      this.pendingContribution = {
+        ...contribution,
+        id: this.pendingContribution?.id ?? contribution.id,
+        createdAt: this.pendingContribution?.createdAt ?? contribution.createdAt,
+      };
+      await appendContributionRemoteFirst(this.pendingContribution);
 
-      this.setData({ saved: true });
+      this.setData({
+        saved: true,
+        saving: false,
+        storageLabel: roomDataModeLabel(),
+        saveMessage: this.data.storyTitle.trim()
+          ? `已保存到「${this.data.storyTitle.trim()}」，也可在“记忆”中找到。`
+          : "已保存到“记忆”，暂未归入故事。以后再整理也可以。",
+      });
       wx.disableAlertBeforeUnload();
       wx.showToast({
         title: this.data.storyTitle.trim()
@@ -506,13 +537,21 @@ Page({
         icon: "none",
         duration: 2400,
       });
-      setTimeout(() => wx.navigateBack(), 900);
     } catch (error) {
-      this.setData({ saving: false });
-      wx.showToast({
-        title: error instanceof Error ? error.message : "暂时无法保存",
-        icon: "none",
+      this.setData({
+        saving: false,
+        saveError: "暂未确认保存结果。文字仍在本页，请重试，不必重新讲一遍。",
       });
+      wx.showToast({ title: error instanceof Error ? error.message : "暂时无法确认保存", icon: "none" });
     }
+  },
+
+  viewSavedMemory() {
+    if (!this.data.saved || !this.pendingContribution) return;
+    wx.redirectTo({ url: `/pages/archive/archive?id=${encodeURIComponent(this.pendingContribution.id)}` });
+  },
+
+  leaveSavedMemory() {
+    wx.navigateBack();
   },
 });

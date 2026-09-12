@@ -54,7 +54,7 @@ Page({
 
   onShow() {
     if (redirectToLegalNoticeIfNeeded()) return;
-    void this.refresh();
+    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
   },
 
   async refresh(state?: FamilyRoomState) {

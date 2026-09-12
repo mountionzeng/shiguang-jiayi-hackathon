@@ -228,3 +228,4 @@
   font-size: 23rpx;
   line-height: 1.7;
 }
+.permission-row { padding: 24rpx 0; border-bottom: 1rpx solid #e4ddca; color: var(--ink); font-size: 30rpx; }
