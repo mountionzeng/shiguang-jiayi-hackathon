@@ -113,6 +113,49 @@ test("建立邀请与生成小程序码分成两次短云调用", () => {
   assert.doesNotMatch(source, /await ensureCollections\(\)/);
 });
 
+test("被邀请人看不到其他亲友姓名，主人仍能看到完整名单", () => {
+  const members = [
+    { memberId: "owner", accountId: "account-owner", name: "岱", role: "owner" },
+    { memberId: "friend-a", accountId: "account-a", name: "承", role: "contributor" },
+    { memberId: "friend-b", accountId: "account-b", name: "珂", role: "contributor" },
+  ];
+
+  assert.deepEqual(
+    invite.visibleMembersForAccess(
+      members,
+      { role: "contributor", memberId: "friend-a" },
+      "account-owner",
+    ).map(member => member.name),
+    ["岱", "承"],
+  );
+  assert.equal(invite.visibleMembersForAccess(members, { role: "owner", memberId: "owner" }).length, 3);
+});
+
+test("被邀请人只看到自己写的或明确分享给自己的个人记忆", () => {
+  const memories = [
+    { id: "private", authorMemberId: "owner", scope: "personal", sharedWithMemberIds: [] },
+    { id: "shared-a", authorMemberId: "owner", scope: "personal", sharedWithMemberIds: ["friend-a"] },
+    { id: "shared-b", authorMemberId: "owner", scope: "personal", sharedWithMemberIds: ["friend-b"] },
+    { id: "family-confirmed", authorMemberId: "owner", scope: "family", visibility: "family", reviewStatus: "confirmed" },
+    { id: "own", authorMemberId: "friend-a", scope: "family", visibility: "family", reviewStatus: "pending" },
+  ];
+
+  assert.deepEqual(
+    invite.visibleMemoriesForAccess(memories, { role: "contributor", memberId: "friend-a" })
+      .map(memory => memory.id),
+    ["shared-a", "own"],
+  );
+  assert.equal(invite.visibleMemoriesForAccess(memories, { role: "owner", memberId: "owner" }).length, 5);
+});
+
+test("共享页面隐藏被邀请人的名单管理入口", () => {
+  const markup = fs.readFileSync(
+    path.join(__dirname, "../miniprogram/pages/room/room.wxml"),
+    "utf8",
+  );
+  assert.match(markup, /room-manage[^>]+wx:if="\{\{canInvite\}\}"/);
+});
+
 test("邀请页为系统顶部留出空间并允许小屏滚动", () => {
   const styles = fs.readFileSync(
     path.join(__dirname, "../miniprogram/pages/invite/invite.wxss"),

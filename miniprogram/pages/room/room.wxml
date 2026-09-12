@@ -8,7 +8,7 @@
     <view class="eyebrow">所有记忆都在这里</view>
     <view class="room-title serif">记忆之家</view>
     <view class="room-sub">点一个人，看和 ta 有关的记忆。写没写进书的都在。</view>
-    <button class="room-manage" bindtap="openPeople" hover-class="none">管理名单</button>
+    <button class="room-manage" wx:if="{{canInvite}}" bindtap="openPeople" hover-class="none">管理名单</button>
     <button class="room-invite" wx:if="{{canInvite}}" bindtap="inviteFamilyMember" hover-class="room-invite-pressed">
       <text class="room-invite-mark">＋</text>
       <view class="room-invite-copy">

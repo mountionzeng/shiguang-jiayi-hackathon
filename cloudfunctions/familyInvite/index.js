@@ -8,6 +8,8 @@ const {
   normalizeContributionInput,
   normalizeInviteInput,
   publicInvitation,
+  visibleMemoriesForAccess,
+  visibleMembersForAccess,
 } = require("./core");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
@@ -259,11 +261,9 @@ async function loadRoom(event, accountId) {
     loadAll("memories", familyId),
   ]);
   const memberId = access.memberId;
-  const memories = access.role === "owner" ? allMemories : allMemories.filter((memory) => (
-    (memory.scope !== "personal" && memory.visibility === "family" && memory.reviewStatus === "confirmed") ||
-    (memory.scope === "personal" && Array.isArray(memory.sharedWithMemberIds) && memory.sharedWithMemberIds.includes(memberId)) ||
-    memory.authorMemberId === memberId
-  ));
+  const memories = visibleMemoriesForAccess(allMemories, access);
+  const visibleMembers = visibleMembersForAccess(members, access, family.ownerAccountId);
+  const visibleMemberIds = new Set(visibleMembers.map(member => member.memberId));
 
   return {
     familyId,
@@ -272,7 +272,7 @@ async function loadRoom(event, accountId) {
     state: {
       roomName: family.roomName || "我们的记忆之家",
       protagonistName: family.protagonistName || "",
-      members: members.map(member => ({
+      members: visibleMembers.map(member => ({
         id: member.memberId,
         name: member.name,
         relation: member.relation,
@@ -290,9 +290,15 @@ async function loadRoom(event, accountId) {
         summary: memory.summary,
         memoryType: memory.memoryType,
         storyTitle: memory.storyTitle,
-        relatedMemberIds: memory.relatedMemberIds,
+        relatedMemberIds: Array.isArray(memory.relatedMemberIds)
+          ? memory.relatedMemberIds.filter(id => visibleMemberIds.has(id))
+          : [],
         scope: memory.scope,
-        sharedWithMemberIds: memory.sharedWithMemberIds,
+        sharedWithMemberIds: access.role === "owner"
+          ? memory.sharedWithMemberIds
+          : (Array.isArray(memory.sharedWithMemberIds) && memory.sharedWithMemberIds.includes(memberId)
+            ? [memberId]
+            : []),
         visibility: memory.visibility,
         reviewStatus: memory.reviewStatus,
         createdAt: memory.createdAt,

@@ -88,6 +88,41 @@ function normalizeContributionInput(event) {
   };
 }
 
+/**
+ * Shared rooms are private by default. A contributor can only read a memory
+ * they wrote or a personal memory the owner explicitly shared with them.
+ * A confirmed family contribution is not an implicit grant to every person
+ * who has ever accepted an invitation to the room.
+ */
+function visibleMemoriesForAccess(memories, access) {
+  if (access && access.role === "owner") return memories;
+  const memberId = String(access && access.memberId || "");
+  if (!memberId) return [];
+  return memories.filter(memory => (
+    memory.authorMemberId === memberId ||
+    (
+      memory.scope === "personal" &&
+      Array.isArray(memory.sharedWithMemberIds) &&
+      memory.sharedWithMemberIds.includes(memberId)
+    )
+  ));
+}
+
+/**
+ * Accepting an invitation creates a relationship with the room owner, not
+ * membership in a public address book. Other invitees must remain invisible.
+ */
+function visibleMembersForAccess(members, access, ownerAccountId = "") {
+  if (access && access.role === "owner") return members;
+  const memberId = String(access && access.memberId || "");
+  if (!memberId) return [];
+  return members.filter(member => (
+    member.memberId === memberId ||
+    (ownerAccountId && member.accountId === ownerAccountId) ||
+    (!ownerAccountId && member.role === "owner")
+  ));
+}
+
 module.exports = {
   INVITE_TTL_MS,
   accountIdFor,
@@ -98,4 +133,6 @@ module.exports = {
   normalizeContributionInput,
   normalizeInviteInput,
   publicInvitation,
+  visibleMemoriesForAccess,
+  visibleMembersForAccess,
 };
