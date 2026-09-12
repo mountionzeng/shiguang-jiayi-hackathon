@@ -371,8 +371,9 @@ Page({
     wx.navigateTo({ url: tab === "memoir" ? "/pages/stories/stories" : "/pages/archive/archive" });
   },
 
+  /** 人都在记忆之家：先看人，再看和这个人有关的记忆。 */
   openPeople() {
-    wx.navigateTo({ url: "/pages/profiles/profiles?mode=people" });
+    wx.navigateTo({ url: "/pages/room/room" });
   },
 
   openMemoryHome() {

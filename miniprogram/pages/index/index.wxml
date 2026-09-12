@@ -86,7 +86,7 @@
                   class="book-stat-action book-stat-home"
                   catchtap="openPeople"
                   hover-class="none"
-                  aria-label="管理家人和朋友"
+                  aria-label="打开记忆之家，看每个人和他们的记忆"
                 >
                   <text class="book-stat-num">{{peopleCount}}</text>
                   <text class="book-stat-label">个人</text>

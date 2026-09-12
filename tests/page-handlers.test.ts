@@ -677,7 +677,7 @@ test("the home book shortcuts open their matching memory spaces", async (context
   assert.deepEqual(storage.navigations.slice(-3), [
     "/pages/archive/archive",
     "/pages/stories/stories",
-    "/pages/profiles/profiles?mode=people",
+    "/pages/room/room",
   ]);
 });
 
