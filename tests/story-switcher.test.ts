@@ -74,6 +74,13 @@ test("the persistent story switcher opens all three destinations, and 随手记 
     });
     assert.equal(instance.data.chooserOpen, false);
 
+    // 点空白处（遮罩或弹层的空白）就关掉，回到什么都没选的状态。
+    definition.methods.startInterview.call(instance);
+    await definition.methods.openMemoir.call(instance);
+    definition.methods.closeChooser.call(instance);
+    assert.equal(instance.data.chooserOpen, false);
+    assert.equal(instance.data.memoirOpen, false, "下次打开还是先问「这次怎么记」");
+
     definition.methods.startInterview.call(instance);
     definition.methods.openAllMemories.call(instance);
     definition.methods.openFamily.call(instance);
