@@ -1,4 +1,64 @@
 @import "../archive/archive.wxss";
+@import "../book/action-icons.wxss";
 .story-content { position: relative; z-index: 1; }
 /* 底部固定着三入口切换栏，内容要留出它的高度。 */
 .story-page { padding-bottom: calc(276rpx + env(safe-area-inset-bottom)); }.story-memory { margin: 20rpx 0; padding: 28rpx; text-align: left; background: #fffdf6; border-radius: 12rpx 24rpx 18rpx 10rpx; }
+
+/* A book is the interaction unit. The existing line-bound shell supplies real binding and deckled page edges. */
+.shelf-caption { display: flex; justify-content: space-between; margin: 42rpx 0 22rpx; color: var(--ink-soft); font-size: 23rpx; }
+.story-shelf { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 34rpx 20rpx; padding: 12rpx 4rpx 48rpx 0; perspective: 1200rpx; }
+.story-book { position: relative; box-sizing: border-box; display: flex; width: calc(50% - 10rpx); height: 500rpx; margin: 0; padding: 0; overflow: visible; text-align: left; white-space: normal; color: var(--ink); background: transparent; border: 0; box-shadow: none; transition: transform 180ms ease, filter 180ms ease; }
+.story-book::after { position: absolute; right: 4rpx; bottom: -9rpx; left: 20rpx; z-index: 0; height: 13rpx; border: 0; border-radius: 50%; background: rgba(42,46,43,.14); filter: blur(8rpx); content: ""; }
+.story-book-shell { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; pointer-events: none; }
+.book-cover-tint { position: absolute; top: 19rpx; right: 15rpx; bottom: 29rpx; left: 52rpx; z-index: 2; border-radius: 2rpx 8rpx 10rpx 2rpx; background: rgba(79,127,107,.10); pointer-events: none; }
+.story-book:nth-child(4n+2) .book-cover-tint { background: rgba(74,110,136,.12); }
+.story-book:nth-child(4n+3) .book-cover-tint { background: rgba(176,130,57,.13); }
+.story-book:nth-child(4n+4) .book-cover-tint { background: rgba(180,80,60,.10); }
+.book-cover-mark { position: absolute; top: 48rpx; right: 34rpx; z-index: 3; width: 72rpx; height: 62rpx; opacity: .52; pointer-events: none; }
+.book-cover-mark view { position: absolute; border-radius: 50%; }
+.book-cover-mark view:nth-child(1) { top: 0; left: 0; width: 46rpx; height: 46rpx; background: rgba(79,127,107,.30); }
+.book-cover-mark view:nth-child(2) { right: 0; bottom: 0; width: 39rpx; height: 39rpx; background: rgba(74,110,136,.25); }
+.book-cover-mark view:nth-child(3) { right: 27rpx; bottom: 7rpx; width: 22rpx; height: 22rpx; background: rgba(176,130,57,.22); }
+.book-layout-1 { transform: translateY(10rpx) rotate(.7deg); }
+.book-layout-2 { transform: translateY(-5rpx) rotate(-.5deg); }
+.book-layout-3 { transform: translateY(7rpx) rotate(.35deg); }
+.book-cover { position: relative; z-index: 4; display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 43rpx 28rpx 48rpx 68rpx; }
+.book-number { padding-right: 68rpx; color: var(--ink-soft); font-size: 18rpx; line-height: 1.5; letter-spacing: 2rpx; }
+.book-title-slip { position: relative; flex-shrink: 0; margin: 48rpx 4rpx 0 0; padding: 10rpx 8rpx; border-top: 1rpx solid rgba(42,46,43,.25); border-bottom: 1rpx solid rgba(42,46,43,.25); background: rgba(255,254,251,.44); }
+.book-title-slip::before { position: absolute; top: -6rpx; bottom: -6rpx; left: -5rpx; width: 3rpx; border-radius: 3rpx; background: var(--jade); content: ""; opacity: .66; }
+.story-book:nth-child(4n+2) .book-title-slip::before { background: var(--lake); }
+.story-book:nth-child(4n+3) .book-title-slip::before { background: var(--apricot); }
+.story-book:nth-child(4n+4) .book-title-slip::before { background: var(--coral); }
+.book-name { display: -webkit-box; overflow: hidden; font-size: 32rpx; font-weight: 600; line-height: 1.38; overflow-wrap: anywhere; word-break: break-all; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.book-excerpt { display: -webkit-box; margin-top: 15rpx; overflow: hidden; color: var(--ink-soft); font-size: 21rpx; line-height: 1.58; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.book-meta { margin-top: 15rpx; color: var(--ink-soft); font-size: 19rpx; line-height: 1.5; }
+.book-open { display: flex; flex-shrink: 0; justify-content: space-between; margin-top: auto; padding-top: 10rpx; border-top: 1rpx solid rgba(42,46,43,.12); color: var(--jade); font-size: 20rpx; line-height: 1.4; }
+.story-book-empty .book-title-slip { border-top-style: dashed; border-bottom-style: dashed; }
+.story-shelf .story-book-new { min-height: 0; background: transparent; border: 0; box-shadow: none; }
+.story-book-new .story-book-shell { opacity: .66; filter: saturate(.55); }
+.story-book-new .book-cover-tint { background: rgba(251,248,241,.42); border: 2rpx dashed rgba(79,127,107,.34); }
+.story-book-new .book-cover { justify-content: center; }
+.book-new-plus { display: flex; align-items: center; justify-content: center; width: 64rpx; height: 64rpx; margin-left: 2rpx; border: 2rpx solid var(--jade); border-radius: 50%; color: var(--jade); font-size: 45rpx; font-weight: 300; line-height: 1; }
+.story-book-new .book-title-slip { margin-top: 24rpx; border-bottom-style: dashed; border-top-style: dashed; }
+.story-book-new .book-name { font-size: 30rpx; }
+.story-book-new .book-excerpt { display: block; }
+.story-book-new .book-excerpt text { display: block; }
+.story-book-pressed { z-index: 5; transform: translateY(-9rpx) rotate(-1deg) scale(1.018); filter: drop-shadow(0 18rpx 15rpx rgba(42,46,43,.18)); }
+/* Hook-only states: the story-structure owner supplies drag and reorder behavior. */
+.story-book.is-dragging { z-index: 5; transform: translateY(-24rpx) rotate(-3deg) scale(1.035); filter: drop-shadow(10rpx 26rpx 18rpx rgba(42,46,43,.24)); }
+.story-book.is-drop-target { outline: 3rpx dashed var(--jade); outline-offset: 9rpx; }
+.story-book.is-drag-origin { opacity: .28; filter: grayscale(.5); }
+.story-shelf.is-sorting .story-book { outline: 2rpx dashed var(--jade); outline-offset: 5rpx; }
+.story-actions { display: flex; flex-direction: column; gap: 14rpx; margin-top: 38rpx; }
+.story-action { display: flex; align-items: center; width: 100%; min-height: 104rpx; margin: 0; padding: 18rpx 22rpx; border: 1rpx solid rgba(79,127,107,.22); border-radius: 12rpx 22rpx 18rpx 10rpx; background: rgba(255,254,251,.88); color: var(--ink); text-align: left; box-shadow: 3rpx 6rpx 16rpx rgba(42,46,43,.05); }
+.story-action-primary { border-color: var(--jade); background: var(--jade); color: var(--paper-card); }
+.story-action-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; font-size: 29rpx; font-weight: 600; line-height: 1.45; }
+.story-action-note { margin-top: 3rpx; color: var(--ink-soft); font-size: 22rpx; font-weight: 400; }
+.story-action-primary .story-action-note { color: rgba(255,254,251,.76); }
+.story-action-arrow { margin-left: 10rpx; font-family: serif; font-size: 48rpx; font-weight: 300; line-height: 1; opacity: .72; }
+.story-action-back { border-color: transparent; background: rgba(245,242,233,.56); box-shadow: none; }
+.selected-memory-list { margin-top: 34rpx; padding-top: 22rpx; border-top: 1rpx solid rgba(79,127,107,.15); }
+.selected-memory-list::before { display: block; margin-bottom: 16rpx; color: var(--ink-soft); content: "这个故事的记忆"; font-size: 23rpx; letter-spacing: 2rpx; }
+.story-memory { position: relative; width: 100%; border: 1rpx solid rgba(176,130,57,.14); background: rgba(255,254,251,.86); box-shadow: 4rpx 7rpx 16rpx rgba(42,46,43,.05); }
+.story-memory::before { position: absolute; top: 28rpx; bottom: 28rpx; left: 15rpx; width: 4rpx; border-radius: 4rpx; background: rgba(79,127,107,.42); content: ""; }
+@media (prefers-reduced-motion: reduce) { .story-book { transition: none; } }

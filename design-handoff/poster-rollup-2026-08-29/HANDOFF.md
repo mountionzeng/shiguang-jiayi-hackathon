@@ -3,6 +3,21 @@
 更新时间：2026-08-29  
 素材目录：`design-handoff/poster-rollup-2026-08-29/`
 
+## 2026-09-12 人生之书背景补充
+
+- 人生之书的故事封面已在第二轮改为真正的线装古籍形式，直接复用 `miniprogram/assets/illustrations/ancient-book-shell.png`；它来自本目录的 `assets/masters/ancient-book-shell-master.png`。动态界面在书壳上叠加四种淡彩、册号、书名签条、水彩圆印记、摘要和数量，不需要新增书本位图。
+- `references/book-shelf-more-book-like-request-2026-09-12.png`：用户第二轮反馈截图，记录“纯色圆角卡片仍太普通，需要更明显书籍形式”的要求。验收时应能一眼看出左侧线装书脊、右侧和底部毛边书口；相邻书有轻微错落，但文字仍保持端正可读。
+- `assets/masters/story-paper-master.png`：853 × 1844 的生成母版。它是「人生之书」故事书架与故事详情页的新宣纸背景，中央阅读区保持干净，只在边缘留极淡的玉石绿、湖水蓝和杏金水彩。
+- `assets/app-optimized/story-paper.jpg`：719 × 1556、JPEG 压缩版；小程序实际使用同内容的 `miniprogram/assets/illustrations/story-paper.jpg`。`assets/app-optimized/story-paper.png` 是流水线保留的无损压缩版，不进入小程序主包。
+- `references/book-shelf-before-2026-09-12.jpg`：改版前的人生之书列表，作为密集卡片、灰暗背景和底部遮挡问题的对照。
+- `references/story-detail-before-2026-09-12.jpg`：改版前的故事详情，作为三枚大胶囊按钮与大面积空白问题的对照。
+- `assets/masters/memory-recall-sheet-master.png`：2172 × 724、真实透明的异形宣纸便签母版。它只垫在“想起了哪一段？”动态标题下方，中央留白，边缘有克制的玉石绿与杏金水彩。
+- `assets/app-optimized/memory-recall-sheet.png`：720 × 240 的小程序交接副本；实际使用文件为 `miniprogram/assets/illustrations/memory-recall-sheet.png`。
+- `references/memory-recall-picker-before-2026-09-12.png`：改版前“想起了哪一段？”透明浮层，记录背景透出、卡片层级混乱和底部导航干扰的问题。
+- `references/memory-recall-sticky-note-request-2026-09-12.png`：用户复核截图。最终要求是保留轻量浮层，只在标题文字下方垫一张异形便签，并单独重做“全部回忆”按钮。
+
+验收时确认：背景不应降低正文与书封文字对比度；不应出现鸟、树枝、书、文字或 UI；纵向拉伸时不出现明显接缝。“回忆”便签不能扩展成整页背景，只承托标题文字；三条最近回忆和独立的“全部回忆”按钮在 320 px 宽度仍可读。底部导航三枚既有图标在本次改版中保持不变。
+
 ## 1. 交接目标
 
 基于已经完成的微信小程序视觉资产，继续制作一套黑客松展示物料：
