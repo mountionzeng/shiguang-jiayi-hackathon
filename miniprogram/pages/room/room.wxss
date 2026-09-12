@@ -1,19 +1,7 @@
-/* 记忆之家：确认后公开的家庭时间线 */
-
-/*
- * 页面标题与底部切换条的「记忆之家」是同样四个字，字形必须同款，
- * 所以走 .typewriter 那套仿宋；房间名是内容，保持宋体的阅读感。
- */
-.room-branch-title {
-  font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
-}
+/* 记忆之家：按权限展示的亲友记忆时间线 */
 
 .room-head {
   padding: 8rpx 0 24rpx;
-}
-
-.room-head .eyebrow {
-  margin-bottom: 8rpx;
 }
 
 .elder-task {
@@ -53,14 +41,7 @@
   color: var(--coral);
 }
 
-.room-title {
-  font-size: 46rpx;
-  font-weight: 600;
-  color: var(--ink);
-}
-
 .room-sub {
-  margin-top: 10rpx;
   font-size: 27rpx;
   line-height: 1.65;
   color: var(--ink-soft);
