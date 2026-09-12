@@ -94,7 +94,7 @@ async function createInvite(event, accountId) {
     familyMembers.find(member => member.memberId === "owner") ||
     familyMembers.find(member => member.role === "owner");
   if (ownerMember && ownerMember.accountId !== accountId) {
-    await db.collection("family_members").doc(`${familyId}_${ownerMember.memberId}`).update({
+    await db.collection("family_members").doc(ownerMember._id || `${familyId}_${ownerMember.memberId}`).update({
       data: { accountId, updatedAt: db.serverDate() },
     });
   }
@@ -116,6 +116,17 @@ async function createInvite(event, accountId) {
   };
   await db.collection("family_invitations").doc(token).set({ data: invitation });
 
+  return { invitation: publicInvitation(invitation) };
+}
+
+async function createInviteCode(event, accountId) {
+  const token = String(event.token || "").trim();
+  if (!token) throw new Error("邀请信息不完整");
+  const invitation = await getDoc("family_invitations", token);
+  if (!invitation || invitation.inviterAccountId !== accountId) {
+    throw new Error("只能为自己建立的邀请生成图片");
+  }
+
   let codeBase64 = "";
   try {
     const response = await cloud.openapi.wxacode.getUnlimited({
@@ -131,9 +142,10 @@ async function createInvite(event, accountId) {
     if (Buffer.isBuffer(buffer)) codeBase64 = buffer.toString("base64");
   } catch (error) {
     console.error("邀请小程序码生成失败", error);
+    throw new Error("小程序码暂时生成失败，请稍后重试");
   }
-
-  return { invitation: publicInvitation(invitation), codeBase64 };
+  if (!codeBase64) throw new Error("小程序码返回格式异常，请稍后重试");
+  return { codeBase64 };
 }
 
 async function getInvite(event, accountId) {
@@ -370,10 +382,10 @@ async function submitContribution(event, accountId) {
 }
 
 async function main(event = {}) {
-  await ensureCollections();
   const { accountId } = identity();
   switch (event.action) {
     case "create": return createInvite(event, accountId);
+    case "code": return createInviteCode(event, accountId);
     case "get": return getInvite(event, accountId);
     case "accept": return acceptInvite(event, accountId);
     case "loadRoom": return loadRoom(event, accountId);

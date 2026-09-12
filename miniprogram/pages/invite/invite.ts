@@ -2,6 +2,7 @@ import { loadCurrentAccount } from "../../services/accountService";
 import {
   acceptFamilyInvitation,
   createFamilyInvitation,
+  createFamilyInvitationCode,
   FamilyInvitation,
   loadFamilyInvitation,
 } from "../../services/familyInviteService";
@@ -104,12 +105,10 @@ Page({
       this.setData({
         invitation: result.invitation,
         invitationAvatarText: firstCharacter(result.invitation.inviteeName),
-        codeReady: Boolean(result.codeBase64),
       });
-      if (!result.codeBase64) {
-        throw new Error("邀请已建立，但小程序码暂时生成失败，请稍后重试");
-      }
-      const codePath = await writeBase64Image(result.codeBase64);
+      const codeResult = await createFamilyInvitationCode(result.invitation.token, environmentVersion());
+      this.setData({ codeReady: true });
+      const codePath = await writeBase64Image(codeResult.codeBase64);
       const posterPath = await this.drawPoster(result.invitation, codePath);
       this.setData({ posterPath });
     } catch (error) {

@@ -99,3 +99,27 @@ test("共同投稿时间由云函数生成且幂等重试保留原时间", () =>
   assert.match(source, /createdAt:\s*existing && existing\.createdAt \? existing\.createdAt : db\.serverDate\(\)/);
   assert.doesNotMatch(source, /createdAt:\s*input\.createdAt/);
 });
+
+test("建立邀请与生成小程序码分成两次短云调用", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../cloudfunctions/familyInvite/index.js"),
+    "utf8",
+  );
+  const createBody = source.slice(source.indexOf("async function createInvite"), source.indexOf("async function createInviteCode"));
+
+  assert.doesNotMatch(createBody, /wxacode\.getUnlimited/);
+  assert.match(source, /async function createInviteCode/);
+  assert.match(source, /case "code": return createInviteCode/);
+  assert.doesNotMatch(source, /await ensureCollections\(\)/);
+});
+
+test("邀请页为系统顶部留出空间并允许小屏滚动", () => {
+  const styles = fs.readFileSync(
+    path.join(__dirname, "../miniprogram/pages/invite/invite.wxss"),
+    "utf8",
+  );
+  assert.match(styles, /env\(safe-area-inset-top\)/);
+  assert.match(styles, /overflow-y:\s*auto/);
+  const pageRule = styles.slice(0, styles.indexOf("}\n") + 1);
+  assert.doesNotMatch(pageRule, /overflow:\s*hidden/);
+});

@@ -47,6 +47,13 @@ export function createFamilyInvitation(
   return callInvite({ action: "create", inviteeName, relation, envVersion });
 }
 
+export function createFamilyInvitationCode(
+  token: string,
+  envVersion: "develop" | "trial" | "release",
+): Promise<{ codeBase64: string }> {
+  return callInvite({ action: "code", token, envVersion });
+}
+
 export function loadFamilyInvitation(token: string): Promise<InviteResult> {
   return callInvite({ action: "get", token });
 }
