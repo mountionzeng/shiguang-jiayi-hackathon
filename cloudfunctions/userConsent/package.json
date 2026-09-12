@@ -1,0 +1,12 @@
+{
+  "name": "user-consent",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

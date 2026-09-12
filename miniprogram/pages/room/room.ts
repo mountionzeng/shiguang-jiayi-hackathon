@@ -17,6 +17,7 @@ import {
   replaceContributionRemoteFirst,
   updatePersonalShareTargetsRemoteFirst,
 } from "../../services/roomRepository";
+import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 
 interface TimelineItem {
   id: string;
@@ -90,6 +91,7 @@ Page({
   },
 
   onShow() {
+    if (redirectToLegalNoticeIfNeeded()) return;
     void this.refresh();
   },
 

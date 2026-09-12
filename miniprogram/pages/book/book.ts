@@ -9,6 +9,7 @@ import {
   loadRoomStateRemoteFirst,
   savePersonalDraftIfSourcesUnchangedRemoteFirst,
 } from "../../services/roomRepository";
+import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 
 interface SourceView {
   id: string;
@@ -34,6 +35,7 @@ Page({
   },
 
   onShow() {
+    if (redirectToLegalNoticeIfNeeded()) return;
     void this.refresh();
   },
 

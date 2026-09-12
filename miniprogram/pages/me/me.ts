@@ -8,6 +8,10 @@ import {
   loadRoomStateRemoteFirst,
   resetCurrentUserRoomRemoteFirst,
 } from "../../services/roomRepository";
+import {
+  openWechatPrivacyContract,
+  redirectToLegalNoticeIfNeeded,
+} from "../../services/legalConsent";
 
 Page({
   data: {
@@ -20,6 +24,7 @@ Page({
   },
 
   onShow() {
+    if (redirectToLegalNoticeIfNeeded()) return;
     void this.refresh();
   },
 
@@ -58,6 +63,19 @@ Page({
 
   notYet() {
     wx.showToast({ title: "后续版本接入", icon: "none" });
+  },
+
+  openLegalNotice() {
+    wx.navigateTo({ url: "/pages/register/register?readonly=1" });
+  },
+
+  async openWechatPrivacy() {
+    try {
+      await openWechatPrivacyContract();
+    } catch (error) {
+      wx.showToast({ title: "暂时无法打开隐私指引", icon: "none" });
+      console.warn("打开微信隐私协议失败", error);
+    }
   },
 
   clearCurrentAccountData() {

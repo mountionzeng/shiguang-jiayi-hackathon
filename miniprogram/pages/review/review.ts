@@ -12,6 +12,7 @@ import {
   loadRoomStateRemoteFirst,
   replaceContributionRemoteFirst,
 } from "../../services/roomRepository";
+import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 
 interface FocusView {
   id: string;
@@ -52,6 +53,7 @@ Page({
   },
 
   onShow() {
+    if (redirectToLegalNoticeIfNeeded()) return;
     void this.refresh();
   },
 

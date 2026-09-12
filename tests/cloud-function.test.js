@@ -16,6 +16,9 @@ const {
   ensureCollections,
   isAuthorizedBootstrap,
 } = require("../cloudfunctions/ensureCloudCollections/bootstrap.js");
+const {
+  _test: userConsentTest,
+} = require("../cloudfunctions/userConsent/index.js");
 
 test("cloud collection bootstrap creates the text MVP collections in order", async () => {
   const created = [];
@@ -61,6 +64,17 @@ test("cloud collection bootstrap requires a deployment-only token", () => {
   assert.equal(isAuthorizedBootstrap({ bootstrapToken: "wrong-token" }, token), false);
   assert.equal(isAuthorizedBootstrap({ bootstrapToken: token }, "short"), false);
   assert.equal(isAuthorizedBootstrap({}, token), false);
+});
+
+test("user consent records use current-user scoped document ids", () => {
+  assert.equal(
+    userConsentTest.consentDocId("o6z A/测试", "2026-09-05"),
+    "o6z_A____2026-09-05",
+  );
+  assert.deepEqual(
+    userConsentTest.normalizeScopes(["account_openid", "", "ai", 123]),
+    ["account_openid", "ai", "123"],
+  );
 });
 
 test("the cloud boundary rejects empty and oversized source batches", () => {

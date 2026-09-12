@@ -1,0 +1,72 @@
+<scroll-view class="register-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <view class="register-page page-enter">
+    <image
+      class="register-paper"
+      src="/assets/illustrations/home-paper.jpg"
+      mode="scaleToFill"
+      aria-hidden="true"
+    ></image>
+
+    <view class="register-head">
+      <view class="register-kicker">首次使用前请确认</view>
+      <view class="register-title serif">{{title}}</view>
+      <view class="register-version">版本 {{version}}</view>
+    </view>
+
+    <view class="notice-card">
+      <view class="notice-lead">
+        拾光Ai会保存你主动记录的家庭记忆，并在你点击相关功能时使用 AI 辅助追问、整理和生成草稿。请在继续前确认以下事项。
+      </view>
+
+      <view class="notice-section" wx:for="{{sections}}" wx:key="title">
+        <view class="notice-section-title serif">{{item.title}}</view>
+        <view
+          class="notice-item"
+          wx:for="{{item.items}}"
+          wx:for-item="line"
+          wx:key="*this"
+        >
+          {{line}}
+        </view>
+      </view>
+    </view>
+
+    <view class="notice-actions">
+      <button class="privacy-link" bindtap="openPrivacy" hover-class="none">
+        查看微信小程序隐私保护指引
+      </button>
+
+      <checkbox-group bindchange="toggleAgree" wx:if="{{!readonly}}">
+        <label class="agree-row">
+          <checkbox
+            class="agree-check"
+            value="agree"
+            checked="{{agreed}}"
+            color="#4f7f6b"
+          />
+          <text class="agree-text">
+            我已阅读并同意本用户须知，确认上传内容具有合法来源或已取得必要授权。
+          </text>
+        </label>
+      </checkbox-group>
+
+      <button
+        wx:if="{{!readonly}}"
+        class="enter-button {{(!agreed || submitting) ? 'enter-button-disabled' : ''}}"
+        bindtap="acceptAndEnter"
+        disabled="{{!agreed || submitting}}"
+        hover-class="none"
+      >
+        同意并继续
+      </button>
+      <button
+        wx:else
+        class="enter-button"
+        bindtap="goBack"
+        hover-class="none"
+      >
+        返回
+      </button>
+    </view>
+  </view>
+</scroll-view>

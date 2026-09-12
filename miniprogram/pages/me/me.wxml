@@ -83,6 +83,22 @@
 
   <view class="me-section-title">账号</view>
   <view class="me-list">
+    <button class="me-row" bindtap="openLegalNotice" hover-class="none">
+      <text class="me-row-icon">须</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">用户须知</text>
+        <text class="me-row-note">查看数据安全与 AI 使用说明</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
+    <button class="me-row" bindtap="openWechatPrivacy" hover-class="none">
+      <text class="me-row-icon">隐</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">微信隐私保护指引</text>
+        <text class="me-row-note">查看小程序隐私授权说明</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
     <button class="me-row me-row-danger" bindtap="clearCurrentAccountData" hover-class="none">
       <text class="me-row-icon me-row-icon-danger">清</text>
       <view class="me-row-copy">

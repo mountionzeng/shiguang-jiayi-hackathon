@@ -5,6 +5,7 @@ const CORE_COLLECTIONS = [
   "memories",
   "biography_drafts",
   "generated_artifacts",
+  "user_consents",
 ];
 
 function isAuthorizedBootstrap(event, expectedToken) {

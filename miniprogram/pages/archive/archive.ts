@@ -8,6 +8,7 @@ import {
   deleteContributionRemoteFirst,
   loadRoomStateRemoteFirst,
 } from "../../services/roomRepository";
+import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -55,6 +56,7 @@ Page({
   },
 
   onShow() {
+    if (redirectToLegalNoticeIfNeeded()) return;
     void this.refresh();
   },
 

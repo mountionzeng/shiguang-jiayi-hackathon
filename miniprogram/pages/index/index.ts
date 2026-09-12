@@ -15,6 +15,7 @@ import {
   loadRoomStateRemoteFirst,
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
+import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 
 interface RecentStoryView {
   id: string;
@@ -182,6 +183,7 @@ Page({
   },
 
   onShow() {
+    if (redirectToLegalNoticeIfNeeded()) return;
     this.setData({ bookOpening: false });
     void this.refresh();
   },

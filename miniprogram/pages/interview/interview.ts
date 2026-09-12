@@ -19,6 +19,7 @@ import {
   sharedQuestionSeed,
 } from "../../domain/interview";
 import { generateInterviewPrompt } from "../../services/interviewService";
+import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 import { organizeMemory } from "../../services/memoryOrganizerService";
 import {
   appendContributionRemoteFirst,
@@ -164,6 +165,7 @@ Page({
   messageSeq: 0,
 
   async onLoad(options: InterviewLoadOptions = {}) {
+    if (redirectToLegalNoticeIfNeeded()) return;
     const state = await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(state);
     const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");

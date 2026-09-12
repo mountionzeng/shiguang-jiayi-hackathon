@@ -9,6 +9,7 @@ import {
   resetCurrentUserRoomRemoteFirst,
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
+import { redirectToLegalNoticeIfNeeded } from "../../services/legalConsent";
 
 interface ProfileView {
   id: string;
@@ -43,6 +44,7 @@ Page({
   },
 
   onShow() {
+    if (redirectToLegalNoticeIfNeeded()) return;
     void this.refresh();
   },
 
