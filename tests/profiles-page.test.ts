@@ -88,7 +88,7 @@ test("the people page lists everyone except the author, labels access, and adds 
   const home = await loadPage("index");
   await call(home, "refresh");
   assert.equal(home.data.ownerAvatarText, "岱", "the home avatar is the author");
-  assert.equal(home.data.peopleCount, 6);
+  assert.equal(home.data.coverTitle, "外公接我放学", "the cover shows the story of the newest memory");
 });
 
 test("a new book starts from its own view, and an account without any book is sent there", async (context) => {
@@ -133,7 +133,8 @@ test("deleting another book hides its story on home, keeps its memories, and res
   assert.match(env.dialogs[env.dialogs.length - 1], /书稿和所有版本会放进「最近删除」.*记忆都还在记忆库里/);
   await call(home, "refresh");
   assert.ok(!stories().includes("林秋的书"));
-  assert.equal(home.data.memoryCount, 2, "the memories it told stay in the shared pool");
+  assert.equal(env.room().contributions.filter((memory) => memory.scope === "personal").length, 2,
+    "the memories it told stay in the shared pool");
   assert.equal(env.room().manuscriptRevisions?.length, 1, "its book is kept");
 
   await call(people, "removeMember", tap("owner"));

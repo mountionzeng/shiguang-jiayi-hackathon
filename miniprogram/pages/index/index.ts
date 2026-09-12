@@ -1,5 +1,6 @@
 import {
   accountOwner,
+  contributionRelatedMemberIds,
   contributionStoryTitle,
   FamilyRoomState,
   isActiveMember,
@@ -14,6 +15,7 @@ import {
 import {
   loadCurrentMemberRemoteFirst,
   loadRoomStateRemoteFirst,
+  saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 
@@ -209,11 +211,14 @@ Page({
   data: {
     hasProfile: false,
     ownerAvatarText: "",
-    bookTitle: "人生之书",
+    // 书封就是正在聊的那个故事；所有故事的目录在底部的「人生之书」。
+    coverTitle: "",
     coverSubtitle: "",
-    memoryCount: 0,
-    storyCount: 0,
-    peopleCount: 0,
+    storyKey: "",
+    storyMemoryCount: 0,
+    storyChapterCount: 0,
+    storyPeopleCount: 0,
+    storyManuscriptMemberId: "",
     bookOpening: false,
     storyChooserOpen: false,
     storyOptions: [] as StoryOptionView[],
@@ -254,17 +259,32 @@ Page({
       this.recommendationOffset,
     );
     const recentStories = recentStoriesFor(pool);
+    const currentStory = shelf.find((story) => story.title === currentStoryTitle);
+    // 这个故事里出现的人：只算名单上还在的人。
+    const activeMemberIds = new Set(
+      currentState.members.filter(isActiveMember).map((member) => member.id),
+    );
+    const storyPeople = new Set<string>();
+    inCurrentStory.forEach((memory) => {
+      contributionRelatedMemberIds(memory).forEach((memberId) => {
+        if (activeMemberIds.has(memberId)) storyPeople.add(memberId);
+      });
+    });
 
     this.setData({
       hasProfile: Boolean(owner),
       ownerAvatarText: owner?.avatarText ?? "",
-      bookTitle: "人生之书",
-      coverSubtitle: shelf.length > 0 ? `${shelf.length} 个故事` : "还没有故事",
-      memoryCount: pool.length,
-      storyCount: shelf.length,
-      peopleCount: currentState.members.filter(
-        (member) => isActiveMember(member) && member.id !== owner?.id && member.relation !== "自己",
-      ).length,
+      coverTitle: currentStoryTitle || "先随便聊聊",
+      coverSubtitle: currentStoryTitle
+        ? (currentStory
+          ? (currentStory.chapterCount ? `已整理 ${currentStory.chapterCount} 章` : "还没整理成章节")
+          : "还没开始聊")
+        : (inCurrentStory.length ? "还没放进故事的记忆" : "先说一句，聊完再放进故事"),
+      storyKey: currentStory?.key ?? "",
+      storyMemoryCount: inCurrentStory.length,
+      storyChapterCount: currentStory?.chapterCount ?? 0,
+      storyPeopleCount: storyPeople.size,
+      storyManuscriptMemberId: currentStory?.manuscriptMemberId ?? "",
       storyOptions: storyOptionsFor(shelf, currentStoryTitle),
       currentStoryTitle,
       currentStoryLabel: currentStoryTitle || "先随便聊聊",
@@ -354,21 +374,35 @@ Page({
     wx.navigateTo({ url: "/pages/me/me" });
   },
 
-  /** 书封就是人生之书：你所有的故事。 */
+  /** 书封就是正在聊的那个故事；还没选故事时，打开还没归类的记忆。 */
+  storyUrl(): string {
+    return this.data.storyKey
+      ? `/pages/stories/stories?key=${encodeURIComponent(this.data.storyKey)}`
+      : "/pages/archive/archive";
+  },
+
   openMemoryArchive() {
     if (this.data.bookOpening) return;
     this.setData({ bookOpening: true });
     setTimeout(() => {
       this.setData({ bookOpening: false });
-      wx.navigateTo({ url: "/pages/stories/stories" });
+      wx.navigateTo({ url: this.storyUrl() });
     }, 620);
   },
 
-  openArchiveTab(event: {
-    currentTarget: { dataset: { tab: "note" | "memoir" } };
-  }) {
-    const tab = event.currentTarget.dataset.tab === "memoir" ? "memoir" : "note";
-    wx.navigateTo({ url: tab === "memoir" ? "/pages/stories/stories" : "/pages/archive/archive" });
+  openStoryMemories() {
+    wx.navigateTo({ url: this.storyUrl() });
+  },
+
+  /** 这个故事整理好的章节；还没整理过就先打开这个故事。 */
+  openStoryChapters() {
+    const memberId = this.data.storyManuscriptMemberId;
+    if (!memberId) {
+      wx.navigateTo({ url: this.storyUrl() });
+      return;
+    }
+    saveCurrentMemberIdLocal(memberId);
+    wx.navigateTo({ url: "/pages/book/book" });
   },
 
   /** 人都在记忆之家：先看人，再看和这个人有关的记忆。 */

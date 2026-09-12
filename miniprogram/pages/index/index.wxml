@@ -46,7 +46,7 @@
         class="book {{bookOpening ? 'book-opening' : ''}}"
         bindtap="openMemoryArchive"
         role="button"
-        aria-label="打开人生之书，看你所有的故事"
+        aria-label="打开正在聊的故事 {{coverTitle}}"
       >
         <view class="book-pages-under"></view>
         <view class="book-cover-leaf">
@@ -59,44 +59,42 @@
           <view class="book-cover-copy">
             <text class="book-kicker typewriter">拾 光 录</text>
             <view class="book-copy">
-              <view class="book-title typewriter">{{bookTitle}}</view>
+              <view class="book-title typewriter">{{coverTitle}}</view>
               <view class="book-subtitle">{{coverSubtitle}}</view>
-              <view class="book-stats" role="group" aria-label="快速打开记忆、故事和人">
+              <view class="book-stats" role="group" aria-label="这个故事的记忆、章节和人物">
                 <button
                   class="book-stat-action book-stat-note"
-                  catchtap="openArchiveTab"
-                  data-tab="note"
+                  catchtap="openStoryMemories"
                   hover-class="none"
-                  aria-label="查看和编辑所有记忆"
+                  aria-label="这个故事里的记忆"
                 >
-                  <text class="book-stat-num">{{memoryCount}}</text>
-                  <text class="book-stat-label">篇记忆</text>
+                  <text class="book-stat-num">{{storyMemoryCount}}</text>
+                  <text class="book-stat-label">段记忆</text>
                 </button>
                 <button
                   class="book-stat-action book-stat-memoir"
-                  catchtap="openArchiveTab"
-                  data-tab="memoir"
+                  catchtap="openStoryChapters"
                   hover-class="none"
-                  aria-label="看你所有的故事"
+                  aria-label="这个故事整理好的章节"
                 >
-                  <text class="book-stat-num">{{storyCount}}</text>
-                  <text class="book-stat-label">个故事</text>
+                  <text class="book-stat-num">{{storyChapterCount}}</text>
+                  <text class="book-stat-label">章节</text>
                 </button>
                 <button
                   class="book-stat-action book-stat-home"
                   catchtap="openPeople"
                   hover-class="none"
-                  aria-label="打开记忆之家，看每个人和他们的记忆"
+                  aria-label="这个故事里的人物，在记忆之家查看"
                 >
-                  <text class="book-stat-num">{{peopleCount}}</text>
-                  <text class="book-stat-label">个人</text>
+                  <text class="book-stat-num">{{storyPeopleCount}}</text>
+                  <text class="book-stat-label">人物</text>
                 </button>
               </view>
             </view>
           </view>
         </view>
       </view>
-      <view class="book-open-label typewriter">轻触打开你所有的故事</view>
+      <view class="book-open-label typewriter">轻触打开这个故事</view>
     </view>
 
     <view class="home-setup" wx:if="{{!hasProfile}}">

@@ -477,7 +477,7 @@ test("home groups a story into one recent row and keeps the newest excerpt", asy
   assert.equal(stories[0]?.countLabel, "已聊 2 段");
 });
 
-test("home is about stories: the cover is the whole 人生之书 and the avatar is the account owner", async (context) => {
+test("home is about the story you are on: the cover is that story, and the avatar is the account owner", async (context) => {
   const initial = createInitialRoomState();
   const ownerStory = initial.contributions.find(
     (memory) => memory.id === "demo-personal-rain",
@@ -511,8 +511,11 @@ test("home is about stories: the cover is the whole 人生之书 and the avatar 
     (page.data.recentStories as Array<{ id: string }>).map((story) => story.id),
     [memberStory.id, ownerStory.id],
   );
-  assert.equal(page.data.bookTitle, "人生之书");
-  assert.equal(page.data.coverSubtitle, "1 个故事");
+  // The newest memory is an unfiled one, so the cover shows that, not the whole shelf.
+  assert.equal(page.data.coverTitle, "先随便聊聊");
+  assert.equal(page.data.coverSubtitle, "还没放进故事的记忆");
+  assert.equal(page.data.storyMemoryCount, 1);
+  assert.equal(page.data.storyChapterCount, 0);
   assert.equal(page.data.ownerAvatarText, "岚", "the avatar is the owner even when another profile is current");
   assert.equal(storage.currentMemberId(), "member-1", "home never switches profiles");
 });
@@ -654,31 +657,78 @@ test("the personal home page summarizes the active profile", async (context) => 
   assert.equal(page.data.familyCount, 2);
 });
 
-test("the home cover opens every story in 人生之书 after its animation", async (context) => {
+test("the home cover and its three counts are about the story you are on", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("index"));
+  await callPage(page, "refresh");
 
+  assert.equal(page.data.coverTitle, "外公接我放学");
+  assert.equal(page.data.coverSubtitle, "还没整理成章节");
+  assert.equal(page.data.storyMemoryCount, 1, "only this story's memories");
+  assert.equal(page.data.storyChapterCount, 0);
+  assert.equal(page.data.storyPeopleCount, 0);
+
+  const storyUrl = `/pages/stories/stories?key=${encodeURIComponent("story:外公接我放学")}`;
   await withImmediateTimeouts(() => callPage(page, "openMemoryArchive"));
-
   assert.equal(page.data.bookOpening, false);
-  assert.equal(last(storage.navigations), "/pages/stories/stories");
-});
+  assert.equal(last(storage.navigations), storyUrl, "the cover opens that story, not the whole shelf");
 
-test("the home book shortcuts open their matching memory spaces", async (context) => {
-  const storage = installWxMock(createInitialRoomState());
-  context.after(storage.restore);
-  const page = instantiate(await pageDefinition("index"));
-
-  callPage(page, "openArchiveTab", { currentTarget: { dataset: { tab: "note" } } });
-  callPage(page, "openArchiveTab", { currentTarget: { dataset: { tab: "memoir" } } });
+  callPage(page, "openStoryMemories");
+  callPage(page, "openStoryChapters");
   callPage(page, "openPeople");
-
   assert.deepEqual(storage.navigations.slice(-3), [
-    "/pages/archive/archive",
-    "/pages/stories/stories",
+    storyUrl,
+    storyUrl, // nothing organized yet, so chapters open the story itself
     "/pages/room/room",
   ]);
+
+  // 先随便聊聊: the counts and the taps fall back to the unfiled memories.
+  await callPage(page, "chooseNoStory");
+  assert.equal(page.data.coverTitle, "先随便聊聊");
+  assert.equal(page.data.storyMemoryCount, 0);
+  callPage(page, "openStoryMemories");
+  assert.equal(last(storage.navigations), "/pages/archive/archive");
+});
+
+test("a story with chapters opens them from the cover, for the profile that holds them", async (context) => {
+  const initial = createInitialRoomState();
+  const state = {
+    ...initial,
+    manuscriptRevisions: [makeRevision("member-1", {
+      title: "林秋的书", paragraphs: ["虚构正文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo",
+    }, "", "version", "第一版")],
+  };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+  await callPage(page, "refresh");
+  await callPage(page, "chooseStory", { currentTarget: { dataset: { title: "林秋的书" } } });
+
+  assert.equal(page.data.coverTitle, "林秋的书");
+  assert.equal(page.data.coverSubtitle, "已整理 1 章");
+  assert.equal(page.data.storyChapterCount, 1);
+
+  callPage(page, "openStoryChapters");
+  assert.equal(storage.currentMemberId(), "member-1");
+  assert.equal(last(storage.navigations), "/pages/book/book");
+});
+
+test("opening 人生之书 with a story key lands on that story", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("stories"));
+
+  callPage(page, "onLoad", { key: encodeURIComponent("story:外公接我放学") });
+  await callPage(page, "refresh");
+
+  assert.equal(page.data.selectedTitle, "外公接我放学");
+  assert.deepEqual((page.data.memories as Array<{ id: string }>).map((memory) => memory.id), ["demo-personal-rain"]);
+
+  const broken = instantiate(await pageDefinition("stories"));
+  callPage(broken, "onLoad", { key: "%E0%A4%A" });
+  await callPage(broken, "refresh");
+  assert.equal(broken.data.selectedTitle, "", "a broken link just shows every story");
 });
 
 test("人生之书 lists every story; a book-only story opens its chapters for that profile", async (context) => {

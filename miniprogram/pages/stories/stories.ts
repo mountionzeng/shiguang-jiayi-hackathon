@@ -21,6 +21,16 @@ Page({
     selectedKey: "", selectedTitle: "", selectedManuscriptMemberId: "",
     memories: [] as MemoryContribution[], ungroupedCount: 0, hasManuscript: false, ownerId: "", loadError: "",
   },
+  /** 从首页书封点进来时，直接停在那个故事上。 */
+  onLoad(options: { key?: string } = {}) {
+    if (!options.key) return;
+    try {
+      this.setData({ selectedKey: decodeURIComponent(options.key) });
+    } catch {
+      // 参数坏了就还是显示全部故事。
+    }
+  },
+
   onShow() { void this.refresh().catch(() => this.setData({ loadError: "故事暂时未加载成功，请重试。" })); },
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
