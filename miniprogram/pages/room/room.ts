@@ -17,6 +17,19 @@ import {
   replaceContributionRemoteFirst,
   updatePersonalShareTargetsRemoteFirst,
 } from "../../services/roomRepository";
+import { loadSharedFamilyRoom } from "../../services/familyInviteService";
+
+interface RoomLoadOptions {
+  familyId?: string;
+}
+
+function decodeFamilyId(value = ""): string {
+  try {
+    return decodeURIComponent(value).trim();
+  } catch {
+    return "";
+  }
+}
 
 interface TimelineItem {
   id: string;
@@ -74,6 +87,9 @@ Page({
     protagonistName: "",
     viewerId: "",
     viewerName: "",
+    viewerRole: "" as FamilyMember["role"] | "",
+    sharedFamilyId: "",
+    canInvite: true,
 
     filters: [] as MemberFilter[],
     activeFilter: ALL,
@@ -89,13 +105,30 @@ Page({
     detail: null as TimelineItem | null,
   },
 
+  onLoad(options: RoomLoadOptions = {}) {
+    this.setData({ sharedFamilyId: decodeFamilyId(options.familyId) });
+  },
+
   onShow() {
     void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
   },
 
   async refresh(state?: FamilyRoomState) {
-    const currentState = state ?? await loadRoomStateRemoteFirst();
-    const viewer = await loadCurrentMemberRemoteFirst(currentState);
+    let currentState: FamilyRoomState;
+    let viewer: FamilyMember;
+    let viewerRole: FamilyMember["role"];
+    if (!state && this.data.sharedFamilyId) {
+      const shared = await loadSharedFamilyRoom(this.data.sharedFamilyId);
+      currentState = shared.state;
+      const matchedViewer = currentState.members.find(member => member.id === shared.viewerMemberId);
+      if (!matchedViewer) throw new Error("成员身份已失效，请重新接受邀请");
+      viewer = matchedViewer;
+      viewerRole = shared.viewerRole;
+    } else {
+      currentState = state ?? await loadRoomStateRemoteFirst();
+      viewer = await loadCurrentMemberRemoteFirst(currentState);
+      viewerRole = viewer.role;
+    }
 
     // 新记录按每段故事的阅读名单进入记忆之家；旧版家庭时间线继续兼容。
     // 仅自己可见的记录和未确认的旧家庭投稿都不会出现在这里。
@@ -158,6 +191,8 @@ Page({
       protagonistName: currentState.protagonistName,
       viewerId: viewer.id,
       viewerName: viewer.name,
+      viewerRole,
+      canInvite: this.data.sharedFamilyId ? viewerRole === "owner" : true,
       filters,
       activeFilter,
       totalCount: qualified.length,
@@ -167,7 +202,7 @@ Page({
       pendingCount: currentState.contributions.filter(
         (item) => item.scope !== "personal" && item.reviewStatus === "pending",
       ).length,
-      canReview: viewer.role === "elder",
+      canReview: !this.data.sharedFamilyId && viewer.role === "elder",
       detail: this.data.detail
         ? timeline.find((item) => item.id === this.data.detail!.id) ?? null
         : null,
@@ -243,7 +278,14 @@ Page({
   },
 
   startInterview() {
-    wx.navigateTo({ url: "/pages/interview/interview" });
+    const query = this.data.sharedFamilyId
+      ? `?familyId=${encodeURIComponent(this.data.sharedFamilyId)}`
+      : "";
+    wx.navigateTo({ url: `/pages/interview/interview${query}` });
+  },
+
+  inviteFamilyMember() {
+    wx.navigateTo({ url: "/pages/invite/invite" });
   },
 
   openReview() {
@@ -253,4 +295,6 @@ Page({
   goHome() {
     wx.reLaunch({ url: "/pages/index/index" });
   },
+  onShareAppMessage() { return { title: "拾光Ai｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareTimeline() { return { title: "拾光Ai｜把重要的故事慢慢写下来" }; },
 });

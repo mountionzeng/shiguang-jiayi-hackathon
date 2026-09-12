@@ -8,6 +8,14 @@
     <view class="eyebrow">我与亲友选择彼此看见的故事</view>
     <view class="room-title serif">{{roomName}}</view>
     <view class="room-sub">每段故事的阅读权限彼此独立。家人和朋友只有被你选中，才能看到对应内容。</view>
+    <button class="room-invite" wx:if="{{canInvite}}" bindtap="inviteFamilyMember" hover-class="room-invite-pressed">
+      <text class="room-invite-mark">＋</text>
+      <view class="room-invite-copy">
+        <text class="room-invite-title">邀请亲友一起写</text>
+        <text class="room-invite-note">生成一张邀请图片，发给微信好友</text>
+      </view>
+      <text class="room-invite-arrow">›</text>
+    </button>
   </view>
 
   <view class="elder-task" wx:if="{{canReview && pendingCount > 0}}" bindtap="openReview">
@@ -96,8 +104,8 @@
     你有 {{myPendingCount}} 段旧版共同记忆还在等待确认，确认前不会向其他人公开。
   </view>
 
-  <view class="invite-note">
-    真实的微信邀请和跨设备权限还没有接入，当前亲友与阅读范围是本地演示数据。
+  <view class="invite-note" wx:if="{{sharedFamilyId}}">
+    你正在以“{{viewerName}}”的身份参与这个记忆之家。写下的内容会先交给主人确认。
   </view>
 </view>
 

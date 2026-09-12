@@ -1055,3 +1055,55 @@
   color: var(--ink-faint);
   font-size: 26rpx;
 }
+.account-prompt-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 44rpx;
+  background: rgba(44, 40, 35, 0.42);
+  backdrop-filter: blur(8rpx);
+}
+
+.account-prompt-card {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 48rpx 42rpx 40rpx;
+  border-radius: 40rpx 28rpx 44rpx 32rpx;
+  background: rgba(255, 252, 244, 0.97);
+  box-shadow: 0 28rpx 80rpx rgba(63, 48, 35, 0.22);
+  text-align: center;
+}
+
+.account-prompt-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 116rpx;
+  height: 116rpx;
+  margin: 0 auto 28rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  color: #fffdf7;
+  background: #816149;
+  font-size: 42rpx;
+  font-weight: 700;
+}
+
+.account-prompt-avatar-bg {
+  position: absolute;
+  inset: -24rpx;
+  width: 164rpx;
+  height: 164rpx;
+  opacity: 0.58;
+}
+
+.account-prompt-avatar text { position: relative; z-index: 1; }
+.account-prompt-title { color: var(--ink); font-size: 39rpx; font-weight: 700; }
+.account-prompt-note { margin-top: 18rpx; color: var(--ink-soft); font-size: 25rpx; line-height: 1.7; }
+.account-prompt-input { margin-top: 34rpx; padding: 24rpx 28rpx; border-bottom: 2rpx solid rgba(111, 79, 58, 0.34); color: var(--ink); font-size: 36rpx; text-align: center; }
+.account-prompt-confirm { margin-top: 34rpx; border-radius: 999rpx; background: #6f4f3a; color: #fffdf7; font-size: 29rpx; font-weight: 600; }
+.account-prompt-confirm::after { border: 0; }

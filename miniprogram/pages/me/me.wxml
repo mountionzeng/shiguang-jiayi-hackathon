@@ -18,11 +18,11 @@
         mode="aspectFill"
         aria-hidden="true"
       ></image>
-      <text class="me-avatar-letter">{{memberAvatarText}}</text>
+      <text class="me-avatar-letter">{{accountAvatarText}}</text>
     </view>
     <view class="me-profile-copy">
-      <view class="me-name serif">{{memberName}}</view>
-      <view class="me-relation">{{memberRelation}} · 拾光记录者</view>
+      <view class="me-name serif">{{accountName || memberName}}</view>
+      <view class="me-relation">微信已关联 · 拾光记录者</view>
     </view>
   </view>
 
@@ -40,6 +40,20 @@
       <text class="me-stat-label">家庭记忆</text>
     </view>
   </view>
+
+  <block wx:if="{{joinedRooms.length > 0}}">
+    <view class="me-section-title">我加入的记忆之家</view>
+    <view class="me-list">
+      <button class="me-row" wx:for="{{joinedRooms}}" wx:key="familyId" data-id="{{item.familyId}}" bindtap="openJoinedRoom" hover-class="none">
+        <view class="me-joined-avatar serif">{{item.avatarText}}</view>
+        <view class="me-row-copy">
+          <text class="me-row-title">{{item.roomName}}</text>
+          <text class="me-row-note">以“{{item.memberName}}”的身份加入 · {{item.relation}}</text>
+        </view>
+        <text class="me-row-arrow">›</text>
+      </button>
+    </view>
+  </block>
 
   <view class="me-section-title">记忆管理</view>
   <view class="local-storage-note">档案、人物、文字和版本使用原来的微信云端存储。照片文件仅保存在本机，换手机或清理小程序可能丢失；在线 AI 需另行授权。</view>
@@ -84,6 +98,11 @@
 
   <view class="me-section-title">账号</view>
   <view class="me-list">
+    <button class="me-row" bindtap="editAccountProfile" hover-class="none">
+      <text class="me-row-icon">称</text>
+      <view class="me-row-copy"><text class="me-row-title">修改个人信息</text><text class="me-row-note">称呼与一个字头像</text></view>
+      <text class="me-row-arrow">›</text>
+    </button>
     <button class="me-row" bindtap="configureAiPrivacy">
       <text class="me-row-icon">私</text>
       <view class="me-row-copy"><text class="me-row-title">在线 AI 授权</text><text class="me-row-note">本次允许或关闭文字处理，不发送照片</text></view>
@@ -97,5 +116,20 @@
       </view>
       <text class="me-row-arrow">›</text>
     </button>
+  </view>
+
+  <view class="account-edit-mask" wx:if="{{editingAccount}}">
+    <view class="account-edit-card">
+      <view class="account-edit-avatar serif">
+        <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
+        <text>{{accountAvatarPreview}}</text>
+      </view>
+      <view class="account-edit-title serif">希望我们怎么叫你？</view>
+      <input class="account-edit-input" value="{{accountNameInput}}" maxlength="8" bindinput="onAccountNameInput" />
+      <view class="account-edit-actions">
+        <button bindtap="cancelAccountProfile" disabled="{{accountSaving}}">取消</button>
+        <button class="account-edit-save" bindtap="saveAccountProfile" loading="{{accountSaving}}" disabled="{{accountSaving}}">保存</button>
+      </view>
+    </view>
   </view>
 </view>

@@ -16,6 +16,7 @@ import {
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
 import { currentManuscript } from "../../services/manuscript";
+import { loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
 
 interface RecentStoryView {
   id: string;
@@ -193,6 +194,10 @@ Page({
     hasRecommendedQuestion: false,
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
+    accountPromptOpen: false,
+    accountNameInput: "",
+    accountAvatarPreview: "忆",
+    accountSaving: false,
   },
 
   onShow() {
@@ -234,6 +239,44 @@ Page({
       recentStories,
       hasRecentStories: recentStories.length > 0,
     });
+
+    if (!wx.cloud) return;
+    try {
+      const account = await loadCurrentAccount();
+      this.setData({
+        accountPromptOpen: !account.profileComplete,
+        accountNameInput: account.profileComplete ? account.displayName : member.name,
+        accountAvatarPreview: account.profileComplete
+          ? (account.avatarText || "忆")
+          : (Array.from(member.name)[0] || "忆"),
+      });
+    } catch (error) {
+      console.warn("拾光账号资料暂未加载", error);
+    }
+  },
+
+  onAccountNameInput(event: WechatMiniprogram.Input) {
+    this.setData({
+      accountNameInput: event.detail.value,
+      accountAvatarPreview: Array.from(event.detail.value.trim())[0] || "忆",
+    });
+  },
+
+  async confirmAccountName() {
+    if (this.data.accountSaving) return;
+    this.setData({ accountSaving: true });
+    try {
+      await saveCurrentAccountName(this.data.accountNameInput);
+      this.setData({ accountPromptOpen: false });
+      wx.showToast({ title: "记住啦", icon: "success" });
+    } catch (error) {
+      wx.showToast({
+        title: error instanceof Error ? error.message : "暂时无法保存称呼",
+        icon: "none",
+      });
+    } finally {
+      this.setData({ accountSaving: false });
+    }
   },
 
   startInterview() {
@@ -331,4 +374,6 @@ Page({
     const sourceId = event.currentTarget.dataset.id || "";
     wx.navigateTo({ url: interviewUrl(sourceId, storyTitle) });
   },
+  onShareAppMessage() { return { title: "拾光Ai｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareTimeline() { return { title: "拾光Ai｜把重要的故事慢慢写下来" }; },
 });

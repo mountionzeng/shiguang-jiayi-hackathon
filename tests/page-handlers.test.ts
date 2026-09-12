@@ -23,7 +23,7 @@ interface TestPageInstance extends TestPageDefinition {
 
 const definitions = new Map<string, TestPageDefinition>();
 
-async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me" | "stories"): Promise<TestPageDefinition> {
+async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me" | "stories" | "invite"): Promise<TestPageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
 
@@ -52,6 +52,8 @@ async function pageDefinition(name: "index" | "interview" | "room" | "book" | "p
       await import("../miniprogram/pages/archive/archive");
     } else if (name === "stories") {
       await import("../miniprogram/pages/stories/stories");
+    } else if (name === "invite") {
+      await import("../miniprogram/pages/invite/invite");
     } else {
       await import("../miniprogram/pages/me/me");
     }
@@ -147,6 +149,19 @@ function last<T>(items: T[]): T | undefined {
   return items[items.length - 1];
 }
 
+test("every registered page enables WeChat friend sharing without exposing story text", () => {
+  const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as {
+    pages: string[];
+  };
+  app.pages.forEach((pagePath) => {
+    const source = readFileSync(`miniprogram/${pagePath}.ts`, "utf8");
+    assert.match(source, /onShareAppMessage\s*\(/, `${pagePath} must implement onShareAppMessage`);
+    if (pagePath !== "pages/invite/invite") {
+      assert.match(source, /path:\s*["']\/pages\/index\/index["']/, `${pagePath} must share the safe home path`);
+    }
+  });
+});
+
 test("one interview can stay a fragment or join a named story with independent people and readers", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -194,6 +209,114 @@ test("one interview can stay a fragment or join a named story with independent p
   assert.equal(savedFragment?.relatedMemberIds, undefined);
   assert.equal(savedFragment?.sharedWithMemberIds, undefined);
   assert.equal(savedFragment?.reviewStatus, "confirmed");
+});
+
+test("an invited WeChat member enters only the shared family room", async (context) => {
+  const sharedState = createInitialRoomState();
+  const storage = installWxMock(sharedState, "owner");
+  context.after(storage.restore);
+  const wxMock = wx as any;
+  wxMock.cloud = {
+    callFunction: async ({ name, data }: any) => {
+      assert.equal(name, "familyInvite");
+      assert.equal(data.action, "loadRoom");
+      assert.equal(data.familyId, "family-shared");
+      return {
+        result: {
+          familyId: "family-shared",
+          viewerMemberId: "member-1",
+          viewerRole: "contributor",
+          state: sharedState,
+        },
+      };
+    },
+  };
+
+  const room = instantiate(await pageDefinition("room"));
+  callPage(room, "onLoad", { familyId: encodeURIComponent("family-shared") });
+  await callPage(room, "refresh");
+  assert.equal(room.data.viewerId, "member-1");
+  assert.equal(room.data.canInvite, false);
+  callPage(room, "startInterview");
+  assert.equal(last(storage.navigations), "/pages/interview/interview?familyId=family-shared");
+});
+
+test("a shared-room interview submits a pending family story as the invited member", async (context) => {
+  const sharedState = createInitialRoomState();
+  const storage = installWxMock(sharedState, "owner");
+  context.after(storage.restore);
+  let submitted: ReturnType<typeof createContribution> | undefined;
+  const wxMock = wx as any;
+  wxMock.cloud = {
+    callFunction: async ({ name, data }: any) => {
+      assert.equal(name, "familyInvite");
+      if (data.action === "loadRoom") {
+        return {
+          result: {
+            familyId: "family-shared",
+            viewerMemberId: "member-1",
+            viewerRole: "contributor",
+            state: sharedState,
+          },
+        };
+      }
+      assert.equal(data.action, "submitContribution");
+      submitted = data.contribution;
+      return { result: { ok: true, contributionId: submitted?.id, reviewStatus: "pending" } };
+    },
+  };
+
+  const interview = instantiate(await pageDefinition("interview"));
+  await callPage(interview, "onLoad", { familyId: "family-shared", memoryType: "note" });
+  interview.setData({
+    stage: "save",
+    answers: ["妈妈以前总在窗边等我回家。"],
+    draftText: "妈妈以前总在窗边等我回家。",
+    draftTitle: "窗边的灯",
+    storyTitle: "回家的路",
+  });
+  await callPage(interview, "save");
+  assert.equal(submitted?.authorMemberId, "member-1");
+  assert.equal(submitted?.scope, "family");
+  assert.equal(submitted?.reviewStatus, "pending");
+  assert.equal(interview.data.saved, true);
+  assert.match(String(interview.data.saveMessage), /主人确认/);
+});
+
+test("an invitation keeps its prepared identity and opens the accepted room", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const invitation = {
+    token: "invite-token",
+    inviterName: "岱",
+    inviteeName: "妈",
+    relation: "母女",
+    roomName: "我们的记忆之家",
+    familyId: "",
+    memberId: "",
+    status: "pending",
+    acceptedByMe: false,
+    expiresAt: "2026-09-19T00:00:00.000Z",
+  };
+  const wxMock = wx as any;
+  wxMock.cloud = {
+    callFunction: async ({ name, data }: any) => {
+      if (name === "getOpenId") {
+        return { result: { accountLinked: true, account: { accountId: "account-a", primaryFamilyId: "family-a", profileComplete: false } } };
+      }
+      assert.equal(name, "familyInvite");
+      if (data.action === "get") return { result: { invitation } };
+      assert.equal(data.action, "accept");
+      return { result: { invitation: { ...invitation, familyId: "family-shared", memberId: "wx-account-a", status: "accepted", acceptedByMe: true } } };
+    },
+  };
+
+  const page = instantiate(await pageDefinition("invite"));
+  await callPage(page, "onLoad", { scene: "invite-token" });
+  assert.equal((page.data.invitation as { inviteeName: string }).inviteeName, "妈");
+  assert.equal(page.data.invitationAvatarText, "妈");
+  await callPage(page, "acceptInvitation");
+  assert.equal(last(storage.navigations), "/pages/room/room?familyId=family-shared");
 });
 
 test("a save with an uncertain acknowledgement retries the same record without unload duplicates", async (context) => {

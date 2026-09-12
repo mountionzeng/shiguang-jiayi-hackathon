@@ -13,6 +13,8 @@ const COLLECTIONS = {
   assets: "assets",
   aiTasks: "ai_tasks",
   generatedArtifacts: "generated_artifacts",
+  familyInvitations: "family_invitations",
+  familyAccess: "family_access",
 };
 
 function sanitizeDocumentPart(value) {

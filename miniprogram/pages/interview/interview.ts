@@ -29,6 +29,10 @@ import {
   loadRoomStateRemoteFirst,
   roomDataModeLabel,
 } from "../../services/roomRepository";
+import {
+  loadSharedFamilyRoom,
+  submitSharedContribution,
+} from "../../services/familyInviteService";
 
 interface MessageView {
   id: string;
@@ -58,6 +62,7 @@ interface InterviewLoadOptions {
   /** 首页推荐问：点进来后小忆第一句就问这个。 */
   question?: string;
   dimension?: string;
+  familyId?: string;
 }
 
 function decodeQueryValue(value = ""): string {
@@ -77,13 +82,14 @@ function storyOptionsFor(
   memories: FamilyRoomState["contributions"],
   memberId: string,
   selectedTitle: string,
+  familyMode = false,
 ): StoryOptionView[] {
   const counts = new Map<string, number>();
   memories.forEach((memory) => {
     const title = contributionStoryTitle(memory);
     if (
-      memory.authorMemberId === memberId &&
-      contributionScope(memory) === "personal" &&
+      (familyMode || memory.authorMemberId === memberId) &&
+      contributionScope(memory) === (familyMode ? "family" : "personal") &&
       title
     ) {
       counts.set(title, (counts.get(title) ?? 0) + 1);
@@ -170,6 +176,7 @@ Page({
     storageLabel: "",
 
     keyboardHeight: 0,
+    sharedFamilyId: "",
   },
 
   messageSeq: 0,
@@ -177,14 +184,19 @@ Page({
 
   async onLoad(options: InterviewLoadOptions = {}) {
     try {
-    const state = await loadRoomStateRemoteFirst();
-    const member = await loadCurrentMemberRemoteFirst(state);
+    const sharedFamilyId = decodeQueryValue(options.familyId);
+    const shared = sharedFamilyId ? await loadSharedFamilyRoom(sharedFamilyId) : undefined;
+    const state = shared?.state ?? await loadRoomStateRemoteFirst();
+    const member = shared
+      ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
+      : await loadCurrentMemberRemoteFirst(state);
+    if (!member) throw new Error("成员身份已失效，请重新接受邀请");
     if (!member.id) {
       wx.showToast({ title: "先创建自己的记录档案，就可以开始聊了", icon: "none" });
       wx.redirectTo({ url: "/pages/profiles/profiles" });
       return;
     }
-    const question = pickInterviewQuestion(sharedQuestionSeed(), "personal");
+    const question = pickInterviewQuestion(sharedQuestionSeed(), sharedFamilyId ? "family" : "personal");
     const requestedStoryTitle = decodeQueryValue(options.storyTitle);
     const requestedSourceId = decodeQueryValue(options.sourceId);
     const requestedMemoryType: MemoryType | undefined =
@@ -196,7 +208,7 @@ Page({
     const source = state.contributions.find((memory) => (
       memory.id === requestedSourceId &&
       memory.authorMemberId === member.id &&
-      contributionScope(memory) === "personal"
+      contributionScope(memory) === (sharedFamilyId ? "family" : "personal")
     ));
     const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
     const storyTitle = sourceStoryTitle || requestedStoryTitle;
@@ -221,12 +233,13 @@ Page({
     this.setData({
       memberName: member.name,
       memberRelation: member.relation,
+      sharedFamilyId,
       stage: source || storyTitle || requestedMemoryType ? "chat" : "choose",
       memoryType: requestedMemoryType ?? this.data.memoryType,
       askedDimensions: requestedQuestion && requestedDimension ? [requestedDimension] : [],
       dateLabel: today(),
       storyTitle,
-      storyOptions: storyOptionsFor(state.contributions, member.id, storyTitle),
+      storyOptions: storyOptionsFor(state.contributions, member.id, storyTitle, Boolean(sharedFamilyId)),
       relatedOptions: memberOptionsFor(state.members, member.id),
       audienceOptions: memberOptionsFor(state.members, member.id),
     });
@@ -253,11 +266,21 @@ Page({
   async saveRecoverableAnswers(rawAnswers: string[]) {
     try {
       if (this.pendingContribution) {
-        await appendContributionRemoteFirst(this.pendingContribution);
+        if (this.data.sharedFamilyId) {
+          await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
+        } else {
+          await appendContributionRemoteFirst(this.pendingContribution);
+        }
         return;
       }
-      const state = await loadRoomStateRemoteFirst();
-      const member = await loadCurrentMemberRemoteFirst(state);
+      const shared = this.data.sharedFamilyId
+        ? await loadSharedFamilyRoom(this.data.sharedFamilyId)
+        : undefined;
+      const state = shared?.state ?? await loadRoomStateRemoteFirst();
+      const member = shared
+        ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
+        : await loadCurrentMemberRemoteFirst(state);
+      if (!member) throw new Error("成员身份已失效");
       const recoverableText = normalizeMemoryText(
         this.data.stage === "save" && this.data.draftText
           ? this.data.draftText
@@ -266,7 +289,7 @@ Page({
       const chunks = splitRecoverableText(recoverableText);
 
       for (const text of chunks) {
-        await appendContributionRemoteFirst(createContribution({
+        const contribution = createContribution({
           authorMemberId: member.id,
           authorName: member.name,
           relation: member.relation,
@@ -276,9 +299,14 @@ Page({
             : draftTitleFromAnswers([text]),
           memoryType: this.data.memoryType,
           preserveNormalizedText: true,
-          scope: "personal",
-          visibility: "private",
-        }));
+          scope: this.data.sharedFamilyId ? "family" : "personal",
+          visibility: this.data.sharedFamilyId ? "family" : "private",
+        });
+        if (this.data.sharedFamilyId) {
+          await submitSharedContribution(this.data.sharedFamilyId, contribution);
+        } else {
+          await appendContributionRemoteFirst(contribution);
+        }
       }
     } catch (error) {
       console.warn("退出时自动保存失败", error);
@@ -335,7 +363,7 @@ Page({
       const prompt = await generateInterviewPrompt({
         answer,
         askedDimensions: this.data.askedDimensions,
-        mode: "personal",
+        mode: this.data.sharedFamilyId ? "family" : "personal",
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
@@ -501,8 +529,14 @@ Page({
     this.setData({ saving: true, saveError: "" });
 
     try {
-      const state = await loadRoomStateRemoteFirst();
-      const member = await loadCurrentMemberRemoteFirst(state);
+      const shared = this.data.sharedFamilyId
+        ? await loadSharedFamilyRoom(this.data.sharedFamilyId)
+        : undefined;
+      const state = shared?.state ?? await loadRoomStateRemoteFirst();
+      const member = shared
+        ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
+        : await loadCurrentMemberRemoteFirst(state);
+      if (!member) throw new Error("成员身份已失效，请重新接受邀请");
       if (!member.id) throw new Error("请先创建或选择自己的记录档案");
       const availableMemberIds = new Set(
         state.members
@@ -529,30 +563,38 @@ Page({
           memoryType: this.data.memoryType,
           storyTitle: this.data.storyTitle,
           relatedMemberIds: this.data.relatedMemberIds,
-          sharedWithMemberIds: this.data.audienceMemberIds,
-          scope: "personal",
-          visibility: "private",
+          sharedWithMemberIds: this.data.sharedFamilyId ? [] : this.data.audienceMemberIds,
+          scope: this.data.sharedFamilyId ? "family" : "personal",
+          visibility: this.data.sharedFamilyId ? "family" : "private",
         });
       this.pendingContribution = {
         ...contribution,
         id: this.pendingContribution?.id ?? contribution.id,
         createdAt: this.pendingContribution?.createdAt ?? contribution.createdAt,
       };
-      await appendContributionRemoteFirst(this.pendingContribution);
+      if (this.data.sharedFamilyId) {
+        await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
+      } else {
+        await appendContributionRemoteFirst(this.pendingContribution);
+      }
 
       this.setData({
         saved: true,
         saving: false,
-        storageLabel: roomDataModeLabel(),
-        saveMessage: this.data.storyTitle.trim()
-          ? `已保存到「${this.data.storyTitle.trim()}」，也可在“记忆”中找到。`
-          : "已保存到“记忆”，暂未归入故事。以后再整理也可以。",
+        storageLabel: this.data.sharedFamilyId ? "已提交到微信记忆之家" : roomDataModeLabel(),
+        saveMessage: this.data.sharedFamilyId
+          ? "已交给主人确认；确认后会出现在大家的记忆之家。"
+          : this.data.storyTitle.trim()
+            ? `已保存到「${this.data.storyTitle.trim()}」，也可在“记忆”中找到。`
+            : "已保存到“记忆”，暂未归入故事。以后再整理也可以。",
       });
       wx.disableAlertBeforeUnload();
       wx.showToast({
-        title: this.data.storyTitle.trim()
-          ? `已放进「${this.data.storyTitle.trim()}」`
-          : "已存入未整理片段",
+        title: this.data.sharedFamilyId
+          ? "已提交，等待确认"
+          : this.data.storyTitle.trim()
+            ? `已放进「${this.data.storyTitle.trim()}」`
+            : "已存入未整理片段",
         icon: "none",
         duration: 2400,
       });
@@ -567,10 +609,16 @@ Page({
 
   viewSavedMemory() {
     if (!this.data.saved || !this.pendingContribution) return;
+    if (this.data.sharedFamilyId) {
+      wx.redirectTo({ url: `/pages/room/room?familyId=${encodeURIComponent(this.data.sharedFamilyId)}` });
+      return;
+    }
     wx.redirectTo({ url: `/pages/archive/archive?id=${encodeURIComponent(this.pendingContribution.id)}` });
   },
 
   leaveSavedMemory() {
     wx.navigateBack();
   },
+  onShareAppMessage() { return { title: "拾光Ai｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareTimeline() { return { title: "拾光Ai｜把重要的故事慢慢写下来" }; },
 });

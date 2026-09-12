@@ -1,0 +1,63 @@
+<view class="invite-page page-enter">
+  <image class="invite-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true"></image>
+
+  <view class="invite-top">
+    <button class="invite-back" bindtap="goBack" hover-class="none">‹</button>
+    <view class="invite-brand typewriter">拾光Ai</view>
+  </view>
+
+  <block wx:if="{{mode === 'create'}}">
+    <view class="invite-intro">
+      <view class="invite-eyebrow typewriter">邀请一位重要的人</view>
+      <view class="invite-title serif">一起把故事写下来</view>
+      <view class="invite-note">先替对方写下你熟悉的称呼和关系。对方接受邀请后，这会成为他在这个记忆之家里的身份。</view>
+    </view>
+
+    <view class="invite-form" wx:if="{{!posterPath}}">
+      <view class="invite-avatar serif">
+        <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
+        <text>{{inviteeAvatarText}}</text>
+      </view>
+      <label class="invite-field">
+        <text>我怎么称呼对方</text>
+        <input value="{{inviteeName}}" maxlength="8" placeholder="例如：妈、小岚、陈叔" bindinput="onInviteeNameInput" />
+      </label>
+      <label class="invite-field">
+        <text>你们是什么关系</text>
+        <input value="{{relation}}" maxlength="12" placeholder="例如：母女、老朋友、同学" bindinput="onRelationInput" />
+      </label>
+      <button class="invite-primary" bindtap="createInvitation" loading="{{creating}}" disabled="{{creating}}">生成邀请图片</button>
+      <view class="invite-privacy">邀请只进入这一个记忆之家。对方写下的故事会先交给你确认，不会直接改动正式书稿。</view>
+    </view>
+
+    <view class="poster-ready" wx:else>
+      <image class="poster-preview" src="{{posterPath}}" mode="widthFix" bindtap="previewPoster"></image>
+      <view class="poster-tip">图片已生成。发送给好友后，请他长按识别图中的小程序码。</view>
+      <button class="invite-primary" bindtap="sharePoster">发送邀请图片</button>
+      <button class="invite-secondary" open-type="share">也可以直接转发小程序</button>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="invite-loading" wx:if="{{loading}}">正在打开这份邀请…</view>
+    <view class="accept-card" wx:elif="{{invitation}}">
+      <view class="invite-avatar accept-avatar serif">
+        <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
+        <text>{{invitationAvatarText}}</text>
+      </view>
+      <view class="accept-kicker">{{invitation.inviterName}} 想和你一起记住</view>
+      <view class="accept-title serif">{{invitation.roomName}}</view>
+      <view class="accept-identity">
+        <text>在这里，大家会叫你</text>
+        <text class="accept-name">“{{invitation.inviteeName}}”</text>
+        <text>你们的关系是 {{invitation.relation}}</text>
+      </view>
+      <view class="accept-note">接受后，你可以进入这个记忆之家并讲述故事。你的投稿会先等待主人确认。</view>
+      <button class="invite-primary" bindtap="acceptInvitation" loading="{{accepting}}" disabled="{{accepting}}">{{invitation.acceptedByMe ? '进入记忆之家' : '接受邀请，一起写'}}</button>
+    </view>
+    <view class="invite-error" wx:else>{{errorMessage || '这份邀请已经无法打开'}}</view>
+  </block>
+
+  <view class="invite-error" wx:if="{{errorMessage && invitation}}">{{errorMessage}}</view>
+  <canvas class="invite-canvas" canvas-id="invitePoster"></canvas>
+</view>

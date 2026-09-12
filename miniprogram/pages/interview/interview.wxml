@@ -11,7 +11,7 @@
         ></image>
         <text class="who-name">和小忆聊聊</text>
       </view>
-      <text class="who-note">{{memberName}} · {{memberRelation}} · 先讲，不急着分类</text>
+      <text class="who-note">{{memberName}} · {{memberRelation}} · {{sharedFamilyId ? '写给这个记忆之家' : '先讲，不急着分类'}}</text>
     </view>
     <text class="tag tag-apricot">
       <text class="tag-mark">聊</text>正在倾听
@@ -166,7 +166,7 @@
   <!-- ============ 整理与保存 ============ -->
   <block wx:elif="{{saved}}">
     <view class="chat-inner">
-      <view class="organize-title serif">记忆已保存</view>
+      <view class="organize-title serif">{{sharedFamilyId ? '故事已提交' : '记忆已保存'}}</view>
       <view class="organize-note">{{saveMessage}}</view>
       <view class="organize-note">{{storageLabel}}</view>
       <button class="btn btn-primary" bindtap="viewSavedMemory">查看这段记忆</button>
@@ -279,7 +279,7 @@
           </view>
         </view>
 
-        <view class="organize-section">
+        <view class="organize-section" wx:if="{{!sharedFamilyId}}">
           <view class="organize-title serif">谁可以看？</view>
           <view class="organize-note">仅设置本账号内档案的阅读范围，不会发送微信邀请，也不代表其他微信用户已能访问。</view>
 
@@ -325,7 +325,7 @@
           class="btn btn-primary save-go {{(saving || tooLong) ? 'btn-disabled' : ''}}"
           bindtap="save"
           disabled="{{saving || tooLong}}"
-        >{{saving ? '正在保存…' : '保存这段记忆'}}</button>
+        >{{saving ? '正在保存…' : (sharedFamilyId ? '提交给主人确认' : '保存这段记忆')}}</button>
       </view>
     </view>
   </block>

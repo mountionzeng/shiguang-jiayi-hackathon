@@ -6,6 +6,7 @@
     "pages/archive/archive",
     "pages/stories/stories",
     "pages/interview/interview",
+    "pages/invite/invite",
     "pages/room/room",
     "pages/review/review",
     "pages/book/book"

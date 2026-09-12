@@ -66,6 +66,27 @@
   color: var(--ink-soft);
 }
 
+.room-invite {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-top: 30rpx;
+  padding: 24rpx 26rpx;
+  border-radius: 32rpx 24rpx 36rpx 26rpx;
+  background: rgba(255, 250, 239, .9);
+  color: var(--ink);
+  text-align: left;
+  box-shadow: 0 14rpx 42rpx rgba(67, 52, 38, .09);
+}
+
+.room-invite::after { border: 0; }
+.room-invite-pressed { transform: translateY(2rpx); opacity: .88; }
+.room-invite-mark { display: flex; align-items: center; justify-content: center; width: 62rpx; height: 62rpx; margin-right: 20rpx; border-radius: 50%; background: var(--jade-soft); color: var(--jade); font-size: 38rpx; }
+.room-invite-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.room-invite-title { font-size: 29rpx; font-weight: 600; }
+.room-invite-note { margin-top: 4rpx; color: var(--ink-soft); font-size: 23rpx; }
+.room-invite-arrow { color: var(--ink-faint); font-size: 42rpx; }
+
 /* ---- 成员筛选 ---- */
 
 .filter-strip {

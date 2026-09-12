@@ -9,6 +9,8 @@ import {
   resetCurrentUserRoomRemoteFirst,
 } from "../../services/roomRepository";
 import { clearAiConsent, requestAiConsent } from "../../services/aiConsent";
+import { loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
+import { JoinedFamilyRoom, loadJoinedFamilyRooms } from "../../services/familyInviteService";
 
 Page({
   data: {
@@ -18,6 +20,13 @@ Page({
     memoryCount: 0,
     sharedCount: 0,
     familyCount: 0,
+    accountName: "",
+    accountAvatarText: "忆",
+    editingAccount: false,
+    accountNameInput: "",
+    accountAvatarPreview: "忆",
+    accountSaving: false,
+    joinedRooms: [] as JoinedFamilyRoom[],
   },
 
   onShow() {
@@ -43,6 +52,62 @@ Page({
       sharedCount,
       familyCount,
     });
+    if (!wx.cloud) {
+      this.setData({ accountName: member.name, accountAvatarText: member.avatarText });
+      return;
+    }
+    try {
+      const account = await loadCurrentAccount();
+      this.setData({
+        accountName: account.displayName || member.name,
+        accountAvatarText: account.avatarText || member.avatarText,
+        accountNameInput: account.displayName || member.name,
+        accountAvatarPreview: account.avatarText || member.avatarText,
+      });
+      try {
+        this.setData({ joinedRooms: await loadJoinedFamilyRooms() });
+      } catch (error) {
+        console.warn("已加入的记忆之家暂未加载", error);
+      }
+    } catch (error) {
+      console.warn("拾光账号资料暂未加载", error);
+      this.setData({ accountName: member.name, accountAvatarText: member.avatarText });
+    }
+  },
+
+  editAccountProfile() {
+    this.setData({ editingAccount: true, accountAvatarPreview: this.data.accountAvatarText });
+  },
+
+  cancelAccountProfile() {
+    if (!this.data.accountSaving) this.setData({ editingAccount: false, accountNameInput: this.data.accountName });
+  },
+
+  onAccountNameInput(event: WechatMiniprogram.Input) {
+    this.setData({
+      accountNameInput: event.detail.value,
+      accountAvatarPreview: Array.from(event.detail.value.trim())[0] || "忆",
+    });
+  },
+
+  async saveAccountProfile() {
+    if (this.data.accountSaving) return;
+    this.setData({ accountSaving: true });
+    try {
+      const account = await saveCurrentAccountName(this.data.accountNameInput);
+      this.setData({
+        accountName: account.displayName,
+        accountAvatarText: account.avatarText,
+        accountNameInput: account.displayName,
+        accountAvatarPreview: account.avatarText,
+        editingAccount: false,
+      });
+      wx.showToast({ title: "个人信息已更新", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "修改失败，请重试", icon: "none" });
+    } finally {
+      this.setData({ accountSaving: false });
+    }
   },
 
   openProfiles() {
@@ -55,6 +120,12 @@ Page({
 
   openFamilyHome() {
     wx.navigateTo({ url: "/pages/room/room" });
+  },
+
+  openJoinedRoom(event: { currentTarget: { dataset: { id: string } } }) {
+    wx.navigateTo({
+      url: `/pages/room/room?familyId=${encodeURIComponent(event.currentTarget.dataset.id)}`,
+    });
   },
 
   notYet() {
@@ -93,4 +164,6 @@ Page({
       console.warn("清空当前账号失败", error);
     }
   },
+  onShareAppMessage() { return { title: "拾光Ai｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareTimeline() { return { title: "拾光Ai｜把重要的故事慢慢写下来" }; },
 });
