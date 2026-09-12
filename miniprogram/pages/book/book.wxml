@@ -1,39 +1,39 @@
 <view class="writing-page {{keyboardHeight ? 'keyboard-open' : ''}}" style="height: {{viewportHeight ? viewportHeight + 'px' : '100%'}};">
   <view class="writing-toolbar">
-    <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto}}">{{view === 'chapter' ? '目录' : '返回'}}</button>
-    <button class="tool-button" bindtap="addPhoto" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady}}">{{pickingPhoto ? '添加中' : '照片'}}</button>
-    <button class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}">{{saving ? '保存中' : '保存'}}</button>
-    <button class="tool-button" bindtap="showMore" disabled="{{saving || generating || pickingPhoto}}">更多</button>
+    <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '目录' : '返回'}}</button>
+    <button class="tool-button" bindtap="addPhoto" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}</button>
+    <button class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}"><view class="action-icon icon-save" aria-hidden="true"></view>{{saving ? '保存中' : '保存'}}</button>
+    <button class="tool-button" bindtap="showMore" disabled="{{saving || generating || pickingPhoto}}"><view class="action-icon icon-more" aria-hidden="true"></view>更多</button>
   </view>
   <view class="top-tools" wx:if="{{moreOpen}}">
-    <button wx:if="{{editing}}" class="tool-button" data-action="discard" bindtap="selectTool">放弃修改</button>
+    <button wx:if="{{editing}}" class="tool-button" data-action="discard" bindtap="selectTool"><view class="action-icon icon-undo" aria-hidden="true"></view>放弃修改</button>
     <block wx:elif="{{view === 'chapter'}}">
-      <button class="tool-button" data-action="memories" bindtap="selectTool">本章记忆</button>
-      <button class="tool-button" data-action="up" bindtap="selectTool">上移本章</button>
-      <button class="tool-button" data-action="down" bindtap="selectTool">下移本章</button>
-      <button class="tool-button" data-action="delete-chapter" bindtap="selectTool">删除本章</button>
-      <button class="tool-button" data-action="history" bindtap="selectTool">历史版本</button>
-      <button class="tool-button" data-action="generate" bindtap="selectTool">AI 整理</button>
+      <button class="tool-button" data-action="memories" bindtap="selectTool"><view class="action-icon icon-memories" aria-hidden="true"></view>本章记忆</button>
+      <button class="tool-button" data-action="up" bindtap="selectTool"><view class="action-icon icon-up" aria-hidden="true"></view>上移本章</button>
+      <button class="tool-button" data-action="down" bindtap="selectTool"><view class="action-icon icon-down" aria-hidden="true"></view>下移本章</button>
+      <button class="tool-button" data-action="delete-chapter" bindtap="selectTool"><view class="action-icon icon-delete" aria-hidden="true"></view>删除本章</button>
+      <button class="tool-button" data-action="history" bindtap="selectTool"><view class="action-icon icon-history" aria-hidden="true"></view>历史版本</button>
+      <button class="tool-button" data-action="generate" bindtap="selectTool"><view class="action-icon icon-ai" aria-hidden="true"></view>AI 整理</button>
     </block>
     <block wx:else>
-      <button class="tool-button" data-action="new-chapter" bindtap="selectTool">新开一章</button>
-      <button wx:if="{{draft}}" class="tool-button" data-action="history" bindtap="selectTool">历史版本</button>
-      <button wx:if="{{draft}}" class="tool-button" data-action="version" bindtap="selectTool">命名存档</button>
-      <button class="tool-button" data-action="generate" bindtap="selectTool">AI 整理</button>
-      <button class="tool-button" data-action="sources" bindtap="selectTool">原始记忆</button>
-      <button wx:if="{{!draft}}" class="tool-button" data-action="record" bindtap="selectTool">记录经历</button>
+      <button class="tool-button" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新开一章</button>
+      <button wx:if="{{draft}}" class="tool-button" data-action="history" bindtap="selectTool"><view class="action-icon icon-history" aria-hidden="true"></view>历史版本</button>
+      <button wx:if="{{draft}}" class="tool-button" data-action="version" bindtap="selectTool"><view class="action-icon icon-version" aria-hidden="true"></view>命名存档</button>
+      <button class="tool-button" data-action="generate" bindtap="selectTool"><view class="action-icon icon-ai" aria-hidden="true"></view>AI 整理</button>
+      <button class="tool-button" data-action="sources" bindtap="selectTool"><view class="action-icon icon-memories" aria-hidden="true"></view>原始记忆</button>
+      <button wx:if="{{!draft}}" class="tool-button" data-action="record" bindtap="selectTool"><view class="action-icon icon-record" aria-hidden="true"></view>记录经历</button>
     </block>
   </view>
   <view class="notice" wx:if="{{saveNotice || loadError}}">{{saveNotice || loadError}}</view>
   <view class="panel-actions" wx:if="{{loadError}}"><button class="tool-button" bindtap="retryLoad">重新加载</button></view>
   <view class="panel-actions" wx:if="{{canUndo && !panel && !editing}}">
-    <button class="tool-button" bindtap="undoOrganize" disabled="{{saving || generating}}">撤回这次整理</button>
+    <button class="tool-button" bindtap="undoOrganize" disabled="{{saving || generating}}"><view class="action-icon icon-undo" aria-hidden="true"></view>撤回这次整理</button>
   </view>
   <view class="panel-actions" wx:if="{{panel}}">
-    <button class="tool-button" bindtap="closePanel" disabled="{{saving || generating}}">{{view === 'chapter' ? '回到正文' : '回到目录'}}</button>
-    <button wx:if="{{panel === 'organize'}}" class="tool-button save-button" bindtap="runOrganize" disabled="{{saving || generating}}">{{generating ? '整理中…' : '开始整理'}}</button>
-    <button wx:if="{{panel === 'history' && previewVersion}}" class="tool-button save-button" bindtap="restoreVersion" disabled="{{saving}}">恢复此版</button>
-    <button wx:if="{{panel === 'version'}}" class="tool-button save-button" bindtap="saveVersion" disabled="{{saving}}">存为版本</button>
+    <button class="tool-button" bindtap="closePanel" disabled="{{saving || generating}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '回到正文' : '回到目录'}}</button>
+    <button wx:if="{{panel === 'organize'}}" class="tool-button save-button" bindtap="runOrganize" disabled="{{saving || generating}}"><view class="action-icon icon-ai" aria-hidden="true"></view>{{generating ? '整理中…' : '开始整理'}}</button>
+    <button wx:if="{{panel === 'history' && previewVersion}}" class="tool-button save-button" bindtap="restoreVersion" disabled="{{saving}}"><view class="action-icon icon-restore" aria-hidden="true"></view>恢复此版</button>
+    <button wx:if="{{panel === 'version'}}" class="tool-button save-button" bindtap="saveVersion" disabled="{{saving}}"><view class="action-icon icon-version" aria-hidden="true"></view>存为版本</button>
   </view>
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
   <scroll-view class="reading-panel contents-view" scroll-y hidden="{{!draft || panel || view !== 'contents'}}">
@@ -47,12 +47,12 @@
         <text class="chapter-name serif">{{item.label}}{{item.title ? '　' + item.title : ''}}</text>
         <text class="version-date">{{item.memoryCount}} 条记忆 · {{item.photoCount}} 张照片</text>
       </button>
-      <button class="tool-button add-chapter" data-action="new-chapter" bindtap="selectTool">＋ 新开一章</button>
+      <button class="tool-button add-chapter" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>＋ 新开一章</button>
       <block wx:if="{{unassigned.length}}">
         <view class="field-label contents-label">还没放进书稿的记忆 · {{unassigned.length}}</view>
         <view class="memory-row" wx:for="{{unassigned}}" wx:key="id">
           <text class="memory-text">{{item.text}}</text>
-          <button class="tool-button" data-id="{{item.id}}" bindtap="chooseChapterFor">放进…</button>
+          <button class="tool-button" data-id="{{item.id}}" bindtap="chooseChapterFor"><view class="action-icon icon-insert" aria-hidden="true"></view>放进…</button>
         </view>
       </block>
     </view>
@@ -140,13 +140,13 @@
         <view wx:if="{{!chapterMemories.length}}" class="panel-note">这一章还没有放进记忆。</view>
         <view class="memory-row" wx:for="{{chapterMemories}}" wx:key="id">
           <text class="memory-text">{{item.text}}</text>
-          <button class="tool-button" data-id="{{item.id}}" bindtap="removeFromChapter" disabled="{{saving}}">移出</button>
+          <button class="tool-button" data-id="{{item.id}}" bindtap="removeFromChapter" disabled="{{saving}}"><view class="action-icon icon-remove" aria-hidden="true"></view>移出</button>
         </view>
         <block wx:if="{{unassigned.length}}">
           <view class="field-label contents-label">还没放进书稿的记忆</view>
           <view class="memory-row" wx:for="{{unassigned}}" wx:key="id">
             <text class="memory-text">{{item.text}}</text>
-            <button class="tool-button" data-id="{{item.id}}" bindtap="addToChapter" disabled="{{saving}}">放进本章</button>
+            <button class="tool-button" data-id="{{item.id}}" bindtap="addToChapter" disabled="{{saving}}"><view class="action-icon icon-insert" aria-hidden="true"></view>放进本章</button>
           </view>
         </block>
         <view class="panel-note">移出或放进只改变目录，不会改动正文，也不会删除原始记忆。</view>
@@ -156,6 +156,6 @@
   <view class="empty-state" wx:if="{{!draft && !loadError && !panel}}">
     <view class="panel-title serif">{{sourceCount ? '把记忆写成一本书' : '从一段记忆开始'}}</view>
     <view class="panel-note">{{sourceCount ? '新开第一章，把记忆放进去；也可以点「更多」请 AI 整理。' : '点右上角「更多」，开始记录经历。'}}</view>
-    <button wx:if="{{sourceCount}}" class="tool-button save-button add-chapter" data-action="new-chapter" bindtap="selectTool">新开第一章</button>
+    <button wx:if="{{sourceCount}}" class="tool-button save-button add-chapter" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新开第一章</button>
   </view>
 </view>

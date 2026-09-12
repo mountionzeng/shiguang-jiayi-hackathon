@@ -1,3 +1,4 @@
+@import "./action-icons.wxss";
 /* Fixed tools, two native fields, scrolling within the body. */
 page { height: 100%; overflow: hidden; }
 .writing-page { display: flex; flex-direction: column; overflow: hidden; background: var(--paper); }
@@ -38,3 +39,6 @@ page { height: 100%; overflow: hidden; }
 .writing-page .add-chapter { margin-top: 20rpx; }
 .memory-row { display: flex; align-items: center; gap: 16rpx; padding: 18rpx 0; border-bottom: 1rpx solid var(--line); }
 .memory-text { flex: 1; min-width: 0; font-size: 28rpx; line-height: 1.6; color: var(--ink); }
+
+.writing-page .panel-actions { flex-wrap: wrap; }
+@media (max-width: 340px) { .writing-toolbar .tool-button { font-size: 27rpx; padding: 0 4rpx; } .writing-toolbar .action-icon { width: 34rpx; height: 34rpx; margin-right: 6rpx; } }
