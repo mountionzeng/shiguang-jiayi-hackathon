@@ -31,12 +31,13 @@
     <block wx:else>
       <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>慢慢写，慢慢成书</text></view>
       <view class="story-shelf">
-        <button class="story-book {{!item.manuscriptMemberId ? 'story-book-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="story-book-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
-          <view class="book-spine" aria-hidden="true"></view>
+        <button class="story-book book-layout-{{index % 4}} {{!item.manuscriptMemberId ? 'story-book-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="story-book-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
+          <image class="story-book-shell" src="/assets/illustrations/ancient-book-shell.png" mode="scaleToFill" aria-hidden="true"></image>
+          <view class="book-cover-tint" aria-hidden="true"></view>
+          <view class="book-cover-mark" aria-hidden="true"><view></view><view></view><view></view></view>
           <view class="book-cover">
-            <view class="book-number">故事 / {{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
-            <view class="book-name serif">{{item.title}}</view>
-            <view class="book-rule" aria-hidden="true"></view>
+            <view class="book-number">拾光录 / {{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
+            <view class="book-title-slip"><view class="book-name serif">{{item.title}}</view></view>
             <view class="book-excerpt" wx:if="{{item.excerpt}}">{{item.excerpt}}</view>
             <view class="book-excerpt" wx:else>留一些空白，等记忆慢慢写进来。</view>
             <view class="book-meta">{{item.label || '还没有章节'}}</view>
@@ -45,10 +46,11 @@
           </view>
         </button>
         <navigator class="story-book story-book-new" url="/pages/index/index" hover-class="story-book-pressed" aria-label="新的故事，去首页选择换一个故事聊">
-          <view class="book-spine" aria-hidden="true"></view>
+          <image class="story-book-shell" src="/assets/illustrations/ancient-book-shell.png" mode="scaleToFill" aria-hidden="true"></image>
+          <view class="book-cover-tint" aria-hidden="true"></view>
           <view class="book-cover">
             <view class="book-new-plus" aria-hidden="true">＋</view>
-            <view class="book-name serif">新的故事</view>
+            <view class="book-title-slip"><view class="book-name serif">新的故事</view></view>
             <view class="book-excerpt">去首页「换一个故事聊」<text>开启新的一本</text></view>
           </view>
         </navigator>

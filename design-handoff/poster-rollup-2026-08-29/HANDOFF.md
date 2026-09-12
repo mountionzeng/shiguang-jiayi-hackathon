@@ -5,6 +5,8 @@
 
 ## 2026-09-12 人生之书背景补充
 
+- 人生之书的故事封面已在第二轮改为真正的线装古籍形式，直接复用 `miniprogram/assets/illustrations/ancient-book-shell.png`；它来自本目录的 `assets/masters/ancient-book-shell-master.png`。动态界面在书壳上叠加四种淡彩、册号、书名签条、水彩圆印记、摘要和数量，不需要新增书本位图。
+- `references/book-shelf-more-book-like-request-2026-09-12.png`：用户第二轮反馈截图，记录“纯色圆角卡片仍太普通，需要更明显书籍形式”的要求。验收时应能一眼看出左侧线装书脊、右侧和底部毛边书口；相邻书有轻微错落，但文字仍保持端正可读。
 - `assets/masters/story-paper-master.png`：853 × 1844 的生成母版。它是「人生之书」故事书架与故事详情页的新宣纸背景，中央阅读区保持干净，只在边缘留极淡的玉石绿、湖水蓝和杏金水彩。
 - `assets/app-optimized/story-paper.jpg`：719 × 1556、JPEG 压缩版；小程序实际使用同内容的 `miniprogram/assets/illustrations/story-paper.jpg`。`assets/app-optimized/story-paper.png` 是流水线保留的无损压缩版，不进入小程序主包。
 - `references/book-shelf-before-2026-09-12.jpg`：改版前的人生之书列表，作为密集卡片、灰暗背景和底部遮挡问题的对照。

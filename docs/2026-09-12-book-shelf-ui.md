@@ -8,7 +8,7 @@
 
 ## 完成内容
 
-「人生之书」列表由普通记忆卡片改为两列书架。每个故事是一册带书脊、书口和封面信息的书，四册循环使用玉石绿、湖水蓝、杏金和朱砂浅色。页面同时提供空故事、新故事、拖起、原位和落位提示的视觉状态；拖动排序的数据更新继续由故事结构会话接入。
+「人生之书」列表由普通记忆卡片改为两列书架。根据用户第二轮反馈，每个故事现在直接套用仓库既有的线装古籍书壳：左侧可见装订线和书脊，右侧与底部保留毛边书口，封面增加“拾光录”册号、书名签条与水彩圆印记。四册循环使用玉石绿、湖水蓝、杏金和朱砂浅色，并以轻微错落和旋转形成可自由组合的一排书。页面同时提供空故事、新故事、拖起、原位和落位提示的视觉状态；拖动排序的数据更新继续由故事结构会话接入。
 
 故事详情页保留原有文案和行为，把“打开整理好的章节、继续讲这个故事、返回所有故事”从三枚大胶囊改为书签式操作区，并补充统一线条图标和简短说明。书稿页原有文字按钮也全部配上同一套 24 单位网格、圆角端点、1.7 单位线宽的图标。
 
@@ -20,8 +20,8 @@
 
 ### 小程序代码
 
-- `miniprogram/pages/stories/stories.wxml`：书架、空书、新故事占位和故事详情操作区。
-- `miniprogram/pages/stories/stories.wxss`：四种书封、书脊与书口、拖动视觉、故事详情按钮与记忆卡片。
+- `miniprogram/pages/stories/stories.wxml`：线装古籍书架、空书、新故事占位和故事详情操作区。
+- `miniprogram/pages/stories/stories.wxss`：古籍书壳排版、四种封皮淡彩、书名签条、册号、拖动视觉、故事详情按钮与记忆卡片。
 - `miniprogram/pages/book/book.wxml`：给书稿页现有文字按钮补图标，文字和事件不变。
 - `miniprogram/pages/book/book.wxss`：导入图标表，并补小屏工具栏约束。
 - `miniprogram/pages/book/action-icons.wxss`：18 个 SVG data URI 图标及浅色底、深色底两套颜色。
@@ -42,8 +42,9 @@
 | `design-handoff/poster-rollup-2026-08-29/assets/masters/memory-recall-sheet-master.png` | 1477×1065 | 731,922 B | 回忆插图透明母版，不进入主包 |
 | `design-handoff/poster-rollup-2026-08-29/assets/app-optimized/memory-recall-sheet.png` | 720×519 | 196,373 B | 回忆插图交接副本 |
 | `design-handoff/poster-rollup-2026-08-29/references/memory-recall-picker-before-2026-09-12.png` | 1260×2720 | 1,512,952 B | 用户提供的改版前回忆浮层参考 |
+| `design-handoff/poster-rollup-2026-08-29/references/book-shelf-more-book-like-request-2026-09-12.png` | 390×844 | 234,124 B | 用户第二轮反馈截图，指出纯色卡片书封仍过于普通 |
 
-本次没有替换或删除既有位图。`story-tab-personal.png`、`story-tab-chat.png`、`story-tab-family.png` 保持原文件。新图由内置图像生成工具制作；页面背景要求暖白宣纸、中央 80% 干净留白；回忆插图要求透明宣纸记忆札、浅水彩圆和连接细线。第一张回忆插图错误地烘焙了棋盘格，验证为 `hasAlpha: no` 后没有采用；定向去底版本验证为 `hasAlpha: yes`，再进入压缩流程。
+本次没有替换或删除既有位图。故事书复用原主包内的 `ancient-book-shell.png`（280×420、152,888 B），因此第二轮“增加书籍形式”的调整没有新增主包素材。`story-tab-personal.png`、`story-tab-chat.png`、`story-tab-family.png` 保持原文件。新背景与回忆插图由内置图像生成工具制作；页面背景要求暖白宣纸、中央 80% 干净留白；回忆插图要求透明宣纸记忆札、浅水彩圆和连接细线。第一张回忆插图错误地烘焙了棋盘格，验证为 `hasAlpha: no` 后没有采用；定向去底版本验证为 `hasAlpha: yes`，再进入压缩流程。
 
 ## 主包体积
 
@@ -52,8 +53,8 @@
 | 版本 | 字节 | MiB |
 |---|---:|---:|
 | 改版前 `4fe7e4a` | 1,593,464 | 1.520 |
-| 改版后 | 1,893,377 | 1.806 |
-| 增量 | 299,913 | 0.286 |
+| 改版后 | 1,895,774 | 1.808 |
+| 增量 | 302,310 | 0.288 |
 
 新增主包位图为 `story-paper.jpg`（77,529 B）和 `memory-recall-sheet.png`（196,373 B），合计 273,902 B，低于新增素材 300 KB 预算；其余增量来自 WXML/WXSS 与 SVG data URI。当前原始源文件仍低于 2 MiB。没有生成新的开发预览码，因为同一微信账号后生成的预览会覆盖问题四会话手上的预览；因此这里没有冒充微信开发者工具最终上传包的精确体积，合并前由协调会话在统一分支生成一次预览并记录最终数字。
 
@@ -65,23 +66,27 @@
 <image class="archive-paper" src="/assets/illustrations/story-paper.jpg" mode="scaleToFill" aria-hidden="true" />
 ```
 
-书封依靠顺序循环换色，动态故事名、摘要与数量仍由 WXML 渲染，没有烘焙进图片：
+书壳直接引用既有透明 PNG；淡彩、册号、书名签条、动态摘要与数量由 WXML/WXSS 叠加，没有烘焙进图片：
 
 ```xml
-<button class="story-book" wx:for="{{stories}}" wx:key="key">
-  <view class="book-spine"></view>
+<button class="story-book book-layout-{{index % 4}}" wx:for="{{stories}}" wx:key="key">
+  <image class="story-book-shell"
+    src="/assets/illustrations/ancient-book-shell.png"
+    mode="scaleToFill" />
+  <view class="book-cover-tint"></view>
   <view class="book-cover">
-    <view class="book-name serif">{{item.title}}</view>
+    <view class="book-number">拾光录 / {{index + 1}}</view>
+    <view class="book-title-slip"><view class="book-name serif">{{item.title}}</view></view>
     <view class="book-meta">{{item.label}}</view>
   </view>
 </button>
 ```
 
 ```css
-.story-book:nth-child(4n+2) { background: #e2eaf0; }
-.story-book:nth-child(4n+3) { background: #f1e7d3; }
-.story-book:nth-child(4n+4) { background: #f1e0d9; }
-.story-book.is-dragging { transform: translateY(-18rpx) rotate(-3deg) scale(1.03); }
+.story-book:nth-child(4n+2) .book-cover-tint { background: rgba(74,110,136,.12); }
+.story-book:nth-child(4n+3) .book-cover-tint { background: rgba(176,130,57,.13); }
+.story-book:nth-child(4n+4) .book-cover-tint { background: rgba(180,80,60,.10); }
+.story-book.is-dragging { transform: translateY(-24rpx) rotate(-3deg) scale(1.035); }
 .story-book.is-drop-target { outline: 3rpx dashed var(--jade); }
 ```
 
@@ -110,12 +115,12 @@
 
 ## 验证结果
 
-- `npm run check`：通过；TypeScript 检查和 166 项测试全部通过，0 失败。
-- 等价测试命令 `node --import tsx --test tests/*.test.ts tests/*.test.js`：再次运行 166 项通过，0 失败。
+- `npm run check`：在提交 `4bf3480` 后完整通过，TypeScript 检查和 166 项测试全部通过。线装书样式调整后再次运行时，`npm run typecheck` 通过，但 `tsx` CLI 在当前 Codex 沙箱内创建临时 IPC 管道时收到 `EPERM`，测试进程未启动；这不是用例失败。
+- 等价测试命令 `node --import tsx --test tests/*.test.ts tests/*.test.js`：在线装书样式调整后运行，166 项通过，0 失败。
 - 微信官方 `wcc`：11 个 WXML 文件编译通过。
 - 微信官方 `wcsc`：13 个 WXSS 文件编译通过。
 - `git diff --check`：通过。
-- 浏览器代理渲染：390 px 书架、故事详情和回忆选择层通过一次视觉检查；320 px 故事详情与回忆选择层未出现文字截断或按钮挤压。预览图保存在本次 Codex 任务的 `outputs/` 目录，不作为微信真机通过的证据。
+- 浏览器代理渲染：390 px 与 320 px 线装书架通过视觉检查；故事详情和回忆选择层也通过一次代理检查。长故事名限制两行，底部“翻开故事 / 接着写故事”留在书口之上。预览图保存在本次 Codex 任务的 `outputs/` 目录，不作为微信真机通过的证据。
 
 ## 尚未验证
 
