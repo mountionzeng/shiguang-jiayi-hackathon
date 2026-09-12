@@ -1,29 +1,58 @@
 <view class="archive-page story-page page-enter">
-  <image class="archive-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true" />
+  <image class="archive-paper" src="/assets/illustrations/story-paper.jpg" mode="scaleToFill" aria-hidden="true" />
   <view class="story-content">
-    <view class="archive-eyebrow typewriter">{{selectedKey ? '人生之书 · 一个故事' : '人生之书'}}</view>
+    <view class="archive-eyebrow">{{selectedKey ? '人生之书 · 一个故事' : '人生之书'}}</view>
     <view class="archive-title serif">{{selectedTitle || '你所有的故事'}}</view>
     <view class="archive-intro">{{selectedKey ? '这个故事里的记忆都在这里，原话不会被改动。' : '每个故事就是一本书。点开可以接着讲，也可以整理成章节。'}}</view>
     <view wx:if="{{loadError}}" class="archive-empty">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
     <block wx:elif="{{selectedKey}}">
-      <button wx:if="{{selectedManuscriptMemberId}}" class="btn btn-jade" bindtap="openSelectedManuscript">打开整理好的章节</button>
-      <view class="note-list">
+      <view class="story-actions">
+        <button wx:if="{{selectedManuscriptMemberId}}" class="story-action story-action-primary" bindtap="openSelectedManuscript">
+          <view class="action-icon icon-memories icon-on-dark" aria-hidden="true"></view>
+          <view class="story-action-copy"><text>打开整理好的章节</text><text class="story-action-note">翻开目录，继续读写</text></view>
+          <text class="story-action-arrow" aria-hidden="true">›</text>
+        </button>
+        <button class="story-action" bindtap="continueStory">
+          <view class="action-icon icon-record" aria-hidden="true"></view>
+          <view class="story-action-copy"><text>继续讲这个故事</text><text class="story-action-note">从新的记忆接着说</text></view>
+          <text class="story-action-arrow" aria-hidden="true">›</text>
+        </button>
+        <button class="story-action story-action-back" bindtap="backToStories">
+          <view class="action-icon icon-back" aria-hidden="true"></view>
+          <view class="story-action-copy"><text>返回所有故事</text><text class="story-action-note">回到人生之书</text></view>
+        </button>
+      </view>
+      <view class="note-list selected-memory-list">
         <button class="story-memory" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="editMemory">
           <view class="note-title serif">{{item.title || '一段记忆'}}</view><view class="note-excerpt">{{item.text}}</view><view class="note-archive">点开编辑或调整归类</view>
         </button>
       </view>
-      <button class="btn btn-jade" bindtap="continueStory">继续讲这个故事</button>
-      <button class="btn btn-ghost" bindtap="backToStories">返回所有故事</button>
     </block>
     <block wx:else>
-      <view class="note-list">
-        <button class="story-memory" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory">
-          <view class="note-title serif">{{item.title}}</view>
-          <view class="note-excerpt" wx:if="{{item.excerpt}}">{{item.excerpt}}</view>
-          <view class="note-archive">{{item.label}} · 打开</view>
+      <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>慢慢写，慢慢成书</text></view>
+      <view class="story-shelf">
+        <button class="story-book {{!item.manuscriptMemberId ? 'story-book-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="story-book-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
+          <view class="book-spine" aria-hidden="true"></view>
+          <view class="book-cover">
+            <view class="book-number">故事 / {{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
+            <view class="book-name serif">{{item.title}}</view>
+            <view class="book-rule" aria-hidden="true"></view>
+            <view class="book-excerpt" wx:if="{{item.excerpt}}">{{item.excerpt}}</view>
+            <view class="book-excerpt" wx:else>留一些空白，等记忆慢慢写进来。</view>
+            <view class="book-meta">{{item.label || '还没有章节'}}</view>
+            <view class="book-meta" wx:if="{{item.peopleCount !== undefined}}">{{item.peopleCount}} 个人</view>
+            <view class="book-open">{{item.manuscriptMemberId ? '翻开故事' : '接着写故事'}} <text aria-hidden="true">↗</text></view>
+          </view>
         </button>
+        <navigator class="story-book story-book-new" url="/pages/index/index" hover-class="story-book-pressed" aria-label="新的故事，去首页选择换一个故事聊">
+          <view class="book-spine" aria-hidden="true"></view>
+          <view class="book-cover">
+            <view class="book-new-plus" aria-hidden="true">＋</view>
+            <view class="book-name serif">新的故事</view>
+            <view class="book-excerpt">去首页「换一个故事聊」<text>开启新的一本</text></view>
+          </view>
+        </navigator>
       </view>
-      <view class="archive-empty" wx:if="{{!stories.length}}">还没有故事。在首页「换一个故事聊」里开一个新故事，或者打开一段记忆填上故事名。</view>
       <button class="btn btn-ghost" bindtap="openMemories">整理原始记忆 · {{ungroupedCount}} 段还没放进故事</button>
       <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
     </block>

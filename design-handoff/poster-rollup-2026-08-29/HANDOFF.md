@@ -3,6 +3,15 @@
 更新时间：2026-08-29  
 素材目录：`design-handoff/poster-rollup-2026-08-29/`
 
+## 2026-09-12 人生之书背景补充
+
+- `assets/masters/story-paper-master.png`：853 × 1844 的生成母版。它是「人生之书」故事书架与故事详情页的新宣纸背景，中央阅读区保持干净，只在边缘留极淡的玉石绿、湖水蓝和杏金水彩。
+- `assets/app-optimized/story-paper.jpg`：719 × 1556、JPEG 压缩版；小程序实际使用同内容的 `miniprogram/assets/illustrations/story-paper.jpg`。`assets/app-optimized/story-paper.png` 是流水线保留的无损压缩版，不进入小程序主包。
+- `references/book-shelf-before-2026-09-12.jpg`：改版前的人生之书列表，作为密集卡片、灰暗背景和底部遮挡问题的对照。
+- `references/story-detail-before-2026-09-12.jpg`：改版前的故事详情，作为三枚大胶囊按钮与大面积空白问题的对照。
+
+验收时确认：背景不应降低正文与书封文字对比度；不应出现鸟、树枝、书、文字或 UI；纵向拉伸时不出现明显接缝。底部导航三枚既有图标在本次改版中保持不变。
+
 ## 1. 交接目标
 
 基于已经完成的微信小程序视觉资产，继续制作一套黑客松展示物料：
