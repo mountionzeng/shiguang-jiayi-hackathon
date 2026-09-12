@@ -1,8 +1,33 @@
-import { BiographyDraft, FamilyRoomState, ManuscriptRevision } from "../domain/biography";
+import { BiographyDraft, FamilyRoomState, isRecordingProfile, ManuscriptRevision } from "../domain/biography";
 import { loadRoomStateRemoteFirst, usesCloudStorage } from "./roomRepository";
 import { saveCloudManuscriptRevision } from "./cloudRoomStorage";
 import { saveRoomState } from "./roomStorage";
-import { copyChapter, validateManuscriptDraft } from "./chapters";
+import { chapterLabel, chaptersOf, copyChapter, validateManuscriptDraft } from "./chapters";
+
+export interface MemoryPlacement {
+  memberId: string;
+  bookName: string;
+  chapter: string;
+}
+
+/**
+ * Where each memory has been written: every chapter of every book's current version
+ * that lists it. One memory can sit in several books; books in 「最近删除」 do not count.
+ */
+export function memoryPlacements(state: FamilyRoomState): Map<string, MemoryPlacement[]> {
+  const placements = new Map<string, MemoryPlacement[]>();
+  for (const member of state.members.filter(isRecordingProfile)) {
+    const current = currentManuscript(state, member.id);
+    if (!current.draft) continue;
+    chaptersOf(current.draft, current.sourceFingerprint).forEach((chapter, index) => {
+      for (const memoryId of chapter.memoryIds) {
+        placements.set(memoryId, [...(placements.get(memoryId) ?? []),
+          { memberId: member.id, bookName: member.name, chapter: chapterLabel(index + 1) }]);
+      }
+    });
+  }
+  return placements;
+}
 
 function revisionContent(revision: ManuscriptRevision) {
   // Database serializers may reorder object keys.
@@ -46,7 +71,7 @@ export function makeRevision(memberId: string, draft: BiographyDraft, sourceFing
 
 export async function saveManuscriptRevision(revision: ManuscriptRevision, expectedRevisionId: string) {
   const state = await loadRoomStateRemoteFirst();
-  if (!state.members.some(member => member.id === revision.memberId && member.kind !== "person")) throw new Error("请先选择记录档案");
+  if (!state.members.some(member => member.id === revision.memberId && isRecordingProfile(member))) throw new Error("请先选择记录档案");
   validateManuscriptDraft(revision.draft);
   const existing = state.manuscriptRevisions?.find(item => item.id === revision.id);
   if (existing) {

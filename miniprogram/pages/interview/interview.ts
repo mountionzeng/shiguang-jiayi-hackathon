@@ -1,11 +1,14 @@
 import {
+  accountOwner,
   createContribution,
   contributionScope,
   contributionStoryTitle,
   FamilyMember,
   FamilyRoomState,
+  isActiveMember,
   MAX_MEMORY_LENGTH,
   MemoryContribution,
+  memoryPool,
   MemoryType,
   normalizeMemoryText,
   OrganizationMode,
@@ -29,10 +32,7 @@ import {
   loadRoomStateRemoteFirst,
   roomDataModeLabel,
 } from "../../services/roomRepository";
-import {
-  loadSharedFamilyRoom,
-  submitSharedContribution,
-} from "../../services/familyInviteService";
+import { loadSharedFamilyRoom, submitSharedContribution } from "../../services/familyInviteService";
 
 interface MessageView {
   id: string;
@@ -78,20 +78,16 @@ function today(): string {
   return `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
 }
 
+/** 故事属于整个记忆库，不管是谁讲的，都能接着放进同一个故事。 */
 function storyOptionsFor(
   memories: FamilyRoomState["contributions"],
-  memberId: string,
   selectedTitle: string,
   familyMode = false,
 ): StoryOptionView[] {
   const counts = new Map<string, number>();
-  memories.forEach((memory) => {
+  (familyMode ? memories : memoryPool(memories)).forEach((memory) => {
     const title = contributionStoryTitle(memory);
-    if (
-      (familyMode || memory.authorMemberId === memberId) &&
-      contributionScope(memory) === (familyMode ? "family" : "personal") &&
-      title
-    ) {
+    if (title && (!familyMode || contributionScope(memory) === "family")) {
       counts.set(title, (counts.get(title) ?? 0) + 1);
     }
   });
@@ -102,13 +98,14 @@ function storyOptionsFor(
   }));
 }
 
+/** 「涉及的人」「谁可以看」：除了你自己，其他人都可以选。 */
 function memberOptionsFor(
   members: FamilyMember[],
-  currentMemberId: string,
+  authorId: string,
   selectedIds: string[] = [],
 ): MemberOptionView[] {
   return members
-    .filter((member) => member.id !== currentMemberId && member.kind !== "recording-profile")
+    .filter((member) => member.id !== authorId && isActiveMember(member))
     .map((member) => ({
       id: member.id,
       name: member.name,
@@ -116,6 +113,14 @@ function memberOptionsFor(
       avatarText: member.avatarText,
       selected: selectedIds.includes(member.id),
     }));
+}
+
+/**
+ * 这台手机上讲的都记在账号主人名下，不分是谁讲的（用户说讲述人标签没有意义）；
+ * 家人想自己讲，以后用邀请在他们自己的微信里讲。
+ */
+function authorFor(state: FamilyRoomState, fallback: FamilyMember): FamilyMember {
+  return accountOwner(state.members) ?? fallback;
 }
 
 /** 按 Unicode 码点分片，避免在 500 字边界把 emoji 的代理项拆成乱码。 */
@@ -189,10 +194,10 @@ Page({
     const state = shared?.state ?? await loadRoomStateRemoteFirst();
     const member = shared
       ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
-      : await loadCurrentMemberRemoteFirst(state);
+      : authorFor(state, await loadCurrentMemberRemoteFirst(state));
     if (!member) throw new Error("成员身份已失效，请重新接受邀请");
     if (!member.id) {
-      wx.showToast({ title: "先创建自己的记录档案，就可以开始聊了", icon: "none" });
+      wx.showToast({ title: "先写下你的名字，就可以开始聊了", icon: "none" });
       wx.redirectTo({ url: "/pages/profiles/profiles" });
       return;
     }
@@ -205,10 +210,12 @@ Page({
         : options.memoryType === "note"
           ? "note"
           : undefined;
-    const source = state.contributions.find((memory) => (
+    // 记忆库是共用的：接着聊的那一段可以是任何人讲的。
+    const source = (sharedFamilyId ? state.contributions : memoryPool(state.contributions)).find((memory) => (
       memory.id === requestedSourceId &&
-      memory.authorMemberId === member.id &&
-      contributionScope(memory) === (sharedFamilyId ? "family" : "personal")
+      (!sharedFamilyId || (
+        memory.authorMemberId === member.id && contributionScope(memory) === "family"
+      ))
     ));
     const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
     const storyTitle = sourceStoryTitle || requestedStoryTitle;
@@ -239,14 +246,14 @@ Page({
       askedDimensions: requestedQuestion && requestedDimension ? [requestedDimension] : [],
       dateLabel: today(),
       storyTitle,
-      storyOptions: storyOptionsFor(state.contributions, member.id, storyTitle, Boolean(sharedFamilyId)),
+      storyOptions: storyOptionsFor(state.contributions, storyTitle, Boolean(sharedFamilyId)),
       relatedOptions: memberOptionsFor(state.members, member.id),
       audienceOptions: memberOptionsFor(state.members, member.id),
     });
 
     this.pushMessage("opening", opening);
     } catch (error) {
-      wx.showModal({ title: "暂时无法加载记录档案", content: "请返回后重新打开，不会切换到另一份本地数据。", showCancel: false, success: () => wx.navigateBack() });
+      wx.showModal({ title: "暂时无法加载", content: "请返回后重新打开，不会切换到另一份本地数据。", showCancel: false, success: () => wx.navigateBack() });
     }
   },
 
@@ -266,20 +273,15 @@ Page({
   async saveRecoverableAnswers(rawAnswers: string[]) {
     try {
       if (this.pendingContribution) {
-        if (this.data.sharedFamilyId) {
-          await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
-        } else {
-          await appendContributionRemoteFirst(this.pendingContribution);
-        }
+        if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
+        else await appendContributionRemoteFirst(this.pendingContribution);
         return;
       }
-      const shared = this.data.sharedFamilyId
-        ? await loadSharedFamilyRoom(this.data.sharedFamilyId)
-        : undefined;
+      const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;
       const state = shared?.state ?? await loadRoomStateRemoteFirst();
       const member = shared
         ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
-        : await loadCurrentMemberRemoteFirst(state);
+        : authorFor(state, await loadCurrentMemberRemoteFirst(state));
       if (!member) throw new Error("成员身份已失效");
       const recoverableText = normalizeMemoryText(
         this.data.stage === "save" && this.data.draftText
@@ -302,11 +304,8 @@ Page({
           scope: this.data.sharedFamilyId ? "family" : "personal",
           visibility: this.data.sharedFamilyId ? "family" : "private",
         });
-        if (this.data.sharedFamilyId) {
-          await submitSharedContribution(this.data.sharedFamilyId, contribution);
-        } else {
-          await appendContributionRemoteFirst(contribution);
-        }
+        if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, contribution);
+        else await appendContributionRemoteFirst(contribution);
       }
     } catch (error) {
       console.warn("退出时自动保存失败", error);
@@ -529,25 +528,23 @@ Page({
     this.setData({ saving: true, saveError: "" });
 
     try {
-      const shared = this.data.sharedFamilyId
-        ? await loadSharedFamilyRoom(this.data.sharedFamilyId)
-        : undefined;
+      const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;
       const state = shared?.state ?? await loadRoomStateRemoteFirst();
       const member = shared
         ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
-        : await loadCurrentMemberRemoteFirst(state);
+        : authorFor(state, await loadCurrentMemberRemoteFirst(state));
       if (!member) throw new Error("成员身份已失效，请重新接受邀请");
-      if (!member.id) throw new Error("请先创建或选择自己的记录档案");
+      if (!member.id) throw new Error("请先写下你的名字");
       const availableMemberIds = new Set(
         state.members
-          .filter((candidate) => candidate.id !== member.id)
+          .filter((candidate) => candidate.id !== member.id && !candidate.deletedAt)
           .map((candidate) => candidate.id),
       );
       const selectedMemberIds = this.data.relatedMemberIds.concat(
         this.data.audienceMemberIds,
       );
       if (selectedMemberIds.some((memberId) => !availableMemberIds.has(memberId))) {
-        throw new Error("所选亲友档案已变更，请重新打开本页选择");
+        throw new Error("选的人有变动，请重新打开本页再选");
       }
       const contribution = createContribution({
           authorMemberId: member.id,
@@ -572,11 +569,8 @@ Page({
         id: this.pendingContribution?.id ?? contribution.id,
         createdAt: this.pendingContribution?.createdAt ?? contribution.createdAt,
       };
-      if (this.data.sharedFamilyId) {
-        await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
-      } else {
-        await appendContributionRemoteFirst(this.pendingContribution);
-      }
+      if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
+      else await appendContributionRemoteFirst(this.pendingContribution);
 
       this.setData({
         saved: true,

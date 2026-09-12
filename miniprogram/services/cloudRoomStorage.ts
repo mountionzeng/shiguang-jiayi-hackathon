@@ -6,6 +6,8 @@ import {
   contributionScope,
   FamilyMember,
   FamilyRoomState,
+  isActiveMember,
+  isRecordingProfile,
   MemoryContribution,
   ManuscriptRevision,
   personalBookSourceFingerprint,
@@ -14,6 +16,15 @@ import {
   setPersonalShareTargets,
   Visibility,
 } from "../domain/biography";
+import {
+  applyMemberChange,
+  MemberChange,
+  MemberKind,
+  planClassify,
+  planDelete,
+  planRestore,
+} from "./memberLifecycle";
+import { loadCurrentMember } from "./roomStorage";
 
 export const CLOUD_COLLECTIONS = {
   families: "families",
@@ -366,6 +377,7 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
       avatarText: member.avatarText,
       role: member.role,
       ...(member.kind ? { kind: member.kind } : {}),
+      ...(typeof member.deletedAt === "string" && member.deletedAt ? { deletedAt: member.deletedAt } : {}),
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
 
@@ -478,13 +490,14 @@ export async function addCloudFamilyMember(
   if (trimmedName.length > 12) {
     throw new Error("名字不能超过 12 个字");
   }
-  if (state.members.some((member) => member.name === trimmedName)) {
-    throw new Error("这个档案已经存在");
+  const sameName = state.members.find((member) => member.name === trimmedName);
+  if (sameName) {
+    throw new Error(sameName.deletedAt ? "这个名字在「最近删除」里，可以直接恢复" : "名单里已经有这个名字");
   }
 
   const firstProfile = state.members.length === 0;
-  if (kind === "person" && !state.members.some(member => member.kind !== "person")) {
-    throw new Error("请先在切换档案中创建自己的记录档案");
+  if (kind === "person" && !state.members.some(isRecordingProfile)) {
+    throw new Error("请先新建一本书，再加人");
   }
   const member: FamilyMember = {
     id: firstProfile ? "owner" : `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -628,6 +641,9 @@ export async function updateCloudPersonalShareTargets(
   const contribution = state.contributions.find((item) => item.id === contributionId);
   if (!currentActor) throw new Error("当前身份已不在这个亲友空间");
   if (!contribution) throw new Error("没有找到这段故事");
+  if (targetMemberIds.some((memberId) => !state.members.some((member) => member.id === memberId && isActiveMember(member)))) {
+    throw new Error("请选择仍在空间里的亲友");
+  }
 
   const updated = setPersonalShareTargets(contribution, currentActor, targetMemberIds);
   await saveContribution(familyId, updated);
@@ -637,6 +653,31 @@ export async function updateCloudPersonalShareTargets(
       item.id === contributionId ? updated : item,
     ),
   };
+}
+
+async function changeCloudMember(
+  plan: (state: FamilyRoomState) => MemberChange | undefined,
+): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const change = plan(state);
+  if (!change) return state;
+  // References first: if they fail, the member stays visible and a retry repeats the same writes.
+  await Promise.all(change.contributions.map((contribution) => saveContribution(familyId, contribution)));
+  await saveMembers(familyId, [change.member]);
+  return applyMemberChange(state, change);
+}
+
+export async function classifyCloudMember(memberId: string, kind: MemberKind): Promise<FamilyRoomState> {
+  return changeCloudMember((state) => planClassify(state, memberId, kind, loadCurrentMember(state).id));
+}
+
+export async function deleteCloudMember(memberId: string, now = new Date()): Promise<FamilyRoomState> {
+  return changeCloudMember((state) => planDelete(state, memberId, loadCurrentMember(state).id, now));
+}
+
+export async function restoreCloudMember(memberId: string): Promise<FamilyRoomState> {
+  return changeCloudMember((state) => planRestore(state, memberId));
 }
 
 export async function resetCloudCurrentUserRoom(): Promise<FamilyRoomState> {

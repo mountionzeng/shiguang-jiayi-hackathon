@@ -6,10 +6,14 @@ import {
   MemoryContribution,
 } from "../domain/biography";
 import { CLOUD_DATABASE_ENABLED } from "../config/runtime";
+import { MemberKind } from "./memberLifecycle";
 import {
   addCloudFamilyMember,
   appendCloudContribution,
+  classifyCloudMember,
   deleteCloudContribution,
+  deleteCloudMember,
+  restoreCloudMember,
   loadCloudRoomState,
   replaceCloudContribution,
   resetCloudCurrentUserRoom,
@@ -20,7 +24,10 @@ import {
 import {
   addFamilyMember,
   appendContribution,
+  classifyMember,
   deleteContribution,
+  deleteMember,
+  restoreMember,
   loadCurrentMember,
   saveCurrentMemberId,
   loadRoomState,
@@ -142,6 +149,23 @@ export async function updatePersonalShareTargetsRemoteFirst(
   }
 
   return updatePersonalShareTargets(contributionId, actor, targetMemberIds);
+}
+
+/** Sort a legacy record into a recording profile or a person; only its kind changes. */
+export async function classifyMemberRemoteFirst(memberId: string, kind: MemberKind): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await classifyCloudMember(memberId, kind);
+  return classifyMember(memberId, kind);
+}
+
+/** Soft delete; safe to retry. The current profile is refused. */
+export async function deleteMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await deleteCloudMember(memberId);
+  return deleteMember(memberId);
+}
+
+export async function restoreMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await restoreCloudMember(memberId);
+  return restoreMember(memberId);
 }
 
 export async function resetCurrentUserRoomRemoteFirst(): Promise<FamilyRoomState> {

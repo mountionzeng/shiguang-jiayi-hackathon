@@ -4,6 +4,7 @@ import {
   buildLocalPersonalBiographyDraft,
   FamilyMember,
   FamilyRoomState,
+  memoryPool,
   personalBookContributions,
 } from "../domain/biography";
 import type { ShiguangAppOptions } from "../app";
@@ -63,9 +64,11 @@ export async function generateBiographyWithStatus(
   member: FamilyMember,
   chapter?: ChapterRequest,
 ): Promise<{ draft: BiographyDraft; fallbackReason?: BiographyFallbackReason }> {
-  const own = personalBookContributions(state.contributions, member.id);
-  // Chosen ids can only narrow the member's own stories, never reach someone else's.
-  const personal = chapter ? own.filter((memory) => chapter.memoryIds.includes(memory.id)) : own;
+  // A chapter draws chosen memories from the account's shared pool; family-review
+  // submissions never reach a book. The whole-book path keeps the profile's own stories.
+  const personal = chapter
+    ? memoryPool(state.contributions).filter((memory) => chapter.memoryIds.includes(memory.id))
+    : personalBookContributions(state.contributions, member.id);
   if (personal.length === 0) {
     throw new Error(chapter ? "先勾选要整理的记忆" : "至少写下一段自己的经历后才能生成章节");
   }
@@ -86,7 +89,7 @@ export async function generateBiographyWithStatus(
           memories: personal.map((memory) => ({
             id: memory.id,
             authorName: memory.authorName,
-            relation: "本人",
+            relation: memory.authorMemberId === member.id ? "本人" : memory.relation || "亲友",
             text: memory.text,
           })),
           ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),

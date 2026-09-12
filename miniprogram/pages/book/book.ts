@@ -1,6 +1,6 @@
 import {
   BiographyDraft, contributionStoryTitle, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution,
-  personalBookContributions, personalBookSourceFingerprint,
+  memoryPool, personalBookSourceFingerprint,
 } from "../../domain/biography";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel } from "../../services/roomRepository";
@@ -108,7 +108,7 @@ Page({
     const refreshId = ++this.refreshId;
     const state = nextState ?? await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(state);
-    const qualified = personalBookContributions(state.contributions, member.id);
+    const qualified = memoryPool(state.contributions);
     const current = currentManuscript(state, member.id);
     if ((this.data.editing && !this.data.saving) || this.data.pickingPhoto || this.unloaded) return;
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
@@ -140,7 +140,7 @@ Page({
     this.setData({
       editTitle: this.titleBuffer, editBody: this.bodyBuffer, editChapterTitle: this.chapterTitleBuffer, view,
       protagonistName: member.name, memberId: member.id,
-      sources: qualified.map(item => ({ id: item.id, text: item.text, byline: member.name + " · 亲自讲述" })),
+      sources: qualified.map(item => ({ id: item.id, text: item.text, byline: item.authorName + " · 讲述" })),
       sourceCount: qualified.length, draft: current.draft ?? null,
       isCloudDraft: current.draft?.generationMode === "cloud-ai",
       modeLabel: "当前书稿", modeNote: "可以直接编辑。新增记忆不会自动改动这份正文。",

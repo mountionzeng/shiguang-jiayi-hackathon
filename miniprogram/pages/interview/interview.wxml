@@ -11,7 +11,7 @@
         ></image>
         <text class="who-name">和小忆聊聊</text>
       </view>
-      <text class="who-note">{{memberName}} · {{memberRelation}} · {{sharedFamilyId ? '写给这个记忆之家' : '先讲，不急着分类'}}</text>
+      <text class="who-note">{{sharedFamilyId ? (memberName + ' · ' + memberRelation + ' · 写给这个记忆之家') : '先讲，不急着分类'}}</text>
     </view>
     <text class="tag tag-apricot">
       <text class="tag-mark">聊</text>正在倾听

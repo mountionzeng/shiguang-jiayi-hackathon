@@ -83,21 +83,49 @@
 <view
   class="capture-sheet"
   wx:if="{{chooserOpen}}"
-  catchtap="keepChooserOpen"
+  bindtap="closeChooser"
   role="dialog"
-  aria-label="选择记录方式"
+  aria-label="选择记录方式，点空白处关闭"
 >
   <view class="capture-heading">
-    <view class="capture-title typewriter">这次怎么记？</view>
+    <view class="capture-title typewriter">{{memoirOpen ? '想起了哪一段？' : '这次怎么记？'}}</view>
   </view>
 
-  <view class="capture-options">
+  <!-- 回忆录：先挑一段已经讲过的，再接着聊 -->
+  <view class="capture-recall" wx:if="{{memoirOpen}}" catchtap="keepChooserOpen">
+    <button
+      class="capture-memory"
+      wx:for="{{recent}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      data-title="{{item.storyTitle}}"
+      bindtap="continueMemory"
+      hover-class="none"
+      aria-label="接着聊{{item.title}}"
+    >
+      <view class="capture-memory-title serif">{{item.title}}</view>
+      <view class="capture-memory-excerpt">{{item.excerpt}}</view>
+      <view class="capture-memory-meta">{{item.storyLabel}} · 接着聊</view>
+    </button>
+
+    <view class="capture-empty" wx:if="{{recentLoaded && !recent.length}}">还没有回忆，先随手记一段吧。</view>
+    <view class="capture-empty" wx:elif="{{recentError}}">{{recentError}}</view>
+    <view class="capture-empty" wx:elif="{{!recentLoaded}}">正在找你讲过的回忆…</view>
+
+    <button
+      class="capture-all"
+      bindtap="openAllMemories"
+      hover-class="none"
+      aria-label="从全部回忆里挑一段"
+    >全部回忆 · 从所有回忆里挑一段</button>
+  </view>
+
+  <view class="capture-options" wx:else catchtap="keepChooserOpen">
     <button
       class="capture-choice capture-choice-note"
-      data-type="note"
-      bindtap="chooseCaptureMode"
+      bindtap="startQuickNote"
       hover-class="none"
-      aria-label="选择随手记，先留下几句话"
+      aria-label="随手记，直接开一段新的"
     >
       <image
         class="capture-art capture-art-note"
@@ -112,10 +140,9 @@
 
     <button
       class="capture-choice capture-choice-memoir"
-      data-type="memoir"
-      bindtap="chooseCaptureMode"
+      bindtap="openMemoir"
       hover-class="none"
-      aria-label="选择回忆录，和小忆慢慢聊"
+      aria-label="回忆录，挑一段接着聊"
     >
       <image
         class="capture-art capture-art-memoir"

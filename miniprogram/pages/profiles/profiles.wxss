@@ -20,6 +20,7 @@
 
 .profiles-heading,
 .profile-create,
+.people-add,
 .profile-list,
 .profile-empty,
 .profile-danger-zone,
@@ -52,12 +53,6 @@
   border-radius: 28rpx;
   background: rgba(255, 254, 251, 0.78);
   box-shadow: 0 12rpx 30rpx rgba(75, 73, 63, 0.06);
-}
-
-.profile-create-title {
-  color: var(--ink);
-  font-size: 31rpx;
-  font-weight: 600;
 }
 
 .profile-input {
@@ -93,34 +88,6 @@
 
 .profile-create-button:active {
   transform: scale(0.985);
-}
-
-.profile-card {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 126rpx;
-  padding: 18rpx 18rpx 18rpx 14rpx;
-  border: 2rpx solid transparent;
-  border-radius: 28rpx;
-  background: transparent;
-  color: var(--ink);
-  text-align: left;
-}
-
-.profile-card + .profile-card {
-  margin-top: 12rpx;
-}
-
-.profile-card:active {
-  background: rgba(229, 239, 233, 0.58);
-  transform: scale(0.985);
-}
-
-.profile-card-current {
-  border-color: rgba(79, 127, 107, 0.16);
-  background: rgba(255, 253, 247, 0.74);
-  box-shadow: 0 12rpx 30rpx rgba(79, 127, 107, 0.06);
 }
 
 .profile-avatar {
@@ -176,14 +143,6 @@
   white-space: nowrap;
 }
 
-.profile-state {
-  flex-shrink: 0;
-  margin-left: 16rpx;
-  color: var(--jade);
-  font-size: 24rpx;
-  font-weight: 600;
-}
-
 .profile-empty {
   margin-top: 26rpx;
   padding: 24rpx 26rpx;
@@ -220,7 +179,7 @@
 }
 
 .profiles-footnote {
-  margin-top: 42rpx;
+  margin-top: 30rpx;
   padding: 24rpx 26rpx;
   border-radius: 24rpx;
   background: rgba(245, 239, 225, 0.68);
@@ -228,4 +187,136 @@
   font-size: 23rpx;
   line-height: 1.7;
 }
-.permission-row { padding: 24rpx 0; border-bottom: 1rpx solid #e4ddca; color: var(--ink); font-size: 30rpx; }
+
+/* 加人：名字、关系、按钮排成一行。 */
+.people-add {
+  display: flex;
+  align-items: center;
+  margin-top: 30rpx;
+  padding: 18rpx;
+  border-radius: 28rpx;
+  background: rgba(255, 254, 251, 0.78);
+  box-shadow: 0 12rpx 30rpx rgba(75, 73, 63, 0.06);
+}
+
+.people-add .profile-input {
+  flex: 1;
+  min-width: 0;
+  height: 76rpx;
+  margin: 0 12rpx 0 0;
+}
+
+/* Built-in buttons default to a fixed width; each button here sizes to its label. */
+.people-add .people-add-button,
+.person-row .profile-delete,
+.sort-row .sort-button { width: auto; }
+
+.people-add-button {
+  flex-shrink: 0;
+  height: 76rpx;
+  margin: 0;
+  padding: 0 26rpx;
+  border-radius: 38rpx;
+  background: var(--jade);
+  color: #fffefb;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 76rpx;
+}
+
+.people-add-button::after,
+.profile-delete::after,
+.sort-button::after,
+.trash-toggle::after { border: 0; }
+
+.person-row {
+  display: flex;
+  align-items: center;
+  padding: 18rpx 14rpx;
+  border: 2rpx solid transparent;
+  border-radius: 28rpx;
+}
+
+.person-row + .person-row {
+  margin-top: 10rpx;
+}
+
+.person-row-author {
+  border-color: rgba(79, 127, 107, 0.16);
+  background: rgba(255, 253, 247, 0.74);
+}
+
+.person-relation {
+  color: var(--ink-faint);
+  font-size: 23rpx;
+  font-weight: 400;
+}
+
+.person-permission {
+  margin-top: 6rpx;
+  color: var(--ink-faint);
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.person-permission-author {
+  color: var(--jade);
+  font-weight: 600;
+}
+
+.profile-delete {
+  flex-shrink: 0;
+  height: 56rpx;
+  margin: 0 0 0 14rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid rgba(199, 82, 69, 0.22);
+  border-radius: 28rpx;
+  background: rgba(255, 247, 244, 0.86);
+  color: #b64a40;
+  font-size: 23rpx;
+  line-height: 52rpx;
+}
+
+.sort-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #e4ddca;
+}
+
+.sort-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.sort-button {
+  flex-shrink: 0;
+  height: 60rpx;
+  margin: 0 0 0 12rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid rgba(79, 127, 107, 0.24);
+  border-radius: 30rpx;
+  background: rgba(229, 239, 233, 0.7);
+  color: var(--jade);
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 56rpx;
+}
+
+.sort-button[disabled] {
+  opacity: 0.4;
+}
+
+.trash-toggle {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: left;
+}

@@ -1,6 +1,8 @@
 import {
+  accountOwner,
   contributionScope,
   FamilyRoomState,
+  memoryPool,
   personalBookContributions,
 } from "../../domain/biography";
 import {
@@ -35,7 +37,8 @@ Page({
 
   async refresh(state?: FamilyRoomState) {
     const currentState = state ?? await loadRoomStateRemoteFirst();
-    const member = await loadCurrentMemberRemoteFirst(currentState);
+    // 「我的」就是账号主人，和首页左上角头像是同一个人。
+    const member = accountOwner(currentState.members) ?? await loadCurrentMemberRemoteFirst(currentState);
     const personal = personalBookContributions(currentState.contributions, member.id);
     const sharedCount = personal.filter(
       (memory) => (memory.sharedWithMemberIds ?? []).length > 0,
@@ -48,7 +51,7 @@ Page({
       memberName: member.name,
       memberRelation: member.relation,
       memberAvatarText: member.avatarText,
-      memoryCount: personal.length,
+      memoryCount: memoryPool(currentState.contributions).length,
       sharedCount,
       familyCount,
     });

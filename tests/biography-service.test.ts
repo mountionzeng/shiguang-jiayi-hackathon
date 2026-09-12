@@ -167,7 +167,7 @@ test("a local fallback reports why the online AI was not used", async (context) 
   clearAiConsent();
 });
 
-test("chapter organizing sends only the member's chosen memories with the chapter name and text", async (context) => {
+test("chapter organizing sends the chosen memories from the shared pool with the chapter name and text", async (context) => {
   const { generateBiographyWithStatus } = await import("../miniprogram/services/biographyService");
   let requestData: any;
   let cloudReady = true;
@@ -188,7 +188,9 @@ test("chapter organizing sends only the member's chosen memories with the chapte
 
   const cloud = await generateBiographyWithStatus(state, ownerOf(state), request);
   assert.equal(cloud.draft.generationMode, "cloud-ai");
-  assert.deepEqual(requestData.memories.map((memory: { id: string }) => memory.id), ["second-personal"]);
+  // Every profile shares one memory pool; another narrator keeps their own relation.
+  assert.deepEqual(requestData.memories.map((memory: { id: string; relation: string }) => [memory.id, memory.relation]),
+    [["second-personal", "本人"], ["someone-else", "女儿"]]);
   assert.equal(requestData.chapterTitle, "雨天");
   assert.equal(requestData.existingText, "已有正文");
 
@@ -196,8 +198,8 @@ test("chapter organizing sends only the member's chosen memories with the chapte
   const local = await generateBiographyWithStatus(state, ownerOf(state), request);
   assert.equal(local.fallbackReason, "cloud-not-ready");
   assert.equal(local.draft.title, "雨天");
-  assert.deepEqual(local.draft.paragraphs, ["已有正文", "第二段自己的回忆。"]);
-  await assert.rejects(generateBiographyWithStatus(state, ownerOf(state), { memoryIds: ["someone-else"] }), /先勾选/);
+  assert.deepEqual(local.draft.paragraphs, ["已有正文", "第二段自己的回忆。", "别人的故事。"]);
+  await assert.rejects(generateBiographyWithStatus(state, ownerOf(state), { memoryIds: ["not-in-pool"] }), /先勾选/);
 });
 
 test("malformed cloud output also falls back to the local draft", async (context) => {

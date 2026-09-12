@@ -1,9 +1,11 @@
 import {
+  accountOwner,
+  contributionRelatedMemberIds,
   contributionStoryTitle,
-  FamilyMember,
   FamilyRoomState,
+  isActiveMember,
   MemoryContribution,
-  personalBookContributions,
+  memoryPool,
 } from "../../domain/biography";
 import {
   FOLLOW_UP_LABEL,
@@ -15,7 +17,7 @@ import {
   loadRoomStateRemoteFirst,
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
-import { currentManuscript } from "../../services/manuscript";
+import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import { loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
 
 interface RecentStoryView {
@@ -27,10 +29,10 @@ interface RecentStoryView {
   storyTitle: string;
 }
 
-interface ProfileOptionView {
-  id: string;
-  name: string;
-  relation: string;
+interface StoryOptionView {
+  key: string;
+  title: string;
+  label: string;
   avatarText: string;
   selected: boolean;
 }
@@ -51,6 +53,28 @@ const RECOMMENDATION_DIMENSIONS: InterviewDimension[] = [
   "event",
   "feeling",
 ];
+
+/** 首页正在聊的故事名，只存在本机：它只决定首页先显示哪个故事。 */
+const CURRENT_STORY_KEY = "shiguang-current-story-v1";
+const MAX_STORY_TITLE_LENGTH = 20;
+
+/** "" 表示「先随便聊聊」；undefined 表示还没选过，按最近聊的那段来。 */
+function loadCurrentStoryTitle(): string | undefined {
+  try {
+    const stored = wx.getStorageSync<{ title?: unknown }>(CURRENT_STORY_KEY);
+    return stored && typeof stored.title === "string" ? stored.title : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveCurrentStoryTitle(title: string): void {
+  try {
+    wx.setStorageSync(CURRENT_STORY_KEY, { title });
+  } catch {
+    // 存不下只影响下次首页先显示哪个故事。
+  }
+}
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -97,17 +121,25 @@ function recentStoriesFor(
     .map(({ count: _count, ...story }) => story);
 }
 
-function profileOptionsFor(
-  members: FamilyMember[],
-  currentMemberId: string,
-): ProfileOptionView[] {
-  return members.filter(member => member.kind !== "person").map((member) => ({
-    id: member.id,
-    name: member.name,
-    relation: member.relation,
-    avatarText: member.avatarText,
-    selected: member.id === currentMemberId,
+/** 「换一个故事聊」的列表；刚起好名字、还没聊出记忆的故事也要能选回来。 */
+function storyOptionsFor(shelf: ShelfStory[], currentTitle: string): StoryOptionView[] {
+  const options = shelf.map((story) => ({
+    key: story.key,
+    title: story.title,
+    label: shelfStoryLabel(story),
+    avatarText: Array.from(story.title)[0] ?? "故",
+    selected: story.title === currentTitle,
   }));
+  if (currentTitle && !options.some((option) => option.selected)) {
+    options.unshift({
+      key: `new:${currentTitle}`,
+      title: currentTitle,
+      label: "还没开始聊",
+      avatarText: Array.from(currentTitle)[0] ?? "故",
+      selected: true,
+    });
+  }
+  return options;
 }
 
 function latestContribution(
@@ -170,21 +202,30 @@ function interviewUrl(
   return `/pages/interview/interview?${query.join("&")}`;
 }
 
+/**
+ * 首页围绕「故事」：人生之书是你所有的故事，顶部换的是正在聊的故事，
+ * 左上角头像只代表本账号的主人。人（家人和朋友）在记忆之家管理。
+ */
 Page({
   recommendationOffset: 0,
 
   data: {
     hasProfile: false,
-    memberName: "",
-    memberAvatarText: "",
-    bookTitle: "",
+    ownerAvatarText: "",
+    // 书封就是正在聊的那个故事；所有故事的目录在底部的「人生之书」。
+    coverTitle: "",
     coverSubtitle: "",
-    memoryCount: 0,
-    memoirCount: 0,
-    familyMemberCount: 0,
+    storyKey: "",
+    storyMemoryCount: 0,
+    storyChapterCount: 0,
+    storyPeopleCount: 0,
+    storyManuscriptMemberId: "",
     bookOpening: false,
-    profileChooserOpen: false,
-    profileOptions: [] as ProfileOptionView[],
+    storyChooserOpen: false,
+    storyOptions: [] as StoryOptionView[],
+    currentStoryTitle: "",
+    currentStoryLabel: "",
+    startPrompt: "",
     recommendedQuestionLabel: "",
     recommendedQuestionContext: "",
     recommendedQuestion: "",
@@ -207,28 +248,54 @@ Page({
 
   async refresh(state?: FamilyRoomState) {
     const currentState = state ?? await loadRoomStateRemoteFirst();
-    const member = await loadCurrentMemberRemoteFirst(currentState);
-    const hasProfile = Boolean(member.id);
-    const personal = hasProfile
-      ? personalBookContributions(currentState.contributions, member.id)
-      : [];
-    const draft = hasProfile ? currentManuscript(currentState, member.id).draft : undefined;
-    const recentStories = recentStoriesFor(personal);
+    const current = await loadCurrentMemberRemoteFirst(currentState);
+    const owner = accountOwner(currentState.members) ?? (current.id ? current : undefined);
+    const pool = memoryPool(currentState.contributions);
+    const shelf = storyShelf(currentState);
+    const stored = loadCurrentStoryTitle();
+    const latest = latestContribution(pool);
+    const currentStoryTitle = stored ?? (latest ? contributionStoryTitle(latest) : "");
+    // 「先随便聊聊」只接着还没放进故事的片段问，免得标题写着随便聊，问的却是别的故事。
+    const inCurrentStory = pool.filter(
+      (memory) => contributionStoryTitle(memory) === currentStoryTitle,
+    );
     const recommendedQuestion = recommendedQuestionFor(
-      latestContribution(personal),
+      latestContribution(inCurrentStory),
       this.recommendationOffset,
     );
+    const recentStories = recentStoriesFor(pool);
+    const currentStory = shelf.find((story) => story.title === currentStoryTitle);
+    // 这个故事里出现的人：只算名单上还在的人。
+    const activeMemberIds = new Set(
+      currentState.members.filter(isActiveMember).map((member) => member.id),
+    );
+    const storyPeople = new Set<string>();
+    inCurrentStory.forEach((memory) => {
+      contributionRelatedMemberIds(memory).forEach((memberId) => {
+        if (activeMemberIds.has(memberId)) storyPeople.add(memberId);
+      });
+    });
 
     this.setData({
-      hasProfile,
-      memberName: member.name,
-      memberAvatarText: member.avatarText,
-      bookTitle: hasProfile ? `${member.name}的人生之书` : "人生之书",
-      coverSubtitle: hasProfile ? (draft?.title ?? "还没有整理成章节") : "先建立一个档案",
-      memoryCount: personal.length,
-      memoirCount: new Set(personal.map(contributionStoryTitle).filter(Boolean)).size,
-      familyMemberCount: currentState.members.filter(item => item.id !== member.id && item.kind !== "recording-profile").length,
-      profileOptions: profileOptionsFor(currentState.members, member.id),
+      hasProfile: Boolean(owner),
+      ownerAvatarText: owner?.avatarText ?? "",
+      coverTitle: currentStoryTitle || "先随便聊聊",
+      coverSubtitle: currentStoryTitle
+        ? (currentStory
+          ? (currentStory.chapterCount ? `已整理 ${currentStory.chapterCount} 章` : "还没整理成章节")
+          : "还没开始聊")
+        : (inCurrentStory.length ? "还没放进故事的记忆" : "先说一句，聊完再放进故事"),
+      storyKey: currentStory?.key ?? "",
+      storyMemoryCount: inCurrentStory.length,
+      storyChapterCount: currentStory?.chapterCount ?? 0,
+      storyPeopleCount: storyPeople.size,
+      storyManuscriptMemberId: currentStory?.manuscriptMemberId ?? "",
+      storyOptions: storyOptionsFor(shelf, currentStoryTitle),
+      currentStoryTitle,
+      currentStoryLabel: currentStoryTitle || "先随便聊聊",
+      startPrompt: currentStoryTitle
+        ? `说说「${currentStoryTitle}」吧，从哪一段开始都行。`
+        : "想到什么就说什么，聊完再决定放进哪个故事。",
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
       recommendedQuestionContext: recommendedQuestion?.context ?? "",
       recommendedQuestion: recommendedQuestion?.text ?? "",
@@ -245,10 +312,10 @@ Page({
       const account = await loadCurrentAccount();
       this.setData({
         accountPromptOpen: !account.profileComplete,
-        accountNameInput: account.profileComplete ? account.displayName : member.name,
+        accountNameInput: account.profileComplete ? account.displayName : current.name,
         accountAvatarPreview: account.profileComplete
           ? (account.avatarText || "忆")
-          : (Array.from(member.name)[0] || "忆"),
+          : (Array.from(current.name)[0] || "忆"),
       });
     } catch (error) {
       console.warn("拾光账号资料暂未加载", error);
@@ -270,56 +337,88 @@ Page({
       this.setData({ accountPromptOpen: false });
       wx.showToast({ title: "记住啦", icon: "success" });
     } catch (error) {
-      wx.showToast({
-        title: error instanceof Error ? error.message : "暂时无法保存称呼",
-        icon: "none",
-      });
+      wx.showToast({ title: error instanceof Error ? error.message : "暂时无法保存称呼", icon: "none" });
     } finally {
       this.setData({ accountSaving: false });
     }
   },
 
   startInterview() {
-    if (!this.data.memberName) {
-      wx.showToast({ title: "请先创建一个档案", icon: "none" });
+    if (!this.data.hasProfile) {
+      wx.showToast({ title: "先写下你的名字", icon: "none" });
       wx.navigateTo({ url: "/pages/profiles/profiles" });
       return;
     }
     wx.navigateTo({ url: "/pages/interview/interview" });
   },
 
-  openProfiles() {
-    this.setData({ profileChooserOpen: !this.data.profileChooserOpen });
-  },
-
   createFirstProfile() {
     wx.navigateTo({ url: "/pages/profiles/profiles" });
   },
 
-  createRecordingProfile() {
-    this.setData({ profileChooserOpen: false });
-    wx.navigateTo({ url: "/pages/profiles/profiles" });
+  toggleStoryChooser() {
+    this.setData({ storyChooserOpen: !this.data.storyChooserOpen });
   },
 
-  async chooseProfile(event: {
-    currentTarget: { dataset: { id: string } };
+  async chooseStory(event: {
+    currentTarget: { dataset: { title: string } };
   }) {
-    const memberId = event.currentTarget.dataset.id;
-    const state = await loadRoomStateRemoteFirst();
-    const member = state.members.find((item) => item.id === memberId && item.kind !== "person");
+    saveCurrentStoryTitle(event.currentTarget.dataset.title || "");
+    this.recommendationOffset = 0;
+    this.setData({ storyChooserOpen: false });
+    await this.refresh();
+  },
 
-    if (!member) {
-      wx.showToast({ title: "没有找到这个档案", icon: "none" });
-      return;
-    }
+  async chooseNoStory() {
+    saveCurrentStoryTitle("");
+    this.recommendationOffset = 0;
+    this.setData({ storyChooserOpen: false });
+    await this.refresh();
+  },
 
-    saveCurrentMemberIdLocal(member.id);
-    this.setData({ profileChooserOpen: false });
-    await this.refresh(state);
+  startNewStory() {
+    wx.showModal({
+      title: "开一个新故事",
+      editable: true,
+      placeholderText: "起个名字，比如：我的大学四年",
+      confirmText: "开始聊",
+      success: (result) => {
+        if (!result.confirm) return;
+        const title = (result.content ?? "").trim().replace(/\s+/g, " ");
+        if (!title) {
+          wx.showToast({ title: "先给故事起个名字", icon: "none" });
+          return;
+        }
+        if (title.length > MAX_STORY_TITLE_LENGTH) {
+          wx.showToast({ title: `故事名最多 ${MAX_STORY_TITLE_LENGTH} 个字`, icon: "none" });
+          return;
+        }
+        saveCurrentStoryTitle(title);
+        this.setData({ storyChooserOpen: false });
+        wx.navigateTo({ url: `/pages/interview/interview?storyTitle=${encodeURIComponent(title)}` });
+      },
+    });
+  },
+
+  /** 当前故事还没有可以追问的记忆时，直接开始聊它。 */
+  startCurrentStory() {
+    const title = this.data.currentStoryTitle;
+    wx.navigateTo({
+      url: title
+        ? `/pages/interview/interview?storyTitle=${encodeURIComponent(title)}`
+        : "/pages/interview/interview?memoryType=note",
+    });
   },
 
   openMyHome() {
     wx.navigateTo({ url: "/pages/me/me" });
+  },
+
+  /** 书封就是正在聊的那个故事；还没选故事时，打开还没归类的记忆。 */
+  storyUrl(): string {
+    return this.data.storyKey
+      ? `/pages/stories/stories?key=${encodeURIComponent(this.data.storyKey)}`
+      : "/pages/archive/archive";
   },
 
   openMemoryArchive() {
@@ -327,19 +426,28 @@ Page({
     this.setData({ bookOpening: true });
     setTimeout(() => {
       this.setData({ bookOpening: false });
-      wx.navigateTo({ url: "/pages/book/book" });
+      wx.navigateTo({ url: this.storyUrl() });
     }, 620);
   },
 
-  openArchiveTab(event: {
-    currentTarget: { dataset: { tab: "note" | "memoir" } };
-  }) {
-    const tab = event.currentTarget.dataset.tab === "memoir" ? "memoir" : "note";
-    wx.navigateTo({ url: tab === "memoir" ? "/pages/stories/stories" : "/pages/archive/archive" });
+  openStoryMemories() {
+    wx.navigateTo({ url: this.storyUrl() });
   },
 
+  /** 这个故事整理好的章节；还没整理过就先打开这个故事。 */
+  openStoryChapters() {
+    const memberId = this.data.storyManuscriptMemberId;
+    if (!memberId) {
+      wx.navigateTo({ url: this.storyUrl() });
+      return;
+    }
+    saveCurrentMemberIdLocal(memberId);
+    wx.navigateTo({ url: "/pages/book/book" });
+  },
+
+  /** 人都在记忆之家：先看人，再看和这个人有关的记忆。 */
   openPeople() {
-    wx.navigateTo({ url: "/pages/profiles/profiles?mode=people" });
+    wx.navigateTo({ url: "/pages/room/room" });
   },
 
   openMemoryHome() {
@@ -372,6 +480,8 @@ Page({
   }) {
     const storyTitle = event.currentTarget.dataset.title || "";
     const sourceId = event.currentTarget.dataset.id || "";
+    // 接着聊哪个故事，首页回来时就停在哪个故事。
+    saveCurrentStoryTitle(storyTitle);
     wx.navigateTo({ url: interviewUrl(sourceId, storyTitle) });
   },
   onShareAppMessage() { return { title: "拾光Ai｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },

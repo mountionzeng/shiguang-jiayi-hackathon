@@ -5,9 +5,10 @@
   </view>
 
   <view class="room-head">
-    <view class="eyebrow">我与亲友选择彼此看见的故事</view>
-    <view class="room-title serif">{{roomName}}</view>
-    <view class="room-sub">每段故事的阅读权限彼此独立。家人和朋友只有被你选中，才能看到对应内容。</view>
+    <view class="eyebrow">所有记忆都在这里</view>
+    <view class="room-title serif">记忆之家</view>
+    <view class="room-sub">点一个人，看和 ta 有关的记忆。写没写进书的都在。</view>
+    <button class="room-manage" bindtap="openPeople" hover-class="none">管理名单</button>
     <button class="room-invite" wx:if="{{canInvite}}" bindtap="inviteFamilyMember" hover-class="room-invite-pressed">
       <text class="room-invite-mark">＋</text>
       <view class="room-invite-copy">
@@ -16,27 +17,21 @@
       </view>
       <text class="room-invite-arrow">›</text>
     </button>
+    <view wx:if="{{loadError}}" class="room-sub">{{loadError}}<button class="room-manage" bindtap="retryLoad">重新加载</button></view>
   </view>
 
-  <view class="elder-task" wx:if="{{canReview && pendingCount > 0}}" bindtap="openReview">
-    <view class="elder-task-copy">
-      <view class="elder-task-title">有 {{pendingCount}} 段家庭记忆等你确认</view>
-      <text class="elder-task-note">确认后才会出现在全家的时间线上</text>
-    </view>
-    <text class="elder-task-go">去确认</text>
-  </view>
-
-  <!-- 成员横向筛选 -->
   <scroll-view class="filter-strip" scroll-x enhanced show-scrollbar="{{false}}">
     <view class="filter-row">
       <view
-        class="filter {{activeFilter === item.id ? 'filter-on' : ''}}"
-        wx:for="{{filters}}"
+        class="filter {{activeId === item.id ? 'filter-on' : ''}}"
+        wx:for="{{people}}"
         wx:key="id"
         data-id="{{item.id}}"
-        bindtap="chooseFilter"
+        bindtap="choosePerson"
+        role="button"
+        aria-label="看和{{item.name}}有关的记忆"
       >
-        <view class="filter-avatar {{item.isElder ? 'filter-avatar-elder' : ''}} serif">
+        <view class="filter-avatar serif">
           <image
             class="filter-avatar-backdrop"
             src="/assets/illustrations/book-wash.png"
@@ -51,57 +46,33 @@
     </view>
   </scroll-view>
 
-  <!-- 时间线 -->
-  <block wx:if="{{timeline.length > 0}}">
-    <view class="timeline">
-      <view class="tl-item" wx:for="{{timeline}}" wx:key="id" data-id="{{item.id}}" bindtap="openDetail">
-        <view class="tl-rail">
-          <view class="tl-dot"></view>
-          <view class="tl-line"></view>
-        </view>
-        <view class="tl-body">
-          <view class="tl-meta">
-            <view class="tl-avatar serif">
-              <image
-                class="tl-avatar-backdrop"
-                src="/assets/illustrations/book-wash.png"
-                mode="aspectFill"
-                aria-hidden="true"
-              ></image>
-              <text class="tl-avatar-letter">{{item.avatarText}}</text>
-            </view>
-            <text class="tl-author">{{item.authorName}} · {{item.relation}}</text>
-            <text class="tl-mine" wx:if="{{item.isMine}}">我讲的</text>
-          </view>
-          <view class="tl-title serif" wx:if="{{item.title}}">{{item.title}}</view>
-          <view class="tl-text serif">{{item.text}}</view>
-          <view class="tl-foot">
-            <text class="tag tag-jade"><text class="tag-mark">故</text>{{item.storyLabel}}</text>
-            <text class="tl-type">{{item.accessLabel}}</text>
-            <text class="tl-date">{{item.dateLabel}}</text>
-          </view>
+  <view class="timeline" wx:if="{{hasMemories}}">
+    <view class="tl-item" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="openMemory">
+      <view class="tl-rail">
+        <view class="tl-dot"></view>
+        <view class="tl-line"></view>
+      </view>
+      <view class="tl-body">
+        <view class="tl-title serif" wx:if="{{item.title}}">{{item.title}}</view>
+        <view class="tl-text serif">{{item.text}}</view>
+        <view class="tl-foot">
+          <text class="tag tag-jade" wx:if="{{item.storyLabel}}"><text class="tag-mark">故</text>{{item.storyLabel}}</text>
+          <text class="tl-place">{{item.placeLabel}}</text>
+          <text class="tl-date">{{item.dateLabel}}</text>
         </view>
       </view>
     </view>
-  </block>
-
-  <!-- 该成员没有合格片段 -->
-  <view class="empty-filter" wx:elif="{{hasAnyQualified}}">
-    <view class="empty-filter-title">这里还没有与这位亲友共享的故事</view>
-    <view class="empty-filter-note">只有被单独授予阅读权限的内容，才会出现在记忆之家。</view>
   </view>
 
-  <!-- 整个记忆之家还没有合格片段 -->
+  <view class="empty-filter" wx:elif="{{hasAnyMemory}}">
+    <view class="empty-filter-title">还没有和{{activeName}}有关的记忆</view>
+    <view class="empty-filter-note">聊完一段记忆时选上 ta，这段就会出现在这里。</view>
+  </view>
+
   <view class="empty-room wash" wx:else>
-    <view class="empty-room-title serif">还没有彼此分享的故事</view>
-    <view class="empty-room-note">
-      先和 AI 聊一段记忆。聊完后可以关联家人或朋友，再单独决定谁能看到。
-    </view>
+    <view class="empty-room-title serif">还没有记忆</view>
+    <view class="empty-room-note">先和 AI 聊一段，聊完就会收在这里。</view>
     <button class="btn btn-jade empty-room-btn" bindtap="startInterview">开始聊聊</button>
-  </view>
-
-  <view class="mine-note" wx:if="{{myPendingCount > 0}}">
-    你有 {{myPendingCount}} 段旧版共同记忆还在等待确认，确认前不会向其他人公开。
   </view>
 
   <view class="invite-note" wx:if="{{sharedFamilyId}}">
@@ -110,44 +81,3 @@
 </view>
 
 <story-switcher current="family"></story-switcher>
-
-<!-- 详情面板 -->
-<view class="sheet-mask" wx:if="{{detail}}" bindtap="closeDetail"></view>
-<view class="sheet" wx:if="{{detail}}">
-  <view class="sheet-grip"></view>
-  <view class="sheet-meta">
-    <view class="tl-avatar serif">
-      <image
-        class="tl-avatar-backdrop"
-        src="/assets/illustrations/book-wash.png"
-        mode="aspectFill"
-        aria-hidden="true"
-      ></image>
-      <text class="tl-avatar-letter">{{detail.avatarText}}</text>
-    </view>
-    <view class="sheet-who">
-      <text class="sheet-author">{{detail.authorName}} · {{detail.relation}}</text>
-      <text class="sheet-time">{{detail.dateLabel}} {{detail.timeLabel}} 讲述</text>
-    </view>
-  </view>
-
-  <view class="sheet-title serif" wx:if="{{detail.title}}">{{detail.title}}</view>
-  <view class="sheet-text serif">{{detail.text}}</view>
-
-  <view class="sheet-status">
-    <text class="tag tag-jade"><text class="tag-mark">故</text>{{detail.storyLabel}}</text>
-    <text class="tag tag-lake"><text class="tag-mark">阅</text>{{detail.accessLabel}}</text>
-    <text class="tag tag-muted"><text class="tag-mark">记</text>{{detail.typeLabel}}</text>
-  </view>
-
-  <view class="sheet-actions">
-    <button class="btn btn-ghost" bindtap="copyDetail">复制这段话</button>
-    <button class="btn btn-ghost sheet-revoke" wx:if="{{detail.isMine}}" bindtap="revokeSharing">
-      停止分享
-    </button>
-  </view>
-  <view class="sheet-hint" wx:if="{{detail.isMine}}">
-    停止分享不会删除原始记录，它仍留在你的故事或未整理片段里。
-  </view>
-  <button class="btn btn-quiet" bindtap="closeDetail">关闭</button>
-</view>

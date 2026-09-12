@@ -1,7 +1,7 @@
 import {
   contributionStoryTitle,
   MemoryContribution,
-  personalBookContributions,
+  memoryPool,
   normalizeMemoryText,
   MAX_MEMORY_LENGTH,
 } from "../../domain/biography";
@@ -12,6 +12,7 @@ import {
   replaceContributionRemoteFirst,
   roomDataModeLabel,
 } from "../../services/roomRepository";
+import { memoryPlacements } from "../../services/manuscript";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -21,6 +22,8 @@ interface NoteView {
   excerpt: string;
   dateLabel: string;
   archiveLabel: string;
+  /** Written into at least one book. */
+  recorded: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -45,6 +48,8 @@ Page({
     memoirCount: 0,
     activeTab: "note" as ArchiveTab,
     archiveItems: [] as NoteView[],
+    unrecordedItems: [] as NoteView[],
+    recordedItems: [] as NoteView[],
     hasItems: false,
     swipedItemId: "",
     deletingItemId: "",
@@ -83,19 +88,25 @@ Page({
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(state);
-    const personal = personalBookContributions(state.contributions, member.id);
+    // One pool for every book. A memory is either not written yet, or written into
+    // one or more books; the label says where.
+    const personal = memoryPool(state.contributions);
+    const placements = memoryPlacements(state);
     const toViews = (memoryType?: ArchiveTab) => personal
       .filter((memory) => !memoryType || (memory.memoryType ?? "note") === memoryType)
       .slice()
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .map((memory) => {
         const storyTitle = contributionStoryTitle(memory);
+        const places = placements.get(memory.id) ?? [];
         return {
           id: memory.id,
           title: noteTitle(memory),
           excerpt: memory.text,
           dateLabel: formatDate(memory.createdAt),
-          archiveLabel: storyTitle ? `已归入「${storyTitle}」` : "尚未归入故事",
+          archiveLabel: (storyTitle ? `故事「${storyTitle}」 · ` : "")
+            + (places.length ? "写进了 " + places.map((place) => `${place.bookName}的书${place.chapter}`).join("、") : "还没写进书"),
+          recorded: places.length > 0,
         };
       });
     const notes = toViews("note");
@@ -109,6 +120,8 @@ Page({
       hasNotes: notes.length > 0,
       memoirCount: memoirs.length,
       archiveItems,
+      unrecordedItems: archiveItems.filter((item) => !item.recorded),
+      recordedItems: archiveItems.filter((item) => item.recorded),
       hasItems: archiveItems.length > 0,
       storyOptions: [...new Set(personal.map(contributionStoryTitle).filter(Boolean))],
       storageLabel: roomDataModeLabel(),
@@ -135,8 +148,7 @@ Page({
     if (this.data.swipedItemId) { this.closeSwipe(); return; }
     try {
       const state = await loadRoomStateRemoteFirst();
-      const member = await loadCurrentMemberRemoteFirst(state);
-      const memory = personalBookContributions(state.contributions, member.id).find(item => item.id === event.currentTarget.dataset.id);
+      const memory = memoryPool(state.contributions).find(item => item.id === event.currentTarget.dataset.id);
       if (!memory) throw new Error("这段记忆已不存在，请刷新列表");
       this.showEditor(memory);
     } catch (error) { wx.showToast({ title: error instanceof Error ? error.message : "加载失败，请重试", icon: "none" }); }
@@ -169,8 +181,7 @@ Page({
       const text = normalizeMemoryText(this.data.editText);
       if (!text || text.length > MAX_MEMORY_LENGTH) throw new Error("请保留 1—500 字的记忆");
       const state = await loadRoomStateRemoteFirst();
-      const member = await loadCurrentMemberRemoteFirst(state);
-      const latest = personalBookContributions(state.contributions, member.id).find(item => item.id === this.data.editingId);
+      const latest = memoryPool(state.contributions).find(item => item.id === this.data.editingId);
       if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
       const original = this.editingOriginal;
       if (latest.text !== original.text || latest.title !== original.title || latest.storyTitle !== original.storyTitle) {

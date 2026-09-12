@@ -69,8 +69,8 @@
     <button class="me-row" bindtap="openProfiles" hover-class="none">
       <text class="me-row-icon">档</text>
       <view class="me-row-copy">
-        <text class="me-row-title">切换档案</text>
-        <text class="me-row-note">选择这次以谁的身份记录</text>
+        <text class="me-row-title">家人和朋友</text>
+        <text class="me-row-note">拉人进来，每个人的权限写在名字旁边</text>
       </view>
       <text class="me-row-arrow">›</text>
     </button>

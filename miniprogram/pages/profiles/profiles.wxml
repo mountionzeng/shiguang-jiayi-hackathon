@@ -6,90 +6,82 @@
     aria-hidden="true"
   ></image>
 
-  <view class="profiles-heading">
-    <view class="profiles-title serif">{{managingPeople ? '亲友与权限' : '切换档案'}}</view>
-    <view class="profiles-note">{{managingPeople ? '提到某位亲友，不等于向他开放内容。每段记忆单独设置。' : '这里切换的是本账号内记录档案，不是登录其他人的微信账号。'}}</view>
-    <view wx:if="{{loadError}}" class="profiles-note">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
-  </view>
-
-  <view class="profile-create">
-    <view class="profile-create-title serif">{{managingPeople ? '添加亲友' : '新建记录档案'}}</view>
-    <input
-      class="profile-input"
-      value="{{memberNameInput}}"
-      bindinput="onMemberNameInput"
-      maxlength="12"
-      placeholder="{{managingPeople ? '亲友的名字' : '记录档案名称'}}"
-      placeholder-class="profile-input-placeholder"
-    />
-    <input
-      class="profile-input"
-      wx:if="{{managingPeople}}"
-      value="{{relationInput}}"
-      bindinput="onRelationInput"
-      maxlength="12"
-      placeholder="关系，例如：妈妈、外公、自己"
-      placeholder-class="profile-input-placeholder"
-    />
-    <button class="profile-create-button" bindtap="addProfile" hover-class="none">
-      {{managingPeople ? '添加亲友，不切换档案' : '创建并切换到新档案'}}
-    </button>
-  </view>
-
-  <view class="profile-list">
-    <button
-      class="profile-card {{item.current ? 'profile-card-current' : ''}}"
-      wx:for="{{profiles}}"
-      wx:key="id"
-      data-id="{{item.id}}"
-      bindtap="chooseProfile"
-      hover-class="none"
-      aria-label="{{managingPeople ? '管理' : '切换到'}}{{item.name}}的档案"
-    >
-      <view class="profile-avatar serif">
-        <image
-          class="profile-avatar-backdrop"
-          src="/assets/illustrations/book-wash.png"
-          mode="aspectFill"
-          aria-hidden="true"
-        ></image>
-        <text class="profile-avatar-letter">{{item.avatarText}}</text>
-      </view>
-      <view class="profile-copy">
-        <view class="profile-name serif">{{item.name}}</view>
-        <view class="profile-relation">{{item.relation}} · {{item.roleLabel}}</view>
-      </view>
-      <view class="profile-state">{{managingPeople ? '管理' : (item.current ? '当前' : '切换')}}</view>
-    </button>
-  </view>
-
-  <view class="profile-empty" wx:if="{{!hasProfiles}}">
-    {{managingPeople ? '还没有亲友。添加后可关联记忆或设置档案阅读范围。' : '还没有记录档案。创建后开始记录你自己的故事。'}}
-  </view>
-
-  <view class="profile-create" wx:if="{{managingPeople && selectedPersonId}}">
-    <view class="profile-create-title">{{selectedPersonName}}的档案阅读范围</view>
-    <view class="profiles-note">以下设置只作用于本微信账号内的档案演示，不会发出邀请，也不授予真实微信账号访问权。</view>
-    <view class="permission-row" wx:for="{{permissions}}" wx:key="id">
-      <view>{{item.title}}</view>
-      <view class="profiles-note">{{item.related ? '记忆中提到了这位亲友' : '记忆未关联这位亲友'}}</view>
-      <button class="profile-create-button" data-id="{{item.id}}" bindtap="toggleReading" disabled="{{permissionSaving}}">{{item.canRead ? '已允许档案阅读 · 点击收回' : '仅自己 · 允许此档案阅读'}}</button>
+  <block wx:if="{{view === 'new-book'}}">
+    <view class="profiles-heading">
+      <view class="profiles-title serif">新建一本人生之书</view>
+      <view class="profiles-note">写的是谁？可以是你自己，也可以是家里的某个人。你是这本书的主笔。</view>
+      <view wx:if="{{loadError}}" class="profiles-note">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
     </view>
-    <view wx:if="{{!permissions.length}}" class="profiles-note">先记录一段自己的记忆，再选择阅读范围。</view>
-    <view class="profiles-note">真实亲友协作尚未接入。接入后，亲友只提交补充或修改建议，由你确认后写入正文；不会直接改动你的书稿。</view>
-  </view>
+    <view class="profile-create">
+      <input class="profile-input" value="{{nameInput}}" bindinput="onNameInput" maxlength="12" placeholder="这本书写的是谁" placeholder-class="profile-input-placeholder" />
+      <input class="profile-input" value="{{relationInput}}" bindinput="onRelationInput" maxlength="12" placeholder="ta 是你的谁？写你自己就留空" placeholder-class="profile-input-placeholder" />
+      <button class="profile-create-button" bindtap="createBook" disabled="{{adding}}" hover-class="none">创建并切换到这本书</button>
+    </view>
+  </block>
 
-  <view class="profile-danger-zone" wx:if="{{!managingPeople}}">
-    <button
-      class="profile-clear-button"
-      bindtap="clearCurrentFamilyData"
-      hover-class="none"
-    >
-      清空当前账号数据
-    </button>
-  </view>
+  <block wx:else>
+    <view class="profiles-heading">
+      <view class="profiles-title serif">家人和朋友</view>
+      <view class="profiles-note">你是主笔。拉人进来后，每个人能看什么、能改什么、要回答什么，都写在名字旁边。</view>
+      <view wx:if="{{loadError}}" class="profiles-note">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
+    </view>
 
-  <view class="profiles-footnote">
-    {{managingPeople ? '当前书稿仍仅由你编辑。真实微信邀请与建议审核尚未开放。' : '本账号内可以切换档案，不是不同微信用户之间的安全隔离。'}}
-  </view>
+    <view class="people-add">
+      <input class="profile-input" value="{{nameInput}}" bindinput="onNameInput" maxlength="12" placeholder="名字" placeholder-class="profile-input-placeholder" />
+      <input class="profile-input" value="{{relationInput}}" bindinput="onRelationInput" maxlength="12" placeholder="关系，如妈妈" placeholder-class="profile-input-placeholder" />
+      <button class="people-add-button" bindtap="addPerson" disabled="{{adding}}" hover-class="none">加进来</button>
+    </view>
+
+    <view class="profile-list">
+      <view class="person-row person-row-author">
+        <view class="profile-avatar serif"><text class="profile-avatar-letter">我</text></view>
+        <view class="profile-copy">
+          <view class="profile-name serif">你</view>
+          <view class="person-permission person-permission-author">主笔 · 可以写、改，决定谁能看什么</view>
+        </view>
+      </view>
+      <view class="person-row" wx:for="{{people}}" wx:key="id">
+        <view class="profile-avatar serif">
+          <image class="profile-avatar-backdrop" src="/assets/illustrations/book-wash.png" mode="aspectFill" aria-hidden="true"></image>
+          <text class="profile-avatar-letter">{{item.avatarText}}</text>
+        </view>
+        <view class="profile-copy">
+          <view class="profile-name serif">{{item.name}}<text class="person-relation">　{{item.relation}}</text></view>
+          <view class="person-permission">{{item.permission}}</view>
+        </view>
+        <button
+          wx:if="{{item.canDelete}}"
+          class="profile-delete"
+          data-id="{{item.id}}"
+          bindtap="removeMember"
+          disabled="{{!!busyId}}"
+          hover-class="none"
+          aria-label="删除{{item.name}}"
+        >删除</button>
+      </view>
+      <view class="profile-empty" wx:if="{{!people.length}}">还没有拉人进来。在上面写下名字就能加。</view>
+    </view>
+
+    <view class="profiles-footnote">邀请还在做。做好以后，可以在这里请 ta 看某一章、提修改建议、回答推荐问，权限会写在名字旁边。</view>
+
+    <view class="profile-create" wx:if="{{trash.length}}">
+      <button class="trash-toggle" bindtap="toggleTrash" hover-class="none">
+        <text>最近删除 · {{trash.length}}</text><text>{{trashOpen ? '收起' : '展开'}}</text>
+      </button>
+      <block wx:if="{{trashOpen}}">
+        <view class="profiles-note">恢复后原样回来；ta 在记忆里的「涉及的人」和「谁可以看」需要重新设置。</view>
+        <view class="sort-row" wx:for="{{trash}}" wx:key="id">
+          <view class="sort-copy">
+            <view class="profile-name serif">{{item.name}}</view>
+            <view class="profile-relation">{{item.relation}} · {{item.deletedLabel}}</view>
+          </view>
+          <button class="sort-button" data-id="{{item.id}}" bindtap="restoreMember" disabled="{{!!busyId}}" hover-class="none">恢复</button>
+        </view>
+      </block>
+    </view>
+
+    <view class="profile-danger-zone">
+      <button class="profile-clear-button" bindtap="clearCurrentFamilyData" hover-class="none">清空当前账号数据</button>
+    </view>
+  </block>
 </view>
