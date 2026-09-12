@@ -14,6 +14,8 @@
 
 新背景只用于「人生之书」列表及故事详情：中央阅读区接近纯纸白，极淡的玉石绿、湖水蓝、杏金水彩只留在边缘。底部导航的三张水彩图标按用户确认保持不变。
 
+补充完成“回忆”选择界面：原透明浮层改成完整宣纸内页面板，遮住背后的页面与底部导航；顶部加入宣纸记忆札和水彩圆插图，最近三条回忆改为编号书签行，“全部回忆”改成带叠页图标的底部入口。数据加载与点击行为没有改变。
+
 ## 文件与素材
 
 ### 小程序代码
@@ -23,6 +25,8 @@
 - `miniprogram/pages/book/book.wxml`：给书稿页现有文字按钮补图标，文字和事件不变。
 - `miniprogram/pages/book/book.wxss`：导入图标表，并补小屏工具栏约束。
 - `miniprogram/pages/book/action-icons.wxss`：18 个 SVG data URI 图标及浅色底、深色底两套颜色。
+- `miniprogram/components/story-switcher/story-switcher.wxml`：回忆面板插图、标题层级、编号回忆行和“全部回忆”按钮结构。
+- `miniprogram/components/story-switcher/story-switcher.wxss`：不透明宣纸面板、滚动区域、回忆卡片与按钮的小屏样式。
 
 ### 新增素材
 
@@ -34,8 +38,12 @@
 | `design-handoff/poster-rollup-2026-08-29/assets/app-optimized/story-paper.png` | 719×1556 | 1,355,101 B | 流水线保留的无损 PNG，不进入主包 |
 | `design-handoff/poster-rollup-2026-08-29/references/book-shelf-before-2026-09-12.jpg` | 1260×2720 | 853,652 B | 用户提供的改版前书架参考 |
 | `design-handoff/poster-rollup-2026-08-29/references/story-detail-before-2026-09-12.jpg` | 1260×2720 | 649,327 B | 用户提供的改版前详情参考 |
+| `miniprogram/assets/illustrations/memory-recall-sheet.png` | 720×519 | 196,373 B | 回忆选择面板顶部透明插图 |
+| `design-handoff/poster-rollup-2026-08-29/assets/masters/memory-recall-sheet-master.png` | 1477×1065 | 731,922 B | 回忆插图透明母版，不进入主包 |
+| `design-handoff/poster-rollup-2026-08-29/assets/app-optimized/memory-recall-sheet.png` | 720×519 | 196,373 B | 回忆插图交接副本 |
+| `design-handoff/poster-rollup-2026-08-29/references/memory-recall-picker-before-2026-09-12.png` | 1260×2720 | 1,512,952 B | 用户提供的改版前回忆浮层参考 |
 
-本次没有替换或删除既有位图。`story-tab-personal.png`、`story-tab-chat.png`、`story-tab-family.png` 保持原文件。新图由内置图像生成工具制作；提示词要求暖白宣纸、中央 80% 干净留白、边缘极淡的既有四色水彩，并排除鸟、树枝、书、文字、UI、Logo 和水印。
+本次没有替换或删除既有位图。`story-tab-personal.png`、`story-tab-chat.png`、`story-tab-family.png` 保持原文件。新图由内置图像生成工具制作；页面背景要求暖白宣纸、中央 80% 干净留白；回忆插图要求透明宣纸记忆札、浅水彩圆和连接细线。第一张回忆插图错误地烘焙了棋盘格，验证为 `hasAlpha: no` 后没有采用；定向去底版本验证为 `hasAlpha: yes`，再进入压缩流程。
 
 ## 主包体积
 
@@ -44,10 +52,10 @@
 | 版本 | 字节 | MiB |
 |---|---:|---:|
 | 改版前 `4fe7e4a` | 1,593,464 | 1.520 |
-| 改版后 | 1,692,925 | 1.614 |
-| 增量 | 99,461 | 0.095 |
+| 改版后 | 1,893,377 | 1.806 |
+| 增量 | 299,913 | 0.286 |
 
-新增主包位图只有 `story-paper.jpg`，为 77,529 B；其余增量来自 WXML/WXSS 与 SVG data URI。当前原始源文件仍低于 2 MiB。没有生成新的开发预览码，因为同一微信账号后生成的预览会覆盖问题四会话手上的预览；因此这里没有冒充微信开发者工具最终上传包的精确体积，合并前由协调会话在统一分支生成一次预览并记录最终数字。
+新增主包位图为 `story-paper.jpg`（77,529 B）和 `memory-recall-sheet.png`（196,373 B），合计 273,902 B，低于新增素材 300 KB 预算；其余增量来自 WXML/WXSS 与 SVG data URI。当前原始源文件仍低于 2 MiB。没有生成新的开发预览码，因为同一微信账号后生成的预览会覆盖问题四会话手上的预览；因此这里没有冒充微信开发者工具最终上传包的精确体积，合并前由协调会话在统一分支生成一次预览并记录最终数字。
 
 ## WXML / WXSS 用法
 
@@ -86,15 +94,28 @@
 
 要换色，在 `action-icons.wxss` 中修改对应 SVG 的 `stroke` 后重新进行 base64 编码。当前图标名为：`back`、`photo`、`save`、`more`、`undo`、`memories`、`up`、`down`、`delete`、`history`、`ai`、`new`、`version`、`record`、`insert`、`remove`、`restore`。
 
+回忆面板插图放在动态内容之前，并保持装饰层不接收点击：
+
+```xml
+<image wx:if="{{memoirOpen}}" class="capture-recall-art"
+  src="/assets/illustrations/memory-recall-sheet.png"
+  mode="aspectFit" aria-hidden="true"></image>
+```
+
+```css
+.capture-sheet-recall { background: var(--paper); overflow: hidden; }
+.capture-recall-art { position: absolute; opacity: .46; pointer-events: none; }
+.capture-recall { max-height: calc(100vh - 390rpx); }
+```
+
 ## 验证结果
 
-- `tsc --noEmit`：通过。
-- `npm run check`：类型检查通过；测试阶段因当前 Codex 沙箱禁止 `tsx` CLI 创建本地 IPC socket，以 `listen EPERM` 退出。该失败不是测试断言失败。
-- 等价测试命令 `node --import tsx --test tests/*.test.ts tests/*.test.js`：166 项通过，0 失败。
+- `npm run check`：通过；TypeScript 检查和 166 项测试全部通过，0 失败。
+- 等价测试命令 `node --import tsx --test tests/*.test.ts tests/*.test.js`：再次运行 166 项通过，0 失败。
 - 微信官方 `wcc`：11 个 WXML 文件编译通过。
 - 微信官方 `wcsc`：13 个 WXSS 文件编译通过。
 - `git diff --check`：通过。
-- 浏览器代理渲染：390 px 书架与故事详情通过一次视觉检查；320 px 故事详情未出现文字截断或按钮挤压。预览图保存在本次 Codex 任务的 `outputs/` 目录，不作为微信真机通过的证据。
+- 浏览器代理渲染：390 px 书架、故事详情和回忆选择层通过一次视觉检查；320 px 故事详情与回忆选择层未出现文字截断或按钮挤压。预览图保存在本次 Codex 任务的 `outputs/` 目录，不作为微信真机通过的证据。
 
 ## 尚未验证
 

@@ -168,8 +168,43 @@
   animation: capture-sheet-up 340ms cubic-bezier(0.2, 0.84, 0.28, 1.08) both;
 }
 
+.capture-sheet-recall {
+  bottom: 0;
+  max-height: calc(100vh - 150rpx);
+  padding: 76rpx 0 calc(34rpx + env(safe-area-inset-bottom));
+  overflow: hidden;
+  border-radius: 44rpx 44rpx 0 0;
+  background: var(--paper);
+  box-shadow: 0 -20rpx 54rpx rgba(42, 46, 43, 0.16);
+}
+
+.capture-recall-art {
+  position: absolute;
+  top: -34rpx;
+  right: -34rpx;
+  left: -34rpx;
+  z-index: 0;
+  width: calc(100% + 68rpx);
+  height: 310rpx;
+  opacity: 0.46;
+  pointer-events: none;
+}
+
 .capture-heading {
+  position: relative;
+  z-index: 1;
   padding-left: 62rpx;
+}
+
+.capture-sheet-recall .capture-heading {
+  padding: 0 54rpx 30rpx;
+}
+
+.capture-eyebrow {
+  color: var(--jade);
+  font-size: 21rpx;
+  line-height: 1.4;
+  letter-spacing: 5rpx;
 }
 
 .capture-title {
@@ -178,6 +213,22 @@
   font-weight: 600;
   letter-spacing: 3rpx;
   text-shadow: 0 3rpx 12rpx rgba(39, 47, 42, 0.28);
+}
+
+.capture-sheet-recall .capture-title {
+  margin-top: 7rpx;
+  color: var(--ink);
+  font-size: 47rpx;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 1rpx;
+  text-shadow: none;
+}
+
+.capture-subtitle {
+  margin-top: 6rpx;
+  color: var(--ink-soft);
+  font-size: 23rpx;
 }
 
 .capture-options {
@@ -286,33 +337,68 @@
 /* ---- 回忆录：挑一段接着聊 ---- */
 
 .capture-recall {
-  margin: 12rpx 50rpx 0;
+  position: relative;
+  z-index: 1;
+  max-height: calc(100vh - 390rpx - env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 0 38rpx;
   animation: capture-sheet-up 280ms cubic-bezier(0.2, 0.84, 0.28, 1.08) both;
 }
 
 .capture-memory {
-  display: block;
+  position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
-  margin: 0 0 12rpx;
-  padding: 20rpx 24rpx;
-  border: 2rpx solid rgba(129, 117, 93, 0.16);
-  border-radius: 10rpx 22rpx 16rpx 10rpx;
-  background: rgba(255, 253, 246, 0.97);
-  box-shadow: 0 10rpx 24rpx rgba(45, 52, 47, 0.14);
+  min-height: 132rpx;
+  margin: 0 0 16rpx;
+  padding: 20rpx 22rpx 20rpx 18rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(79, 127, 107, 0.18);
+  border-radius: 10rpx 25rpx 18rpx 9rpx;
+  background: rgba(255, 254, 251, 0.94);
+  box-shadow: 4rpx 8rpx 18rpx rgba(45, 52, 47, 0.07);
   color: var(--ink);
   text-align: left;
+}
+
+.capture-memory::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 7rpx;
+  background: var(--jade);
+  content: "";
+  opacity: 0.7;
 }
 
 .capture-memory::after,
 .capture-all::after { border: 0; }
 
 .capture-memory:active {
+  background: var(--jade-soft);
   transform: translateY(2rpx) scale(0.99);
+}
+
+.capture-memory-index {
+  flex: none;
+  width: 54rpx;
+  color: var(--jade);
+  font-family: Georgia, serif;
+  font-size: 22rpx;
+  letter-spacing: 1rpx;
+}
+
+.capture-memory-copy {
+  flex: 1;
+  min-width: 0;
 }
 
 .capture-memory-title {
   color: var(--ink);
-  font-size: 30rpx;
+  font-size: 29rpx;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -329,26 +415,100 @@
 .capture-memory-meta {
   margin-top: 8rpx;
   color: var(--jade);
+  font-size: 21rpx;
+}
+
+.capture-memory-next {
+  flex: none;
+  margin-left: 16rpx;
+  color: var(--jade);
   font-size: 22rpx;
+  white-space: nowrap;
+}
+
+.capture-memory-next text {
+  margin-left: 5rpx;
+  font-family: serif;
+  font-size: 36rpx;
+  line-height: 1;
+  vertical-align: -3rpx;
 }
 
 .capture-empty {
-  padding: 18rpx 0 6rpx;
-  color: #fffdf7;
+  padding: 32rpx 20rpx;
+  border-radius: 18rpx;
+  background: var(--paper-sunk);
+  color: var(--ink-soft);
   font-size: 24rpx;
-  text-shadow: 0 2rpx 10rpx rgba(39, 47, 42, 0.34);
+  text-align: center;
+  text-shadow: none;
 }
 
 .capture-all {
+  display: flex;
+  align-items: center;
   width: 100%;
-  margin: 4rpx 0 0;
-  padding: 18rpx 0;
-  border-radius: 44rpx;
-  background: rgba(255, 253, 246, 0.92);
-  color: #2f4e43;
-  font-size: 26rpx;
+  min-height: 112rpx;
+  margin: 8rpx 0 0;
+  padding: 18rpx 24rpx;
+  border: 2rpx solid var(--jade);
+  border-radius: 14rpx 28rpx 20rpx 12rpx;
+  background: var(--jade-soft);
+  color: var(--jade);
+  text-align: left;
 }
 
 .capture-all:active {
-  background: rgba(229, 239, 233, 0.95);
+  transform: translateY(2rpx) scale(0.99);
+}
+
+.capture-all-icon {
+  position: relative;
+  flex: none;
+  width: 48rpx;
+  height: 48rpx;
+  margin-right: 19rpx;
+}
+
+.capture-all-icon view {
+  position: absolute;
+  width: 31rpx;
+  height: 39rpx;
+  border: 3rpx solid var(--jade);
+  border-radius: 4rpx 9rpx 7rpx 4rpx;
+}
+
+.capture-all-icon view:first-child { top: 1rpx; left: 2rpx; opacity: 0.45; transform: rotate(-7deg); }
+.capture-all-icon view:last-child { right: 2rpx; bottom: 1rpx; background: var(--jade-soft); transform: rotate(4deg); }
+
+.capture-all-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.capture-all-copy text:first-child {
+  font-size: 29rpx;
+  font-weight: 600;
+}
+
+.capture-all-copy text:last-child {
+  margin-top: 2rpx;
+  color: var(--ink-soft);
+  font-size: 21rpx;
+}
+
+.capture-all-arrow {
+  margin-left: 12rpx;
+  font-family: serif;
+  font-size: 43rpx;
+  line-height: 1;
+}
+
+@media (max-width: 340px) {
+  .capture-sheet-recall { padding-top: 54rpx; }
+  .capture-sheet-recall .capture-heading { padding-right: 38rpx; padding-left: 38rpx; }
+  .capture-recall { padding-right: 26rpx; padding-left: 26rpx; }
+  .capture-memory-next { font-size: 20rpx; }
 }
