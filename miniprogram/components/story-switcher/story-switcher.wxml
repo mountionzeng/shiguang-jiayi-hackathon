@@ -87,14 +87,14 @@
   role="dialog"
   aria-label="选择记录方式"
 >
-  <image
-    wx:if="{{memoirOpen}}"
-    class="capture-recall-art"
-    src="/assets/illustrations/memory-recall-sheet.png"
-    mode="aspectFit"
-    aria-hidden="true"
-  ></image>
   <view class="capture-heading">
+    <image
+      wx:if="{{memoirOpen}}"
+      class="capture-recall-art"
+      src="/assets/illustrations/memory-recall-sheet.png"
+      mode="aspectFit"
+      aria-hidden="true"
+    ></image>
     <view wx:if="{{memoirOpen}}" class="capture-eyebrow">回忆</view>
     <view class="capture-title {{memoirOpen ? 'serif' : 'typewriter'}}">{{memoirOpen ? '想起了哪一段？' : '这次怎么记？'}}</view>
     <view wx:if="{{memoirOpen}}" class="capture-subtitle">挑一段，接着说下去</view>

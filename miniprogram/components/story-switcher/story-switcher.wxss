@@ -169,25 +169,25 @@
 }
 
 .capture-sheet-recall {
-  bottom: 0;
-  max-height: calc(100vh - 150rpx);
-  padding: 76rpx 0 calc(34rpx + env(safe-area-inset-bottom));
-  overflow: hidden;
-  border-radius: 44rpx 44rpx 0 0;
-  background: var(--paper);
-  box-shadow: 0 -20rpx 54rpx rgba(42, 46, 43, 0.16);
+  bottom: calc(238rpx + env(safe-area-inset-bottom));
+  max-height: calc(100vh - 280rpx - env(safe-area-inset-bottom));
+  padding: 0 24rpx 10rpx;
+  overflow: visible;
+  background: transparent;
 }
 
 .capture-recall-art {
   position: absolute;
-  top: -34rpx;
-  right: -34rpx;
-  left: -34rpx;
+  top: 0;
+  right: 64rpx;
+  left: 64rpx;
   z-index: 0;
-  width: calc(100% + 68rpx);
-  height: 310rpx;
-  opacity: 0.46;
+  width: calc(100% - 128rpx);
+  height: 178rpx;
+  opacity: 0.96;
   pointer-events: none;
+  filter: drop-shadow(0 9rpx 13rpx rgba(42, 46, 43, 0.1));
+  transform: rotate(-0.7deg);
 }
 
 .capture-heading {
@@ -197,14 +197,19 @@
 }
 
 .capture-sheet-recall .capture-heading {
-  padding: 0 54rpx 30rpx;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180rpx;
+  padding: 39rpx 78rpx 27rpx;
 }
 
 .capture-eyebrow {
+  position: relative;
+  z-index: 1;
   color: var(--jade);
-  font-size: 21rpx;
+  font-size: 19rpx;
   line-height: 1.4;
-  letter-spacing: 5rpx;
+  letter-spacing: 4rpx;
 }
 
 .capture-title {
@@ -216,19 +221,23 @@
 }
 
 .capture-sheet-recall .capture-title {
-  margin-top: 7rpx;
+  position: relative;
+  z-index: 1;
+  margin-top: 3rpx;
   color: var(--ink);
-  font-size: 47rpx;
+  font-size: 39rpx;
   font-weight: 500;
-  line-height: 1.35;
+  line-height: 1.3;
   letter-spacing: 1rpx;
   text-shadow: none;
 }
 
 .capture-subtitle {
-  margin-top: 6rpx;
+  position: relative;
+  z-index: 1;
+  margin-top: 3rpx;
   color: var(--ink-soft);
-  font-size: 23rpx;
+  font-size: 21rpx;
 }
 
 .capture-options {
@@ -339,9 +348,9 @@
 .capture-recall {
   position: relative;
   z-index: 1;
-  max-height: calc(100vh - 390rpx - env(safe-area-inset-bottom));
+  max-height: calc(100vh - 510rpx - env(safe-area-inset-bottom));
   margin: 0;
-  padding: 0 38rpx;
+  padding: 4rpx 14rpx 0;
   animation: capture-sheet-up 280ms cubic-bezier(0.2, 0.84, 0.28, 1.08) both;
 }
 
@@ -445,20 +454,35 @@
 }
 
 .capture-all {
+  position: relative;
   display: flex;
   align-items: center;
-  width: 100%;
-  min-height: 112rpx;
-  margin: 8rpx 0 0;
-  padding: 18rpx 24rpx;
-  border: 2rpx solid var(--jade);
-  border-radius: 14rpx 28rpx 20rpx 12rpx;
-  background: var(--jade-soft);
-  color: var(--jade);
+  width: calc(100% - 24rpx);
+  min-height: 108rpx;
+  margin: 20rpx auto 4rpx;
+  padding: 18rpx 24rpx 18rpx 27rpx;
+  overflow: hidden;
+  border: 0;
+  border-radius: 28rpx 12rpx 27rpx 15rpx;
+  background: var(--jade);
+  color: var(--paper-card);
   text-align: left;
+  box-shadow: 0 9rpx 20rpx rgba(42, 73, 60, 0.2);
+}
+
+.capture-all::before {
+  position: absolute;
+  top: -21rpx;
+  right: 58rpx;
+  width: 74rpx;
+  height: 65rpx;
+  border-radius: 50%;
+  background: rgba(255, 254, 251, 0.09);
+  content: "";
 }
 
 .capture-all:active {
+  background: #456f5e;
   transform: translateY(2rpx) scale(0.99);
 }
 
@@ -474,12 +498,12 @@
   position: absolute;
   width: 31rpx;
   height: 39rpx;
-  border: 3rpx solid var(--jade);
+  border: 3rpx solid var(--paper-card);
   border-radius: 4rpx 9rpx 7rpx 4rpx;
 }
 
-.capture-all-icon view:first-child { top: 1rpx; left: 2rpx; opacity: 0.45; transform: rotate(-7deg); }
-.capture-all-icon view:last-child { right: 2rpx; bottom: 1rpx; background: var(--jade-soft); transform: rotate(4deg); }
+.capture-all-icon view:first-child { top: 1rpx; left: 2rpx; opacity: 0.5; transform: rotate(-7deg); }
+.capture-all-icon view:last-child { right: 2rpx; bottom: 1rpx; background: var(--jade); transform: rotate(4deg); }
 
 .capture-all-copy {
   display: flex;
@@ -495,7 +519,7 @@
 
 .capture-all-copy text:last-child {
   margin-top: 2rpx;
-  color: var(--ink-soft);
+  color: rgba(255, 254, 251, 0.76);
   font-size: 21rpx;
 }
 
@@ -507,8 +531,8 @@
 }
 
 @media (max-width: 340px) {
-  .capture-sheet-recall { padding-top: 54rpx; }
-  .capture-sheet-recall .capture-heading { padding-right: 38rpx; padding-left: 38rpx; }
-  .capture-recall { padding-right: 26rpx; padding-left: 26rpx; }
+  .capture-sheet-recall { padding-right: 14rpx; padding-left: 14rpx; }
+  .capture-sheet-recall .capture-heading { padding-right: 66rpx; padding-left: 66rpx; }
+  .capture-recall { padding-right: 10rpx; padding-left: 10rpx; }
   .capture-memory-next { font-size: 20rpx; }
 }

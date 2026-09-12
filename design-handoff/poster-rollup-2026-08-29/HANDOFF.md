@@ -11,11 +11,12 @@
 - `assets/app-optimized/story-paper.jpg`：719 × 1556、JPEG 压缩版；小程序实际使用同内容的 `miniprogram/assets/illustrations/story-paper.jpg`。`assets/app-optimized/story-paper.png` 是流水线保留的无损压缩版，不进入小程序主包。
 - `references/book-shelf-before-2026-09-12.jpg`：改版前的人生之书列表，作为密集卡片、灰暗背景和底部遮挡问题的对照。
 - `references/story-detail-before-2026-09-12.jpg`：改版前的故事详情，作为三枚大胶囊按钮与大面积空白问题的对照。
-- `assets/masters/memory-recall-sheet-master.png`：1477 × 1065、真实透明的“回忆”选择面板插图母版。左右是宣纸记忆札与浅水彩圆，中间用细玉线连接并留出动态标题空间。
-- `assets/app-optimized/memory-recall-sheet.png`：720 × 519 的小程序交接副本；实际使用文件为 `miniprogram/assets/illustrations/memory-recall-sheet.png`。
+- `assets/masters/memory-recall-sheet-master.png`：2172 × 724、真实透明的异形宣纸便签母版。它只垫在“想起了哪一段？”动态标题下方，中央留白，边缘有克制的玉石绿与杏金水彩。
+- `assets/app-optimized/memory-recall-sheet.png`：720 × 240 的小程序交接副本；实际使用文件为 `miniprogram/assets/illustrations/memory-recall-sheet.png`。
 - `references/memory-recall-picker-before-2026-09-12.png`：改版前“想起了哪一段？”透明浮层，记录背景透出、卡片层级混乱和底部导航干扰的问题。
+- `references/memory-recall-sticky-note-request-2026-09-12.png`：用户复核截图。最终要求是保留轻量浮层，只在标题文字下方垫一张异形便签，并单独重做“全部回忆”按钮。
 
-验收时确认：背景不应降低正文与书封文字对比度；不应出现鸟、树枝、书、文字或 UI；纵向拉伸时不出现明显接缝。“回忆”选择面板应完整遮住后景与底部导航，三条最近回忆和“全部回忆”在 320 px 宽度仍可读。底部导航三枚既有图标在本次改版中保持不变。
+验收时确认：背景不应降低正文与书封文字对比度；不应出现鸟、树枝、书、文字或 UI；纵向拉伸时不出现明显接缝。“回忆”便签不能扩展成整页背景，只承托标题文字；三条最近回忆和独立的“全部回忆”按钮在 320 px 宽度仍可读。底部导航三枚既有图标在本次改版中保持不变。
 
 ## 1. 交接目标
 
