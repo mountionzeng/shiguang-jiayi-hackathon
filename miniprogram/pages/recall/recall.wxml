@@ -1,0 +1,35 @@
+<view class="archive-page recall-page page-enter">
+  <image class="archive-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true" />
+  <view class="archive-heading">
+    <view class="archive-eyebrow typewriter">回忆录</view>
+    <view class="archive-title serif">接着聊哪一段？</view>
+    <view class="archive-intro">挑一段你讲过的回忆，小忆接着这一段往下问。原来的记忆不会被改动。</view>
+  </view>
+
+  <view class="archive-empty" wx:if="{{loadError}}">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
+
+  <block wx:elif="{{hasItems}}">
+    <view class="note-list">
+      <button
+        class="story-memory"
+        wx:for="{{items}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        data-title="{{item.storyTitle}}"
+        bindtap="continueMemory"
+        hover-class="none"
+        aria-label="接着聊{{item.title}}"
+      >
+        <view class="note-title serif">{{item.title}}</view>
+        <view class="note-excerpt">{{item.excerpt}}</view>
+        <view class="note-archive">{{item.dateLabel}} · {{item.storyLabel}} · 接着聊</view>
+      </button>
+    </view>
+  </block>
+
+  <view class="archive-empty" wx:else>
+    <view class="archive-empty-title serif">还没有回忆</view>
+    <view class="archive-empty-note">先随手记一段，以后就能从这里接着聊。</view>
+    <button class="btn btn-jade" bindtap="startQuickNote">随手记一段</button>
+  </view>
+</view>

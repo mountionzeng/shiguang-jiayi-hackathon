@@ -5,6 +5,7 @@
     "pages/profiles/profiles",
     "pages/archive/archive",
     "pages/stories/stories",
+    "pages/recall/recall",
     "pages/interview/interview",
     "pages/room/room",
     "pages/review/review",

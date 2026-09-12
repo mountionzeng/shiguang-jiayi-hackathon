@@ -24,7 +24,7 @@ interface TestPageInstance extends TestPageDefinition {
 
 const definitions = new Map<string, TestPageDefinition>();
 
-async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me" | "stories"): Promise<TestPageDefinition> {
+async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me" | "stories" | "recall"): Promise<TestPageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
 
@@ -53,6 +53,8 @@ async function pageDefinition(name: "index" | "interview" | "room" | "book" | "p
       await import("../miniprogram/pages/archive/archive");
     } else if (name === "stories") {
       await import("../miniprogram/pages/stories/stories");
+    } else if (name === "recall") {
+      await import("../miniprogram/pages/recall/recall");
     } else {
       await import("../miniprogram/pages/me/me");
     }
@@ -779,6 +781,26 @@ test("chat always saves under the account owner, whichever book was open last", 
   assert.equal(saved?.authorMemberId, "owner");
   assert.equal(saved?.storyTitle, "外公接我放学");
   assert.equal(storage.currentMemberId(), "member-1", "chatting switches nothing else");
+});
+
+test("全部回忆 lists every memory and continues the chat from the one you pick", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("recall"));
+  await callPage(page, "refresh");
+
+  const items = page.data.items as Array<{ id: string; title: string; storyLabel: string; storyTitle: string }>;
+  assert.deepEqual(items.map((item) => item.id), ["demo-personal-rain"], "family-review posts are not memories to continue");
+  assert.equal(items[0].storyLabel, "外公接我放学");
+
+  callPage(page, "continueMemory", { currentTarget: { dataset: { id: items[0].id, title: items[0].storyTitle } } });
+  const url = String(last(storage.navigations));
+  assert.match(url, /^\/pages\/interview\/interview\?/);
+  const query = new URLSearchParams(url.split("?")[1]);
+  assert.equal(query.get("sourceId"), "demo-personal-rain");
+  assert.equal(query.get("storyTitle"), "外公接我放学");
+  assert.equal(query.get("memoryType"), "memoir");
+  assert.equal(storage.roomState().contributions.length, createInitialRoomState().contributions.length, "picking one changes nothing");
 });
 
 test("the memory archive lists quick notes from the shared memory pool", async (context) => {
