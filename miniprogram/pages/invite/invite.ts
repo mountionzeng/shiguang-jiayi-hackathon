@@ -122,61 +122,88 @@ Page({
 
   drawPoster(invitation: FamilyInvitation, codePath: string): Promise<string> {
     const context = wx.createCanvasContext("invitePoster", this);
-    context.setFillStyle("#f7f0e3");
+    context.setFillStyle("#f8f2e7");
     context.fillRect(0, 0, 750, 1040);
+    context.drawImage("/assets/illustrations/home-paper.jpg", 0, 0, 750, 1040);
 
-    context.setGlobalAlpha(0.3);
-    context.setFillStyle("#d7a36e");
-    context.beginPath();
-    context.arc(92, 118, 150, 0, Math.PI * 2);
-    context.fill();
-    context.setFillStyle("#789b86");
-    context.beginPath();
-    context.arc(670, 340, 190, 0, Math.PI * 2);
-    context.fill();
-    context.setFillStyle("#bd6b55");
-    context.beginPath();
-    context.arc(40, 900, 170, 0, Math.PI * 2);
-    context.fill();
+    // 原有拾光插画语言：淡彩晕染、树枝、小鸟与鸟窝。
+    context.setGlobalAlpha(0.18);
+    context.drawImage("/assets/illustrations/book-wash.png", 528, -70, 260, 346);
+    context.drawImage("/assets/illustrations/book-wash.png", -74, 744, 250, 334);
+    context.setGlobalAlpha(0.72);
+    context.drawImage("/assets/illustrations/memory-branch.png", 368, 16, 430, 143);
+    context.setGlobalAlpha(0.9);
+    context.drawImage("/assets/illustrations/memory-bird.png", 574, 47, 100, 67);
+    context.setGlobalAlpha(0.45);
+    context.drawImage("/assets/illustrations/memory-nest.png", 53, 255, 144, 96);
     context.setGlobalAlpha(1);
 
-    context.setFillStyle("rgba(255,252,245,.92)");
-    context.setStrokeStyle("rgba(92,68,48,.18)");
+    // 邀请是一张写好的笺纸，不再使用规整的 SaaS 卡片边框。
+    context.setFillStyle("rgba(255,252,244,.78)");
+    context.setStrokeStyle("rgba(111,79,58,.14)");
     context.setLineWidth(2);
-    context.fillRect(58, 72, 634, 880);
-    context.strokeRect(58, 72, 634, 880);
+    context.beginPath();
+    context.moveTo(54, 116);
+    context.quadraticCurveTo(72, 96, 102, 104);
+    context.lineTo(652, 96);
+    context.quadraticCurveTo(700, 106, 691, 144);
+    context.lineTo(704, 904);
+    context.quadraticCurveTo(686, 950, 644, 941);
+    context.lineTo(92, 953);
+    context.quadraticCurveTo(48, 943, 57, 897);
+    context.closePath();
+    context.fill();
+    context.stroke();
+
+    context.setTextAlign("left");
+    context.setFillStyle("#6f4f3a");
+    context.setFontSize(25);
+    context.fillText("拾 光 Ai  ·  记 忆 之 家", 88, 158);
+    context.setFillStyle("rgba(111,79,58,.24)");
+    context.fillRect(88, 178, 194, 2);
+
+    context.setFillStyle("#93765f");
+    context.setFontSize(21);
+    context.fillText("一 封 写 给 你 的 邀 请", 88, 226);
+    context.setFillStyle("#8c7563");
+    context.setFontSize(25);
+    context.fillText(`写给 ${invitation.inviteeName}`, 88, 274);
+    context.setFillStyle("#293a31");
+    context.setFontSize(46);
+    context.fillText("一起写故事吧", 88, 330);
+
+    context.setFillStyle("#75685a");
+    context.setFontSize(27);
+    context.fillText(`${invitation.inviterName} 想和你一起记住`, 203, 373);
+    context.setFillStyle("#3d5146");
+    context.setFontSize(32);
+    context.fillText(`「${invitation.roomName}」`, 203, 418);
+    context.setFillStyle("#817466");
+    context.setFontSize(23);
+    context.fillText(`你们的关系 · ${invitation.relation}`, 203, 456);
+
+    // 小程序码必须保持正向、高对比和足够留白，装饰只停在其外侧。
+    context.setFillStyle("rgba(255,255,252,.94)");
+    context.beginPath();
+    context.arc(375, 641, 158, 0, Math.PI * 2);
+    context.fill();
+    context.drawImage(codePath, 245, 511, 260, 260);
+    context.setGlobalAlpha(0.8);
+    context.drawImage("/assets/illustrations/memory-bird.png", 515, 676, 96, 64);
+    context.setGlobalAlpha(1);
 
     context.setTextAlign("center");
-    context.setFillStyle("#6f4f3a");
-    context.setFontSize(28);
-    context.fillText("拾 光 Ai · 记 忆 之 家", 375, 142);
-
-    context.setFillStyle("#d8b582");
-    context.beginPath();
-    context.arc(375, 254, 76, 0, Math.PI * 2);
-    context.fill();
-    context.setFillStyle("#fffaf0");
-    context.setFontSize(52);
-    context.fillText(firstCharacter(invitation.inviteeName), 375, 274);
-
-    context.setFillStyle("#2f392f");
-    context.setFontSize(42);
-    context.fillText(`${invitation.inviteeName}，一起写故事吧`, 375, 386);
-    context.setFillStyle("#75685a");
-    context.setFontSize(28);
-    context.fillText(`${invitation.inviterName} 邀请你加入`, 375, 444);
-    context.setFontSize(32);
-    context.fillText(`「${invitation.roomName}」`, 375, 496);
+    context.setFillStyle("#4b5d52");
     context.setFontSize(25);
-    context.fillText(`你们的关系：${invitation.relation}`, 375, 546);
-
-    context.drawImage(codePath, 255, 602, 240, 240);
-    context.setFillStyle("#75685a");
-    context.setFontSize(24);
-    context.fillText("长按识别小程序码 · 接受后即可一起记录", 375, 886);
-    context.setFillStyle("#9a8b78");
+    context.fillText("长按识别，一起把故事慢慢写下来", 375, 820);
+    context.setFillStyle("#8e8173");
     context.setFontSize(20);
-    context.fillText("邀请 7 天内有效，仅限一个微信账号接受", 375, 924);
+    context.fillText("邀请 7 天内有效 · 仅限一个微信账号接受", 375, 862);
+    context.setFillStyle("rgba(111,79,58,.2)");
+    context.fillRect(224, 894, 302, 2);
+    context.setFillStyle("#9a7c61");
+    context.setFontSize(19);
+    context.fillText("有人记得，故事就还在", 375, 925);
 
     return new Promise((resolve, reject) => {
       context.draw(false, () => {

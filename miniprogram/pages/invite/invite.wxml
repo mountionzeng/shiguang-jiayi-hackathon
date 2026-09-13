@@ -1,8 +1,15 @@
 <view class="invite-page page-enter">
   <image class="invite-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true"></image>
+  <image class="invite-wash invite-wash-top" src="/assets/illustrations/book-wash.png" mode="aspectFit" aria-hidden="true"></image>
+  <image class="invite-wash invite-wash-bottom" src="/assets/illustrations/book-wash.png" mode="aspectFit" aria-hidden="true"></image>
+
+  <view class="invite-branch-scene" aria-hidden="true">
+    <image class="invite-branch" src="/assets/illustrations/memory-branch.png" mode="aspectFit"></image>
+    <image class="invite-bird invite-bird-one" src="/assets/illustrations/memory-bird.png" mode="aspectFit"></image>
+    <image class="invite-bird invite-bird-two" src="/assets/illustrations/memory-bird.png" mode="aspectFit"></image>
+  </view>
 
   <view class="invite-top">
-    <button class="invite-back" bindtap="goBack" hover-class="none">‹</button>
     <view class="invite-brand typewriter">拾光Ai</view>
   </view>
 
@@ -14,9 +21,16 @@
     </view>
 
     <view class="invite-form" wx:if="{{!posterPath}}">
-      <view class="invite-avatar serif">
-        <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
-        <text>{{inviteeAvatarText}}</text>
+      <view class="invite-letter-head">
+        <view class="invite-avatar serif">
+          <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
+          <text>{{inviteeAvatarText}}</text>
+        </view>
+        <view class="invite-letter-copy">
+          <text class="invite-letter-label typewriter">给一位重要的人</text>
+          <text class="invite-letter-name serif">{{inviteeName || '留一个位置'}}</text>
+        </view>
+        <image class="invite-letter-nest" src="/assets/illustrations/memory-nest.png" mode="aspectFit" aria-hidden="true"></image>
       </view>
       <label class="invite-field">
         <text>我怎么称呼对方</text>
@@ -31,6 +45,7 @@
     </view>
 
     <view class="poster-ready" wx:else>
+      <view class="poster-ready-title serif">邀请笺已经写好</view>
       <image class="poster-preview" src="{{posterPath}}" mode="widthFix" bindtap="previewPoster"></image>
       <view class="poster-tip">图片已生成。发送给好友后，请他长按识别图中的小程序码。</view>
       <button class="invite-primary" bindtap="sharePoster">发送邀请图片</button>
@@ -41,6 +56,8 @@
   <block wx:else>
     <view class="invite-loading" wx:if="{{loading}}">正在打开这份邀请…</view>
     <view class="accept-card" wx:elif="{{invitation}}">
+      <image class="accept-branch" src="/assets/illustrations/memory-branch.png" mode="aspectFit" aria-hidden="true"></image>
+      <image class="accept-bird" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
       <view class="invite-avatar accept-avatar serif">
         <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
         <text>{{invitationAvatarText}}</text>
