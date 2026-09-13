@@ -409,8 +409,8 @@ test("the interview cloud function returns one safe follow-up", async () => {
     // 模型要看到自己问过什么，才不会把用户答过的事再问一遍。
     assert.match(prompt, /小忆：那时候谁和你在一起？/);
     assert.match(prompt, /用户：那时候天很冷。/);
-    assert.match(prompt, /已经回答过的事，不要再问/);
-    assert.match(prompt, /不要和上一个问题的方向（时间）相同/);
+    assert.match(requests[0].messages[0].content, /已经回答过的事，不要再问/);
+    assert.match(prompt, /可以继续同一方向/);
     assert.doesNotMatch(prompt, /必须是/);
     assert.doesNotMatch(JSON.stringify(requests), /test-chat-key/);
   } finally {
@@ -529,10 +529,10 @@ test("the interview cloud function separates note and memoir prompts", () => {
 
   assert.equal(chatInterviewTest.validateMemoryType("memoir"), "memoir");
   assert.equal(chatInterviewTest.validateMemoryType("unknown"), "note");
-  assert.match(note.rule, /1 到 2 轮追问/);
-  assert.match(note.rule, /不要引导成长意义/);
-  assert.match(memoir.rule, /正式传记/);
-  assert.match(memoir.rule, /后来影响/);
+  assert.match(note.rule, /保持轻量/);
+  assert.match(note.rule, /不自动引导成长意义/);
+  assert.match(memoir.rule, /先理清人生阶段/);
+  assert.match(memoir.rule, /不按轮数强行进入情感挖掘/);
 });
 
 test("the interview strategy reacts to emotion and off-track replies", () => {
@@ -725,4 +725,43 @@ test("the organize cloud function separates note cards and memoir chapters", () 
   assert.match(note.rule, /不要升华成正式传记/);
   assert.match(memoir.rule, /正式传记章节素材/);
   assert.match(memoir.system, /传记编辑/);
+});
+
+
+test("interview analysis survives JSON parsing beyond the old 80-character limit", () => {
+  const text = "按你刚才说的，母亲记得是搬家之前，哥哥记得是搬家之后。目前可以确定的是你们都提到了搬家，但这件事与搬家的先后关系仍有两种说法。你当时感到委屈是你的感受，不需要别人替你确认；至于哥哥当时为什么那样做，仅凭这段讲述还不能确定。";
+  const result = chatInterviewTest.parseInterviewPrompt(JSON.stringify({ dimension: "event", text }), "time");
+  assert.ok(text.length > 80);
+  assert.equal(result.text, text);
+  assert.equal(result.dimension, "event");
+  assert.doesNotMatch(result.text, /[{}]/);
+});
+
+test("interview context keeps the end of a full user answer and accepts a response without a question", () => {
+  const answer = "这是此前的经历。".repeat(45) + "最后说明：我不确定年份，先不聊了。";
+  const history = chatInterviewTest.validateConversation([{ role: "user", text: answer }]);
+  assert.equal(history[0].text, answer);
+  const text = "年份先保留为不确定，这段就先聊到这里。";
+  assert.equal(chatInterviewTest.parseInterviewPrompt(JSON.stringify({ dimension: "time", text }), "event").text, text);
+});
+
+test("interview prompt distinguishes a feeling pivot from an explicit goodbye", () => {
+  const messages = chatInterviewTest.buildOutputMessages({
+    answer: "没什么新鲜事，我想讲的是现在的心情。",
+    history: [
+      { role: "user", text: "以前搬家总紧张，现在终于住安稳了。" },
+      { role: "assistant", text: "后来又发生了什么？" },
+    ],
+    lastDimension: "event",
+    mode: "personal",
+    memoryType: "note",
+    memberName: "测试讲述者",
+    storyTitle: "",
+  });
+  assert.match(messages[0].content, /拒绝一个方向不等于结束整个对话/);
+  assert.match(messages[0].content, /是在把话题转向感受，不是告别/);
+  assert.match(messages[0].content, /若用户说‘今天先不聊了’，则简短收尾，不再问问题/);
+  assert.match(messages[0].content, /不要把普通回答解读成成长、勇敢或疗愈/);
+  assert.match(messages[1].content, /没什么新鲜事，我想讲的是现在的心情/);
+  assert.match(messages[1].content, /以前搬家总紧张/);
 });
