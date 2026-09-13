@@ -123,6 +123,7 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
 
   return {
     currentMemberId: () => stored.get(CURRENT_MEMBER_KEY),
+    currentStoryTitle: () => (stored.get("shiguang-current-story-v1") as { title?: string } | undefined)?.title,
     roomState: () => stored.get(ROOM_KEY) as FamilyRoomState,
     toasts,
     navigations,
@@ -795,6 +796,29 @@ test("opening 人生之书 with a story key lands on that story", async (context
   callPage(broken, "onLoad", { key: "%E0%A4%A" });
   await callPage(broken, "refresh");
   assert.equal(broken.data.selectedTitle, "", "a broken link just shows every story");
+});
+
+test("人生之书 exposes delete and restore controls while keeping original memories", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  (wx as any).setStorageSync("shiguang-current-story-v1", { title: "外公接我放学" });
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("stories"));
+  callPage(page, "onLoad", { key: encodeURIComponent("story:外公接我放学") });
+  await callPage(page, "refresh");
+
+  await callPage(page, "deleteSelectedStory");
+  assert.equal(page.data.selectedKey, "");
+  assert.ok(!(page.data.stories as Array<{ key: string }>).some((story) => story.key === "story:外公接我放学"));
+  assert.equal(storage.roomState().contributions.some((memory) => memory.id === "demo-personal-rain"), true);
+  assert.equal(storage.currentStoryTitle(), "", "home no longer points at the deleted story");
+  assert.equal((page.data.deletedStories as Array<{ key: string }>)[0]?.key, "story:外公接我放学");
+
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh");
+  assert.ok(!(home.data.recentStories as Array<{ title: string }>).some((story) => story.title === "外公接我放学"));
+
+  await callPage(page, "restoreStory", { currentTarget: { dataset: { key: "story:外公接我放学" } } });
+  assert.ok((page.data.stories as Array<{ key: string }>).some((story) => story.key === "story:外公接我放学"));
 });
 
 test("人生之书 lists every story; a book-only story opens its chapters for that profile", async (context) => {

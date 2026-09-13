@@ -12,8 +12,10 @@ import {
   appendCloudContribution,
   classifyCloudMember,
   deleteCloudContribution,
+  deleteCloudStory,
   deleteCloudMember,
   restoreCloudMember,
+  restoreCloudStory,
   loadCloudRoomState,
   replaceCloudContribution,
   resetCloudCurrentUserRoom,
@@ -26,8 +28,10 @@ import {
   appendContribution,
   classifyMember,
   deleteContribution,
+  deleteStory,
   deleteMember,
   restoreMember,
+  restoreStory,
   loadCurrentMember,
   saveCurrentMemberId,
   loadRoomState,
@@ -109,6 +113,16 @@ export async function deleteContributionRemoteFirst(
   }
 
   return deleteContribution(contributionId, loadRoomState());
+}
+
+export async function deleteStoryRemoteFirst(key: string, title: string): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await deleteCloudStory(key, title);
+  return deleteStory(key, title);
+}
+
+export async function restoreStoryRemoteFirst(key: string): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await restoreCloudStory(key);
+  return restoreStory(key);
 }
 
 export async function saveDraftIfSourcesUnchangedRemoteFirst(

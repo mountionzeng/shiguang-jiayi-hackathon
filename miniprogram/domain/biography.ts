@@ -131,8 +131,16 @@ export interface FamilyRoomState {
   /** Retained generated text, even when its sources have changed. */
   legacyPersonalDrafts?: Record<string, BiographyDraft>;
   manuscriptRevisions?: ManuscriptRevision[];
+  /** Hidden from 人生之书, while source memories and manuscript versions remain recoverable. */
+  deletedStories?: DeletedStory[];
   /** @deprecated 旧版以家庭主人公为中心的章节草稿，只保留用于缓存兼容。 */
   draft?: BiographyDraft;
+}
+
+export interface DeletedStory {
+  key: string;
+  title: string;
+  deletedAt: string;
 }
 
 export interface ManuscriptRevision {

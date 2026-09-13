@@ -6,6 +6,7 @@ import {
   contributionScope,
   FamilyMember,
   FamilyRoomState,
+  DeletedStory,
   isActiveMember,
   isRecordingProfile,
   MemoryContribution,
@@ -24,6 +25,7 @@ import {
   planDelete,
   planRestore,
 } from "./memberLifecycle";
+import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 import { loadCurrentMember } from "./roomStorage";
 
 export const CLOUD_COLLECTIONS = {
@@ -40,6 +42,7 @@ export const CLOUD_COLLECTIONS = {
 interface CloudFamily {
   roomName?: string;
   protagonistName?: string;
+  deletedStories?: DeletedStory[];
 }
 
 interface CloudFamilyMember extends FamilyMember {
@@ -173,6 +176,7 @@ async function saveFamilyShell(familyId: string, state: FamilyRoomState): Promis
     data: {
       roomName: state.roomName,
       protagonistName: state.protagonistName,
+      deletedStories: state.deletedStories ?? [],
       updatedAt: serverDate(),
     },
   });
@@ -386,6 +390,7 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
       ...createEmptyRoomState(),
       roomName: family.roomName ?? "我的拾光房间",
       protagonistName: family.protagonistName ?? "",
+      deletedStories: family.deletedStories ?? [],
     };
   }
 
@@ -434,6 +439,7 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
     legacyPersonalDrafts: { ...personalDrafts },
     manuscriptRevisions: draftRecords.filter(record => record.draftType === "manuscript-revision" && record.revision)
       .map(record => record.revision as ManuscriptRevision),
+    deletedStories: family.deletedStories ?? [],
   };
 
   // Legacy drafts remain stored, but must be regenerated before being presented
@@ -678,6 +684,28 @@ export async function deleteCloudMember(memberId: string, now = new Date()): Pro
 
 export async function restoreCloudMember(memberId: string): Promise<FamilyRoomState> {
   return changeCloudMember((state) => planRestore(state, memberId));
+}
+
+async function saveDeletedStories(familyId: string, deletedStories: DeletedStory[]): Promise<void> {
+  await collection(CLOUD_COLLECTIONS.families).doc(familyId).update({
+    data: { deletedStories, updatedAt: serverDate() },
+  });
+}
+
+export async function deleteCloudStory(key: string, title: string): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const next = planDeleteStory(state, key, title);
+  await saveDeletedStories(familyId, next.deletedStories ?? []);
+  return next;
+}
+
+export async function restoreCloudStory(key: string): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const next = planRestoreStory(state, key);
+  await saveDeletedStories(familyId, next.deletedStories ?? []);
+  return next;
 }
 
 export async function resetCloudCurrentUserRoom(): Promise<FamilyRoomState> {

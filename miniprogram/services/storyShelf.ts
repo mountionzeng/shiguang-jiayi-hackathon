@@ -76,7 +76,9 @@ export function storyShelf(state: FamilyRoomState): ShelfStory[] {
     });
   });
 
+  const deletedKeys = new Set((state.deletedStories ?? []).map((story) => story.key));
   return Array.from(byTitle.values()).concat(manuscripts)
+    .filter((story) => !deletedKeys.has(story.key))
     .sort((left, right) => right.latestAt.localeCompare(left.latestAt));
 }
 

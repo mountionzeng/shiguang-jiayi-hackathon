@@ -18,6 +18,7 @@ import {
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
+import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
 import { loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
 
 interface RecentStoryView {
@@ -54,27 +55,7 @@ const RECOMMENDATION_DIMENSIONS: InterviewDimension[] = [
   "feeling",
 ];
 
-/** 首页正在聊的故事名，只存在本机：它只决定首页先显示哪个故事。 */
-const CURRENT_STORY_KEY = "shiguang-current-story-v1";
 const MAX_STORY_TITLE_LENGTH = 20;
-
-/** "" 表示「先随便聊聊」；undefined 表示还没选过，按最近聊的那段来。 */
-function loadCurrentStoryTitle(): string | undefined {
-  try {
-    const stored = wx.getStorageSync<{ title?: unknown }>(CURRENT_STORY_KEY);
-    return stored && typeof stored.title === "string" ? stored.title : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function saveCurrentStoryTitle(title: string): void {
-  try {
-    wx.setStorageSync(CURRENT_STORY_KEY, { title });
-  } catch {
-    // 存不下只影响下次首页先显示哪个故事。
-  }
-}
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -252,9 +233,16 @@ Page({
     const owner = accountOwner(currentState.members) ?? (current.id ? current : undefined);
     const pool = memoryPool(currentState.contributions);
     const shelf = storyShelf(currentState);
+    const deletedStoryTitles = new Set((currentState.deletedStories ?? []).map((story) => story.title));
+    const visiblePool = pool.filter((memory) => {
+      const title = contributionStoryTitle(memory);
+      return !title || !deletedStoryTitles.has(title);
+    });
     const stored = loadCurrentStoryTitle();
-    const latest = latestContribution(pool);
-    const currentStoryTitle = stored ?? (latest ? contributionStoryTitle(latest) : "");
+    const latest = latestContribution(visiblePool);
+    const currentStoryTitle = stored === "" || (stored && !deletedStoryTitles.has(stored))
+      ? stored
+      : (latest ? contributionStoryTitle(latest) : "");
     // 「先随便聊聊」只接着还没放进故事的片段问，免得标题写着随便聊，问的却是别的故事。
     const inCurrentStory = pool.filter(
       (memory) => contributionStoryTitle(memory) === currentStoryTitle,
@@ -263,7 +251,7 @@ Page({
       latestContribution(inCurrentStory),
       this.recommendationOffset,
     );
-    const recentStories = recentStoriesFor(pool);
+    const recentStories = recentStoriesFor(visiblePool);
     const currentStory = shelf.find((story) => story.title === currentStoryTitle);
     // 这个故事里出现的人：只算名单上还在的人。
     const activeMemberIds = new Set(
