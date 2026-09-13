@@ -639,3 +639,58 @@ test("清空记忆之家时先删云存储里的配图文件，再删配图记�
   assert.ok(CORE_COLLECTIONS.includes("image_jobs"));
   assert.ok(CORE_COLLECTIONS.includes("story_images"));
 });
+
+// ---------- Node 16 运行环境 ----------
+
+test("云函数在没有内置 fetch 的 Node 16 上也能发请求：POST、JSON、二进制、状态码与超时中止", async context => {
+  const http = require("node:http");
+  const { nodeFetch } = require("../cloudfunctions/storyImages/httpFetch.js");
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.on("data", chunk => { body += chunk; });
+    request.on("end", () => {
+      if (request.url === "/json") {
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ method: request.method, auth: request.headers.authorization, body: JSON.parse(body) }));
+      } else if (request.url === "/bytes") {
+        response.writeHead(200, { "Content-Type": "image/png" });
+        response.end(Buffer.from([1, 2, 3, 4]));
+      } else if (request.url === "/refused") {
+        response.writeHead(422);
+        response.end("{}");
+      } else {
+        setTimeout(() => { response.writeHead(200); response.end("late"); }, 2_000);
+      }
+    });
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => { server.closeAllConnections?.(); server.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const json = await nodeFetch(`${base}/json`, {
+    method: "POST", headers: { Authorization: "Bearer k", "Content-Type": "application/json" }, body: JSON.stringify({ prompt: "画面" }),
+  });
+  assert.equal(json.ok, true);
+  assert.deepEqual(await json.json(), { method: "POST", auth: "Bearer k", body: { prompt: "画面" } });
+
+  const bytes = await nodeFetch(`${base}/bytes`);
+  assert.equal(bytes.headers.get("content-type"), "image/png");
+  assert.deepEqual([...new Uint8Array(await bytes.arrayBuffer())], [1, 2, 3, 4]);
+
+  const refused = await nodeFetch(`${base}/refused`, { method: "POST", body: "{}" });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.status, 422);
+
+  const controller = new AbortController();
+  const slow = nodeFetch(`${base}/slow`, { signal: controller.signal });
+  setTimeout(() => controller.abort(), 20);
+  await assert.rejects(slow, error => error.name === "AbortError");
+});
+
+test("出图、读章节、质检、下载都不直接依赖全局 fetch", () => {
+  for (const name of ["tokenhub", "scene", "quality"]) {
+    const source = fs.readFileSync(path.join(__dirname, `../cloudfunctions/storyImages/${name}.js`), "utf8");
+    assert.doesNotMatch(source, /fetchImpl = fetch\b/, `${name}.js 仍然默认使用全局 fetch`);
+    assert.match(source, /require\("\.\/httpFetch"\)/);
+  }
+});

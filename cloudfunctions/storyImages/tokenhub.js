@@ -1,3 +1,5 @@
+const { defaultFetch } = require("./httpFetch");
+
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com";
 const IMAGE_PATH = "/v1/wand/hunyuan-image/v3-generation";
 const IMAGE_MODEL = "hy-image-v3";
@@ -17,7 +19,7 @@ function httpError(status, message) {
  * Errors carry httpStatus when TokenHub answered, so callers can tell a refusal
  * from a dropped connection that may already have cost money.
  */
-function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = fetch, timeoutMs = 40_000 }) {
+function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = defaultFetch, timeoutMs = 40_000 }) {
   const root = String(baseUrl || TOKENHUB_BASE_URL).replace(/\/$/, "");
   return {
     configured: Boolean(apiKey),
@@ -61,7 +63,7 @@ function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = fetch, timeout
 }
 
 /** Result links are temporary; a refused download means the picture is gone. */
-async function downloadResult(url, { fetchImpl = fetch, timeoutMs = 15_000, maxBytes = 10 * 1024 * 1024 } = {}) {
+async function downloadResult(url, { fetchImpl = defaultFetch, timeoutMs = 15_000, maxBytes = 10 * 1024 * 1024 } = {}) {
   if (!/^https:\/\//.test(String(url))) {
     const error = new Error("RESULT_URL_INVALID");
     error.expired = true;
