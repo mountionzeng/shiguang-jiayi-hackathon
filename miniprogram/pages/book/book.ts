@@ -610,7 +610,11 @@ Page({
   /** Pictures are drawn from the saved chapter; selectTool has already refused to leave unsaved edits. */
   openImages() {
     const chapterId = this.data.view === "chapter" ? this.activeChapterId : "";
-    wx.navigateTo({ url: "/pages/story-images/story-images" + (chapterId ? "?chapterId=" + encodeURIComponent(chapterId) : "") });
+    const query = [
+      this.data.memberId ? "memberId=" + encodeURIComponent(this.data.memberId) : "",
+      chapterId ? "chapterId=" + encodeURIComponent(chapterId) : "",
+    ].filter(Boolean).join("&");
+    wx.navigateTo({ url: "/pages/story-images/story-images" + (query ? "?" + query : "") });
   },
   goHome() {
     if (!this.canLeaveEditor()) return;

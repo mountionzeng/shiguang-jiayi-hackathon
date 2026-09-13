@@ -77,8 +77,11 @@ export function storyShelf(state: FamilyRoomState): ShelfStory[] {
   });
 
   const deletedKeys = new Set((state.deletedStories ?? []).map((story) => story.key));
+  const deletedTitles = new Set((state.deletedStories ?? []).map((story) => story.title));
   return Array.from(byTitle.values()).concat(manuscripts)
-    .filter((story) => !deletedKeys.has(story.key))
+    // A manuscript joins a same-named memory story dynamically, which changes its
+    // derived key. The title keeps the deletion stable across that transition.
+    .filter((story) => !deletedKeys.has(story.key) && !deletedTitles.has(story.title))
     .sort((left, right) => right.latestAt.localeCompare(left.latestAt));
 }
 

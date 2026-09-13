@@ -330,13 +330,13 @@ test("书稿页「更多」里能打开这一章的配图，未保存的修改�
 
   const page = instantiate(await pageDefinition("book"));
   page.activeChapterId = "chapter-a";
-  page.setData({ view: "chapter", editing: false });
+  page.setData({ view: "chapter", editing: false, memberId: "owner" });
   call(page, "selectTool", { currentTarget: { dataset: { action: "images" } } });
-  assert.deepEqual(env.navigations, ["/pages/story-images/story-images?chapterId=chapter-a"]);
+  assert.deepEqual(env.navigations, ["/pages/story-images/story-images?memberId=owner&chapterId=chapter-a"]);
 
   page.setData({ view: "contents" });
   call(page, "selectTool", { currentTarget: { dataset: { action: "images" } } });
-  assert.equal(env.navigations[1], "/pages/story-images/story-images");
+  assert.equal(env.navigations[1], "/pages/story-images/story-images?memberId=owner");
 
   page.setData({ view: "chapter", editing: true });
   call(page, "selectTool", { currentTarget: { dataset: { action: "images" } } });
@@ -347,6 +347,34 @@ test("书稿页「更多」里能打开这一章的配图，未保存的修改�
   assert.match(markup, /data-action="images"[^>]*>.*这本书的图/);
   const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as { pages: string[] };
   assert.ok(app.pages.includes("pages/story-images/story-images"));
+});
+
+test("从另一人物的书进入配图时继续使用那个人物的书", async context => {
+  const state = stateWithBook();
+  const base: BiographyDraft = {
+    title: "林秋的人生之书", paragraphs: [], sourceCount: 0,
+    generatedAt: "2026-09-13T00:00:00.000Z", generationMode: "local-demo",
+  };
+  state.manuscriptRevisions!.push(makeRevision("member-1", draftWithChapters(base, [{
+    id: "chapter-other", title: "另一章", memoryIds: [], content: [{ text: "另一人的正文。\n" }],
+  }]), "", "draft", "编辑存档"));
+  const env = installWx({}, state);
+  env.setApp(false);
+  const timers = captureTimers();
+  const listedMembers: string[] = [];
+  const restoreApi = withApi({
+    listStoryImages: async memberId => { listedMembers.push(memberId); return listWith({ images: [], pending: [] }); },
+  });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", { memberId: encodeURIComponent("member-1"), chapterId: encodeURIComponent("chapter-other") });
+  await call(page, "refresh");
+
+  assert.deepEqual(listedMembers, ["member-1"]);
+  assert.equal(page.data.memberId, "member-1");
+  assert.equal(page.data.bookTitle, "林秋的人生之书");
+  assert.equal((page.data.groups as Array<{ id: string }>)[0]?.id, "chapter-other");
 });
 
 test("在管理页把一张底图设为本章底图，再点「不用了」取消，都存成书稿新版本", async context => {

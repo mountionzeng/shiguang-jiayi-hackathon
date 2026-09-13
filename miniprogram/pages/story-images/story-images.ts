@@ -1,5 +1,6 @@
 import { saveChapterBackdrop } from "../../services/chapterBackdrop";
 import { chapterLabel, chaptersOf } from "../../services/chapters";
+import { isRecordingProfile } from "../../domain/biography";
 import { currentManuscript } from "../../services/manuscript";
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst } from "../../services/roomRepository";
 import {
@@ -46,9 +47,13 @@ Page({
   activeJobIds: [] as string[],
   pollStartedAt: 0,
   pollTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  requestedMemberId: "",
 
-  onLoad(options: { chapterId?: string } = {}) {
+  onLoad(options: { memberId?: string; chapterId?: string } = {}) {
     this.unloaded = false;
+    if (options.memberId) {
+      try { this.requestedMemberId = decodeURIComponent(options.memberId); } catch { this.requestedMemberId = ""; }
+    }
     if (!options.chapterId) return;
     try {
       this.setData({ focusChapterId: decodeURIComponent(options.chapterId) });
@@ -70,7 +75,10 @@ Page({
   },
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
-    const member = await loadCurrentMemberRemoteFirst(state);
+    const member = this.requestedMemberId
+      ? state.members.find(item => item.id === this.requestedMemberId && isRecordingProfile(item))
+      : await loadCurrentMemberRemoteFirst(state);
+    if (!member) throw new Error("这本书已不可用，请重新选择");
     const current = currentManuscript(state, member.id);
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
     const list = await storyImageApi.listStoryImages(member.id);
