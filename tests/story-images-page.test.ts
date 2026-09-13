@@ -1,0 +1,330 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+import { BiographyDraft, FamilyRoomState } from "../miniprogram/domain/biography";
+import { clearAiConsent } from "../miniprogram/services/aiConsent";
+import { makeRevision } from "../miniprogram/services/manuscript";
+import {
+  formatBytes, isActiveJob, moderationLabel, newImageRequestId, nextPollDelayMs, StoryImageList, StoryImageServiceError, storyImageApi,
+} from "../miniprogram/services/storyImageService";
+import { createDemoRoomStateForTests } from "./fixtures";
+
+const ROOM_KEY = "shiguang-family-room-v5";
+const CURRENT_MEMBER_KEY = "shiguang-current-member-v1";
+
+type PageDefinition = { data?: Record<string, unknown>; [key: string]: unknown };
+type PageInstance = PageDefinition & { data: Record<string, unknown>; setData(update: Record<string, unknown>): void };
+
+const definitions = new Map<string, PageDefinition>();
+
+async function pageDefinition(name: "story-images" | "book"): Promise<PageDefinition> {
+  const cached = definitions.get(name);
+  if (cached) return cached;
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "Page");
+  let captured: PageDefinition | undefined;
+  Object.defineProperty(globalThis, "Page", { configurable: true, writable: true, value: (definition: PageDefinition) => { captured = definition; } });
+  try {
+    if (name === "book") await import("../miniprogram/pages/book/book");
+    else await import("../miniprogram/pages/story-images/story-images");
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "Page", previous);
+    else delete (globalThis as Record<string, unknown>).Page;
+  }
+  assert.ok(captured);
+  definitions.set(name, captured);
+  return captured;
+}
+
+function instantiate(definition: PageDefinition): PageInstance {
+  const instance = { ...definition, data: structuredClone(definition.data ?? {}) } as PageInstance;
+  instance.setData = update => Object.assign(instance.data, update);
+  return instance;
+}
+
+function call(page: PageInstance, method: string, ...args: unknown[]): unknown {
+  const fn = page[method];
+  assert.equal(typeof fn, "function", `missing Page method ${method}`);
+  return (fn as (...values: unknown[]) => unknown).apply(page, args);
+}
+
+function installWx(overrides: Record<string, unknown> = {}, state?: FamilyRoomState) {
+  const stored = new Map<string, unknown>(state ? [[ROOM_KEY, state], [CURRENT_MEMBER_KEY, "owner"]] : []);
+  const navigations: string[] = [];
+  const previews: unknown[] = [];
+  const previousWx = Object.getOwnPropertyDescriptor(globalThis, "wx");
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "wx", {
+    configurable: true,
+    writable: true,
+    value: {
+      getStorageSync: (key: string) => stored.get(key),
+      setStorageSync: (key: string, value: unknown) => stored.set(key, value),
+      showToast: () => undefined,
+      showModal: ({ success }: { success?: (result: { confirm: boolean; cancel: boolean }) => void }) => success?.({ confirm: true, cancel: false }),
+      navigateTo: ({ url }: { url: string }) => navigations.push(url),
+      previewImage: (options: unknown) => previews.push(options),
+      enableAlertBeforeUnload: () => undefined,
+      disableAlertBeforeUnload: () => undefined,
+      ...overrides,
+    },
+  });
+  return {
+    navigations,
+    previews,
+    setApp(cloudReady: boolean) {
+      Object.defineProperty(globalThis, "getApp", { configurable: true, writable: true, value: () => ({ globalData: { cloudReady } }) });
+    },
+    restore() {
+      if (previousWx) Object.defineProperty(globalThis, "wx", previousWx);
+      else delete (globalThis as Record<string, unknown>).wx;
+      if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp);
+      else delete (globalThis as Record<string, unknown>).getApp;
+    },
+  };
+}
+
+function withApi(overrides: Partial<typeof storyImageApi>) {
+  const original = { ...storyImageApi };
+  Object.assign(storyImageApi, overrides);
+  return () => Object.assign(storyImageApi, original);
+}
+
+function stateWithBook(): FamilyRoomState {
+  const state = createDemoRoomStateForTests();
+  const draft: BiographyDraft = {
+    title: "外婆的书", paragraphs: [], sourceCount: 0, generatedAt: "2026-09-13T00:00:00.000Z", generationMode: "local-demo",
+    chapters: [
+      { id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: "院子里晒着被子。" }] },
+      { id: "chapter-b", title: "", memoryIds: [], content: [{ text: "第二章的文字。" }] },
+    ],
+  };
+  state.manuscriptRevisions = [makeRevision("owner", draft, "", "draft", "编辑存档")];
+  return state;
+}
+
+function listWith(overrides: Partial<StoryImageList> = {}): StoryImageList {
+  return {
+    images: [{ imageId: "family_o-owner_img_req-a", chapterId: "chapter-a", purpose: "illustration", url: "https://tmp.example/a.png", bytes: 2048, moderation: "pending", aiGenerated: true, createdAtMs: 2 }],
+    pending: [{ jobId: "family_o-owner_req-b", status: "running", message: "正在画，大约 20–60 秒。可以先离开，回来接着看", chapterId: "chapter-b", purpose: "illustration", imageId: "", createdAtMs: 3 }],
+    usage: { count: 1, bytes: 2048 },
+    limits: { daily: 10, book: 30 },
+    ...overrides,
+  };
+}
+
+function captureTimers() {
+  const previousSet = globalThis.setTimeout;
+  const previousClear = globalThis.clearTimeout;
+  const scheduled: Array<{ delay: number; callback: () => void }> = [];
+  globalThis.setTimeout = ((callback: () => void, delay: number) => { scheduled.push({ delay, callback }); return scheduled.length as unknown as ReturnType<typeof setTimeout>; }) as unknown as typeof setTimeout;
+  globalThis.clearTimeout = (() => undefined) as unknown as typeof clearTimeout;
+  return { scheduled, restore() { globalThis.setTimeout = previousSet; globalThis.clearTimeout = previousClear; } };
+}
+
+// ---------- 服务层 ----------
+
+test("配图请求编号符合云函数的格式，轮询先快后慢，占用空间按 KB/MB 显示", () => {
+  assert.match(newImageRequestId(Date.parse("2026-09-13T02:00:00.000Z"), () => 0.123456789), /^req-[0-9a-z-]{8,60}$/);
+  assert.notEqual(newImageRequestId(), newImageRequestId());
+  assert.equal(nextPollDelayMs(0), 3000);
+  assert.equal(nextPollDelayMs(89_999), 3000);
+  assert.equal(nextPollDelayMs(90_000), 10_000);
+  assert.equal(formatBytes(0), "0 KB");
+  assert.equal(formatBytes(2048), "2 KB");
+  assert.equal(formatBytes(3.5 * 1024 * 1024), "3.5 MB");
+  assert.equal(isActiveJob({ status: "storing" }), true);
+  assert.equal(isActiveJob({ status: "unknown" }), false);
+  assert.equal(moderationLabel("pending"), "平台审核中");
+  assert.equal(moderationLabel("pass"), "");
+});
+
+test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节和请求编号调用云函数", async context => {
+  clearAiConsent();
+  const calls: Array<{ name: string; data: Record<string, unknown> }> = [];
+  const env = installWx({
+    cloud: {
+      callFunction: async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
+        calls.push({ name, data });
+        if (name === "getOpenId") return { result: { openid: "o-owner" } };
+        return { result: { job: { jobId: "family_o-owner_req-x", status: "running", message: "正在画", chapterId: "chapter-a", purpose: "illustration", imageId: "", createdAtMs: 1 } } };
+      },
+    },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); });
+
+  const job = await storyImageApi.submitIllustration({ memberId: "owner", chapterId: "chapter-a", requestId: "req-test-00000001" });
+  assert.equal(job.status, "running");
+  const submit = calls.find(item => item.name === "storyImages");
+  assert.deepEqual(submit?.data, {
+    memberId: "owner", chapterId: "chapter-a", requestId: "req-test-00000001", purpose: "illustration",
+    action: "submit", familyId: "family_o-owner",
+  });
+});
+
+test("不同意在线 AI 时不调用配图云函数", async context => {
+  clearAiConsent();
+  const calls: string[] = [];
+  const env = installWx({
+    showModal: ({ success }: { success?: (result: { confirm: boolean; cancel: boolean }) => void }) => success?.({ confirm: false, cancel: true }),
+    cloud: { callFunction: async ({ name }: { name: string }) => { calls.push(name); return { result: {} }; } },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); });
+
+  await assert.rejects(storyImageApi.submitIllustration({ memberId: "owner", chapterId: "chapter-a" }),
+    (error: unknown) => error instanceof StoryImageServiceError && error.code === "CONSENT_DECLINED");
+  assert.deepEqual(calls, []);
+});
+
+test("云函数的明确错误、没部署和超时分别给出能看懂的提示", async context => {
+  const env = installWx();
+  env.setApp(true);
+  context.after(env.restore);
+  const wxMock = wx as unknown as { cloud: { callFunction: (options: { name: string }) => Promise<unknown> } };
+
+  wxMock.cloud = { callFunction: async ({ name }) => name === "getOpenId" ? { result: { openid: "o-owner" } } : { result: { error: { code: "DAILY_LIMIT", message: "今天的 10 张画完了，明天再来" } } } };
+  await assert.rejects(storyImageApi.listStoryImages("owner"),
+    (error: unknown) => error instanceof StoryImageServiceError && error.code === "DAILY_LIMIT" && error.message === "今天的 10 张画完了，明天再来");
+
+  wxMock.cloud = { callFunction: async ({ name }) => { if (name === "getOpenId") return { result: { openid: "o-owner" } }; throw { errMsg: "cloud.callFunction:fail -501000 FUNCTION_NOT_FOUND" }; } };
+  await assert.rejects(storyImageApi.removeStoryImage("x"), (error: unknown) => error instanceof StoryImageServiceError && error.code === "FUNCTION_MISSING");
+
+  wxMock.cloud = { callFunction: async ({ name }) => { if (name === "getOpenId") return { result: { openid: "o-owner" } }; throw { errMsg: "cloud.callFunction:fail -504003 Invoking task timed out after 3 seconds" }; } };
+  await assert.rejects(storyImageApi.checkImageJob("x"), (error: unknown) => error instanceof StoryImageServiceError && error.code === "TIMEOUT");
+});
+
+test("云开发没连上时直接说明，不去调用云函数", async context => {
+  const env = installWx({ cloud: { callFunction: async () => { throw new Error("should not be called"); } } });
+  env.setApp(false);
+  context.after(env.restore);
+  await assert.rejects(storyImageApi.listStoryImages("owner"), (error: unknown) => error instanceof StoryImageServiceError && error.code === "CLOUD_NOT_READY");
+});
+
+// ---------- 页面 ----------
+
+test("这本书的图：按章节分组，显示占用空间和正在画的图，并在前台轮询", async context => {
+  const env = installWx({}, stateWithBook());
+  env.setApp(false);
+  const timers = captureTimers();
+  const restoreApi = withApi({ listStoryImages: async () => listWith() });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", { chapterId: encodeURIComponent("chapter-a") });
+  await call(page, "refresh");
+
+  const groups = page.data.groups as Array<{ id: string; title: string; images: Array<{ sizeLabel: string; moderationLabel: string }>; pending: Array<{ active: boolean }> }>;
+  assert.equal(page.data.focusChapterId, "chapter-a");
+  assert.equal(page.data.bookTitle, "外婆的书");
+  assert.deepEqual(groups.map(group => group.id), ["chapter-a", "chapter-b"]);
+  assert.equal(groups[0].title, "老院子");
+  assert.equal(groups[0].images[0].sizeLabel, "2 KB");
+  assert.equal(groups[0].images[0].moderationLabel, "平台审核中");
+  assert.equal(groups[1].pending[0].active, true);
+  assert.equal(page.data.usageLabel, "共 1 张 · 2 KB");
+  assert.equal(timers.scheduled.length, 1);
+  assert.equal(timers.scheduled[0].delay, 3000);
+});
+
+test("轮询到图画好后刷新列表，没有正在画的图就不再轮询；离开页面立即停", async context => {
+  const env = installWx({}, stateWithBook());
+  env.setApp(false);
+  const timers = captureTimers();
+  let listCalls = 0;
+  const checked: string[] = [];
+  const restoreApi = withApi({
+    listStoryImages: async () => { listCalls++; return listCalls === 1 ? listWith() : listWith({ pending: [] }); },
+    checkImageJob: async jobId => { checked.push(jobId); return { job: { ...listWith().pending[0], status: "stored" } }; },
+  });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", {});
+  await call(page, "refresh");
+  assert.equal(timers.scheduled.length, 1);
+  await call(page, "pollOnce");
+  assert.deepEqual(checked, ["family_o-owner_req-b"]);
+  assert.equal(listCalls, 2);
+  assert.equal(timers.scheduled.length, 1, "图画好后不再安排下一次轮询");
+
+  const hidden = instantiate(await pageDefinition("story-images"));
+  call(hidden, "onLoad", {});
+  call(hidden, "onHide");
+  await call(hidden, "pollOnce");
+  assert.deepEqual(checked, ["family_o-owner_req-b"], "隐藏的页面不再查询");
+});
+
+test("给一章配图会提交这一章并刷新；删除要确认，删完刷新", async context => {
+  const env = installWx({}, stateWithBook());
+  env.setApp(false);
+  const timers = captureTimers();
+  const submitted: unknown[] = [];
+  const removed: string[] = [];
+  const restoreApi = withApi({
+    listStoryImages: async () => listWith({ pending: [] }),
+    submitIllustration: async input => { submitted.push(input); return { ...listWith().pending[0], chapterId: input.chapterId }; },
+    removeStoryImage: async imageId => { removed.push(imageId); },
+  });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", {});
+  await call(page, "refresh");
+  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a" } } });
+  assert.deepEqual(submitted, [{ memberId: "owner", chapterId: "chapter-a" }]);
+  assert.equal(page.data.notice, "正在画，大约 20–60 秒。可以先离开，回来接着看");
+  assert.equal(page.data.submittingChapterId, "");
+
+  await call(page, "remove", { currentTarget: { dataset: { id: "family_o-owner_img_req-a" } } });
+  assert.deepEqual(removed, ["family_o-owner_img_req-a"]);
+  assert.equal(page.data.notice, "已删除");
+
+  call(page, "previewImage", { currentTarget: { dataset: { url: "https://tmp.example/a.png" } } });
+  assert.deepEqual(env.previews, [{ current: "https://tmp.example/a.png", urls: ["https://tmp.example/a.png"] }]);
+});
+
+test("提交配图失败时把原因显示出来，按钮恢复可点", async context => {
+  const env = installWx({}, stateWithBook());
+  env.setApp(false);
+  const timers = captureTimers();
+  const restoreApi = withApi({
+    listStoryImages: async () => listWith({ pending: [] }),
+    submitIllustration: async () => { throw new StoryImageServiceError("BOOK_LIMIT", "这个故事已经有 30 张图了，删掉的不会返还名额"); },
+  });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", {});
+  await call(page, "refresh");
+  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a" } } });
+  assert.equal(page.data.notice, "这个故事已经有 30 张图了，删掉的不会返还名额");
+  assert.equal(page.data.submittingChapterId, "");
+});
+
+test("书稿页「更多」里能打开这一章的配图，未保存的修改不能带过去", async context => {
+  const env = installWx({ hideKeyboard: () => undefined }, stateWithBook());
+  env.setApp(false);
+  context.after(env.restore);
+
+  const page = instantiate(await pageDefinition("book"));
+  page.activeChapterId = "chapter-a";
+  page.setData({ view: "chapter", editing: false });
+  call(page, "selectTool", { currentTarget: { dataset: { action: "images" } } });
+  assert.deepEqual(env.navigations, ["/pages/story-images/story-images?chapterId=chapter-a"]);
+
+  page.setData({ view: "contents" });
+  call(page, "selectTool", { currentTarget: { dataset: { action: "images" } } });
+  assert.equal(env.navigations[1], "/pages/story-images/story-images");
+
+  page.setData({ view: "chapter", editing: true });
+  call(page, "selectTool", { currentTarget: { dataset: { action: "images" } } });
+  assert.equal(env.navigations.length, 2, "有未保存的修改时不跳转");
+
+  const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
+  assert.match(markup, /data-action="images"[^>]*>.*给本章配图/);
+  assert.match(markup, /data-action="images"[^>]*>.*这本书的图/);
+  const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as { pages: string[] };
+  assert.ok(app.pages.includes("pages/story-images/story-images"));
+});

@@ -1,0 +1,50 @@
+<view class="images-page">
+  <view class="images-header">
+    <view class="images-eyebrow">{{bookTitle || '人生之书'}} · 配图</view>
+    <view class="images-title serif">这本书的图</view>
+    <view class="images-usage" wx:if="{{usageLabel}}">{{usageLabel}}</view>
+    <view class="images-note" wx:if="{{limitsLabel}}">{{limitsLabel}}</view>
+    <view class="images-note">配图只根据这一章已经保存的文字来画，不会用到你的照片。每张图右下角都带「图片由AI生成」。</view>
+  </view>
+  <view class="notice" wx:if="{{notice || loadError}}">{{notice || loadError}}</view>
+  <button wx:if="{{loadError}}" class="tool-button" bindtap="retryLoad">重新加载</button>
+  <view wx:if="{{loading && !loadError}}" class="images-note images-loading">正在读取…</view>
+  <view wx:elif="{{!loadError && !groups.length}}" class="images-note images-loading">这本书还没有章节。先在书稿里新开一章、写几句并保存，再来配图。</view>
+
+  <view class="chapter-group {{group.id === focusChapterId ? 'is-focus' : ''}}" wx:for="{{groups}}" wx:key="id" wx:for-item="group">
+    <view class="group-head">
+      <text class="group-name serif">{{group.label}}{{group.title ? '　' + group.title : ''}}</text>
+      <button class="tool-button" data-id="{{group.id}}" bindtap="generate" disabled="{{submittingChapterId ? true : false}}">
+        <view class="action-icon icon-ai" aria-hidden="true"></view>{{submittingChapterId === group.id ? '提交中' : '配一张图'}}
+      </button>
+    </view>
+    <view class="job-row {{job.active ? 'is-active' : ''}}" wx:for="{{group.pending}}" wx:key="jobId" wx:for-item="job">{{job.message}}</view>
+    <view class="image-grid" wx:if="{{group.images.length}}">
+      <view class="image-card" wx:for="{{group.images}}" wx:key="imageId" wx:for-item="image">
+        <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />
+        <view class="image-meta">
+          <text class="ai-badge">AI 生成</text><text>{{image.sizeLabel}}</text><text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
+        </view>
+        <button class="tool-button image-delete" data-id="{{image.imageId}}" bindtap="remove" disabled="{{removingId === image.imageId}}">
+          <view class="action-icon icon-delete" aria-hidden="true"></view>删除
+        </button>
+      </view>
+    </view>
+    <view wx:if="{{!group.images.length && !group.pending.length}}" class="images-note">这一章还没有配图。</view>
+  </view>
+
+  <view wx:if="{{otherImages.length}}" class="chapter-group">
+    <view class="group-head"><text class="group-name serif">已删掉的章节里的图</text></view>
+    <view class="image-grid">
+      <view class="image-card" wx:for="{{otherImages}}" wx:key="imageId" wx:for-item="image">
+        <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />
+        <view class="image-meta">
+          <text class="ai-badge">AI 生成</text><text>{{image.sizeLabel}}</text><text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
+        </view>
+        <button class="tool-button image-delete" data-id="{{image.imageId}}" bindtap="remove" disabled="{{removingId === image.imageId}}">
+          <view class="action-icon icon-delete" aria-hidden="true"></view>删除
+        </button>
+      </view>
+    </view>
+  </view>
+</view>

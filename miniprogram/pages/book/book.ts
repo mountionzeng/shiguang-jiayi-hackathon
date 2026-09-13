@@ -297,6 +297,7 @@ Page({
       case "up": void this.moveActiveChapter(-1); break;
       case "down": void this.moveActiveChapter(1); break;
       case "delete-chapter": void this.deleteActiveChapter(); break;
+      case "images": this.openImages(); break;
     }
   },
   onKeyboardHeight(event: { detail: { height: number } }) {
@@ -533,6 +534,11 @@ Page({
     }
   },
   startInterview() { wx.navigateTo({ url: "/pages/interview/interview" }); },
+  /** Pictures are drawn from the saved chapter; selectTool has already refused to leave unsaved edits. */
+  openImages() {
+    const chapterId = this.data.view === "chapter" ? this.activeChapterId : "";
+    wx.navigateTo({ url: "/pages/story-images/story-images" + (chapterId ? "?chapterId=" + encodeURIComponent(chapterId) : "") });
+  },
   goHome() {
     if (!this.canLeaveEditor()) return;
     wx.reLaunch({ url: "/pages/index/index" });

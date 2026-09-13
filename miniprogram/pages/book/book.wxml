@@ -14,6 +14,7 @@
       <button class="tool-button" data-action="delete-chapter" bindtap="selectTool"><view class="action-icon icon-delete" aria-hidden="true"></view>删除本章</button>
       <button class="tool-button" data-action="history" bindtap="selectTool"><view class="action-icon icon-history" aria-hidden="true"></view>历史版本</button>
       <button class="tool-button" data-action="generate" bindtap="selectTool"><view class="action-icon icon-ai" aria-hidden="true"></view>AI 整理</button>
+      <button class="tool-button" data-action="images" bindtap="selectTool"><view class="action-icon icon-photo" aria-hidden="true"></view>给本章配图</button>
     </block>
     <block wx:else>
       <button class="tool-button" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新开一章</button>
@@ -21,6 +22,7 @@
       <button wx:if="{{draft}}" class="tool-button" data-action="version" bindtap="selectTool"><view class="action-icon icon-version" aria-hidden="true"></view>命名存档</button>
       <button class="tool-button" data-action="generate" bindtap="selectTool"><view class="action-icon icon-ai" aria-hidden="true"></view>AI 整理</button>
       <button class="tool-button" data-action="sources" bindtap="selectTool"><view class="action-icon icon-memories" aria-hidden="true"></view>原始记忆</button>
+      <button wx:if="{{draft}}" class="tool-button" data-action="images" bindtap="selectTool"><view class="action-icon icon-photo" aria-hidden="true"></view>这本书的图</button>
       <button wx:if="{{!draft}}" class="tool-button" data-action="record" bindtap="selectTool"><view class="action-icon icon-record" aria-hidden="true"></view>记录经历</button>
     </block>
   </view>

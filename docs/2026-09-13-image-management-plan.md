@@ -45,6 +45,11 @@
 
 ## 四、云函数拆分
 
+> **阶段 1 实现调整（2026-09-13）**：下表的四个职责合并成**一个云函数 `storyImages`**，按 `action` 分派（`submit` / `status` / `list` / `remove`），同一个函数挂定时触发器（每 5 分钟）并接收 `wxa_media_check` 推送。原因：微信每个云函数目录单独部署，拆成四个要把签名、出图、数据库代码复制四份；仓库里 `familyInvite` 也是一个函数多个动作。
+> 超时**不能写在 `config.json` 里**（官方文档只列了 `triggers` 与 `permissions`），部署后在云开发控制台把 `storyImages` 超时设为 30 秒。
+> 混元接口域名按产品名取 `aiart.tencentcloudapi.com`（公共参数页未逐字写出），版本 `2022-12-29`，地域默认 `ap-guangzhou`（官方支持广州、上海）；首次真实调用时核实。
+> 签名自己实现 TC3-HMAC-SHA256，不引入腾讯云 SDK；测试用腾讯云官方示例核对规范请求与待签字符串。
+
 仓库现有云函数都没有 `config.json`（默认超时 3 秒），新函数全部带 `config.json`。
 
 | 云函数 | 做什么 | 超时 |
@@ -183,7 +188,13 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 - 操作：**设为封面**、**设为本章底图**、**换一张**（重新生成同用途；旧图保留，可切回，直到删除）、**删除**（二次确认；正在当封面或底图的先解除）、**查看依据**（提示词与来源章节）；
 - 页头显示占用："这个故事的图共 N 张 · X MB"。
 
-封面展示与 Codex 书架改版对齐：书壳 `ancient-book-shell.png`、册号、书名签条都保留；封面图放在现在 `.book-cover-tint` 那块区域里、淡彩层之下，书名签条压在图上。样式细节合并前与协调会话确认。
+**与 Codex 的分工**（协调会话 2026-09-13 划定）：
+
+- 归问题五：生成、管理图片的一切——「这个故事的图」管理页、书稿每章「配图」入口、设为封面的逻辑与数据字段、底图、云函数、测试；
+- 归 Codex：书壳、书名签条、书架的样式文件与图标素材；
+- 交界处：封面图显示在 Codex 的书壳里时，只在数据上提供封面图，在书壳模板里用最小改动接上（加一个 `image` 节点或一个类名），不重写它的样式。**改到 Codex 的文件前，先在问题五的对话里告诉用户改了哪几行。**
+
+封面展示：书壳 `ancient-book-shell.png`、册号、书名签条都保留；封面图放在现在 `.book-cover-tint` 那块区域里、淡彩层之下，书名签条压在图上。
 
 章节底图：放在章节正文末尾，全宽，上缘渐隐到纸色；"图片由AI生成"标识保留可见。
 
@@ -214,11 +225,12 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 1. 腾讯云开通混元生图，领免费额度；建 CAM 子账号只授权混元生图，把密钥填进云函数环境变量；
 2. 控制台"合同管理"下载含算法备案信息的订单合同；**不要在腾讯云授权"输入内容用于改进模型"**（条款 4.2 默认不用，除非另行授权）；
 3. 小程序后台申请【深度合成-AI绘画】类目；
-4. 云开发控制台配置消息推送：`wxa_media_check` → `imageModeration`；
+4. 云开发控制台配置消息推送：`wxa_media_check` → `storyImages`；
 5. 腾讯云开通混元生文，创建 API Key 给看图用（同样建议子账号）；
 6. 处理长相特征前定稿《个人信息保护影响评估》，保存至少三年；
 7. 更新《用户隐私保护指引》，重新提审；
-8. 部署云函数、上传体验版——需用户在对话里明确同意。
+8. 部署 `storyImages` 后，在云开发控制台把超时设为 30 秒，并配置环境变量 `HUNYUAN_SECRET_ID`、`HUNYUAN_SECRET_KEY`（可选 `HUNYUAN_REGION`，默认 `ap-guangzhou`）；读章节画面沿用现有的 `AI_API_KEY`、`AI_MODEL`、`AI_BASE_URL`；
+9. 部署云函数、上传体验版——需用户在对话里明确同意。
 
 ## 十二、分阶段
 
@@ -256,3 +268,30 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 - [个人信息保护政策法规问答（2026年1月）](https://www.cac.gov.cn/2026-01/09/c_1769688003183197.htm)
 - [腾讯混元 OpenAI 兼容接口](https://cloud.tencent.cn/document/product/1729/111007)、[混元生文计费概述（视觉模型价格）](https://cloud.tencent.com/document/product/1729/97731)、[ChatCompletions 图片输入](https://cloud.tencent.com/document/product/1729/105701)
 - [腾讯云大模型服务条款](https://cloud.tencent.com/document/product/301/97822)、[混元生图常见问题（混元大模型）](https://cloud.tencent.cn/document/product/1729/106036)
+
+## 十四、阶段 1 完成情况（2026-09-13）
+
+**做了什么**
+
+- 云函数 `storyImages`：`core.js`（权限、校验、从最新保存的版本取章节正文、限额、提示词模板、结局文案）、`hunyuan.js`（TC3-HMAC-SHA256 签名、提交 / 查询混元 3.0、下载结果图）、`scene.js`（用现有文字模型从章节正文提炼画面，只用正文里有的东西）、`flow.js`（提交、查进度、转存云存储、送内容安全检测、列表、删除、定时兜底、审核回调）、`index.js`（接 `wx-server-sdk`）、`config.json`（`security.mediaCheckAsync` 权限、每 5 分钟的定时触发器）；
+- 新集合 `image_jobs`、`story_images`：加进 `ensureCloudCollections`；`resetCurrentUserRoom`、`deleteDemoFamilyOnce` 清空家庭时**先删云存储里的图片文件再删记录**；`inspectFamilyData` 统计这两个集合；
+- 小程序：`services/storyImageService.ts`（调用云函数、请求编号、轮询节奏、错误提示）；新页面「这本书的图」（按章节分组、配一张图、正在画 / 没画成 / 不确定等状态、占用空间、看大图、确认后删除；页面在前台才轮询）；书稿页「更多」加「给本章配图」「这本书的图」两个入口（未保存的修改不能带过去）；
+- 测试：`tests/story-images.test.js`、`tests/story-images-page.test.ts`，`npm run check` 223 项全部通过。
+
+**验证过的**
+
+- 签名的规范请求、待签字符串与腾讯云官方示例逐字一致（最终签名需要真实密钥，官方示例的密钥是打码的）；
+- 提交先留记录再调混元、重复点击不重复扣费、限额、五种结局、并发查询只转存一次、定时兜底、删除与违规处理、清空家庭的清理顺序，均有测试。
+
+**没验证的（需要部署后真实跑一次）**
+
+- 没有部署云函数，没有真实调用过混元；接口域名 `aiart.tencentcloudapi.com` 与签名是否被接受要首次调用确认；
+- `security.mediaCheckAsync` 在 `wx-server-sdk` 里返回的 trace 字段名、审核推送到达时的 `SOURCE` 值、定时触发时 `event.Type` 是否为 `Timer`，都按文档写，待真实环境核对；
+- 没有在微信开发者工具里编译 WXML / WXSS，没有生成预览，没有真机检查。
+
+**已知限制**
+
+- 限额按家庭统计：阶段 1 只有家庭主人能生成，等同"每人"；
+- 「设为封面」挪到 1b，等问题四的 Story 记录；
+- 插图挂在章节下、显示在管理页，没有插进正文流（旧客户端兼容）；
+- 在线 AI 授权弹窗沿用"发送故事文字、不发送照片"，对阶段 1 仍然属实；但《用户隐私保护指引》需要补上腾讯云（混元）作为出图服务的第三方，措辞由用户定。
