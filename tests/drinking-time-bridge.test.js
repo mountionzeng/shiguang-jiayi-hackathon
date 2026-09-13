@@ -1,0 +1,3 @@
+const assert=require("node:assert/strict"),test=require("node:test"),core=require("../cloudfunctions/drinkingTimeBridge/core.js");
+test("跨端身份不暴露OPENID且签名绑定路径和正文",()=>{const subject=core.subjectFor("wx-app","openid-secret");assert.match(subject,/^shiguang:[0-9a-f]{64}$/);assert.ok(!subject.includes("openid-secret"));const a=core.signature("x".repeat(32),"/stories","1","nonce",{b:2,a:1});const b=core.signature("x".repeat(32),"/stories","1","nonce",{a:1,b:2});assert.equal(a,b);assert.notEqual(a,core.signature("x".repeat(32),"/stories/read","1","nonce",{a:1,b:2}));});
+test("服务地址保留 Drinking Time 的桥接前缀",()=>{assert.equal(core.bridgeUrl("https://test.drinkingtime.top/api/shiguang","/stories/read").toString(),"https://test.drinkingtime.top/api/shiguang/stories/read");});

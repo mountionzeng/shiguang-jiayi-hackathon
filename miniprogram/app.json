@@ -2,6 +2,7 @@
   "pages": [
     "pages/index/index",
     "pages/me/me",
+    "pages/account-link/account-link",
     "pages/profiles/profiles",
     "pages/archive/archive",
     "pages/stories/stories",

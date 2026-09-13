@@ -124,6 +124,7 @@ Page({
   openFamilyHome() {
     wx.navigateTo({ url: "/pages/room/room" });
   },
+  openAccountLink() { wx.navigateTo({ url: "/pages/account-link/account-link" }); },
 
   openJoinedRoom(event: { currentTarget: { dataset: { id: string } } }) {
     wx.navigateTo({

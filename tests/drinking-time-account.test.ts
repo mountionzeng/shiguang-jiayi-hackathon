@@ -1,0 +1,6 @@
+import assert from "node:assert/strict"; import test from "node:test";
+import { importedContributions, splitImportedStory } from "../miniprogram/services/drinkingTimeAccount";
+const member = { id: "owner", name: "岱", relation: "自己", avatarText: "岱", role: "owner" as const };
+test("整篇导入按500字拆分且默认仅自己可见", () => { const chunks = splitImportedStory("甲".repeat(620)); assert.deepEqual(chunks.map(x => x.length), [500,120]); const rows = importedContributions({ id: 7, title: "旧故事", body: "甲".repeat(620), bodyAvailable: true }, member); assert.equal(rows.length,2); assert.ok(rows.every(row => row.scope === "personal" && row.visibility === "private" && row.reviewStatus === "confirmed")); assert.equal(rows[0].storyTitle,"旧故事"); });
+test("相同来源生成稳定ID供重试覆盖而不是重复新增", () => { const document = { id: 7, title: "旧故事", body: "一段正文", bodyAvailable: true }; assert.deepEqual(importedContributions(document, member).map(x=>x.id), importedContributions(document, member).map(x=>x.id)); });
+test("片段与整篇超过明确上限时拒绝而不是静默截断", () => { const document = { id: 7, title: "旧故事", body: "甲".repeat(50_001), bodyAvailable: true }; assert.throws(() => importedContributions(document, member), /超过 5 万字/); assert.throws(() => importedContributions({ ...document, body: "正文" }, member, "乙".repeat(501)), /片段最多 500 字/); });
