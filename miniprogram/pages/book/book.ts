@@ -9,7 +9,7 @@ import { contentFromDelta, contentToDelta, readLocalPhoto, saveLocalPhoto, valid
 import { storyImageApi } from "../../services/storyImageService";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import {
-  addChapter, applyOrganized, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, removeChapter, unassignedMemoryIds, updateChapter,
+  addChapter, applyOrganized, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter,
 } from "../../services/chapters";
 
 const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
@@ -471,9 +471,14 @@ Page({
   },
   async createChapter(event: { currentTarget: { dataset: { story?: string } } }) {
     const story = event.currentTarget.dataset.story || "";
-    const memoryIds = story ? this.memories.filter(memory => contributionStoryTitle(memory) === story).map(memory => memory.id) : [];
+    const memories = story ? this.memories.filter(memory => contributionStoryTitle(memory) === story) : [];
+    const memoryIds = memories.map(memory => memory.id);
     let chapters: ManuscriptChapter[];
-    try { chapters = addChapter(this.chapters, story, memoryIds); } catch (error) {
+    try {
+      chapters = addChapter(this.chapters, story);
+      const chapterId = chapters[chapters.length - 1].id;
+      for (const memory of memories) chapters = placeMemoryInChapter(chapters, memory, chapterId);
+    } catch (error) {
       this.setData({ saveNotice: error instanceof Error ? error.message : "无法新开一章" });
       return;
     }
@@ -481,7 +486,7 @@ Page({
     const label = chapterLabel(chapters.length);
     if (await this.saveChapters(chapters, "新开" + label)) {
       this.openChapter({ currentTarget: { dataset: { id } } });
-      this.setData({ saveNotice: "已新开" + label + (memoryIds.length ? "，放进了 " + memoryIds.length + " 条记忆" : "") + "。" });
+      this.setData({ saveNotice: "已新开" + label + (memoryIds.length ? "，已把 " + memoryIds.length + " 条记忆原文加入正文" : "") + "。" });
     }
   },
   chooseChapterFor(event: { currentTarget: { dataset: { id: string } } }) {
@@ -491,20 +496,28 @@ Page({
     const memoryId = this.data.assignMemoryId;
     const target = event.currentTarget.dataset.id;
     if (!memoryId) return;
+    const memory = this.memories.find(item => item.id === memoryId);
+    if (!memory) { this.setData({ saveNotice: "这段记忆已经不存在，请重新打开书稿" }); return; }
     let chapters: ManuscriptChapter[];
     try {
-      chapters = target === "new" ? addChapter(this.chapters, "", [memoryId]) : assignMemory(this.chapters, memoryId, target);
+      chapters = target === "new" ? addChapter(this.chapters) : this.chapters;
+      const chapterId = target === "new" ? chapters[chapters.length - 1].id : target;
+      chapters = placeMemoryInChapter(chapters, memory, chapterId);
     } catch (error) {
       this.setData({ saveNotice: error instanceof Error ? error.message : "无法调整章节" });
       return;
     }
     const index = target === "new" ? chapters.length - 1 : chapters.findIndex(chapter => chapter.id === target);
     if (await this.saveChapters(chapters, "调整章节")) {
-      this.setData({ panel: "", assignMemoryId: "", saveNotice: "已放进" + chapterLabel(index + 1) + "，正文没有改动。" });
+      this.setData({ panel: "", assignMemoryId: "", saveNotice: "已放进" + chapterLabel(index + 1) + "，原文已加入正文。" });
     }
   },
   async addToChapter(event: { currentTarget: { dataset: { id: string } } }) {
-    await this.saveChapters(assignMemory(this.chapters, event.currentTarget.dataset.id, this.activeChapterId), "调整章节");
+    const memory = this.memories.find(item => item.id === event.currentTarget.dataset.id);
+    if (!memory) { this.setData({ saveNotice: "这段记忆已经不存在，请重新打开书稿" }); return; }
+    if (await this.saveChapters(placeMemoryInChapter(this.chapters, memory, this.activeChapterId), "调整章节")) {
+      this.setData({ saveNotice: "原文已加入本章，可以继续编辑。" });
+    }
   },
   async removeFromChapter(event: { currentTarget: { dataset: { id: string } } }) {
     await this.saveChapters(assignMemory(this.chapters, event.currentTarget.dataset.id, ""), "调整章节");

@@ -1242,6 +1242,8 @@ test("chapters: an older book becomes chapter one and chapter changes leave othe
   assert.equal(page.data.view, "chapter");
   assert.equal(page.data.chapterLabelText, "第二章");
   assert.deepEqual(draft.chapters[1].memoryIds, ["demo-personal-rain"]);
+  assert.match(draft.chapters[1].content.map((item: any) => item.text || "").join(""), /我小时候最喜欢下雨天/,
+    "starting a chapter from a story also writes its memory into the chapter body");
   assert.equal((page.data.unassigned as any[]).length, 0);
   const firstChapter = structuredClone(draft.chapters[0]);
   assert.ok(firstChapter.content.some((item: any) => item.photoId === "photo-keep"));
@@ -1257,13 +1259,22 @@ test("chapters: an older book becomes chapter one and chapter changes leave othe
   assert.equal(draft.paragraphs[0], "第一章");
 
   await callPage(page, "removeFromChapter", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  await callPage(page, "addToChapter", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  draft = page.data.draft as any;
+  assert.deepEqual(draft.chapters[1].memoryIds, ["demo-personal-rain"]);
+  assert.match(draft.chapters[1].content.map((item: any) => item.text || "").join(""), /新的一章正文[\s\S]*我小时候最喜欢下雨天/,
+    "placing a memory from inside a chapter updates that chapter body");
+  await callPage(page, "removeFromChapter", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
   callPage(page, "backToContents");
   callPage(page, "chooseChapterFor", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
   assert.equal(page.data.panel, "assign");
   await callPage(page, "assignTo", { currentTarget: { dataset: { id: "chapter-1" } } });
   draft = page.data.draft as any;
   assert.deepEqual(draft.chapters[0].memoryIds, ["demo-personal-rain"]);
-  assert.deepEqual(draft.chapters[0].content, firstChapter.content, "placing a memory does not rewrite text");
+  assert.match(draft.chapters[0].content.map((item: any) => item.text || "").join(""), /我小时候最喜欢下雨天/,
+    "placing a memory appends its original text to the selected chapter");
+  assert.deepEqual(draft.chapters[0].content.filter((item: any) => item.photoId), firstChapter.content.filter((item: any) => item.photoId),
+    "placing a memory preserves existing photos");
 
   callPage(page, "openChapter", { currentTarget: { dataset: { id: draft.chapters[1].id } } });
   await callPage(page, "deleteActiveChapter");
@@ -1286,6 +1297,7 @@ test("an empty book can start with a first chapter from a story", async context 
   const draft = page.data.draft as any;
   assert.equal(draft.title, "林岚的人生之书");
   assert.equal(draft.chapters[0].title, "外公接我放学");
+  assert.match(draft.chapters[0].content.map((item: any) => item.text || "").join(""), /我小时候最喜欢下雨天/);
   assert.equal(page.data.view, "chapter");
 });
 

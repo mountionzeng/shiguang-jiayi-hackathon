@@ -137,7 +137,7 @@
           <text>空白的一章</text><text class="version-date">自己写，或之后把记忆放进来</text>
         </button>
         <button class="version-row" wx:for="{{storyOptions}}" wx:key="title" data-story="{{item.title}}" bindtap="createChapter" disabled="{{saving}}">
-          <text>用故事「{{item.title}}」开一章</text><text class="version-date">这个故事的 {{item.count}} 条记忆会放进这一章</text>
+          <text>用故事「{{item.title}}」开一章</text><text class="version-date">这个故事的 {{item.count}} 条记忆原文会加入正文</text>
         </button>
       </block>
       <block wx:if="{{panel === 'assign'}}">
@@ -146,7 +146,7 @@
           <text>{{item.label}}{{item.title ? '　' + item.title : ''}}</text>
         </button>
         <button class="version-row" data-id="new" bindtap="assignTo" disabled="{{saving}}"><text>新开一章放它</text></button>
-        <view class="panel-note">只改变目录，不会改动正文，也不会删除原始记忆。</view>
+        <view class="panel-note">放进章节后，记忆原文会加入该章正文；原始记忆仍会保留。</view>
       </block>
       <block wx:if="{{panel === 'memories'}}">
         <view class="panel-title serif">{{chapterLabelText}}用到的记忆</view>
@@ -162,7 +162,7 @@
             <button class="tool-button" data-id="{{item.id}}" bindtap="addToChapter" disabled="{{saving}}"><view class="action-icon icon-insert" aria-hidden="true"></view>放进本章</button>
           </view>
         </block>
-        <view class="panel-note">移出或放进只改变目录，不会改动正文，也不会删除原始记忆。</view>
+        <view class="panel-note">放进本章会把记忆原文加入正文；移出只解除归档，不会删除已经编辑的正文或原始记忆。</view>
       </block>
     </view>
   </scroll-view>

@@ -1,4 +1,4 @@
-import { BiographyDraft, ManuscriptChapter, ManuscriptContent } from "../domain/biography";
+import { BiographyDraft, ManuscriptChapter, ManuscriptContent, MemoryContribution } from "../domain/biography";
 import { contentFromDelta, contentToDelta, validateContent } from "./bookImages";
 
 const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
@@ -92,6 +92,32 @@ export function assignMemory(chapters: ManuscriptChapter[], memoryId: string, ch
     const memoryIds = chapter.memoryIds.filter(id => id !== memoryId);
     if (chapter.id === chapterId) memoryIds.push(memoryId);
     return { ...copyChapter(chapter), memoryIds };
+  });
+}
+
+/** Puts a memory into one chapter and appends its original text once, preserving existing text and photos. */
+export function placeMemoryInChapter(
+  chapters: ManuscriptChapter[],
+  memory: Pick<MemoryContribution, "id" | "text">,
+  chapterId: string,
+): ManuscriptChapter[] {
+  const target = chapters.find(chapter => chapter.id === chapterId);
+  const next = assignMemory(chapters, memory.id, chapterId);
+  const memoryText = memory.text.trim();
+  if (!target || !memoryText) return next;
+
+  return next.map(chapter => {
+    if (chapter.id !== chapterId) return chapter;
+    const existingText = chapter.content.map(item => item.text ?? "").join("");
+    if (existingText.includes(memoryText)) return chapter;
+    const last = chapter.content[chapter.content.length - 1];
+    const separator = !last ? "" : typeof last.text !== "string" ? "\n"
+      : last.text.endsWith("\n\n") ? "" : last.text.endsWith("\n") ? "\n" : "\n\n";
+    return {
+      ...chapter,
+      content: [...chapter.content.map(item => ({ ...item })), { text: separator + memoryText + "\n" }],
+      handEdited: true,
+    };
   });
 }
 

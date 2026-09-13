@@ -74,8 +74,8 @@ test("a long book near the limits still saves because the flattened copy is not 
   await assert.rejects(saveManuscriptRevision(makeRevision("owner", tooManyPhotos, "", "version", "十张照片"), ""), /最多放 9 张照片/);
 });
 
-test("chapter operations keep one memory in one chapter and never touch other chapters' text", async () => {
-  const { addChapter, assignMemory, moveChapter, removeChapter, unassignedMemoryIds, updateChapter } = await import("../miniprogram/services/chapters");
+test("chapter operations keep one memory in one chapter and only append to the selected chapter", async () => {
+  const { addChapter, assignMemory, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter } = await import("../miniprogram/services/chapters");
   const one = { ...chapter("chapter-1", "一", "第一章正文\n", ["photo-a"]), memoryIds: ["m1", "m2"] };
   const two = { ...chapter("chapter-2", "二", "第二章正文\n"), memoryIds: ["m3"] };
   const added = addChapter([one, two], "三", ["m2"], "chapter-3");
@@ -93,6 +93,27 @@ test("chapter operations keep one memory in one chapter and never touch other ch
   assert.deepEqual(edited[0], added[0]);
   assert.equal(updateChapter(added, "chapter-2", { title: "只改名" })[1].handEdited, undefined);
   assert.deepEqual(one.memoryIds, ["m1", "m2"], "inputs are never mutated");
+
+  const placed = placeMemoryInChapter(added, { id: "m4", text: "新放进来的原始记忆。" }, "chapter-1");
+  assert.deepEqual(placed[0].memoryIds, ["m1", "m4"]);
+  assert.deepEqual(placed[0].content, [
+    { text: "第一章正文\n" },
+    { photoId: "photo-a" },
+    { text: "\n新放进来的原始记忆。\n" },
+  ], "the memory text is appended without moving the existing photo");
+  assert.equal(placed[0].handEdited, true);
+  assert.deepEqual(placed[1], added[1], "other chapters remain unchanged");
+
+  const repaired = placeMemoryInChapter(added, { id: "m1", text: "旧归档里漏掉的正文。" }, "chapter-1");
+  assert.match(repaired[0].content.map(item => item.text ?? "").join(""), /旧归档里漏掉的正文/,
+    "an existing chapter assignment with missing text can be repaired");
+
+  const repeated = placeMemoryInChapter(placed, { id: "m4", text: "新放进来的原始记忆。" }, "chapter-1");
+  assert.deepEqual(repeated[0].content, placed[0].content, "placing the same memory twice does not duplicate its text");
+  const removed = assignMemory(placed, "m4", "");
+  assert.deepEqual(removed[0].content, placed[0].content, "removing a memory keeps the editable chapter text");
+  const restored = placeMemoryInChapter(removed, { id: "m4", text: "新放进来的原始记忆。" }, "chapter-1");
+  assert.deepEqual(restored[0].content, placed[0].content, "putting a removed memory back does not duplicate text already present");
 });
 
 test("organizing replaces only the target chapter's text, keeps its photos (even old markers) and moves the chosen memories", async () => {
