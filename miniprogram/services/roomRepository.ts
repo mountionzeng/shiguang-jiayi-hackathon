@@ -10,6 +10,7 @@ import { MemberKind } from "./memberLifecycle";
 import {
   addCloudFamilyMember,
   appendCloudContribution,
+  appendCloudContributions,
   classifyCloudMember,
   deleteCloudContribution,
   deleteCloudStory,
@@ -81,6 +82,13 @@ export async function appendContributionRemoteFirst(
   }
 
   return appendContribution(contribution, loadRoomState());
+}
+
+export async function appendContributionsRemoteFirst(
+  contributions: MemoryContribution[],
+): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return appendCloudContributions(contributions);
+  return contributions.reduce((state, contribution) => appendContribution(contribution, state), loadRoomState());
 }
 
 export async function addFamilyMemberRemoteFirst(

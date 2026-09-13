@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createContribution, personalBookSourceFingerprint } from "../miniprogram/domain/biography";
 // Cloud storage remains the default; exercise both cloud boundaries and public repositories.
-import { appendCloudContribution as appendContributionRemoteFirst, deleteCloudContribution as deleteContributionRemoteFirst, loadCloudRoomState as loadRoomStateRemoteFirst } from "../miniprogram/services/cloudRoomStorage";
+import { appendCloudContribution as appendContributionRemoteFirst, appendCloudContributions, deleteCloudContribution as deleteContributionRemoteFirst, loadCloudRoomState as loadRoomStateRemoteFirst } from "../miniprogram/services/cloudRoomStorage";
 import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
 
@@ -88,6 +88,20 @@ test("successful primary save and delete survive draft cleanup denial; retries a
     assert.equal((await loadRoomStateRemoteFirst()).contributions.length, 0);
     assert.equal(f.records("source_records").size, 0);
     assert.equal(f.local.size, 0, "cloud writes never fall through to another local dataset");
+  } finally { f.restore(); }
+});
+
+test("a stable multi-record import resumes after a partial cloud failure", async () => {
+  const f = fixture();
+  try {
+    const first = { ...memory(), id: "import-1", text: "第一段" };
+    const second = { ...memory(), id: "import-2", text: "第二段" };
+    f.failures.add("memories:set");
+    await assert.rejects(appendCloudContributions([first, second]), /permission denied/);
+    f.failures.delete("memories:set");
+    assert.equal((await loadRoomStateRemoteFirst()).contributions.length, 0);
+    await appendCloudContributions([first, second]);
+    assert.deepEqual((await loadRoomStateRemoteFirst()).contributions.map(item => item.id).sort(), ["import-1", "import-2"]);
   } finally { f.restore(); }
 });
 

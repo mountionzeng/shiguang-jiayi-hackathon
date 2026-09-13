@@ -464,19 +464,29 @@ export async function saveCloudManuscriptRevision(revision: ManuscriptRevision):
 export async function appendCloudContribution(
   contribution: MemoryContribution,
 ): Promise<FamilyRoomState> {
+  return appendCloudContributions([contribution]);
+}
+
+/** Bounded multi-record import: load the room once, then write resumable stable IDs. */
+export async function appendCloudContributions(
+  contributions: MemoryContribution[],
+): Promise<FamilyRoomState> {
+  if (contributions.length === 0) return loadCloudRoomState();
   const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
-  await saveContribution(familyId, contribution);
-  await invalidateDraft(familyId, contribution);
-  const personalDrafts = { ...(state.personalDrafts ?? {}) };
-  if (contributionScope(contribution) === "personal") {
-    delete personalDrafts[contribution.authorMemberId];
+  for (let offset = 0; offset < contributions.length; offset += 5) {
+    await Promise.all(contributions.slice(offset, offset + 5).map(item => saveContribution(familyId, item)));
   }
-
+  await Promise.all(contributions.map(item => invalidateDraft(familyId, item)));
+  const importedIds = new Set(contributions.map(item => item.id));
+  const personalDrafts = { ...(state.personalDrafts ?? {}) };
+  for (const item of contributions) {
+    if (contributionScope(item) === "personal") delete personalDrafts[item.authorMemberId];
+  }
   return {
     ...state,
-    contributions: [...state.contributions.filter(item => item.id !== contribution.id), contribution],
-    draft: contributionScope(contribution) === "family" ? undefined : state.draft,
+    contributions: [...state.contributions.filter(item => !importedIds.has(item.id)), ...contributions],
+    draft: contributions.some(item => contributionScope(item) === "family") ? undefined : state.draft,
     personalDrafts,
   };
 }
