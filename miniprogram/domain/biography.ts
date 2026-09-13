@@ -119,6 +119,8 @@ export interface ManuscriptChapter {
   handEdited?: boolean;
   generationMode?: GenerationMode;
   generatedAt?: string;
+  /** A picture from the storyImages cloud function shown under this chapter's text; travels with the version. */
+  backdropImageId?: string;
 }
 
 export interface FamilyRoomState {

@@ -10,7 +10,8 @@
     "pages/invite/invite",
     "pages/room/room",
     "pages/review/review",
-    "pages/book/book"
+    "pages/book/book",
+    "pages/story-images/story-images"
   ],
   "window": {
     "backgroundColor": "#fbf8f1",

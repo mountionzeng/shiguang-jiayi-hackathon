@@ -15,6 +15,8 @@ const COLLECTIONS = {
   assets: "assets",
   aiTasks: "ai_tasks",
   generatedArtifacts: "generated_artifacts",
+  imageJobs: "image_jobs",
+  storyImages: "story_images",
 };
 
 function collectionMissing(error) {
@@ -61,6 +63,27 @@ async function clearCollectionByDemoFamilyId(collectionName) {
   }
 }
 
+/** Generated pictures live in cloud storage; delete the files before their records. */
+async function removeStoryImageFiles(familyId) {
+  let removed = 0;
+  for (let offset = 0; ; offset += 100) {
+    let response;
+    try {
+      response = await db.collection(COLLECTIONS.storyImages).where({ familyId }).skip(offset).limit(100).get();
+    } catch (error) {
+      if (collectionMissing(error)) return removed;
+      throw error;
+    }
+    const records = response.data || [];
+    const fileIDs = records.map((record) => record.fileID).filter(Boolean);
+    for (let index = 0; index < fileIDs.length; index += 50) {
+      await cloud.deleteFile({ fileList: fileIDs.slice(index, index + 50) });
+    }
+    removed += fileIDs.length;
+    if (records.length < 100) return removed;
+  }
+}
+
 async function main(event = {}) {
   if (event.confirm !== CONFIRM_TEXT) {
     throw new Error(`CONFIRM_REQUIRED:${CONFIRM_TEXT}`);
@@ -68,6 +91,7 @@ async function main(event = {}) {
 
   const removedCounts = {
     families: await removeFamilyDoc(),
+    storyImageFiles: await removeStoryImageFiles(DEMO_FAMILY_ID),
   };
 
   await Promise.all(

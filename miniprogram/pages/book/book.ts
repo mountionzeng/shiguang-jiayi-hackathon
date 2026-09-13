@@ -6,6 +6,7 @@ import { BiographyFallbackReason, generateBiographyWithStatus } from "../../serv
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel } from "../../services/roomRepository";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import { contentFromDelta, contentToDelta, readLocalPhoto, saveLocalPhoto, validateContent } from "../../services/bookImages";
+import { storyImageApi } from "../../services/storyImageService";
 import {
   addChapter, applyOrganized, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, removeChapter, unassignedMemoryIds, updateChapter,
 } from "../../services/chapters";
@@ -46,6 +47,8 @@ Page({
     storyOptions: [] as Array<{ title: string; count: number }>, assignMemoryId: "",
     // AI organizing: choose memories, choose a chapter, write it in directly; undo restores the version before.
     organizeRows: [] as Array<{ id: string; text: string; where: string; checked: boolean }>, organizeTarget: "", canUndo: false,
+    // The active chapter's backdrop picture, when it has one and the cloud can serve it.
+    backdropUrl: "",
   },
   // Native inputs own their live value/cursor. Do not echo the document on each keystroke.
   titleBuffer: "",
@@ -57,6 +60,7 @@ Page({
   memories: [] as MemoryContribution[],
   photoPaths: {} as Record<string, string>,
   imageIds: {} as Record<string, string>,
+  backdropUrls: {} as Record<string, string>,
   editorContext: undefined as WechatMiniprogram.EditorContext | undefined,
   editorLoading: false,
   collecting: false,
@@ -167,6 +171,7 @@ Page({
       this.requestedMemoryIds = [];
       this.setData({ organizeRows: this.data.organizeRows.map(row => ({ ...row, checked: this.organizeSelection.includes(row.id) })) });
     }
+    void this.loadBackdrops(member.id, refreshId);
   },
   /** Point the editing buffers at the active chapter's saved text and name. */
   loadActiveChapter() {
@@ -192,7 +197,31 @@ Page({
       chapterMemories: active ? active.memoryIds.flatMap(id => known.has(id) ? [memoryRow(known.get(id)!)] : []) : [],
       chapterLabelText: active ? chapterLabel(this.chapters.indexOf(active) + 1) : "",
       storyOptions: Array.from(stories, ([title, count]) => ({ title, count })),
+      backdropUrl: this.activeBackdropUrl(),
     };
+  },
+  /** Chapter backdrops are cloud pictures; a book without them never calls the cloud. */
+  async loadBackdrops(memberId: string, refreshId: number) {
+    const wanted = new Set(this.chapters.map(chapter => chapter.backdropImageId).filter((id): id is string => Boolean(id)));
+    if (!wanted.size) {
+      this.backdropUrls = {};
+      if (this.data.backdropUrl) this.setData({ backdropUrl: "" });
+      return;
+    }
+    try {
+      const list = await storyImageApi.listStoryImages(memberId);
+      if (this.unloaded || refreshId !== this.refreshId) return;
+      this.backdropUrls = Object.fromEntries(list.images
+        .filter(image => wanted.has(image.imageId) && image.url)
+        .map(image => [image.imageId, image.url]));
+      this.setData({ backdropUrl: this.activeBackdropUrl() });
+    } catch {
+      // Without the cloud the chapter simply shows no backdrop; its text is unaffected.
+    }
+  },
+  activeBackdropUrl() {
+    const active = this.chapters.find(chapter => chapter.id === this.activeChapterId);
+    return active?.backdropImageId ? this.backdropUrls[active.backdropImageId] ?? "" : "";
   },
   onEditorReady() {
     wx.createSelectorQuery().in(this).select("#manuscript-editor").context(result => {
@@ -315,6 +344,7 @@ Page({
       case "up": void this.moveActiveChapter(-1); break;
       case "down": void this.moveActiveChapter(1); break;
       case "delete-chapter": void this.deleteActiveChapter(); break;
+      case "images": this.openImages(); break;
     }
   },
   onKeyboardHeight(event: { detail: { height: number } }) {
@@ -577,6 +607,11 @@ Page({
     }
   },
   startInterview() { wx.navigateTo({ url: "/pages/interview/interview" }); },
+  /** Pictures are drawn from the saved chapter; selectTool has already refused to leave unsaved edits. */
+  openImages() {
+    const chapterId = this.data.view === "chapter" ? this.activeChapterId : "";
+    wx.navigateTo({ url: "/pages/story-images/story-images" + (chapterId ? "?chapterId=" + encodeURIComponent(chapterId) : "") });
+  },
   goHome() {
     if (!this.canLeaveEditor()) return;
     wx.reLaunch({ url: "/pages/index/index" });

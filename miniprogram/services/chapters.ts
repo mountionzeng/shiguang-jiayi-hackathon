@@ -5,6 +5,8 @@ const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
 const DIGITS = "零一二三四五六七八九";
 export const MAX_CHAPTERS = 30;
 export const MAX_BOOK_TEXT = 20000;
+/** A chapter backdrop points at a picture stored by the storyImages cloud function. */
+export const CHAPTER_BACKDROP_ID = /^family_[0-9A-Za-z_-]{1,120}_img_req-[0-9a-z-]{8,60}$/;
 
 export function chapterLabel(position: number) {
   const tens = Math.floor(position / 10);
@@ -151,6 +153,8 @@ export function validateChapters(chapters: unknown) {
     if (!chapter || typeof chapter.id !== "string" || !CHAPTER_ID.test(chapter.id) || ids.has(chapter.id)) throw new Error("章节编号无效，请重新打开书稿");
     ids.add(chapter.id);
     if (typeof chapter.title !== "string" || chapter.title.length > 40) throw new Error("章节标题最多 40 字");
+    if (chapter.backdropImageId !== undefined &&
+      (typeof chapter.backdropImageId !== "string" || !CHAPTER_BACKDROP_ID.test(chapter.backdropImageId))) throw new Error("章节底图引用无效");
     if (!Array.isArray(chapter.memoryIds) || chapter.memoryIds.length > 500 ||
       !chapter.memoryIds.every(id => typeof id === "string" && id.length <= 120)) throw new Error("章节里的记忆列表无效");
     if (!Array.isArray(chapter.content)) throw new Error("图文内容格式无效");
