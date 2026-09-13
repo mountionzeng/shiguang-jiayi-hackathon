@@ -1,5 +1,6 @@
 const cloud = require("wx-server-sdk");
 const { StoryImageError } = require("./core");
+const { createDiagnostics } = require("./diagnostics");
 const { createStoryImageHandlers } = require("./flow");
 const { createQualityChecker } = require("./quality");
 const { createSceneExtractor } = require("./scene");
@@ -142,30 +143,32 @@ const moderation = {
 
 const tokenHubKey = process.env.TOKENHUB_API_KEY;
 const imageClient = createTokenHubImageClient({ apiKey: tokenHubKey, baseUrl: process.env.TOKENHUB_BASE_URL });
+const provider = {
+  name: "tokenhub",
+  model: IMAGE_MODEL,
+  configured: imageClient.configured,
+  generate: input => imageClient.generate(input),
+};
+const extractScene = createSceneExtractor({
+  apiKey: process.env.AI_API_KEY,
+  model: process.env.AI_MODEL,
+  baseUrl: process.env.AI_BASE_URL,
+});
+const sceneConfigured = Boolean(process.env.AI_API_KEY && process.env.AI_MODEL);
+// The same TokenHub key serves the vision model unless a separate one is set.
+const qualityChecker = createQualityChecker({
+  apiKey: process.env.VISION_API_KEY || tokenHubKey,
+  model: process.env.VISION_MODEL,
+  baseUrl: process.env.VISION_BASE_URL,
+});
+const downloadImage = url => downloadResult(url);
 
 const handlers = createStoryImageHandlers({
-  repo,
-  provider: {
-    name: "tokenhub",
-    model: IMAGE_MODEL,
-    configured: imageClient.configured,
-    generate: input => imageClient.generate(input),
-  },
-  extractScene: createSceneExtractor({
-    apiKey: process.env.AI_API_KEY,
-    model: process.env.AI_MODEL,
-    baseUrl: process.env.AI_BASE_URL,
-  }),
-  sceneConfigured: Boolean(process.env.AI_API_KEY && process.env.AI_MODEL),
-  storage,
-  moderation,
-  downloadImage: url => downloadResult(url),
-  // The same TokenHub key serves the vision model unless a separate one is set.
-  qualityChecker: createQualityChecker({
-    apiKey: process.env.VISION_API_KEY || tokenHubKey,
-    model: process.env.VISION_MODEL,
-    baseUrl: process.env.VISION_BASE_URL,
-  }),
+  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker,
+});
+const diagnostics = createDiagnostics({
+  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker,
+  expectedToken: process.env.STORY_IMAGES_DIAGNOSE_TOKEN,
 });
 
 async function main(event = {}) {
@@ -188,6 +191,8 @@ async function main(event = {}) {
       case "status": return await handlers.status(ctx, event);
       case "list": return await handlers.list(ctx, event);
       case "remove": return await handlers.remove(ctx, event);
+      // Guarded by STORY_IMAGES_DIAGNOSE_TOKEN; meant for the developer tools' cloud test.
+      case "diagnose": return await diagnostics.run(ctx, event);
       default: throw new StoryImageError("UNKNOWN_ACTION", "不支持的操作");
     }
   } catch (error) {

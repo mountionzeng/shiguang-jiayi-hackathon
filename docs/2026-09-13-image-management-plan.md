@@ -385,3 +385,32 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 
 - [TokenHub Hy 生图调用指南](https://cloud.tencent.com/document/product/1823/135745)、[图像生成模型调用概览](https://cloud.tencent.com/document/product/1823/135744)、[TokenHub API 使用说明](https://cloud.tencent.com/document/product/1823/130078)、[TokenHub 模型列表](https://cloud.tencent.com/document/product/1823/130051)
 - [腾讯混元生图快速入门（旧控制台迁移下线中）](https://cloud.tencent.com/document/product/1668/87020)、[旧版本模型下线迁移公告（原平台 9 月 30 日停服）](https://cloud.tencent.com/document/product/1729/131925)、[混元多模态模型服务迁移通知](https://cloud.tencent.com/announce/detail/2310)
+
+## 十七、上线诊断（2026-09-13）
+
+部署后用微信开发者工具「云开发 → 云函数 → storyImages → 云端测试」确认能不能真正工作，不需要用户的真实故事。
+
+**前提**：云函数环境变量里配置 `STORY_IMAGES_DIAGNOSE_TOKEN`，值为用户自己编的一串至少 24 个字符的口令（只用来把关诊断，不是第三方密钥）。小程序用户拿不到这个口令，所以调不到诊断。
+
+**三种调用**（把 `你的口令` 换成上面那串）：
+
+| 目的 | 云端测试里填的内容 | 花钱吗 |
+|---|---|---|
+| 各项配置有没有读到 | `{"action":"diagnose","diagnoseToken":"你的口令"}` | 不花 |
+| 文字模型能不能从段落里提炼画面 | `{"action":"diagnose","diagnoseToken":"你的口令","sample":"scene"}` | 文字模型少量 tokens |
+| 真实画一张并走完整条链路 | `{"action":"diagnose","diagnoseToken":"你的口令","sample":"image"}` | ¥0.2/张（免费额度内不花） |
+
+**保护措施**
+
+- 只回答"有没有配置"，不返回任何密钥；错误只给错误码和简短说明；
+- 用写死的虚构段落和虚构提示词，不读任何书稿；
+- 试画的图存在 `story-images/_diagnostics/`，记录的家庭编号是 `_diagnostics`，不会出现在任何人的「这本书的图」里；
+- 试画每天最多 3 张；
+- 每一步记下耗时（毫秒），用来确认 TokenHub 实际出图要多久、60 秒是否够用；
+- 云端测试如果没带微信用户身份，内容审核这一步会跳过并写明原因；出图用掉大半时间时，质检留给定时任务。
+
+**要看的结果**
+
+- `configured` 三项是否都是 `true`；`runtime` 是运行环境版本；
+- `steps` 里每一步的 `ok` 和 `ms`；
+- `viewUrl` 打开能看到图，确认右下角的「图片由AI生成」水印；有效期 2 小时。
