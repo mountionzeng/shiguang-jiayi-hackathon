@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import {
   createContribution,
@@ -162,6 +162,53 @@ test("every registered page enables WeChat friend sharing without exposing story
       assert.match(source, /path:\s*["']\/pages\/index\/index["']/, `${pagePath} must share the safe home path`);
     }
   });
+});
+
+test("the invitation poster draws packaged assets and exports a scannable-size code", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const drawImages: unknown[][] = [];
+  const canvas = {
+    setFillStyle: () => undefined,
+    fillRect: () => undefined,
+    drawImage: (...args: unknown[]) => drawImages.push(args),
+    setGlobalAlpha: () => undefined,
+    setStrokeStyle: () => undefined,
+    setLineWidth: () => undefined,
+    beginPath: () => undefined,
+    moveTo: () => undefined,
+    quadraticCurveTo: () => undefined,
+    lineTo: () => undefined,
+    closePath: () => undefined,
+    fill: () => undefined,
+    stroke: () => undefined,
+    setTextAlign: () => undefined,
+    setFontSize: () => undefined,
+    fillText: () => undefined,
+    arc: () => undefined,
+    draw: (_reserve: boolean, callback: () => void) => callback(),
+  };
+  let exportOptions: Record<string, unknown> | undefined;
+  Object.assign(wx as any, {
+    createCanvasContext: () => canvas,
+    canvasToTempFilePath: (options: Record<string, unknown> & { success: (result: { tempFilePath: string }) => void }) => {
+      exportOptions = options;
+      options.success({ tempFilePath: "/tmp/invite.jpg" });
+    },
+  });
+  const page = instantiate(await pageDefinition("invite"));
+  const result = await callPage(page, "drawPoster", {
+    token: "token", inviterName: "岱", inviteeName: "如", relation: "胎教朋友",
+    roomName: "我的拾光房间", familyId: "family", memberId: "member",
+    status: "pending", acceptedByMe: false, expiresAt: "2026-09-20T00:00:00.000Z",
+  }, "/tmp/code.png");
+
+  assert.equal(result, "/tmp/invite.jpg");
+  const packaged = drawImages.map(args => String(args[0])).filter(path => path.startsWith("/assets/"));
+  packaged.forEach(path => assert.ok(existsSync("miniprogram" + path), `missing poster asset ${path}`));
+  assert.ok(drawImages.some(args => args[0] === "/tmp/code.png" && args[3] === 260 && args[4] === 260));
+  assert.equal(exportOptions?.fileType, "jpg");
+  assert.equal(exportOptions?.quality, 0.95);
 });
 
 test("an invited WeChat member enters only the shared family room", async (context) => {
