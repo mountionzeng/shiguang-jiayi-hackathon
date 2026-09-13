@@ -71,7 +71,9 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 
 ```
 { _id, familyId, requesterOpenId, requesterMemberId,
-  storyKey, chapterId?, purpose: "illustration" | "cover" | "backdrop",
+  memberId,               // 当前书稿所属档案（问题四的 Story 记录出来前，章节归档案）
+  storyId?,               // 问题四的 Story 记录有稳定 id 后补上
+  chapterId?, purpose: "illustration" | "cover" | "backdrop",
   provider, model,
   prompt,                 // 实际发给服务商的最终提示词
   revisedPrompt?,         // 服务商改写后的（混元关闭改写时等于原文）
@@ -88,7 +90,7 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 ### `story_images`（图像管理的主表）
 
 ```
-{ _id: imageId, familyId, storyKey, chapterId?, purpose,
+{ _id: imageId, familyId, memberId, storyId?, chapterId?, purpose,
   fileID, width, height, bytes,
   moderation: "pending" | "pass" | "risky" | "review",
   aiGenerated: true, jobId, createdAt, deletedAt? }
@@ -97,8 +99,9 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 ### 文字那边只加可选引用
 
 - **章节底图**：`ManuscriptChapter.backdropImageId?: string`。跟着版本走——恢复旧版本，底图选择也回到当时的。章节 id 跨版本稳定（问题四已保证）。
-  *已核：`cloudRoomStorage` 保存书稿时整份 `draft` 写入，新增的章节字段会保留。但 `manuscript.ts` 的 `revisionContent` 逐个字段比较章节，只换底图时版本会被当成"没变化"——必须把 `backdropImageId` 加进去。*
-- **故事封面**：挂在故事自己的记录上 `coverImageId`。**待问题四确认**：故事现在没有独立记录，`ShelfStory.key` 是 `story:标题`，改名会变。在它给出稳定 id 前，临时存 `story_image_prefs`（按 storyKey），改名时迁移。
+  *已核：`cloudRoomStorage` 保存书稿时整份 `draft` 写入，新增的章节字段会保留。但 `manuscript.ts` 的 `revisionContent` 逐个字段比较章节，只换底图时版本会被当成"没变化"——必须把 `backdropImageId` 加进去。问题四确认：`copyChapter` 用展开写法会自动带上新字段，存储层没有按字段白名单过滤章节。*
+  *章节合并 / 拆分还没做。问题四打算：合并时保留前一章的 id，拆分时前半段沿用原 id、后半段用新 id（尚未问过用户）。照此规则，合并后后一章的底图选择会丢，拆分出的后半段没有底图——做这两个功能时要提示用户。*
+- **故事封面**：等问题四的 Story 记录（有稳定 id，改名不变）出来后，在 Story 上加可选字段 `coverImageId`。**不挂在 `ShelfStory.key` 上**——问题四确认它是过渡字段，改名就变。在 Story 记录出来之前，不做"设为封面"的保存。
 - **插图**：阶段 1 **不插进正文流**（不改 `ManuscriptContent`），挂在章节下，显示在章节正文之后。原因见"旧客户端兼容"。
 
 ## 六、提示词怎么来（不得编造）
@@ -116,6 +119,18 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 ## 七、照片：识别、特征与参考图（阶段 2b）
 
 ### 7.1 授权与传输
+
+**腾讯云会怎么处理发过去的照片**（《腾讯云大模型服务条款》原文，适用于混元生图与混元生文；混元生图常见问题页对留存、训练、处理地点均未写）：
+
+| 问题 | 条款原文 | 条号 |
+|---|---|---|
+| 会不会拿去训练 | "除另行获取您的授权同意外，腾讯云不会将您输入的内容用于开发或改进本服务的算法、模型等。" | 4.2 |
+| 保存多久 | "仅在为提供本服务之目的所必需的期间内保留您的数据……在数据处理期限结束后停止一切数据使用行为，或者根据您的指示将相关数据返还给您或删除。" **没有写具体天数。** | 2.13 |
+| 在哪处理 | "数据处理地点为中华人民共和国境内。" | 2.13 |
+| 腾讯的身份 | 基于客户的委托、指令处理，"不能超出您的指示范围"（受托处理） | 2.12 |
+| 我们的义务 | "如您的输入内容涉及个人信息，请您确保您已经取得相关个人信息主体的知情同意（涉及敏感个人信息的，应获得单独同意）" | 2.8(3) |
+
+授权弹窗据此如实写：发给腾讯云（混元）、在中国境内处理、腾讯云不会拿去训练、腾讯云只在生成所需期间保留（条款没写具体天数）、拾光家忆自己不保存照片。**不写"立即删除""不留存"这类条款没承诺的话。**
 
 - **默认关闭**。每次生成底图时，若用户想用照片，单独弹窗：发给谁（服务商名称）、发哪几张（显示缩略图）、做什么用、服务商日志政策仍适用；点"同意"才发。"我的"页有总开关，随时关。
 - 手机上先压缩：长边 ≤768，JPEG，逐步降质量直到每张 ≤100KB，最多 3 张（混元上限）。
@@ -137,7 +152,7 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 - 只存文字描述，不存照片、不存人脸向量或任何生物特征模板。新集合 `photo_insights`：
 
 ```
-{ familyId, storyKey, chapterId, photoId,   // photoId 是本机照片的不透明引用
+{ familyId, memberId, storyId?, chapterId, photoId,   // photoId 是本机照片的不透明引用
   kind: "scene" | "object" | "person", memberId?,
   fields, status: "draft" | "confirmed",
   consentAt, confirmedBy, confirmedAt, model }
@@ -145,6 +160,7 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 
 ### 7.3 长相特征的护栏
 
+- **「识别长相」是单独的开关，默认关闭。** 在单独同意弹窗、《用户隐私保护指引》新增条目并**重新审核通过**之前，这个开关不对用户开放；这段时间底图和插图只用「场景和物件」（场景、色调、构图、物件），不识别人脸。（协调会话要求，2026-09-13；用户"场景和长相都要"的决定不变，只是长相晚一步开放。）
 - **单独的同意弹窗**，不和普通 AI 授权合并：写明接收方（腾讯云混元）、用途（让插图里的人像 TA）、为什么需要、可能的影响、照片不保存、特征可随时删除。
 - **本人给自己认长相**可以直接做；**替家人认**（比如孙辈上传爷爷的照片），要爷爷本人在自己的微信里确认后才提取，没确认前只做场景物件。
 - "我的"页新增「AI 记住的长相」，本人可查看、修改、删除；删除后已生成的图不自动删，但之后不再使用。
@@ -196,7 +212,7 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 ## 十一、需要用户本人在后台做的事（我不做）
 
 1. 腾讯云开通混元生图，领免费额度；建 CAM 子账号只授权混元生图，把密钥填进云函数环境变量；
-2. 控制台"合同管理"下载含算法备案信息的订单合同；
+2. 控制台"合同管理"下载含算法备案信息的订单合同；**不要在腾讯云授权"输入内容用于改进模型"**（条款 4.2 默认不用，除非另行授权）；
 3. 小程序后台申请【深度合成-AI绘画】类目；
 4. 云开发控制台配置消息推送：`wxa_media_check` → `imageModeration`；
 5. 腾讯云开通混元生文，创建 API Key 给看图用（同样建议子账号）；
@@ -208,7 +224,8 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 
 | 阶段 | 内容 | 碰照片 |
 |---|---|---|
-| 1 | 服务商层（先接混元）；`imageSubmit` / `imageStatus`（含定时兜底）/ `imageManage` / `imageModeration`；两个新集合；章节插图（纯文字生成）；设为封面；管理页（列出、删除、设封面、占用空间）；五种结局；删除家庭时清理图片；测试 | 否 |
+| 1 | 服务商层（先接混元）；`imageSubmit` / `imageStatus`（含定时兜底）/ `imageManage` / `imageModeration`；两个新集合；章节插图（纯文字生成）；管理页（列出、删除、占用空间）；五种结局；删除家庭时清理图片；测试 | 否 |
+| 1b | 设为封面、封面在书壳上的展示——等问题四的 Story 记录有稳定 id 后做 | 否 |
 | 2a | 章节底图（纯文字生成）与展示；生成图质检（查乱码字、多余水印 / logo） | 否 |
 | 2b | 照片识别（场景物件 + 长相）+ 用户确认特征 + 长相单独同意与本人确认 +「AI 记住的长相」管理 + 底图用照片参考 + 文案改动（用户定稿）+ 影响评估草稿 | 是 |
 | 3 | 故事导出包：`story.json`（章节、当前版本、图片元数据）+ 图片文件（保留显式 AI 标识）。通用能力，不依赖任何其他项目 | — |
@@ -238,3 +255,4 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 - [中华人民共和国个人信息保护法（网信办）](https://www.cac.gov.cn/2021-08/20/c_1631050028355286.htm)
 - [个人信息保护政策法规问答（2026年1月）](https://www.cac.gov.cn/2026-01/09/c_1769688003183197.htm)
 - [腾讯混元 OpenAI 兼容接口](https://cloud.tencent.cn/document/product/1729/111007)、[混元生文计费概述（视觉模型价格）](https://cloud.tencent.com/document/product/1729/97731)、[ChatCompletions 图片输入](https://cloud.tencent.com/document/product/1729/105701)
+- [腾讯云大模型服务条款](https://cloud.tencent.com/document/product/301/97822)、[混元生图常见问题（混元大模型）](https://cloud.tencent.cn/document/product/1729/106036)
