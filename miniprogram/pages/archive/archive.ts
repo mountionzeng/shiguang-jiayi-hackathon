@@ -41,6 +41,7 @@ function noteTitle(memory: MemoryContribution): string {
 
 Page({
   data: {
+    placements: [] as Array<{ memberId: string; bookName: string; bookTitle: string; chapter: string; chapterId: string }>,
     memberName: "",
     notes: [] as NoteView[],
     noteCount: 0,
@@ -114,6 +115,7 @@ Page({
     const archiveItems = toViews();
 
     this.setData({
+      placements: placements.get(this.data.editingId) ?? [],
       memberName: member.name,
       notes,
       noteCount: notes.length,
@@ -151,6 +153,7 @@ Page({
       const memory = memoryPool(state.contributions).find(item => item.id === event.currentTarget.dataset.id);
       if (!memory) throw new Error("这段记忆已不存在，请刷新列表");
       this.showEditor(memory);
+      this.setData({ placements: memoryPlacements(state).get(memory.id) ?? [] });
     } catch (error) { wx.showToast({ title: error instanceof Error ? error.message : "加载失败，请重试", icon: "none" }); }
   },
 
@@ -197,6 +200,17 @@ Page({
     } finally { this.setData({ savingEdit: false }); }
   },
 
+  openPlacement(event: { currentTarget: { dataset: { member: string; chapter: string } } }) {
+    wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(event.currentTarget.dataset.member) + "&chapterId=" + encodeURIComponent(event.currentTarget.dataset.chapter) });
+  },
+  organizeIntoBook() {
+    if (this.data.savingEdit) return;
+    const original = this.editingOriginal;
+    if (original && (this.data.editTitle !== (original.title || "") || this.data.editText !== original.text || this.data.editStory !== contributionStoryTitle(original))) {
+      wx.showToast({ title: "请先保存记忆修改，再整理进书", icon: "none" }); return;
+    }
+    wx.navigateTo({ url: "/pages/book/book" + (this.data.editingId ? "?memoryIds=" + encodeURIComponent(this.data.editingId) : "?memoryIds=" + this.data.unrecordedItems.map(item => encodeURIComponent(item.id)).join(",")) });
+  },
   startRecording() { wx.navigateTo({ url: "/pages/interview/interview?memoryType=note" }); },
 
   onNoteTouchStart(event: {

@@ -1,7 +1,7 @@
 <view class="shell shell-with-bar page-enter">
   <view class="room-head">
     <view class="room-sub">点一个人，看和 ta 有关的记忆。写没写进书的都在。</view>
-    <button class="room-manage" wx:if="{{canInvite}}" bindtap="openPeople" hover-class="none">管理名单</button>
+    <button class="room-manage" wx:if="{{canInvite}}" bindtap="openPeople" hover-class="none">人员管理 · 可删除</button>
     <button class="room-invite" wx:if="{{canInvite}}" bindtap="inviteFamilyMember" hover-class="room-invite-pressed">
       <text class="room-invite-mark">＋</text>
       <view class="room-invite-copy">

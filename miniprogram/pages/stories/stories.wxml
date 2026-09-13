@@ -21,6 +21,7 @@
           <view class="action-icon icon-back" aria-hidden="true"></view>
           <view class="story-action-copy"><text>返回所有故事</text><text class="story-action-note">回到人生之书</text></view>
         </button>
+        <button class="story-delete" bindtap="deleteSelectedStory" hover-class="none">删除这个故事</button>
       </view>
       <view class="note-list selected-memory-list">
         <button class="story-memory" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="editMemory">
@@ -57,6 +58,17 @@
       </view>
       <button class="btn btn-ghost" bindtap="openMemories">整理原始记忆 · {{ungroupedCount}} 段还没放进故事</button>
       <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
+      <view class="deleted-story-panel" wx:if="{{deletedStories.length}}">
+        <view class="deleted-story-heading">最近删除</view>
+        <view class="deleted-story-note">原始记忆和书稿仍然保留，可以随时恢复。</view>
+        <view class="deleted-story-row" wx:for="{{deletedStories}}" wx:key="key">
+          <view class="deleted-story-copy">
+            <view class="deleted-story-title serif">{{item.title}}</view>
+            <view class="deleted-story-date">{{item.deletedLabel}}</view>
+          </view>
+          <button class="deleted-story-restore" data-key="{{item.key}}" bindtap="restoreStory" hover-class="none">恢复</button>
+        </view>
+      </view>
     </block>
   </view>
 </view>

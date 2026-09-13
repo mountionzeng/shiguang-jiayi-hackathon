@@ -8,20 +8,23 @@
   </view>
   <view class="archive-empty" wx:if="{{loadError}}">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
   <view class="memory-editor" wx:if="{{editingId}}">
+    <button wx:for="{{placements}}" wx:key="chapterId" class="btn btn-ghost" data-member="{{item.memberId}}" data-chapter="{{item.chapterId}}" bindtap="openPlacement">查看《{{item.bookTitle}}》· {{item.chapter}}</button>
     <view class="editor-label">标题</view>
     <input class="memory-input" value="{{editTitle}}" maxlength="40" bindinput="onEditTitle" disabled="{{savingEdit}}" />
     <view class="editor-label">原始记忆</view>
     <textarea class="memory-text serif" value="{{editText}}" maxlength="500" auto-height bindinput="onEditText" disabled="{{savingEdit}}" cursor-spacing="48" />
-    <view class="editor-label">归入故事（可留空）</view>
+    <view class="editor-label">素材分组（可留空，不会写入正文）</view>
     <input class="memory-input" value="{{editStory}}" maxlength="30" bindinput="onEditStory" placeholder="输入故事名，或从下面选择" disabled="{{savingEdit}}" />
     <view class="story-choices">
       <button class="story-chip" data-title="" bindtap="chooseEditStory" disabled="{{savingEdit}}">暂不归类</button>
       <button class="story-chip" wx:for="{{storyOptions}}" wx:key="*this" data-title="{{item}}" bindtap="chooseEditStory" disabled="{{savingEdit}}">{{item}}</button>
     </view>
     <button class="btn btn-jade" bindtap="saveEdit" loading="{{savingEdit}}" disabled="{{savingEdit}}">保存修改</button>
+    <button class="btn btn-jade" bindtap="organizeIntoBook" disabled="{{savingEdit}}">整理进书 · 预览后写入</button>
     <button class="btn btn-ghost" bindtap="closeEditor" disabled="{{savingEdit}}">返回记忆列表</button>
   </view>
   <block wx:elif="{{!loadError}}">
+    <button wx:if="{{hasItems}}" class="btn btn-jade" bindtap="organizeIntoBook">选择记忆，整理进书</button>
     <block wx:if="{{hasItems}}">
       <view class="note-section-title">还没写进书的 · {{unrecordedItems.length}}</view>
       <view class="note-list" wx:if="{{unrecordedItems.length}}">

@@ -21,6 +21,7 @@ import {
   planDelete,
   planRestore,
 } from "./memberLifecycle";
+import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 
 const STORAGE_KEY = "shiguang-family-room-v5";
 const V3_STORAGE_KEY = "shiguang-family-room-v3";
@@ -206,6 +207,18 @@ export function deleteContribution(
     draft: contributionScope(contribution) === "family" ? undefined : state.draft,
     personalDrafts,
   };
+  saveRoomState(next);
+  return next;
+}
+
+export function deleteStory(key: string, title: string, state = loadRoomState()): FamilyRoomState {
+  const next = planDeleteStory(state, key, title);
+  saveRoomState(next);
+  return next;
+}
+
+export function restoreStory(key: string, state = loadRoomState()): FamilyRoomState {
+  const next = planRestoreStory(state, key);
   saveRoomState(next);
   return next;
 }

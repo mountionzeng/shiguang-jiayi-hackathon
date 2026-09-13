@@ -1,6 +1,12 @@
 import { accountOwner, contributionStoryTitle, MemoryContribution, memoryPool } from "../../domain/biography";
-import { loadRoomStateRemoteFirst, saveCurrentMemberIdLocal } from "../../services/roomRepository";
+import {
+  deleteStoryRemoteFirst,
+  loadRoomStateRemoteFirst,
+  restoreStoryRemoteFirst,
+  saveCurrentMemberIdLocal,
+} from "../../services/roomRepository";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
+import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
 
 interface StoryRow {
   key: string;
@@ -11,6 +17,13 @@ interface StoryRow {
   manuscriptMemberId: string;
 }
 
+interface DeletedStoryRow { key: string; title: string; deletedLabel: string; }
+
+function deletedLabel(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "已删除" : `${date.getMonth() + 1}月${date.getDate()}日删除`;
+}
+
 /**
  * 人生之书：你所有的故事。书就是故事——同名的记忆是一个故事，以前每个档案整理好的
  * 书稿也是一个故事。点开一个故事看它的记忆，接着讲，或者打开整理好的章节。
@@ -18,6 +31,7 @@ interface StoryRow {
 Page({
   data: {
     stories: [] as StoryRow[],
+    deletedStories: [] as DeletedStoryRow[],
     selectedKey: "", selectedTitle: "", selectedManuscriptMemberId: "",
     memories: [] as MemoryContribution[], ungroupedCount: 0, hasManuscript: false, ownerId: "", loadError: "",
   },
@@ -42,6 +56,9 @@ Page({
       stories: shelf.map(story => ({
         key: story.key, title: story.title, label: shelfStoryLabel(story), excerpt: story.excerpt,
         memoryCount: story.memoryIds.length, manuscriptMemberId: story.manuscriptMemberId ?? "",
+      })),
+      deletedStories: (state.deletedStories ?? []).map((story) => ({
+        key: story.key, title: story.title, deletedLabel: deletedLabel(story.deletedAt),
       })),
       // 故事在别处被改名或删掉时，回到故事列表。
       selectedKey: selected?.key ?? "",
@@ -69,6 +86,40 @@ Page({
   },
   openSelectedManuscript() { this.openManuscript(this.data.selectedManuscriptMemberId); },
   backToStories() { this.setData({ selectedKey: "", selectedTitle: "", selectedManuscriptMemberId: "", memories: [] }); },
+  deleteSelectedStory() {
+    const key = this.data.selectedKey;
+    const title = this.data.selectedTitle;
+    if (!key || !title) return Promise.resolve();
+    return new Promise<void>((resolve) => wx.showModal({
+      title: `删除「${title}」？`,
+      content: "故事会进入最近删除；原始记忆和书稿版本都会保留，恢复后原样回来。",
+      confirmText: "删除",
+      confirmColor: "#c75245",
+      success: async (result) => {
+        if (!result.confirm) { resolve(); return; }
+        try {
+          await deleteStoryRemoteFirst(key, title);
+          if (loadCurrentStoryTitle() === title) saveCurrentStoryTitle("");
+          this.backToStories();
+          await this.refresh();
+          wx.showToast({ title: "已放进最近删除", icon: "none" });
+        } catch (error) {
+          wx.showToast({ title: error instanceof Error ? error.message : "删除没有完成，请重试", icon: "none" });
+        }
+        resolve();
+      },
+      fail: () => resolve(),
+    }));
+  },
+  async restoreStory(event: { currentTarget: { dataset: { key: string } } }) {
+    try {
+      await restoreStoryRemoteFirst(event.currentTarget.dataset.key);
+      await this.refresh();
+      wx.showToast({ title: "已恢复", icon: "none" });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "恢复没有完成，请重试", icon: "none" });
+    }
+  },
   retryLoad() { this.onShow(); },
   editMemory(event: { currentTarget: { dataset: { id: string } } }) {
     wx.navigateTo({ url: "/pages/archive/archive?id=" + encodeURIComponent(event.currentTarget.dataset.id) });

@@ -62,7 +62,7 @@
       <view class="profile-empty" wx:if="{{!people.length}}">还没有拉人进来。在上面写下名字就能加。</view>
     </view>
 
-    <view class="profiles-footnote">邀请还在做。做好以后，可以在这里请 ta 看某一章、提修改建议、回答推荐问，权限会写在名字旁边。</view>
+    <view class="profiles-footnote">不再需要的人可以点右侧「删除」，之后会进入最近删除，原始记忆不会消失。</view>
 
     <view class="profile-create" wx:if="{{trash.length}}">
       <button class="trash-toggle" bindtap="toggleTrash" hover-class="none">

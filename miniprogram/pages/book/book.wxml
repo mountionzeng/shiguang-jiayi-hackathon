@@ -31,7 +31,8 @@
   </view>
   <view class="panel-actions" wx:if="{{panel}}">
     <button class="tool-button" bindtap="closePanel" disabled="{{saving || generating}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '回到正文' : '回到目录'}}</button>
-    <button wx:if="{{panel === 'organize'}}" class="tool-button save-button" bindtap="runOrganize" disabled="{{saving || generating}}"><view class="action-icon icon-ai" aria-hidden="true"></view>{{generating ? '整理中…' : '开始整理'}}</button>
+    <button wx:if="{{panel === 'organize'}}" class="tool-button save-button" bindtap="runOrganize" disabled="{{saving || generating}}"><view class="action-icon icon-ai" aria-hidden="true"></view>{{generating ? '整理中…' : '生成正文预览'}}</button>
+    <button wx:if="{{panel === 'organize-preview'}}" class="tool-button save-button" bindtap="confirmOrganize" disabled="{{saving}}">确认写入正文</button>
     <button wx:if="{{panel === 'history' && previewVersion}}" class="tool-button save-button" bindtap="restoreVersion" disabled="{{saving}}"><view class="action-icon icon-restore" aria-hidden="true"></view>恢复此版</button>
     <button wx:if="{{panel === 'version'}}" class="tool-button save-button" bindtap="saveVersion" disabled="{{saving}}"><view class="action-icon icon-version" aria-hidden="true"></view>存为版本</button>
   </view>
@@ -91,6 +92,8 @@
       </block>
       <block wx:if="{{panel === 'organize'}}">
         <view class="panel-title serif">AI 整理记忆</view>
+        <view class="field-label">写进哪本书</view>
+        <radio-group bindchange="onOrganizeBook"><label class="memory-row" wx:for="{{organizeBooks}}" wx:key="id"><radio value="{{item.id}}" checked="{{memberId === item.id}}" disabled="{{generating}}" /><text>{{item.title}}</text></label></radio-group>
         <view class="field-label">1. 勾选要整理的记忆</view>
         <checkbox-group bindchange="onOrganizeMemories">
           <label class="memory-row" wx:for="{{organizeRows}}" wx:key="id">
@@ -110,7 +113,13 @@
             <text class="memory-text">新开一章</text>
           </label>
         </radio-group>
-        <view class="panel-note">点「开始整理」后，AI 只重写你选的这一章，其他章节一个字都不动；这一章里的照片会保留。勾选的记忆会移到这一章。整理完不满意可以撤回。</view>
+        <view class="panel-note">先生成预览，确认后才写入正文。新章按记忆内容建议标题，可以修改；素材少时先写成一章，以后再按人生阶段、主题或事件分章。已有章节会结合原文整理，照片保留。</view>
+      </block>
+      <block wx:if="{{panel === 'organize-preview'}}">
+        <view class="panel-title serif">确认这一章的正文</view>
+        <view class="panel-note">可以修改标题和文字；确认写入前，已保存的书稿不会改变。</view>
+        <input class="version-name" value="{{previewTitle}}" bindinput="onPreviewTitle" maxlength="40" disabled="{{saving}}" placeholder="章节标题" />
+        <textarea class="preview-editor" value="{{previewText}}" bindinput="onPreviewText" maxlength="20000" auto-height disabled="{{saving}}" />
       </block>
       <block wx:if="{{panel === 'sources'}}">
         <view class="panel-title serif">原始记忆 · {{sourceCount}}</view>
