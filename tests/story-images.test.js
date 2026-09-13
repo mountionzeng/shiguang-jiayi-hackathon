@@ -735,3 +735,163 @@ test("TokenHub 返回成功却没有图片时记为不确定，占名额，不�
   assert.equal(await repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 1);
   assert.equal(calls.upload.length, 0);
 });
+
+// ---------- 上线诊断 ----------
+
+const { createDiagnostics, DIAGNOSTIC_CHAPTER, authorizeDiagnose } = require("../cloudfunctions/storyImages/diagnostics.js");
+const DIAGNOSE_TOKEN = "diag-token-0123456789abcdef";
+
+function diagnosticsHarness({ provider = {}, deps = {} } = {}) {
+  const repo = memoryRepo();
+  let clock = T0;
+  const calls = { scene: [], generate: [], upload: [], moderation: [], quality: [], drafts: 0 };
+  repo.listDraftRecords = async () => { calls.drafts++; return []; };
+  const diagnostics = createDiagnostics({
+    repo,
+    provider: {
+      name: "tokenhub",
+      model: "hy-image-v3",
+      configured: true,
+      async generate(input) {
+        calls.generate.push(input);
+        return { resultUrl: "https://result.example/d.png", revisedPrompt: "", providerJobId: "t", usageTokens: 20000 };
+      },
+      ...provider,
+    },
+    async extractScene(source) {
+      calls.scene.push(source);
+      return { scene: "河边的石桥", setting: "小镇河边", objects: ["石桥"], light: "清晨", mood: "安静", eraHint: "", figures: [] };
+    },
+    sceneConfigured: true,
+    qualityChecker: {
+      configured: true,
+      async check(url) { calls.quality.push(url); return { quality: "pass", qualityIssues: [], qualityNote: "", qualityError: "" }; },
+    },
+    storage: {
+      async upload(cloudPath) { calls.upload.push(cloudPath); return `cloud://env/${cloudPath}`; },
+      async tempUrls(fileIDs) { return Object.fromEntries(fileIDs.map(id => [id, "https://tmp.example/d.png"])); },
+      async remove() {},
+    },
+    moderation: { async check(input) { calls.moderation.push(input); return "trace-d"; } },
+    async downloadImage() { return { buffer: Buffer.from("png"), contentType: "image/png" }; },
+    expectedToken: DIAGNOSE_TOKEN,
+    runtime: "v16.13.0",
+    now: () => clock,
+    ...deps,
+  });
+  return { repo, calls, diagnostics, tick(ms) { clock += ms; } };
+}
+
+test("诊断要带对口令；云函数没配口令或口令太短时一律拒绝", async () => {
+  assert.equal(authorizeDiagnose({ diagnoseToken: DIAGNOSE_TOKEN }, DIAGNOSE_TOKEN), true);
+  assert.equal(authorizeDiagnose({ diagnoseToken: "wrong-token-0123456789abcd" }, DIAGNOSE_TOKEN), false);
+  assert.equal(authorizeDiagnose({}, DIAGNOSE_TOKEN), false);
+  assert.equal(authorizeDiagnose({ diagnoseToken: "short" }, "short"), false);
+  assert.equal(authorizeDiagnose({ diagnoseToken: "" }, undefined), false);
+  const { diagnostics, calls } = diagnosticsHarness();
+  await assert.rejects(diagnostics.run(ctx, { action: "diagnose", diagnoseToken: "nope", sample: "image" }), error => error.code === "DIAGNOSE_FORBIDDEN");
+  assert.equal(calls.generate.length, 0);
+});
+
+test("只检查配置：回报各项是否已配置和运行环境，不花钱、不带任何密钥", async () => {
+  const { diagnostics, calls } = diagnosticsHarness();
+  const result = await diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN });
+  assert.deepEqual(result, {
+    ok: true, mode: "config", runtime: "v16.13.0",
+    configured: { image: true, sceneModel: true, quality: true }, hasOpenId: true,
+  });
+  assert.equal(calls.generate.length + calls.scene.length, 0);
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(DIAGNOSE_TOKEN));
+});
+
+test("试读画面用虚构段落，不读任何人的书稿", async () => {
+  const { diagnostics, calls } = diagnosticsHarness();
+  const result = await diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "scene" });
+  assert.equal(result.ok, true);
+  assert.equal(calls.scene[0], DIAGNOSTIC_CHAPTER);
+  assert.match(DIAGNOSTIC_CHAPTER.text, /虚构段落，不属于任何真实故事/);
+  assert.match(result.steps[0].prompt, /河边的石桥/);
+  assert.equal(calls.drafts, 0);
+});
+
+test("试画一张：出图、下载、存云存储、送审、质检每步都记下耗时，图单独存放、不进任何书稿", async () => {
+  const { diagnostics, calls, repo } = diagnosticsHarness();
+  const result = await diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "image" });
+  assert.equal(result.ok, true);
+  assert.equal(result.jobStatus, "stored");
+  assert.deepEqual(result.steps.map(item => [item.name, item.ok]), [
+    ["generate", true], ["download", true], ["upload", true], ["moderation", true], ["quality", true],
+  ]);
+  assert.ok(result.steps.every(item => typeof item.ms === "number"));
+  assert.deepEqual([calls.generate[0].width, calls.generate[0].height], [1024, 768]);
+  assert.match(calls.generate[0].prompt, /石桥/);
+  assert.match(calls.upload[0], /^story-images\/_diagnostics\/req-diag-/);
+  assert.deepEqual(calls.moderation, [{ fileID: result.fileID, openid: OWNER_OPENID }]);
+  assert.equal(result.viewUrl, "https://tmp.example/d.png");
+  const image = repo.images.get(result.imageId);
+  assert.equal(image.familyId, "_diagnostics");
+  assert.equal(image.purpose, "diagnostic");
+  assert.equal(image.quality, "pass");
+  assert.equal(image.moderationTraceId, "trace-d");
+  assert.equal(calls.drafts, 0);
+});
+
+test("云端测试没带微信身份时跳过内容审核并说明原因，其余照常", async () => {
+  const { diagnostics, calls } = diagnosticsHarness();
+  const result = await diagnostics.run({ openid: "" }, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "image" });
+  const moderationStep = result.steps.find(item => item.name === "moderation");
+  assert.equal(moderationStep.skipped, true);
+  assert.equal(moderationStep.error.code, "NO_OPENID");
+  assert.equal(calls.moderation.length, 0);
+  assert.equal(result.ok, true);
+  assert.equal(result.hasOpenId, false);
+});
+
+test("试画被 TokenHub 审核拦下时停在出图这一步，不存文件", async () => {
+  const { diagnostics, calls, repo } = diagnosticsHarness({
+    provider: { async generate() { const error = new Error("TOKENHUB_HTTP_422"); error.httpStatus = 422; throw error; } },
+  });
+  const result = await diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "image" });
+  assert.equal(result.ok, false);
+  assert.equal(result.jobStatus, "blocked");
+  assert.deepEqual(result.steps.map(item => item.name), ["generate"]);
+  assert.deepEqual(result.steps[0].error, { code: "HTTP_422", message: "TOKENHUB_HTTP_422" });
+  assert.equal(calls.upload.length, 0);
+  assert.equal([...repo.jobs.values()][0].status, "blocked");
+});
+
+test("没配出图密钥时说明缺哪项，不留记录", async () => {
+  const { diagnostics, repo } = diagnosticsHarness({ provider: { configured: false } });
+  const result = await diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "image" });
+  assert.equal(result.ok, false);
+  assert.equal(result.steps[0].error.code, "IMAGE_NOT_CONFIGURED");
+  assert.equal(repo.jobs.size, 0);
+});
+
+test("试画每天最多 3 张", async () => {
+  const { diagnostics, repo } = diagnosticsHarness();
+  for (let index = 0; index < 3; index++) {
+    await repo.createJob(`_diagnostics_req-diag-old${index}`, { familyId: "_diagnostics", dayKey: "2026-09-13", status: "stored", createdAtMs: 0 });
+  }
+  await assert.rejects(diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "image" }), error => error.code === "DIAGNOSE_LIMIT");
+});
+
+test("出图用掉大半时间时跳过质检，标为质检中交给定时任务", async () => {
+  let h;
+  h = diagnosticsHarness({
+    provider: { async generate() { h.tick(50_000); return { resultUrl: "https://result.example/d.png", revisedPrompt: "", providerJobId: "t", usageTokens: 1 }; } },
+  });
+  const result = await h.diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "image" });
+  const qualityStep = result.steps.find(item => item.name === "quality");
+  assert.equal(qualityStep.skipped, true);
+  assert.equal(qualityStep.error.code, "NO_TIME");
+  assert.equal(h.calls.quality.length, 0);
+  assert.equal(h.repo.images.get(result.imageId).quality, "pending");
+  assert.equal(result.totalMs, 50_000);
+});
+
+test("入口接上了诊断动作，由环境变量里的口令把关", () => {
+  const index = fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/index.js"), "utf8");
+  assert.match(index, /case "diagnose": return await diagnostics\.run\(ctx, event\);/);
+  assert.match(index, /expectedToken: process\.env\.STORY_IMAGES_DIAGNOSE_TOKEN/);
+});
