@@ -7,6 +7,7 @@ import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLab
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import { contentFromDelta, contentToDelta, readLocalPhoto, saveLocalPhoto, validateContent } from "../../services/bookImages";
 import { storyImageApi } from "../../services/storyImageService";
+import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import {
   addChapter, applyOrganized, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, removeChapter, unassignedMemoryIds, updateChapter,
 } from "../../services/chapters";
@@ -29,7 +30,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({ id: memory.id, t
 
 Page({
   data: {
-    organizeBooks: [] as Array<{ id: string; title: string }>, previewText: "", previewTitle: "",
+    organizeBooks: [] as Array<{ id: string; title: string; memberId: string; detail: string; memoryIds: string[] }>, organizeBookKey: "", previewText: "", previewTitle: "",
     protagonistName: "", memberId: "", sources: [] as Array<{ id: string; text: string; byline: string }>,
     sourceCount: 0, draft: null as BiographyDraft | null,
     generating: false, saving: false, isCloudDraft: false, modeLabel: "", modeNote: "",
@@ -77,6 +78,8 @@ Page({
 
   openOrganizeOnLoad: false,
   requestedMemberId: "",
+  requestedStoryKey: "",
+  requestedStoryTitle: "",
   requestedMemoryIds: [] as string[],
   organizeCandidate: undefined as { draft: BiographyDraft; fingerprint: string; chapterId: string; label: string; notice: string; revisionId: string } | undefined,
   onLoad(options: { memberId?: string; chapterId?: string; memoryIds?: string } = {}) {
@@ -151,9 +154,32 @@ Page({
     this.photoPaths = photoPaths;
     this.imageIds = imageIds;
     this.loadActiveChapter();
+    const shelf = storyShelf(state);
+    const organizeBooks = shelf.map(story => ({
+      id: story.key,
+      title: story.title,
+      // A named memory story without a manuscript still belongs in the current
+      // life book: choosing it creates (or reuses) a chapter in that book.
+      memberId: story.manuscriptMemberId ?? member.id,
+      detail: shelfStoryLabel(story) || "可整理为新章节",
+      memoryIds: [...story.memoryIds],
+    }));
+    let organizeBookKey = shelf.some(story => story.key === this.requestedStoryKey)
+      ? this.requestedStoryKey
+      : shelf.find(story => story.manuscriptMemberId === member.id)?.key ?? "";
+    if (!organizeBookKey) {
+      organizeBookKey = `profile:${member.id}`;
+      organizeBooks.unshift({
+        id: organizeBookKey,
+        title: current.draft?.title || member.name + "的人生之书",
+        memberId: member.id,
+        detail: "还没开始整理",
+        memoryIds: [],
+      });
+    }
     this.setData({
       editTitle: this.titleBuffer, editBody: this.bodyBuffer, editChapterTitle: this.chapterTitleBuffer, view,
-      organizeBooks: state.members.filter(isRecordingProfile).map(item => ({ id: item.id, title: currentManuscript(state, item.id).draft?.title || item.name + "的人生之书" })),
+      organizeBooks, organizeBookKey,
       protagonistName: member.name, memberId: member.id,
       sources: qualified.map(item => ({ id: item.id, text: item.text, byline: item.authorName + " · 讲述" })),
       sourceCount: qualified.length, draft: current.draft ?? null,
@@ -169,7 +195,17 @@ Page({
       this.showOrganize();
       this.organizeSelection = this.requestedMemoryIds.filter(id => qualified.some(item => item.id === id));
       this.requestedMemoryIds = [];
-      this.setData({ organizeRows: this.data.organizeRows.map(row => ({ ...row, checked: this.organizeSelection.includes(row.id) })) });
+      const matchingChapter = this.requestedStoryTitle
+        ? this.chapters.find(chapter => chapter.title.trim() === this.requestedStoryTitle)
+        : undefined;
+      const requestedStoryHasManuscript = shelf.some(story =>
+        story.key === this.requestedStoryKey && Boolean(story.manuscriptMemberId));
+      this.requestedStoryTitle = "";
+      this.setData({
+        organizeTarget: matchingChapter?.id
+          ?? (this.requestedStoryKey && !requestedStoryHasManuscript ? "new" : this.data.organizeTarget),
+        organizeRows: this.data.organizeRows.map(row => ({ ...row, checked: this.organizeSelection.includes(row.id) })),
+      });
     }
     void this.loadBackdrops(member.id, refreshId);
   },
@@ -536,9 +572,13 @@ Page({
   },
   async onOrganizeBook(event: { detail: { value: string } }) {
     if (this.data.generating || this.data.saving) return;
+    const selected = this.data.organizeBooks.find(item => item.id === event.detail.value);
+    if (!selected) return;
     this.openOrganizeOnLoad = true;
-    this.requestedMemberId = event.detail.value;
-    this.requestedMemoryIds = [...this.organizeSelection];
+    this.requestedStoryKey = selected.id;
+    this.requestedStoryTitle = selected.title;
+    this.requestedMemberId = selected.memberId;
+    this.requestedMemoryIds = selected.memoryIds.length ? [...selected.memoryIds] : [...this.organizeSelection];
     this.organizeCandidate = undefined;
     try { await this.refresh(); } catch (error) { this.setData({ saveNotice: error instanceof Error ? error.message : "加载失败" }); }
   },
