@@ -83,11 +83,13 @@ function storyOptionsFor(
   memories: FamilyRoomState["contributions"],
   selectedTitle: string,
   familyMode = false,
+  deletedTitles: string[] = [],
 ): StoryOptionView[] {
   const counts = new Map<string, number>();
+  const hidden = new Set(deletedTitles);
   (familyMode ? memories : memoryPool(memories)).forEach((memory) => {
     const title = contributionStoryTitle(memory);
-    if (title && (!familyMode || contributionScope(memory) === "family")) {
+    if (title && !hidden.has(title) && (!familyMode || contributionScope(memory) === "family")) {
       counts.set(title, (counts.get(title) ?? 0) + 1);
     }
   });
@@ -246,7 +248,12 @@ Page({
       askedDimensions: requestedQuestion && requestedDimension ? [requestedDimension] : [],
       dateLabel: today(),
       storyTitle,
-      storyOptions: storyOptionsFor(state.contributions, storyTitle, Boolean(sharedFamilyId)),
+      storyOptions: storyOptionsFor(
+        state.contributions,
+        storyTitle,
+        Boolean(sharedFamilyId),
+        (state.deletedStories ?? []).map(story => story.title),
+      ),
       relatedOptions: memberOptionsFor(state.members, member.id),
       audienceOptions: memberOptionsFor(state.members, member.id),
     });

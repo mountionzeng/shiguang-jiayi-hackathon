@@ -311,6 +311,22 @@ test("one interview can stay a fragment or join a named story with independent p
   assert.equal(savedFragment?.reviewStatus, "confirmed");
 });
 
+test("a story in recently deleted is not offered again while saving a new memory", async (context) => {
+  const initial = createInitialRoomState();
+  initial.deletedStories = [{
+    key: "story:外公接我放学",
+    title: "外公接我放学",
+    deletedAt: "2026-09-13T00:00:00.000Z",
+  }];
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+
+  const interview = instantiate(await pageDefinition("interview"));
+  await callPage(interview, "onLoad");
+
+  assert.ok(!(interview.data.storyOptions as Array<{ title: string }>).some(option => option.title === "外公接我放学"));
+});
+
 test("a save with an uncertain acknowledgement retries the same record without unload duplicates", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -1092,6 +1108,33 @@ test("AI organizing starts a book; edits, saved versions and source changes pres
   await callPage(page, "refresh");
   assert.ok(page.data.draft);
   assert.equal(page.data.stale, true);
+});
+
+test("book candidates hide memories from deleted stories and include a newly saved fragment", async context => {
+  const state = createInitialRoomState();
+  state.deletedStories = [{
+    key: "story:外公接我放学",
+    title: "外公接我放学",
+    deletedAt: "2026-09-13T00:00:00.000Z",
+  }];
+  state.contributions.push(createContribution({
+    id: "just-saved",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "自己",
+    text: "这是刚刚保存、还没有放进故事的新记忆。",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-09-13T02:39:00.000Z"),
+  }));
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+
+  await callPage(page, "refresh");
+
+  assert.deepEqual((page.data.unassigned as Array<{ id: string }>).map(item => item.id), ["just-saved"]);
+  assert.equal(page.data.sourceCount, 1);
 });
 
 test("AI organizing lists every story instead of treating recording profiles as books", async context => {

@@ -125,7 +125,9 @@ Page({
     const state = nextState ?? await loadRoomStateRemoteFirst();
     const member = this.requestedMemberId ? state.members.find(item => item.id === this.requestedMemberId && isRecordingProfile(item)) : await loadCurrentMemberRemoteFirst(state);
     if (!member) throw new Error("这本书已不可用，请重新选择");
-    const qualified = memoryPool(state.contributions);
+    const deletedStoryTitles = new Set((state.deletedStories ?? []).map(story => story.title));
+    const qualified = memoryPool(state.contributions)
+      .filter(memory => !deletedStoryTitles.has(contributionStoryTitle(memory)));
     const current = currentManuscript(state, member.id);
     if ((this.data.editing && !this.data.saving) || this.data.pickingPhoto || this.unloaded) return;
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];

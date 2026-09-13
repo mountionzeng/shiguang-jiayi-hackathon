@@ -147,14 +147,38 @@ function definedFields(data: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
 }
 
-async function loadAll(collectionName: string, familyId: string) {
+async function loadAllWhere(collectionName: string, filter: Record<string, unknown>) {
   const data: any[] = [];
   for (let offset = 0; ; offset += 20) {
-    const response = await collection(collectionName).where({ familyId })
+    const response = await collection(collectionName).where(filter)
       .orderBy("_id", "asc").skip(offset).limit(20).get();
     data.push(...response.data);
     if (response.data.length < 20) return { data };
   }
+}
+
+async function loadAll(collectionName: string, familyId: string) {
+  return loadAllWhere(collectionName, { familyId });
+}
+
+type LoadedCloudMemory = CloudMemory & { _id?: string; frontendContributionId?: string };
+
+function contributionIdOf(memory: LoadedCloudMemory): string {
+  return String(memory.frontendContributionId ?? memory._id ?? memory.sourceRecordId);
+}
+
+/** Old clients could leave more than one cloud document for the same logical memory. */
+function uniqueCloudMemories(records: LoadedCloudMemory[], familyId: string): LoadedCloudMemory[] {
+  const unique = new Map<string, LoadedCloudMemory>();
+  for (const memory of records) {
+    const contributionId = contributionIdOf(memory);
+    const current = unique.get(contributionId);
+    const canonicalId = memoryDocId(familyId, contributionId);
+    if (!current || memory._id === canonicalId || current._id !== canonicalId) {
+      unique.set(contributionId, memory);
+    }
+  }
+  return [...unique.values()];
 }
 
 async function invalidateDraft(familyId: string, contribution: MemoryContribution) {
@@ -394,12 +418,9 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
     };
   }
 
-  const contributions = (memoriesResponse.data as Array<CloudMemory & {
-    _id?: string;
-    frontendContributionId?: string;
-  }>).map(
+  const contributions = uniqueCloudMemories(memoriesResponse.data as LoadedCloudMemory[], familyId).map(
     (memory) => ({
-      id: String(memory.frontendContributionId ?? memory._id ?? memory.sourceRecordId),
+      id: contributionIdOf(memory),
       authorMemberId: memory.authorMemberId,
       authorName: memory.authorName,
       relation: memory.relation,
@@ -562,10 +583,41 @@ export async function deleteCloudContribution(
   const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
   const contribution = state.contributions.find((item) => item.id === contributionId);
-  // Remove the raw copy before the visible record. If either fails, a retry uses
-  // the same IDs; never report a source still retained as fully deleted.
-  await removeDocIfExists(CLOUD_COLLECTIONS.sourceRecords, sourceRecordDocId(familyId, contributionId));
-  await removeDocIfExists(CLOUD_COLLECTIONS.memories, memoryDocId(familyId, contributionId));
+  const [allMemories, allSources] = await Promise.all([
+    loadAll(CLOUD_COLLECTIONS.memories, familyId),
+    loadAll(CLOUD_COLLECTIONS.sourceRecords, familyId),
+  ]);
+  // Reuse the existing family-scoped queries so this repair needs no new cloud
+  // database composite index. Filter the small account dataset in memory.
+  const memoryCopies = allMemories.data.filter((item: LoadedCloudMemory) =>
+    contributionIdOf(item) === contributionId);
+  const memoryDocumentIds = new Set<string>([
+    memoryDocId(familyId, contributionId),
+    contributionId,
+    ...memoryCopies.map((item: { _id?: string }) => item._id)
+      .filter((id: unknown): id is string => typeof id === "string"),
+  ]);
+  const referencedSourceIds = new Set(memoryCopies
+    .map((item: { sourceRecordId?: string }) => item.sourceRecordId)
+    .filter((id: unknown): id is string => typeof id === "string"));
+  const sourceCopies = allSources.data.filter((item: {
+    _id?: string;
+    frontendContributionId?: string;
+  }) => item.frontendContributionId === contributionId ||
+    (typeof item._id === "string" && referencedSourceIds.has(item._id)));
+  const sourceDocumentIds = new Set<string>([
+    sourceRecordDocId(familyId, contributionId),
+    `src_${contributionId}`,
+    ...referencedSourceIds,
+    ...sourceCopies.map((item: { _id?: string }) => item._id)
+      .filter((id: unknown): id is string => typeof id === "string"),
+  ]);
+  // Remove every raw copy before every visible copy. A retry resolves the same
+  // logical ID, so legacy random document IDs cannot reappear after refresh.
+  await Promise.all([...sourceDocumentIds].map(id =>
+    removeDocIfExists(CLOUD_COLLECTIONS.sourceRecords, id)));
+  await Promise.all([...memoryDocumentIds].map(id =>
+    removeDocIfExists(CLOUD_COLLECTIONS.memories, id)));
   if (!contribution) return state;
   await invalidateDraft(familyId, contribution);
 

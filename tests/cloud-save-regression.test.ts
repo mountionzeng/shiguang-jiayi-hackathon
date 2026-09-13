@@ -91,6 +91,28 @@ test("successful primary save and delete survive draft cleanup denial; retries a
   } finally { f.restore(); }
 });
 
+test("cloud loading collapses legacy copies and deletion removes every document for one memory", async () => {
+  const f = fixture();
+  try {
+    const item = { ...memory(), id: "memory-with-legacy-copies" };
+    await appendContributionRemoteFirst(item);
+
+    const canonicalMemory = f.records("memories").get(`family_fixture-user_${item.id}`);
+    const canonicalSource = f.records("source_records").get(`src_family_fixture-user_${item.id}`);
+    f.records("memories").set("legacy-random-memory-doc", structuredClone(canonicalMemory));
+    f.records("source_records").set("legacy-random-source-doc", structuredClone(canonicalSource));
+
+    const loaded = await loadRoomStateRemoteFirst();
+    assert.deepEqual(loaded.contributions.map(contribution => contribution.id), [item.id],
+      "one logical memory must not render once per legacy cloud document");
+
+    await deleteContributionRemoteFirst(item.id);
+    assert.equal((await loadRoomStateRemoteFirst()).contributions.length, 0);
+    assert.equal(f.records("memories").size, 0, "all visible copies are removed");
+    assert.equal(f.records("source_records").size, 0, "all raw copies are removed");
+  } finally { f.restore(); }
+});
+
 test("a stable multi-record import resumes after a partial cloud failure", async () => {
   const f = fixture();
   try {
