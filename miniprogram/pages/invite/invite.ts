@@ -277,7 +277,7 @@ Page({
     return invitation ? {
       title: `${invitation.inviterName} 邀请你一起写故事`,
       path: `/pages/invite/invite?token=${encodeURIComponent(invitation.token)}`,
-    } : { title: "拾光Ai" };
+    } : { title: "拾光家忆" };
   },
-  onShareTimeline() { return { title: "拾光Ai｜把重要的故事慢慢写下来" }; },
+  onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },
 });

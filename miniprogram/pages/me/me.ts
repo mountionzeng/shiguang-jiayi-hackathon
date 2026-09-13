@@ -11,7 +11,7 @@ import {
   resetCurrentUserRoomRemoteFirst,
 } from "../../services/roomRepository";
 import { clearAiConsent, requestAiConsent } from "../../services/aiConsent";
-import { loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
+import { formatComputeBalance, loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
 import { JoinedFamilyRoom, loadJoinedFamilyRooms } from "../../services/familyInviteService";
 
 Page({
@@ -28,6 +28,8 @@ Page({
     accountNameInput: "",
     accountAvatarPreview: "忆",
     accountSaving: false,
+    computeBalance: "0.00 算力",
+    computeRate: "¥1 = 2 算力",
     joinedRooms: [] as JoinedFamilyRoom[],
   },
 
@@ -66,6 +68,8 @@ Page({
         accountAvatarText: account.avatarText || member.avatarText,
         accountNameInput: account.displayName || member.name,
         accountAvatarPreview: account.avatarText || member.avatarText,
+        computeBalance: formatComputeBalance(account.computeBalanceMicros),
+        computeRate: account.computeRate,
       });
       try {
         this.setData({ joinedRooms: await loadJoinedFamilyRooms() });
@@ -168,6 +172,6 @@ Page({
       console.warn("清空当前账号失败", error);
     }
   },
-  onShareAppMessage() { return { title: "拾光Ai｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
-  onShareTimeline() { return { title: "拾光Ai｜把重要的故事慢慢写下来" }; },
+  onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },
 });

@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 
 const ACCOUNT_COLLECTION = "user_accounts";
+const WELCOME_COMPUTE_MICROS = 10_000_000;
 
 function sanitizeDocumentPart(value) {
   return value.replace(/[^0-9A-Za-z_-]/g, "_");
@@ -76,6 +77,13 @@ async function linkCurrentAccount(db, context) {
     ...(context.UNIONID ? { wxUnionId: context.UNIONID } : {}),
   };
 
+  // 10 算力是微信账号的一次性注册赠送。旧账号没有该字段时补领；这里写入
+  // 固定余额而不是做增量，因此并发首次登录和重复登录都不会重复赠送。
+  if (!Number.isSafeInteger(existingAccount && existingAccount.computeBalanceMicros)) {
+    accountData.computeBalanceMicros = WELCOME_COMPUTE_MICROS;
+    accountData.welcomeComputeGrantedAt = now;
+  }
+
   if (exists) {
     await accountRef.update({ data: accountData });
   } else {
@@ -99,6 +107,10 @@ async function linkCurrentAccount(db, context) {
     displayName: String(existingAccount && existingAccount.displayName || ""),
     avatarText: String(existingAccount && existingAccount.avatarText || ""),
     profileComplete: Boolean(existingAccount && existingAccount.displayName),
+    computeBalanceMicros: Number.isSafeInteger(accountData.computeBalanceMicros)
+      ? accountData.computeBalanceMicros
+      : Math.max(0, Number(existingAccount && existingAccount.computeBalanceMicros) || 0),
+    computeRate: "¥1 = 2 算力",
   };
 }
 
@@ -140,6 +152,7 @@ async function syncMembershipProfiles(db, identity, displayName, avatarText, now
 
 module.exports = {
   ACCOUNT_COLLECTION,
+  WELCOME_COMPUTE_MICROS,
   accountIdFor,
   avatarTextFor,
   familyIdFor,

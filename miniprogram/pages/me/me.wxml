@@ -26,6 +26,18 @@
     </view>
   </view>
 
+  <view class="compute-card">
+    <view>
+      <view class="compute-label">可用算力</view>
+      <view class="compute-balance serif">{{computeBalance}}</view>
+    </view>
+    <view class="compute-copy">
+      <text>{{computeRate}}</text>
+      <text>新微信账号固定赠送 10 算力</text>
+      <text wx:if="{{computeBalance === '0.00 算力'}}">余额用完后，AI 功能暂停；故事仍可查看和编辑</text>
+    </view>
+  </view>
+
   <view class="me-stats">
     <view class="me-stat">
       <text class="me-stat-num">{{memoryCount}}</text>

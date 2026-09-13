@@ -27,5 +27,5 @@ Page({
   closePreview() { if (!this.data.busy) this.setData({ previewOpen: false }); },
   async importFull() { await this.importSelected(false); }, async importFragment() { await this.importSelected(true); },
   async importSelected(fragmentOnly: boolean) { if (this.data.busy) return; this.setData({ busy: true }); try { const state = await loadRoomStateRemoteFirst(), member = accountOwner(state.members); if (!member) throw new Error("请先建立自己的档案"); const document = await readDrinkingTimeStory(this.data.selectedId); const count = await importDrinkingTimeStory(document, member, state.contributions, fragmentOnly ? this.data.fragment : undefined); wx.showToast({ title: count ? `已导入 ${count} 段` : "这份内容已经导入过", icon: count ? "success" : "none" }); this.setData({ previewOpen: false }); } catch (error) { wx.showToast({ title: error instanceof Error ? error.message : "导入失败", icon: "none" }); } finally { this.setData({ busy: false }); } },
-  onShareAppMessage() { return { title: "拾光Ai｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
 });

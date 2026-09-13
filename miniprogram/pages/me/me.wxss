@@ -45,6 +45,25 @@
   box-shadow: 0 18rpx 34rpx rgba(92, 70, 47, 0.12);
 }
 
+.compute-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28rpx;
+  margin-top: 22rpx;
+  padding: 28rpx 30rpx;
+  border: 2rpx solid rgba(111, 79, 58, 0.12);
+  border-radius: 26rpx;
+  background: rgba(255, 254, 251, 0.82);
+  box-shadow: 0 12rpx 28rpx rgba(75, 73, 63, 0.05);
+}
+
+.compute-label { color: var(--ink-faint); font-size: 22rpx; }
+.compute-balance { margin-top: 6rpx; color: var(--ink); font-size: 36rpx; font-weight: 600; white-space: nowrap; }
+.compute-copy { display: flex; align-items: flex-end; flex-direction: column; color: var(--ink-faint); font-size: 21rpx; line-height: 1.55; text-align: right; }
+
 .me-avatar {
   position: relative;
   display: flex;

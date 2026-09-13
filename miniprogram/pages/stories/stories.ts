@@ -131,6 +131,6 @@ Page({
     if (this.data.ownerId) saveCurrentMemberIdLocal(this.data.ownerId);
     wx.navigateTo({ url: "/pages/book/book" });
   },
-  onShareAppMessage() { return { title: "拾光Ai｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
-  onShareTimeline() { return { title: "拾光Ai｜把重要的故事慢慢写下来" }; },
+  onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },
 });

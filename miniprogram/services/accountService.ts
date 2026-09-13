@@ -4,6 +4,8 @@ export interface ShiguangAccount {
   displayName: string;
   avatarText: string;
   profileComplete: boolean;
+  computeBalanceMicros: number;
+  computeRate: string;
 }
 
 interface AccountResponse {
@@ -20,11 +22,20 @@ function parseAccount(result: unknown): ShiguangAccount {
     displayName: String(account.displayName ?? "").trim(),
     avatarText: String(account.avatarText ?? "").trim(),
     profileComplete: Boolean(account.profileComplete),
+    computeBalanceMicros: Number.isSafeInteger(account.computeBalanceMicros)
+      ? Math.max(0, Number(account.computeBalanceMicros))
+      : 0,
+    computeRate: "¥1 = 2 算力",
   };
   if (!response.accountLinked || !parsed.accountId || !parsed.primaryFamilyId) {
     throw new Error("微信账号暂未关联，请稍后重试");
   }
   return parsed;
+}
+
+export function formatComputeBalance(computeMicros: number): string {
+  const safe = Number.isSafeInteger(computeMicros) ? Math.max(0, computeMicros) : 0;
+  return `${(Math.floor(safe / 10_000) / 100).toFixed(2)} 算力`;
 }
 
 async function callAccount(action: "get" | "updateProfile", displayName = ""): Promise<ShiguangAccount> {

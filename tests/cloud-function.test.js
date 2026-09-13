@@ -71,6 +71,8 @@ test("微信账号首次进入时建立账号记录并绑定已有家庭空间",
   assert.equal(account.wxUnionId, "union-fixture");
   assert.equal(account.primaryFamilyId, "family_fixture-user");
   assert.equal(account.createdAt, "SERVER_DATE");
+  assert.equal(account.computeBalanceMicros, 10_000_000);
+  assert.equal(identity.computeBalanceMicros, 10_000_000);
   assert.equal(
     updates.find(item => item.name === "families").data.ownerAccountId,
     identity.accountId,
@@ -101,6 +103,7 @@ test("微信账号再次进入只刷新关联状态，不覆盖首次关联时�
   await accountTest.linkCurrentAccount(db, { OPENID: "fixture-user" });
   const account = records.get(`user_accounts:${accountId}`);
   assert.equal(account.createdAt, "FIRST_LINK");
+  assert.equal(account.computeBalanceMicros, 10_000_000);
   assert.equal(account.lastSeenAt, "NEXT_SEEN");
 });
 
