@@ -7,7 +7,9 @@ import { chapterLabel, chaptersOf, copyChapter, validateManuscriptDraft } from "
 export interface MemoryPlacement {
   memberId: string;
   bookName: string;
+  bookTitle: string;
   chapter: string;
+  chapterId: string;
 }
 
 /**
@@ -22,7 +24,7 @@ export function memoryPlacements(state: FamilyRoomState): Map<string, MemoryPlac
     chaptersOf(current.draft, current.sourceFingerprint).forEach((chapter, index) => {
       for (const memoryId of chapter.memoryIds) {
         placements.set(memoryId, [...(placements.get(memoryId) ?? []),
-          { memberId: member.id, bookName: member.name, chapter: chapterLabel(index + 1) }]);
+          { memberId: member.id, bookName: member.name, bookTitle: current.draft!.title, chapterId: chapter.id, chapter: chapterLabel(index + 1) + (chapter.title ? " · " + chapter.title : "") }]);
       }
     });
   }

@@ -1015,7 +1015,11 @@ test("AI organizing starts a book; edits, saved versions and source changes pres
   assert.equal(page.data.organizeTarget, "new");
   assert.deepEqual((page.data.organizeRows as any[]).map(row => [row.id, row.checked, row.where]), [["demo-personal-rain", true, "还没放进"]]);
   assert.equal(storage.roomState().manuscriptRevisions, undefined);
+  const beforePreview = JSON.stringify(storage.roomState().manuscriptRevisions);
   await callPage(page, "runOrganize");
+  assert.equal(page.data.panel, "organize-preview");
+  assert.equal(JSON.stringify(storage.roomState().manuscriptRevisions), beforePreview, "preview must not save");
+  await callPage(page, "confirmOrganize");
   const organized = page.data.draft as any;
   assert.equal(organized.title, "林岚的人生之书", "the AI never names the book");
   assert.equal(organized.chapters[0].title, "外公接我放学");
@@ -1059,7 +1063,11 @@ test("AI organizing a chapter keeps the book title and every photo, and can be u
   await callPage(page, "refresh");
   callPage(page, "showOrganize");
   assert.equal(page.data.organizeTarget, "chapter-1", "organizing from a chapter targets that chapter");
+  const beforePreview = JSON.stringify(storage.roomState().manuscriptRevisions);
   await callPage(page, "runOrganize");
+  assert.equal(page.data.panel, "organize-preview");
+  assert.equal(JSON.stringify(storage.roomState().manuscriptRevisions), beforePreview, "preview must not save");
+  await callPage(page, "confirmOrganize");
   const organized = page.data.draft as any;
   assert.equal(organized.title, "外公和雨天");
   const content = organized.chapters[0].content;
@@ -1319,4 +1327,46 @@ test("slow photo lookup never replaces text typed while a refresh was loading", 
   assert.equal(page.bodyBuffer, "新输入的正文");
   assert.deepEqual(page.contentBuffer, [{ text: "新输入的正文" }]);
   assert.equal(page.data.editing, true);
+});
+
+test("organize preview can be cancelled without writing and rejects changed sources", async context => {
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  callPage(page, "showOrganize");
+  await callPage(page, "runOrganize");
+  callPage(page, "closePanel");
+  await callPage(page, "confirmOrganize");
+  assert.equal(storage.roomState().manuscriptRevisions, undefined);
+  callPage(page, "showOrganize");
+  await callPage(page, "runOrganize");
+  const { appendContribution } = await import("../miniprogram/services/roomStorage");
+  appendContribution(createContribution({ authorMemberId: "owner", authorName: "测试", relation: "自己", text: "素材发生了变化", scope: "personal", visibility: "private" }));
+  await callPage(page, "confirmOrganize");
+  assert.match(String(page.data.saveNotice), /已有更新/);
+  assert.equal(storage.roomState().manuscriptRevisions, undefined);
+});
+
+test("memory entry preselects its source and preview edits become the saved chapter", async context => {
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  page.requestedMemoryIds = ["demo-personal-rain"];
+  await callPage(page, "refresh");
+  assert.equal(page.data.panel, "organize");
+  assert.deepEqual(page.organizeSelection, ["demo-personal-rain"]);
+  await callPage(page, "runOrganize");
+  callPage(page, "onPreviewText", { detail: { value: "我确认的正文。" } });
+  callPage(page, "onPreviewTitle", { detail: { value: "雨中的陪伴" } });
+  await callPage(page, "confirmOrganize");
+  assert.equal((page.data.draft as any).chapters[0].title, "雨中的陪伴");
+  assert.equal((page.data.draft as any).chapters[0].content[0].text, "我确认的正文。\n");
+  assert.equal(storage.roomState().contributions[0].text, createInitialRoomState().contributions[0].text);
 });
