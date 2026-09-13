@@ -114,7 +114,7 @@ function listWith(overrides: Partial<StoryImageList> = {}): StoryImageList {
       { imageId: "family_o-owner_img_req-a", chapterId: "chapter-a", purpose: "illustration", url: "https://tmp.example/a.png", bytes: 2048, moderation: "pending", quality: "flawed", qualityIssues: ["有乱码字"], aiGenerated: true, createdAtMs: 2 },
       { imageId: BACKDROP_ID, chapterId: "chapter-a", purpose: "backdrop", url: "https://tmp.example/b.png", bytes: 1024, moderation: "pass", quality: "pass", qualityIssues: [], aiGenerated: true, createdAtMs: 3 },
     ],
-    pending: [{ jobId: "family_o-owner_req-b", status: "running", message: "正在画，大约 20–60 秒。可以先离开，回来接着看", chapterId: "chapter-b", purpose: "illustration", imageId: "", createdAtMs: 3 }],
+    pending: [{ jobId: "family_o-owner_req-b", status: "queued", message: "正在画，大约 20–60 秒。可以先离开，回来接着看", chapterId: "chapter-b", purpose: "illustration", imageId: "", createdAtMs: 3 }],
     usage: { count: 2, bytes: 3072 },
     limits: { daily: 10, book: 30 },
     ...overrides,
@@ -148,6 +148,9 @@ test("配图请求编号符合云函数的格式，轮询先快后慢，占用�
   assert.equal(qualityLabel({ quality: "flawed", qualityIssues: ["有乱码字", "有水印或 logo"] }), "有瑕疵：有乱码字、有水印或 logo");
   assert.equal(qualityLabel({ quality: "pass", qualityIssues: [] }), "");
   assert.equal(qualityLabel({ quality: "unchecked", qualityIssues: [] }), "没质检");
+  assert.equal(qualityLabel({ quality: "pending", qualityIssues: [] }), "质检中");
+  assert.equal(isActiveJob({ status: "queued" }), true);
+  assert.equal(isActiveJob({ status: "generated" }), true);
 });
 
 test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节和请求编号调用云函数", async context => {
@@ -158,7 +161,7 @@ test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节�
       callFunction: async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
         calls.push({ name, data });
         if (name === "getOpenId") return { result: { openid: "o-owner" } };
-        return { result: { job: { jobId: "family_o-owner_req-x", status: "running", message: "正在画", chapterId: "chapter-a", purpose: "illustration", imageId: "", createdAtMs: 1 } } };
+        return { result: { job: { jobId: "family_o-owner_req-x", status: "queued", message: "正在画", chapterId: "chapter-a", purpose: "illustration", imageId: "", createdAtMs: 1 } } };
       },
     },
   });
@@ -166,7 +169,7 @@ test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节�
   context.after(() => { env.restore(); clearAiConsent(); });
 
   const job = await storyImageApi.submitChapterImage({ memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-test-00000001" });
-  assert.equal(job.status, "running");
+  assert.equal(job.status, "queued");
   const submit = calls.find(item => item.name === "storyImages");
   assert.deepEqual(submit?.data, {
     memberId: "owner", chapterId: "chapter-a", requestId: "req-test-00000001", purpose: "illustration",

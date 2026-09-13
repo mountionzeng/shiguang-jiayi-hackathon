@@ -8,7 +8,7 @@
     {
       "name": "sweepImageJobs",
       "type": "timer",
-      "config": "0 */5 * * * * *"
+      "config": "0 * * * * * *"
     }
   ]
 }

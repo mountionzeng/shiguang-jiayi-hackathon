@@ -1,9 +1,9 @@
 const cloud = require("wx-server-sdk");
 const { StoryImageError } = require("./core");
 const { createStoryImageHandlers } = require("./flow");
-const { createHunyuanClient, downloadResult } = require("./hunyuan");
 const { createQualityChecker } = require("./quality");
 const { createSceneExtractor } = require("./scene");
+const { createTokenHubImageClient, downloadResult, IMAGE_MODEL } = require("./tokenhub");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
@@ -12,7 +12,7 @@ const _ = db.command;
 const JOBS = "image_jobs";
 const IMAGES = "story_images";
 const DRAFTS = "biography_drafts";
-const ACTIVE_STATUSES = ["submitted", "running", "storing"];
+const ACTIVE_STATUSES = ["submitted", "queued", "generating", "generated", "storing"];
 
 function errorMessage(error) {
   return String(error && error.errMsg ? error.errMsg : error);
@@ -94,6 +94,11 @@ const repo = {
       .orderBy("updatedAtMs", "asc").limit(limit).get();
     return response.data;
   },
+  async listImagesPendingQuality(limit) {
+    const response = await db.collection(IMAGES).where({ quality: "pending", deletedAtMs: _.exists(false) })
+      .orderBy("createdAtMs", "asc").limit(limit).get();
+    return response.data;
+  },
 };
 
 const storage = {
@@ -135,22 +140,16 @@ const moderation = {
   },
 };
 
-const hunyuan = process.env.HUNYUAN_SECRET_ID && process.env.HUNYUAN_SECRET_KEY
-  ? createHunyuanClient({
-    secretId: process.env.HUNYUAN_SECRET_ID,
-    secretKey: process.env.HUNYUAN_SECRET_KEY,
-    region: process.env.HUNYUAN_REGION || "ap-guangzhou",
-  })
-  : undefined;
+const tokenHubKey = process.env.TOKENHUB_API_KEY;
+const imageClient = createTokenHubImageClient({ apiKey: tokenHubKey, baseUrl: process.env.TOKENHUB_BASE_URL });
 
 const handlers = createStoryImageHandlers({
   repo,
   provider: {
-    name: "hunyuan",
-    model: "hunyuan-image-3.0",
-    configured: Boolean(hunyuan),
-    submit: input => hunyuan.submit(input),
-    query: providerJobId => hunyuan.query(providerJobId),
+    name: "tokenhub",
+    model: IMAGE_MODEL,
+    configured: imageClient.configured,
+    generate: input => imageClient.generate(input),
   },
   extractScene: createSceneExtractor({
     apiKey: process.env.AI_API_KEY,
@@ -161,8 +160,9 @@ const handlers = createStoryImageHandlers({
   storage,
   moderation,
   downloadImage: url => downloadResult(url),
+  // The same TokenHub key serves the vision model unless a separate one is set.
   qualityChecker: createQualityChecker({
-    apiKey: process.env.VISION_API_KEY,
+    apiKey: process.env.VISION_API_KEY || tokenHubKey,
     model: process.env.VISION_MODEL,
     baseUrl: process.env.VISION_BASE_URL,
   }),
