@@ -1094,6 +1094,53 @@ test("AI organizing starts a book; edits, saved versions and source changes pres
   assert.equal(page.data.stale, true);
 });
 
+test("AI organizing lists every story instead of treating recording profiles as books", async context => {
+  const state = createInitialRoomState();
+  state.members = state.members.map(member => member.id === "owner"
+    ? { ...member, kind: "recording-profile" as const }
+    : { ...member, kind: "person" as const });
+  state.contributions.push(createContribution({
+    id: "another-story",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "自己",
+    text: "后来我又想起了第一次离开家去远方的那一天。",
+    storyTitle: "第一次去远方",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-09-12T00:00:00.000Z"),
+  }));
+  state.manuscriptRevisions = [makeRevision("owner", {
+    title: "我",
+    paragraphs: ["已经整理好的正文。"],
+    sourceCount: 1,
+    generatedAt: "2026-09-10T00:00:00.000Z",
+    generationMode: "local-demo",
+  }, "", "draft", "当前稿")];
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+
+  await callPage(page, "refresh");
+  callPage(page, "showOrganize");
+
+  assert.deepEqual(
+    (page.data.organizeBooks as Array<{ title: string }>).map(item => item.title),
+    ["我", "第一次去远方", "外公接我放学"],
+  );
+  const other = (page.data.organizeBooks as Array<{ id: string; title: string; memberId: string }>).find(item => item.title === "第一次去远方")!;
+  assert.equal(other.memberId, "owner", "a story without chapters can still be selected in the current life book");
+
+  await callPage(page, "onOrganizeBook", { detail: { value: other.id } });
+  assert.equal(page.data.organizeBookKey, other.id);
+  assert.equal(page.data.organizeTarget, "new");
+  assert.deepEqual(
+    (page.data.organizeRows as Array<{ id: string; checked: boolean }>).filter(item => item.checked).map(item => item.id),
+    ["another-story"],
+    "choosing a story selects that story's memories for its new chapter",
+  );
+});
+
 test("AI organizing a chapter keeps the book title and every photo, and can be undone", async context => {
   const previousApp = (globalThis as any).getApp;
   (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
