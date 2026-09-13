@@ -694,3 +694,44 @@ test("出图、读章节、质检、下载都不直接依赖全局 fetch", () =>
     assert.match(source, /require\("\.\/httpFetch"\)/);
   }
 });
+
+// ---------- 补回改接 TokenHub 时变弱的流程覆盖 ----------
+
+test("提交底图：按底图尺寸排队，出图时用 1248x832，入库记为底图", async () => {
+  const { handlers, calls, repo } = harness();
+  const { job } = await handlers.submit(ctx, { ...submitEvent(), purpose: "backdrop" });
+  assert.equal(job.purpose, "backdrop");
+  const queued = repo.jobs.get(job.jobId);
+  assert.deepEqual([queued.width, queued.height], [1248, 832]);
+  assert.doesNotMatch(queued.prompt, /晒着被子/, "底图不用描述情景的那句话");
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(result.job.status, "stored");
+  assert.deepEqual([calls.generate[0].width, calls.generate[0].height], [1248, 832]);
+  assert.equal(repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`).purpose, "backdrop");
+  assert.equal(result.image.purpose, "backdrop");
+});
+
+test("TokenHub 明确拒绝（如并发超限 429）记为没画成、不占名额，可以马上再提交", async () => {
+  const { handlers, repo } = harness({
+    provider: { async generate() { const error = new Error("TOKENHUB_HTTP_429"); error.httpStatus = 429; throw error; } },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(result.job.status, "failed");
+  assert.equal(result.job.message, "没画成，这次不占名额，可以再试一次");
+  assert.equal(repo.jobs.get(job.jobId).errorCode, "HTTP_429");
+  assert.equal(await repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 0);
+  assert.equal((await handlers.submit(ctx, submitEvent("req-20260913-retry001"))).job.status, "queued");
+});
+
+test("TokenHub 返回成功却没有图片时记为不确定，占名额，不当成失败", async () => {
+  const { handlers, repo, calls } = harness({
+    provider: { async generate() { throw new Error("TOKENHUB_NO_IMAGE"); } },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(result.job.status, "unknown");
+  assert.equal(repo.jobs.get(job.jobId).errorCode, "GENERATE_UNCERTAIN");
+  assert.equal(await repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 1);
+  assert.equal(calls.upload.length, 0);
+});
