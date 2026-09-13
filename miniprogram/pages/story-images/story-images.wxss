@@ -21,4 +21,10 @@
 .image-thumb { display: block; width: 100%; height: 240rpx; border-radius: 10rpx; background: var(--paper-sunk); }
 .image-meta { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 8rpx; font-size: 22rpx; line-height: 1.6; color: var(--ink-soft); }
 .ai-badge { padding: 0 8rpx; color: var(--lake); background: var(--lake-soft); border-radius: 6rpx; }
-.image-delete { margin-top: 4rpx; }
+
+.group-actions { display: flex; flex-wrap: wrap; gap: 8rpx; margin-top: 8rpx; }
+.backdrop-state { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; margin-top: 12rpx; padding: 8rpx 16rpx; font-size: 26rpx; line-height: 1.6; color: var(--ink); background: var(--coral-soft); border-radius: 10rpx; }
+.card-actions { display: flex; flex-wrap: wrap; }
+.purpose-badge { padding: 0 8rpx; color: var(--apricot); background: var(--apricot-soft); border-radius: 6rpx; }
+.purpose-badge.is-in-use { color: var(--jade); background: var(--jade-soft); }
+.quality-flawed { color: var(--coral); }

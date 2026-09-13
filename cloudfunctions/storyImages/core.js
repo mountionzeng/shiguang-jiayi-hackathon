@@ -6,8 +6,15 @@ const BOOK_LIMIT = 30;
 const COUNTED_STATUSES = ["submitted", "running", "storing", "stored", "unknown", "expired"];
 const ACTIVE_STATUSES = ["submitted", "running", "storing"];
 const PURPOSES = ["illustration", "backdrop", "cover"];
-/** Stage 1 only draws chapter illustrations; backdrops and covers come later. */
-const ENABLED_PURPOSES = ["illustration"];
+/** Chapter illustrations and backdrops are open; covers wait for stable story records. */
+const ENABLED_PURPOSES = ["illustration", "backdrop"];
+const QUALITY_ISSUE_KEYS = ["readableText", "pseudoText", "watermarkOrLogo", "signature"];
+const QUALITY_ISSUE_LABELS = {
+  readableText: "有文字",
+  pseudoText: "有乱码字",
+  watermarkOrLogo: "有水印或 logo",
+  signature: "有签名或印章",
+};
 const MAX_CHAPTER_TEXT = 4000;
 const SUBMIT_STALE_MS = 3 * 60 * 1000;
 const STORING_STALE_MS = 3 * 60 * 1000;
@@ -158,6 +165,7 @@ function parseSceneJson(content) {
   }
   const scene = {
     scene: cleanText(parsed.scene, 120),
+    setting: cleanText(parsed.setting, 40),
     objects: cleanList(parsed.objects, 6, 20),
     light: cleanText(parsed.light, 40),
     mood: cleanText(parsed.mood, 12),
@@ -173,6 +181,18 @@ const STYLES = {
     lead: "纸本淡彩水彩插画，暖白色宣纸底，笔触轻柔，留白充足，画面安静。",
     width: 1024,
     height: 768,
+    maxObjects: 6,
+    withScene: true,
+    withFigures: true,
+  },
+  // A backdrop sits under the chapter text: scenery only, pale, with an empty top half.
+  backdrop: {
+    lead: "安静的纸本淡彩底图，暖白色宣纸底。上方大面积是接近纯白的宣纸留白，景物只占画面下方三分之一和两侧边角。色彩稀薄，对比柔和，线条简洁，纹样稀少，画面由景物与器物构成。",
+    width: 1248,
+    height: 832,
+    maxObjects: 3,
+    withScene: false,
+    withFigures: false,
   },
 };
 
@@ -180,10 +200,13 @@ const STYLES = {
 function buildImagePrompt(scene, purpose) {
   const style = STYLES[purpose];
   if (!style) throw new StoryImageError("PURPOSE_NOT_YET", "这种配图还没开放");
-  const parts = [style.lead, `画面：${scene.scene}。`];
-  if (scene.objects.length) parts.push(`画中有${scene.objects.join("、")}。`);
+  const parts = [style.lead];
+  if (style.withScene) parts.push(`画面：${scene.scene}。`);
+  else if (scene.setting) parts.push(`景物：${scene.setting}。`);
+  const objects = scene.objects.slice(0, style.maxObjects);
+  if (objects.length) parts.push(`画中有${objects.join("、")}。`);
   if (scene.light) parts.push(`时节与光线：${scene.light}。`);
-  if (scene.figures.length) parts.push(`人物以远景或局部呈现：${scene.figures.join("、")}。`);
+  if (style.withFigures && scene.figures.length) parts.push(`人物以远景或局部呈现：${scene.figures.join("、")}。`);
   if (scene.mood) parts.push(`整体氛围${scene.mood}。`);
   if (scene.eraHint) parts.push(`时代感：${scene.eraHint}。`);
   return { prompt: parts.join(""), width: style.width, height: style.height };
@@ -231,6 +254,10 @@ function publicImage(image, url) {
     url: url || "",
     bytes: Number(image.bytes || 0),
     moderation: image.moderation,
+    quality: image.quality || "unchecked",
+    qualityIssues: (Array.isArray(image.qualityIssues) ? image.qualityIssues : [])
+      .map(key => QUALITY_ISSUE_LABELS[key])
+      .filter(Boolean),
     aiGenerated: true,
     createdAtMs: image.createdAtMs,
   };
@@ -244,6 +271,9 @@ function extensionFor(contentType) {
 
 module.exports = {
   ACTIVE_STATUSES,
+  QUALITY_ISSUE_KEYS,
+  QUALITY_ISSUE_LABELS,
+  cleanText,
   BOOK_LIMIT,
   COUNTED_STATUSES,
   DAILY_LIMIT,

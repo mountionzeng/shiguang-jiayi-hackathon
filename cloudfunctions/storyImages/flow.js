@@ -2,6 +2,8 @@ const core = require("./core");
 
 const RECENT_JOB_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SWEEP_BATCH = 10;
+/** The timer shares the function's timeout; stop starting new jobs well before it. */
+const SWEEP_BUDGET_MS = 20_000;
 
 /**
  * Every outside effect (database, storage, Hunyuan, the text model, WeChat
@@ -16,6 +18,7 @@ function createStoryImageHandlers(deps) {
     storage,
     moderation,
     downloadImage,
+    qualityChecker,
     now = () => Date.now(),
     log = console,
   } = deps;
@@ -108,6 +111,22 @@ function createStoryImageHandlers(deps) {
     }
   }
 
+  /** Looks for stray text, watermarks or logos. The checker reports "unchecked" rather than throwing. */
+  async function runQualityCheck(imageId, imageUrl) {
+    if (!qualityChecker || !qualityChecker.configured) return;
+    try {
+      const outcome = await qualityChecker.check(imageUrl);
+      await repo.updateImage(imageId, {
+        quality: outcome.quality,
+        qualityIssues: outcome.qualityIssues || [],
+        qualityNote: outcome.qualityNote || "",
+        qualityError: outcome.qualityError || "",
+      });
+    } catch (error) {
+      log.error("storyImages quality", String(error && error.message));
+    }
+  }
+
   async function store(job, result) {
     let image;
     try {
@@ -149,6 +168,8 @@ function createStoryImageHandlers(deps) {
       bytes: image.buffer.length,
       contentType: image.contentType,
       moderation: "unchecked",
+      quality: "unchecked",
+      qualityIssues: [],
       aiGenerated: true,
       jobId: job._id,
       createdAtMs: nowMs,
@@ -157,6 +178,7 @@ function createStoryImageHandlers(deps) {
     const patch = { status: "stored", imageId, revisedPrompt: result.revisedPrompt || "", storedAtMs: nowMs, updatedAtMs: nowMs };
     await repo.updateJob(job._id, patch);
     await requestModeration(imageId, imageDoc, job.requesterOpenId);
+    await runQualityCheck(imageId, result.imageUrl);
     return { ...job, ...patch };
   }
 
@@ -248,9 +270,14 @@ function createStoryImageHandlers(deps) {
   }
 
   async function sweep() {
-    const nowMs = now();
+    const startedMs = now();
     const results = [];
     for (const job of await repo.listActiveJobs(SWEEP_BATCH)) {
+      if (now() - startedMs > SWEEP_BUDGET_MS) {
+        results.push({ jobId: job._id, action: "deferred" });
+        continue;
+      }
+      const nowMs = now();
       const action = core.sweepAction(job, nowMs);
       try {
         if (action === "mark-unknown") {
@@ -265,7 +292,8 @@ function createStoryImageHandlers(deps) {
       }
       results.push({ jobId: job._id, action });
     }
-    return { swept: results.length, results };
+    const deferred = results.filter(item => item.action === "deferred").length;
+    return { swept: results.length - deferred, deferred, results };
   }
 
   /** WeChat pushes wxa_media_check within 30 minutes of a request. */

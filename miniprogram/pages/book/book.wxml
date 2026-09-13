@@ -66,6 +66,7 @@
       <input class="manuscript-title serif" value="{{editChapterTitle}}" maxlength="40" bindinput="onEditChapterTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{saving || generating}}" placeholder="给这一章起个名字（可以不填）" />
     </view>
     <view class="body-field">
+      <image wx:if="{{backdropUrl}}" class="chapter-backdrop" src="{{backdropUrl}}" mode="aspectFill" aria-hidden="true" />
       <view class="field-label">正文</view>
       <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{false}}" show-img-resize="{{false}}"></editor>
     </view>

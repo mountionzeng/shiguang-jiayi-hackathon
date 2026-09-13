@@ -4,7 +4,7 @@
     <view class="images-title serif">这本书的图</view>
     <view class="images-usage" wx:if="{{usageLabel}}">{{usageLabel}}</view>
     <view class="images-note" wx:if="{{limitsLabel}}">{{limitsLabel}}</view>
-    <view class="images-note">配图只根据这一章已经保存的文字来画，不会用到你的照片。每张图右下角都带「图片由AI生成」。</view>
+    <view class="images-note">插图和底图都只根据这一章已经保存的文字来画，不会用到你的照片。底图会放在书稿这一章的正文下方。每张图右下角都带「图片由AI生成」。</view>
   </view>
   <view class="notice" wx:if="{{notice || loadError}}">{{notice || loadError}}</view>
   <button wx:if="{{loadError}}" class="tool-button" bindtap="retryLoad">重新加载</button>
@@ -14,20 +14,43 @@
   <view class="chapter-group {{group.id === focusChapterId ? 'is-focus' : ''}}" wx:for="{{groups}}" wx:key="id" wx:for-item="group">
     <view class="group-head">
       <text class="group-name serif">{{group.label}}{{group.title ? '　' + group.title : ''}}</text>
-      <button class="tool-button" data-id="{{group.id}}" bindtap="generate" disabled="{{submittingChapterId ? true : false}}">
-        <view class="action-icon icon-ai" aria-hidden="true"></view>{{submittingChapterId === group.id ? '提交中' : '配一张图'}}
+    </view>
+    <view class="group-actions">
+      <button class="tool-button" data-id="{{group.id}}" data-purpose="illustration" bindtap="generate" disabled="{{submitting || savingBackdrop ? true : false}}">
+        <view class="action-icon icon-ai" aria-hidden="true"></view>{{submitting === group.id + ':illustration' ? '提交中' : '配一张插图'}}
+      </button>
+      <button class="tool-button" data-id="{{group.id}}" data-purpose="backdrop" bindtap="generate" disabled="{{submitting || savingBackdrop ? true : false}}">
+        <view class="action-icon icon-photo" aria-hidden="true"></view>{{submitting === group.id + ':backdrop' ? '提交中' : '配一张底图'}}
       </button>
     </view>
-    <view class="job-row {{job.active ? 'is-active' : ''}}" wx:for="{{group.pending}}" wx:key="jobId" wx:for-item="job">{{job.message}}</view>
+    <view class="backdrop-state" wx:if="{{group.backdropMissing}}">
+      <text>这一章选的底图已经不在了。</text>
+      <button class="tool-button" data-chapter="{{group.id}}" data-image="" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
+        <view class="action-icon icon-remove" aria-hidden="true"></view>不用了
+      </button>
+    </view>
+    <view class="job-row {{job.active ? 'is-active' : ''}}" wx:for="{{group.pending}}" wx:key="jobId" wx:for-item="job">{{job.purposeLabel}} · {{job.message}}</view>
     <view class="image-grid" wx:if="{{group.images.length}}">
       <view class="image-card" wx:for="{{group.images}}" wx:key="imageId" wx:for-item="image">
         <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />
         <view class="image-meta">
-          <text class="ai-badge">AI 生成</text><text>{{image.sizeLabel}}</text><text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
+          <text class="ai-badge">AI 生成</text>
+          <text class="purpose-badge {{image.inUse ? 'is-in-use' : ''}}">{{image.inUse ? '本章底图' : image.purposeLabel}}</text>
+          <text>{{image.sizeLabel}}</text>
+          <text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
+          <text wx:if="{{image.qualityLabel}}" class="{{image.qualityFlawed ? 'quality-flawed' : ''}}">{{image.qualityLabel}}</text>
         </view>
-        <button class="tool-button image-delete" data-id="{{image.imageId}}" bindtap="remove" disabled="{{removingId === image.imageId}}">
-          <view class="action-icon icon-delete" aria-hidden="true"></view>删除
-        </button>
+        <view class="card-actions">
+          <button wx:if="{{image.isBackdrop && !image.inUse}}" class="tool-button" data-chapter="{{group.id}}" data-image="{{image.imageId}}" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
+            <view class="action-icon icon-restore" aria-hidden="true"></view>设为本章底图
+          </button>
+          <button wx:if="{{image.inUse}}" class="tool-button" data-chapter="{{group.id}}" data-image="" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
+            <view class="action-icon icon-remove" aria-hidden="true"></view>不用了
+          </button>
+          <button class="tool-button" data-id="{{image.imageId}}" bindtap="remove" disabled="{{removingId === image.imageId || savingBackdrop}}">
+            <view class="action-icon icon-delete" aria-hidden="true"></view>删除
+          </button>
+        </view>
       </view>
     </view>
     <view wx:if="{{!group.images.length && !group.pending.length}}" class="images-note">这一章还没有配图。</view>
@@ -39,11 +62,16 @@
       <view class="image-card" wx:for="{{otherImages}}" wx:key="imageId" wx:for-item="image">
         <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />
         <view class="image-meta">
-          <text class="ai-badge">AI 生成</text><text>{{image.sizeLabel}}</text><text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
+          <text class="ai-badge">AI 生成</text>
+          <text class="purpose-badge">{{image.purposeLabel}}</text>
+          <text>{{image.sizeLabel}}</text>
+          <text wx:if="{{image.qualityLabel}}" class="{{image.qualityFlawed ? 'quality-flawed' : ''}}">{{image.qualityLabel}}</text>
         </view>
-        <button class="tool-button image-delete" data-id="{{image.imageId}}" bindtap="remove" disabled="{{removingId === image.imageId}}">
-          <view class="action-icon icon-delete" aria-hidden="true"></view>删除
-        </button>
+        <view class="card-actions">
+          <button class="tool-button" data-id="{{image.imageId}}" bindtap="remove" disabled="{{removingId === image.imageId}}">
+            <view class="action-icon icon-delete" aria-hidden="true"></view>删除
+          </button>
+        </view>
       </view>
     </view>
   </view>

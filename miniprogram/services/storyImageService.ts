@@ -6,6 +6,8 @@ import { currentFamilyId } from "./cloudRoomStorage";
 export type StoryImageStatus =
   | "submitted" | "running" | "storing" | "stored" | "failed" | "blocked" | "unknown" | "expired";
 
+export type StoryImagePurpose = "illustration" | "backdrop";
+
 export interface StoryImageJob {
   jobId: string;
   status: StoryImageStatus;
@@ -23,6 +25,8 @@ export interface StoryImage {
   url: string;
   bytes: number;
   moderation: string;
+  quality: string;
+  qualityIssues: string[];
   aiGenerated: true;
   createdAtMs: number;
 }
@@ -70,6 +74,12 @@ export function moderationLabel(moderation: string): string {
   return "";
 }
 
+export function qualityLabel(image: Pick<StoryImage, "quality" | "qualityIssues">): string {
+  if (image.quality === "flawed") return "有瑕疵：" + (image.qualityIssues.length ? image.qualityIssues.join("、") : "请看大图");
+  if (image.quality === "pass") return "";
+  return "没质检";
+}
+
 function cloudReady(): boolean {
   if (!CLOUD_AI_ENABLED) return false;
   const app = getApp<ShiguangAppOptions>();
@@ -112,7 +122,7 @@ function isJob(value: unknown): value is StoryImageJob {
   return Boolean(job && typeof job.jobId === "string" && typeof job.status === "string" && typeof job.message === "string");
 }
 
-async function submitIllustration(input: { memberId: string; chapterId: string; requestId?: string }): Promise<StoryImageJob> {
+async function submitChapterImage(input: { memberId: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string }): Promise<StoryImageJob> {
   if (!await requestAiConsent()) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图要把这一章的文字发给 AI 服务");
   }
@@ -120,7 +130,7 @@ async function submitIllustration(input: { memberId: string; chapterId: string; 
     memberId: input.memberId,
     chapterId: input.chapterId,
     requestId: input.requestId ?? newImageRequestId(),
-    purpose: "illustration",
+    purpose: input.purpose,
   });
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
   return result.job;
@@ -146,7 +156,7 @@ async function removeStoryImage(imageId: string): Promise<void> {
 
 /** Pages call through this object so page tests can stand in for the cloud. */
 export const storyImageApi = {
-  submitIllustration,
+  submitChapterImage,
   checkImageJob,
   listStoryImages,
   removeStoryImage,

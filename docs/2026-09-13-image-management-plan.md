@@ -229,7 +229,7 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 5. 腾讯云开通混元生文，创建 API Key 给看图用（同样建议子账号）；
 6. 处理长相特征前定稿《个人信息保护影响评估》，保存至少三年；
 7. 更新《用户隐私保护指引》，重新提审；
-8. 部署 `storyImages` 后，在云开发控制台把超时设为 30 秒，并配置环境变量 `HUNYUAN_SECRET_ID`、`HUNYUAN_SECRET_KEY`（可选 `HUNYUAN_REGION`，默认 `ap-guangzhou`）；读章节画面沿用现有的 `AI_API_KEY`、`AI_MODEL`、`AI_BASE_URL`；
+8. 部署 `storyImages` 后，在云开发控制台把超时设为 30 秒，并配置环境变量 `HUNYUAN_SECRET_ID`、`HUNYUAN_SECRET_KEY`（可选 `HUNYUAN_REGION`，默认 `ap-guangzhou`）；读章节画面沿用现有的 `AI_API_KEY`、`AI_MODEL`、`AI_BASE_URL`；生成图质检用 `VISION_API_KEY`（混元 API Key；可选 `VISION_MODEL`，默认 `hunyuan-vision`；可选 `VISION_BASE_URL`，默认 `https://api.hunyuan.cloud.tencent.com/v1`），不配置时图片照常生成，标为「没质检」；
 9. 部署云函数、上传体验版——需用户在对话里明确同意。
 
 ## 十二、分阶段
@@ -295,3 +295,34 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 - 「设为封面」挪到 1b，等问题四的 Story 记录；
 - 插图挂在章节下、显示在管理页，没有插进正文流（旧客户端兼容）；
 - 在线 AI 授权弹窗沿用"发送故事文字、不发送照片"，对阶段 1 仍然属实；但《用户隐私保护指引》需要补上腾讯云（混元）作为出图服务的第三方，措辞由用户定。
+
+## 十五、阶段 2a 完成情况（2026-09-13）
+
+**做了什么**
+
+- **章节底图（只用文字）**：云函数开放 `backdrop`。底图提示词只写地点与景物（新增 `setting` 字段，要求模型只写地点、不写人物），最多 3 个物件，不画人物，上方大面积留白，尺寸 1248×832，全部肯定式描述；
+- **选底图**：`ManuscriptChapter` 新增可选字段 `backdropImageId`；`services/chapterBackdrop.ts` 只改这一章的底图并另存为新版本（标签「设置本章底图」「不用本章底图」），恢复旧版本时底图也回到当时，选同一张不重复存；`revisionContent` 加入该字段；`validateChapters` 校验引用格式；
+- **管理页**：每章「配一张插图」「配一张底图」；底图卡片「设为本章底图」「不用了」；删除正在用作底图的图时提示影响哪一章，**先解除再删**；选中的底图已被删掉时提示并可一键不用；卡片显示用途与质检结果；
+- **书稿页显示**：带底图的章节在正文区下方显示底图，上缘渐隐到纸色，键盘打开时隐藏；没有底图的书不调用云端；云端取不到时照常打开书稿，只是不显示底图；
+- **生成图质检**：`quality.js` 调用混元看图模型检查可读文字、乱码字、水印或 logo、签名或印章（「图片由AI生成」不算问题）；四项必须都是明确的真假值，否则记为「没质检」，**不当作通过**；有瑕疵只标出来，不自动重画；
+- **定时兜底加 20 秒预算**：超出的任务留到下一轮，避免定时触发器超时；
+- 测试：`npm run check` 241 项全部通过。
+
+**改到问题四的文件（均为最小改动，已告知问题四）**
+
+- `miniprogram/domain/biography.ts`：`ManuscriptChapter` 加可选字段 `backdropImageId`；
+- `miniprogram/services/manuscript.ts`：`revisionContent` 的章节比较列表加 `backdropImageId`；
+- `miniprogram/services/chapters.ts`：新增常量 `CHAPTER_BACKDROP_ID`，`validateChapters` 加一条底图引用校验。
+
+**改到的书稿页文件**：`book.ts`（取底图地址）、`book.wxml`（正文区加一个 `image` 节点）、`book.wxss`（追加底图样式 4 行）。Codex 的书架与图标文件没有改动。
+
+**没验证的**
+
+- 没有部署、没有真实调用混元生图与混元看图模型；看图模型经 OpenAI 兼容接口传 `image_url` 的写法按通用格式实现，待首次调用核实；模型是否稳定按要求输出 JSON 也待实测；
+- 底图在真机上与正文叠放的可读性、渐隐效果（`mask-image`）在各机型的支持情况，没有在开发者工具和真机上看过；
+- 阶段 1 里列出的未验证项仍然有效。
+
+**已知限制**
+
+- 章节合并 / 拆分功能出来后，按问题四打算的 id 规则，被合并掉的那一章的底图选择会丢，届时要提示用户；
+- 底图仍不使用用户照片（阶段 2b 的内容）。

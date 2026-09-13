@@ -2,6 +2,7 @@ const cloud = require("wx-server-sdk");
 const { StoryImageError } = require("./core");
 const { createStoryImageHandlers } = require("./flow");
 const { createHunyuanClient, downloadResult } = require("./hunyuan");
+const { createQualityChecker } = require("./quality");
 const { createSceneExtractor } = require("./scene");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
@@ -160,6 +161,11 @@ const handlers = createStoryImageHandlers({
   storage,
   moderation,
   downloadImage: url => downloadResult(url),
+  qualityChecker: createQualityChecker({
+    apiKey: process.env.VISION_API_KEY,
+    model: process.env.VISION_MODEL,
+    baseUrl: process.env.VISION_BASE_URL,
+  }),
 });
 
 async function main(event = {}) {

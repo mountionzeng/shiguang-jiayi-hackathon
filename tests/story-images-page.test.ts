@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { BiographyDraft, FamilyRoomState } from "../miniprogram/domain/biography";
+import { BiographyDraft, FamilyRoomState, ManuscriptChapter } from "../miniprogram/domain/biography";
 import { clearAiConsent } from "../miniprogram/services/aiConsent";
 import { makeRevision } from "../miniprogram/services/manuscript";
+import { withChapterBackdrop } from "../miniprogram/services/chapterBackdrop";
+import { draftWithChapters } from "../miniprogram/services/chapters";
+import { currentManuscript } from "../miniprogram/services/manuscript";
+import { loadRoomStateRemoteFirst } from "../miniprogram/services/roomRepository";
 import {
-  formatBytes, isActiveJob, moderationLabel, newImageRequestId, nextPollDelayMs, StoryImageList, StoryImageServiceError, storyImageApi,
+  formatBytes, isActiveJob, moderationLabel, newImageRequestId, nextPollDelayMs, qualityLabel, StoryImageList, StoryImageServiceError, storyImageApi,
 } from "../miniprogram/services/storyImageService";
 import { createDemoRoomStateForTests } from "./fixtures";
 
@@ -90,24 +94,28 @@ function withApi(overrides: Partial<typeof storyImageApi>) {
   return () => Object.assign(storyImageApi, original);
 }
 
-function stateWithBook(): FamilyRoomState {
+const BACKDROP_ID = "family_o-owner_img_req-bbbbbbbb";
+
+function stateWithBook(backdropImageId = ""): FamilyRoomState {
   const state = createDemoRoomStateForTests();
-  const draft: BiographyDraft = {
-    title: "外婆的书", paragraphs: [], sourceCount: 0, generatedAt: "2026-09-13T00:00:00.000Z", generationMode: "local-demo",
-    chapters: [
-      { id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: "院子里晒着被子。" }] },
-      { id: "chapter-b", title: "", memoryIds: [], content: [{ text: "第二章的文字。" }] },
-    ],
-  };
-  state.manuscriptRevisions = [makeRevision("owner", draft, "", "draft", "编辑存档")];
+  const base: BiographyDraft = { title: "外婆的书", paragraphs: [], sourceCount: 0, generatedAt: "2026-09-13T00:00:00.000Z", generationMode: "local-demo" };
+  let chapters: ManuscriptChapter[] = [
+    { id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: "院子里晒着被子。\n" }] },
+    { id: "chapter-b", title: "", memoryIds: [], content: [{ text: "第二章的文字。\n" }] },
+  ];
+  if (backdropImageId) chapters = withChapterBackdrop(chapters, "chapter-a", backdropImageId);
+  state.manuscriptRevisions = [makeRevision("owner", draftWithChapters(base, chapters), "", "draft", "编辑存档")];
   return state;
 }
 
 function listWith(overrides: Partial<StoryImageList> = {}): StoryImageList {
   return {
-    images: [{ imageId: "family_o-owner_img_req-a", chapterId: "chapter-a", purpose: "illustration", url: "https://tmp.example/a.png", bytes: 2048, moderation: "pending", aiGenerated: true, createdAtMs: 2 }],
+    images: [
+      { imageId: "family_o-owner_img_req-a", chapterId: "chapter-a", purpose: "illustration", url: "https://tmp.example/a.png", bytes: 2048, moderation: "pending", quality: "flawed", qualityIssues: ["有乱码字"], aiGenerated: true, createdAtMs: 2 },
+      { imageId: BACKDROP_ID, chapterId: "chapter-a", purpose: "backdrop", url: "https://tmp.example/b.png", bytes: 1024, moderation: "pass", quality: "pass", qualityIssues: [], aiGenerated: true, createdAtMs: 3 },
+    ],
     pending: [{ jobId: "family_o-owner_req-b", status: "running", message: "正在画，大约 20–60 秒。可以先离开，回来接着看", chapterId: "chapter-b", purpose: "illustration", imageId: "", createdAtMs: 3 }],
-    usage: { count: 1, bytes: 2048 },
+    usage: { count: 2, bytes: 3072 },
     limits: { daily: 10, book: 30 },
     ...overrides,
   };
@@ -137,6 +145,9 @@ test("配图请求编号符合云函数的格式，轮询先快后慢，占用�
   assert.equal(isActiveJob({ status: "unknown" }), false);
   assert.equal(moderationLabel("pending"), "平台审核中");
   assert.equal(moderationLabel("pass"), "");
+  assert.equal(qualityLabel({ quality: "flawed", qualityIssues: ["有乱码字", "有水印或 logo"] }), "有瑕疵：有乱码字、有水印或 logo");
+  assert.equal(qualityLabel({ quality: "pass", qualityIssues: [] }), "");
+  assert.equal(qualityLabel({ quality: "unchecked", qualityIssues: [] }), "没质检");
 });
 
 test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节和请求编号调用云函数", async context => {
@@ -154,7 +165,7 @@ test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节�
   env.setApp(true);
   context.after(() => { env.restore(); clearAiConsent(); });
 
-  const job = await storyImageApi.submitIllustration({ memberId: "owner", chapterId: "chapter-a", requestId: "req-test-00000001" });
+  const job = await storyImageApi.submitChapterImage({ memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-test-00000001" });
   assert.equal(job.status, "running");
   const submit = calls.find(item => item.name === "storyImages");
   assert.deepEqual(submit?.data, {
@@ -173,7 +184,7 @@ test("不同意在线 AI 时不调用配图云函数", async context => {
   env.setApp(true);
   context.after(() => { env.restore(); clearAiConsent(); });
 
-  await assert.rejects(storyImageApi.submitIllustration({ memberId: "owner", chapterId: "chapter-a" }),
+  await assert.rejects(storyImageApi.submitChapterImage({ memberId: "owner", chapterId: "chapter-a", purpose: "backdrop" }),
     (error: unknown) => error instanceof StoryImageServiceError && error.code === "CONSENT_DECLINED");
   assert.deepEqual(calls, []);
 });
@@ -215,15 +226,20 @@ test("这本书的图：按章节分组，显示占用空间和正在画的图�
   call(page, "onLoad", { chapterId: encodeURIComponent("chapter-a") });
   await call(page, "refresh");
 
-  const groups = page.data.groups as Array<{ id: string; title: string; images: Array<{ sizeLabel: string; moderationLabel: string }>; pending: Array<{ active: boolean }> }>;
+  const groups = page.data.groups as Array<{ id: string; title: string; images: Array<{ sizeLabel: string; moderationLabel: string; qualityLabel: string; purposeLabel: string; isBackdrop: boolean; inUse: boolean }>; pending: Array<{ active: boolean; purposeLabel: string }> }>;
   assert.equal(page.data.focusChapterId, "chapter-a");
   assert.equal(page.data.bookTitle, "外婆的书");
   assert.deepEqual(groups.map(group => group.id), ["chapter-a", "chapter-b"]);
   assert.equal(groups[0].title, "老院子");
   assert.equal(groups[0].images[0].sizeLabel, "2 KB");
   assert.equal(groups[0].images[0].moderationLabel, "平台审核中");
+  assert.equal(groups[0].images[0].qualityLabel, "有瑕疵：有乱码字");
+  assert.equal(groups[0].images[0].purposeLabel, "插图");
+  assert.equal(groups[0].images[1].isBackdrop, true);
+  assert.equal(groups[0].images[1].inUse, false);
+  assert.equal(groups[1].pending[0].purposeLabel, "插图");
   assert.equal(groups[1].pending[0].active, true);
-  assert.equal(page.data.usageLabel, "共 1 张 · 2 KB");
+  assert.equal(page.data.usageLabel, "共 2 张 · 3 KB");
   assert.equal(timers.scheduled.length, 1);
   assert.equal(timers.scheduled[0].delay, 3000);
 });
@@ -264,7 +280,7 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   const removed: string[] = [];
   const restoreApi = withApi({
     listStoryImages: async () => listWith({ pending: [] }),
-    submitIllustration: async input => { submitted.push(input); return { ...listWith().pending[0], chapterId: input.chapterId }; },
+    submitChapterImage: async input => { submitted.push(input); return { ...listWith().pending[0], chapterId: input.chapterId, purpose: input.purpose }; },
     removeStoryImage: async imageId => { removed.push(imageId); },
   });
   context.after(() => { restoreApi(); timers.restore(); env.restore(); });
@@ -272,17 +288,21 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   const page = instantiate(await pageDefinition("story-images"));
   call(page, "onLoad", {});
   await call(page, "refresh");
-  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a" } } });
-  assert.deepEqual(submitted, [{ memberId: "owner", chapterId: "chapter-a" }]);
+  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
+  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-b", purpose: "backdrop" } } });
+  assert.deepEqual(submitted, [
+    { memberId: "owner", chapterId: "chapter-a", purpose: "illustration" },
+    { memberId: "owner", chapterId: "chapter-b", purpose: "backdrop" },
+  ]);
   assert.equal(page.data.notice, "正在画，大约 20–60 秒。可以先离开，回来接着看");
-  assert.equal(page.data.submittingChapterId, "");
+  assert.equal(page.data.submitting, "");
 
   await call(page, "remove", { currentTarget: { dataset: { id: "family_o-owner_img_req-a" } } });
   assert.deepEqual(removed, ["family_o-owner_img_req-a"]);
   assert.equal(page.data.notice, "已删除");
 
   call(page, "previewImage", { currentTarget: { dataset: { url: "https://tmp.example/a.png" } } });
-  assert.deepEqual(env.previews, [{ current: "https://tmp.example/a.png", urls: ["https://tmp.example/a.png"] }]);
+  assert.deepEqual(env.previews, [{ current: "https://tmp.example/a.png", urls: ["https://tmp.example/a.png", "https://tmp.example/b.png"] }]);
 });
 
 test("提交配图失败时把原因显示出来，按钮恢复可点", async context => {
@@ -291,7 +311,7 @@ test("提交配图失败时把原因显示出来，按钮恢复可点", async co
   const timers = captureTimers();
   const restoreApi = withApi({
     listStoryImages: async () => listWith({ pending: [] }),
-    submitIllustration: async () => { throw new StoryImageServiceError("BOOK_LIMIT", "这个故事已经有 30 张图了，删掉的不会返还名额"); },
+    submitChapterImage: async () => { throw new StoryImageServiceError("BOOK_LIMIT", "这个故事已经有 30 张图了，删掉的不会返还名额"); },
   });
   context.after(() => { restoreApi(); timers.restore(); env.restore(); });
 
@@ -300,7 +320,7 @@ test("提交配图失败时把原因显示出来，按钮恢复可点", async co
   await call(page, "refresh");
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a" } } });
   assert.equal(page.data.notice, "这个故事已经有 30 张图了，删掉的不会返还名额");
-  assert.equal(page.data.submittingChapterId, "");
+  assert.equal(page.data.submitting, "");
 });
 
 test("书稿页「更多」里能打开这一章的配图，未保存的修改不能带过去", async context => {
@@ -327,4 +347,116 @@ test("书稿页「更多」里能打开这一章的配图，未保存的修改�
   assert.match(markup, /data-action="images"[^>]*>.*这本书的图/);
   const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as { pages: string[] };
   assert.ok(app.pages.includes("pages/story-images/story-images"));
+});
+
+test("在管理页把一张底图设为本章底图，再点「不用了」取消，都存成书稿新版本", async context => {
+  const env = installWx({}, stateWithBook());
+  env.setApp(false);
+  const timers = captureTimers();
+  const restoreApi = withApi({ listStoryImages: async () => listWith({ pending: [] }) });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", {});
+  await call(page, "refresh");
+  await call(page, "setBackdrop", { currentTarget: { dataset: { chapter: "chapter-a", image: BACKDROP_ID } } });
+  assert.equal(page.data.notice, "已设为本章底图，回到书稿就能看到");
+  let groups = page.data.groups as Array<{ backdropImageId: string; images: Array<{ imageId: string; inUse: boolean }> }>;
+  assert.equal(groups[0].backdropImageId, BACKDROP_ID);
+  assert.equal(groups[0].images.find(image => image.imageId === BACKDROP_ID)?.inUse, true);
+  assert.equal(currentManuscript(await loadRoomStateRemoteFirst(), "owner").draft?.chapters?.[0].backdropImageId, BACKDROP_ID);
+
+  await call(page, "setBackdrop", { currentTarget: { dataset: { chapter: "chapter-a", image: "" } } });
+  groups = page.data.groups as typeof groups;
+  assert.equal(groups[0].backdropImageId, "");
+  assert.equal(page.data.savingBackdrop, false);
+});
+
+test("删除正在用作底图的图：提示会影响哪一章，先解除底图再删图", async context => {
+  const env = installWx({}, stateWithBook(BACKDROP_ID));
+  env.setApp(false);
+  const timers = captureTimers();
+  const modals: string[] = [];
+  (wx as unknown as { showModal: unknown }).showModal = ({ content, success }: { content: string; success?: (result: { confirm: boolean; cancel: boolean }) => void }) => {
+    modals.push(content);
+    success?.({ confirm: true, cancel: false });
+  };
+  const order: string[] = [];
+  const restoreApi = withApi({
+    listStoryImages: async () => listWith({ pending: [] }),
+    removeStoryImage: async imageId => {
+      const chapter = currentManuscript(await loadRoomStateRemoteFirst(), "owner").draft?.chapters?.[0];
+      order.push(`remove ${imageId} while backdrop=${chapter?.backdropImageId ?? "none"}`);
+    },
+  });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", {});
+  await call(page, "refresh");
+  await call(page, "remove", { currentTarget: { dataset: { id: BACKDROP_ID } } });
+  assert.match(modals[0], /正在用作第一章的底图/);
+  assert.deepEqual(order, [`remove ${BACKDROP_ID} while backdrop=none`]);
+  assert.equal(page.data.notice, "已删除");
+});
+
+test("选中的底图已被删掉时，章节里提示并能一键不用", async context => {
+  const env = installWx({}, stateWithBook(BACKDROP_ID));
+  env.setApp(false);
+  const timers = captureTimers();
+  const restoreApi = withApi({ listStoryImages: async () => listWith({ pending: [], images: [] }) });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", {});
+  await call(page, "refresh");
+  assert.equal((page.data.groups as Array<{ backdropMissing: boolean }>)[0].backdropMissing, true);
+  const markup = readFileSync("miniprogram/pages/story-images/story-images.wxml", "utf8");
+  assert.match(markup, /这一章选的底图已经不在了/);
+});
+
+test("书稿里带底图的章节在正文区下方显示底图，没有底图的书不去云端取图", async context => {
+  const env = installWx({}, stateWithBook(BACKDROP_ID));
+  env.setApp(false);
+  let listCalls = 0;
+  const restoreApi = withApi({ listStoryImages: async () => { listCalls++; return listWith({ pending: [] }); } });
+  context.after(() => { restoreApi(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("book"));
+  await call(page, "refresh");
+  await call(page, "loadBackdrops", "owner", page.refreshId);
+  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
+  assert.equal(page.data.backdropUrl, "https://tmp.example/b.png");
+  call(page, "backToContents");
+  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-b" } } });
+  assert.equal(page.data.backdropUrl, "", "第二章没有底图");
+  assert.ok(listCalls >= 1);
+
+  const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
+  assert.match(markup, /<image wx:if="\{\{backdropUrl\}\}" class="chapter-backdrop"/);
+  const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");
+  assert.match(styles, /\.keyboard-open \.chapter-backdrop \{ display: none; \}/);
+
+  const plainEnv = installWx({}, stateWithBook());
+  plainEnv.setApp(false);
+  listCalls = 0;
+  const plain = instantiate(await pageDefinition("book"));
+  await call(plain, "refresh");
+  await call(plain, "loadBackdrops", "owner", plain.refreshId);
+  assert.equal(listCalls, 0);
+  plainEnv.restore();
+});
+
+test("云端取不到底图时书稿照常打开，只是不显示底图", async context => {
+  const env = installWx({}, stateWithBook(BACKDROP_ID));
+  env.setApp(false);
+  const restoreApi = withApi({ listStoryImages: async () => { throw new StoryImageServiceError("CLOUD_NOT_READY", "微信云开发还没连上"); } });
+  context.after(() => { restoreApi(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("book"));
+  await call(page, "refresh");
+  await call(page, "loadBackdrops", "owner", page.refreshId);
+  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
+  assert.equal(page.data.backdropUrl, "");
+  assert.equal(page.data.loadError, "");
 });

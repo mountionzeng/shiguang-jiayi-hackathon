@@ -5,6 +5,7 @@ const test = require("node:test");
 const core = require("../cloudfunctions/storyImages/core.js");
 const hunyuan = require("../cloudfunctions/storyImages/hunyuan.js");
 const scene = require("../cloudfunctions/storyImages/scene.js");
+const quality = require("../cloudfunctions/storyImages/quality.js");
 const { createStoryImageHandlers } = require("../cloudfunctions/storyImages/flow.js");
 
 const OWNER_OPENID = "o-owner";
@@ -236,9 +237,10 @@ test("只有记忆之家的主人能生成配图", () => {
   assert.throws(() => core.requireOwner("", FAMILY), error => error.code === "OPENID_NOT_AVAILABLE");
 });
 
-test("阶段 1 只开放章节插图，底图和封面还不能提交", () => {
+test("章节插图和底图都能提交，封面要等故事有稳定编号", () => {
   assert.equal(core.normalizeSubmitInput(submitEvent()).purpose, "illustration");
-  assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "backdrop" }), error => error.code === "PURPOSE_NOT_YET");
+  assert.equal(core.normalizeSubmitInput({ ...submitEvent(), purpose: "backdrop" }).purpose, "backdrop");
+  assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "cover" }), error => error.code === "PURPOSE_NOT_YET");
   assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "poster" }), error => error.code === "INVALID_PURPOSE");
   assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), requestId: "../x" }), error => error.code === "INVALID_REQUEST");
 });
@@ -277,7 +279,7 @@ test("模型给的画面只保留约定字段，清掉控制字符并限制长�
   const parsed = core.parseSceneJson('好的：{"scene":"院子里\\u0007晒被子。","objects":["竹竿","棉被","","a","b","c","d","e"],"light":"冬天","mood":"安静","eraHint":"","figures":["远景中的背影"],"extra":"忽略"}');
   assert.deepEqual(parsed, {
     scene: "院子里 晒被子", objects: ["竹竿", "棉被", "a", "b", "c", "d"], light: "冬天",
-    mood: "安静", eraHint: "", figures: ["远景中的背影"],
+    mood: "安静", eraHint: "", figures: ["远景中的背影"], setting: "",
   });
   assert.throws(() => core.parseSceneJson("没有 JSON"), error => error.code === "SCENE_PARSE_FAILED");
   assert.throws(() => core.parseSceneJson('{"objects":["棉被"]}'), error => error.code === "SCENE_PARSE_FAILED");
@@ -508,4 +510,120 @@ test("清空记忆之家时先删云存储里的配图文件，再删配图记�
   const { CORE_COLLECTIONS } = require("../cloudfunctions/ensureCloudCollections/bootstrap.js");
   assert.ok(CORE_COLLECTIONS.includes("image_jobs"));
   assert.ok(CORE_COLLECTIONS.includes("story_images"));
+});
+
+// ---------- 阶段 2a：底图与质检 ----------
+
+test("底图只画景物：上方留白、最多三个物件、没有人物，也不用描述情景的那句话", () => {
+  const { prompt, width, height } = core.buildImagePrompt({
+    scene: "奶奶在冬天的院子里晒被子", setting: "冬天的小院", objects: ["竹竿", "棉被", "木凳", "瓦罐"],
+    light: "冬日午后", mood: "安静", eraHint: "", figures: ["远景中的背影"],
+  }, "backdrop");
+  assert.equal(width, 1248);
+  assert.equal(height, 832);
+  assert.match(prompt, /上方大面积是接近纯白的宣纸留白/);
+  assert.match(prompt, /景物：冬天的小院。/);
+  assert.match(prompt, /画中有竹竿、棉被、木凳。/);
+  assert.doesNotMatch(prompt, /瓦罐/);
+  assert.doesNotMatch(prompt, /奶奶|背影|人物/);
+  assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
+});
+
+test("提炼画面时单独要一个不含人物的地点，模型没给就留空", () => {
+  assert.match(scene.SYSTEM_PROMPT, /setting：只写地点和环境本身，不写人物/);
+  assert.equal(core.parseSceneJson('{"scene":"院子","setting":"冬天的小院。"}').setting, "冬天的小院");
+  assert.equal(core.parseSceneJson('{"scene":"院子"}').setting, "");
+  const { prompt } = core.buildImagePrompt({ scene: "院子", setting: "", objects: [], light: "", mood: "", eraHint: "", figures: [] }, "backdrop");
+  assert.doesNotMatch(prompt, /景物：/);
+});
+
+test("提交底图按底图尺寸出图", async () => {
+  const { handlers, calls, repo } = harness();
+  const { job } = await handlers.submit(ctx, { ...submitEvent(), purpose: "backdrop" });
+  assert.equal(job.purpose, "backdrop");
+  assert.deepEqual([calls.submit[0].width, calls.submit[0].height], [1248, 832]);
+  assert.doesNotMatch(calls.submit[0].prompt, /晒着被子/);
+  assert.equal(repo.jobs.get(job.jobId).purpose, "backdrop");
+});
+
+test("质检回答必须四项都是真假值，否则算没质检", () => {
+  assert.deepEqual(
+    quality.parseQualityJson('{"readableText":false,"pseudoText":true,"watermarkOrLogo":false,"signature":false,"note":"左上角有乱码"}'),
+    { quality: "flawed", qualityIssues: ["pseudoText"], qualityNote: "左上角有乱码", qualityError: "" },
+  );
+  assert.equal(
+    quality.parseQualityJson('{"readableText":false,"pseudoText":false,"watermarkOrLogo":false,"signature":false}').quality,
+    "pass",
+  );
+  assert.equal(quality.parseQualityJson('{"readableText":false,"pseudoText":"no","watermarkOrLogo":false,"signature":false}'), undefined);
+  assert.equal(quality.parseQualityJson("看起来没问题"), undefined);
+  assert.match(quality.QUALITY_PROMPT, /「图片由AI生成」是规定必须保留的标识，不算问题/);
+});
+
+test("质检服务没配置、超时或出错时都记为没质检，不会当作通过", async () => {
+  const notConfigured = quality.createQualityChecker({ apiKey: "" });
+  assert.equal(notConfigured.configured, false);
+  assert.deepEqual(await notConfigured.check("https://x/1.png"), { quality: "unchecked", qualityIssues: [], qualityNote: "", qualityError: "VISION_NOT_CONFIGURED" });
+
+  let sent;
+  const ok = quality.createQualityChecker({
+    apiKey: "k",
+    fetchImpl: async (url, init) => {
+      sent = { url, body: JSON.parse(init.body) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"readableText":false,"pseudoText":false,"watermarkOrLogo":false,"signature":false}' } }] }) };
+    },
+  });
+  assert.equal((await ok.check("https://x/1.png")).quality, "pass");
+  assert.equal(sent.url, "https://api.hunyuan.cloud.tencent.com/v1/chat/completions");
+  assert.equal(sent.body.model, "hunyuan-vision");
+  assert.deepEqual(sent.body.messages[0].content[1], { type: "image_url", image_url: { url: "https://x/1.png" } });
+
+  const timeout = quality.createQualityChecker({ apiKey: "k", fetchImpl: async () => { const error = new Error("aborted"); error.name = "AbortError"; throw error; } });
+  assert.equal((await timeout.check("https://x/1.png")).qualityError, "VISION_TIMEOUT");
+  const broken = quality.createQualityChecker({ apiKey: "k", fetchImpl: async () => ({ ok: false, status: 429 }) });
+  assert.deepEqual(await broken.check("https://x/1.png"), { quality: "unchecked", qualityIssues: [], qualityNote: "", qualityError: "VISION_HTTP_429" });
+});
+
+test("转存后用结果图做质检，发现乱码字就标出来给用户看", async () => {
+  const checked = [];
+  const { handlers, repo } = harness({
+    deps: {
+      qualityChecker: {
+        configured: true,
+        async check(url) { checked.push(url); return { quality: "flawed", qualityIssues: ["pseudoText"], qualityNote: "左上角有乱码", qualityError: "" }; },
+      },
+    },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.deepEqual(checked, ["https://result.example/1.png"]);
+  assert.equal(result.image.quality, "flawed");
+  assert.deepEqual(result.image.qualityIssues, ["有乱码字"]);
+  assert.equal(repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`).qualityNote, "左上角有乱码");
+});
+
+test("没配置质检时图片照常转存，标为没质检", async () => {
+  const { handlers } = harness();
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(result.job.status, "stored");
+  assert.equal(result.image.quality, "unchecked");
+  assert.deepEqual(result.image.qualityIssues, []);
+});
+
+test("定时兜底超过 20 秒就不再开始新的任务，留到下一轮", async () => {
+  const queried = [];
+  let h;
+  h = harness({ provider: { async query(id) { queried.push(id); h.tick(15_000); return { state: "running" }; } } });
+  for (const id of ["a", "b", "c"]) {
+    await h.repo.createJob(`${FAMILY}_req-sweep-00${id}`, {
+      familyId: FAMILY, memberId: "owner", status: "running", providerJobId: `p-${id}`,
+      createdAtMs: Date.parse("2026-09-13T02:00:00.000Z"), updatedAtMs: Date.parse("2026-09-13T02:00:00.000Z"),
+    });
+  }
+  const result = await h.handlers.sweep();
+  assert.deepEqual(queried, ["p-a", "p-b"]);
+  assert.equal(result.swept, 2);
+  assert.equal(result.deferred, 1);
+  assert.equal(result.results[2].action, "deferred");
 });
