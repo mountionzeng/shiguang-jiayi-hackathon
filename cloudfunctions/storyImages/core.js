@@ -2,9 +2,12 @@ const crypto = require("node:crypto");
 
 const DAILY_LIMIT = 10;
 const BOOK_LIMIT = 30;
-/** Statuses that may have cost money. Failed and blocked jobs are free on Hunyuan. */
-const COUNTED_STATUSES = ["submitted", "running", "storing", "stored", "unknown", "expired"];
-const ACTIVE_STATUSES = ["submitted", "running", "storing"];
+/**
+ * submitted → queued → generating → generated → storing → stored.
+ * Statuses that may have cost money count toward the limits; refusals do not.
+ */
+const COUNTED_STATUSES = ["submitted", "queued", "generating", "generated", "storing", "stored", "unknown", "expired"];
+const ACTIVE_STATUSES = ["submitted", "queued", "generating", "generated", "storing"];
 const PURPOSES = ["illustration", "backdrop", "cover"];
 /** Chapter illustrations and backdrops are open; covers wait for stable story records. */
 const ENABLED_PURPOSES = ["illustration", "backdrop"];
@@ -17,15 +20,19 @@ const QUALITY_ISSUE_LABELS = {
 };
 const MAX_CHAPTER_TEXT = 4000;
 const SUBMIT_STALE_MS = 3 * 60 * 1000;
+const QUEUED_PICKUP_MS = 60 * 1000;
+const GENERATING_STALE_MS = 3 * 60 * 1000;
 const STORING_STALE_MS = 3 * 60 * 1000;
 
 const DRAWING = "正在画，大约 20–60 秒。可以先离开，回来接着看";
 const MESSAGES = {
   submitted: DRAWING,
-  running: DRAWING,
+  queued: DRAWING,
+  generating: DRAWING,
+  generated: DRAWING,
   storing: DRAWING,
   stored: "画好了",
-  failed: "没画成，没有扣费，可以再试一次",
+  failed: "没画成，这次不占名额，可以再试一次",
   blocked: "这段内容没通过平台审核，换一段试试",
   unknown: "不确定有没有画成，可能已经扣费",
   expired: "画好了但没来得及保存",
@@ -213,25 +220,29 @@ function buildImagePrompt(scene, purpose) {
 }
 
 /**
- * A provider that answered with an error did not start a paid job. A dropped
- * connection might have, so it is reported as uncertain and never retried.
+ * TokenHub answers refusals with HTTP status codes: 422 is a content check,
+ * other 4xx mean the picture was never started. A timeout, a server error or a
+ * success without a picture may already have cost money, so it stays uncertain.
  */
-function classifySubmitError(error) {
-  const providerCode = error && error.providerCode;
-  if (providerCode) {
-    return { status: /^OperationDenied/.test(providerCode) ? "blocked" : "failed", errorCode: providerCode };
-  }
+function classifyGenerateError(error) {
   const httpStatus = error && error.httpStatus;
-  if (httpStatus && httpStatus < 500) return { status: "failed", errorCode: `HTTP_${httpStatus}` };
-  return { status: "unknown", errorCode: error && error.name === "AbortError" ? "SUBMIT_TIMEOUT" : "SUBMIT_UNCERTAIN" };
+  if (httpStatus === 422) return { status: "blocked", errorCode: "CONTENT_BLOCKED" };
+  if (httpStatus >= 400 && httpStatus < 500) return { status: "failed", errorCode: `HTTP_${httpStatus}` };
+  if (httpStatus) return { status: "unknown", errorCode: `HTTP_${httpStatus}` };
+  if (error && error.name === "AbortError") return { status: "unknown", errorCode: "GENERATE_TIMEOUT" };
+  return { status: "unknown", errorCode: "GENERATE_UNCERTAIN" };
 }
 
 function sweepAction(job, nowMs) {
   const age = nowMs - Number(job.updatedAtMs || job.createdAtMs || 0);
-  if (job.status === "submitted") return !job.providerJobId && age > SUBMIT_STALE_MS ? "mark-unknown" : "skip";
-  if (job.status === "storing") return age > STORING_STALE_MS ? "release" : "skip";
-  if (job.status === "running") return "poll";
-  return "skip";
+  switch (job.status) {
+    case "submitted": return age > SUBMIT_STALE_MS ? "mark-failed" : "skip";
+    case "queued": return age > QUEUED_PICKUP_MS ? "generate" : "skip";
+    case "generating": return age > GENERATING_STALE_MS ? "mark-unknown" : "skip";
+    case "generated": return "store";
+    case "storing": return age > STORING_STALE_MS ? "release" : "skip";
+    default: return "skip";
+  }
 }
 
 function publicJob(job) {
@@ -271,19 +282,20 @@ function extensionFor(contentType) {
 
 module.exports = {
   ACTIVE_STATUSES,
-  QUALITY_ISSUE_KEYS,
-  QUALITY_ISSUE_LABELS,
-  cleanText,
   BOOK_LIMIT,
   COUNTED_STATUSES,
   DAILY_LIMIT,
   ENABLED_PURPOSES,
   MESSAGES,
+  QUALITY_ISSUE_KEYS,
+  QUALITY_ISSUE_LABELS,
+  STYLES,
   StoryImageError,
   buildImagePrompt,
   chapterSource,
   chinaDayKey,
-  classifySubmitError,
+  classifyGenerateError,
+  cleanText,
   extensionFor,
   familyIdFor,
   latestDraftForMember,

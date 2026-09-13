@@ -1,15 +1,17 @@
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const core = require("../cloudfunctions/storyImages/core.js");
-const hunyuan = require("../cloudfunctions/storyImages/hunyuan.js");
+const tokenhub = require("../cloudfunctions/storyImages/tokenhub.js");
 const scene = require("../cloudfunctions/storyImages/scene.js");
 const quality = require("../cloudfunctions/storyImages/quality.js");
 const { createStoryImageHandlers } = require("../cloudfunctions/storyImages/flow.js");
 
 const OWNER_OPENID = "o-owner";
 const FAMILY = "family_o-owner";
+const T0 = Date.parse("2026-09-13T02:00:00.000Z");
 
 function revisionRecord({ id, savedAt, memberId = "owner", chapters }) {
   return {
@@ -75,31 +77,33 @@ function memoryRepo() {
     async listActiveJobs(limit) {
       return [...jobs.values()].filter(job => core.ACTIVE_STATUSES.includes(job.status)).slice(0, limit);
     },
+    async listImagesPendingQuality(limit) {
+      return [...images.values()].filter(image => image.quality === "pending" && image.deletedAtMs === undefined).slice(0, limit);
+    },
   };
 }
 
 function harness({ provider = {}, deps = {} } = {}) {
   const repo = memoryRepo();
   repo.setDrafts([revisionRecord({ id: "revision-2", savedAt: "2026-09-12T10:00:00.000Z", chapters: [CHAPTER] })]);
-  let clock = Date.parse("2026-09-13T02:00:00.000Z");
-  const calls = { scene: [], submit: [], query: [], download: [], upload: [], remove: [], moderation: [] };
+  let clock = T0;
+  const calls = { scene: [], generate: [], download: [], upload: [], remove: [], moderation: [] };
   const handlers = createStoryImageHandlers({
     repo,
     provider: {
-      name: "hunyuan",
-      model: "hunyuan-image-3.0",
+      name: "tokenhub",
+      model: "hy-image-v3",
       configured: true,
-      async submit(input) { calls.submit.push(input); return { providerJobId: "hunyuan-job-1" }; },
-      async query(id) {
-        calls.query.push(id);
-        return { state: "done", imageUrl: "https://result.example/1.png", revisedPrompt: "" };
+      async generate(input) {
+        calls.generate.push(input);
+        return { resultUrl: "https://result.example/1.png", revisedPrompt: "", providerJobId: "tokenhub-1", usageTokens: 1024 };
       },
       ...provider,
     },
     sceneConfigured: true,
     async extractScene(source) {
       calls.scene.push(source);
-      return { scene: "冬天的院子里晒着被子", objects: ["竹竿", "棉被"], light: "冬日午后", mood: "安静", eraHint: "", figures: [] };
+      return { scene: "冬天的院子里晒着被子", setting: "", objects: ["竹竿", "棉被"], light: "冬日午后", mood: "安静", eraHint: "", figures: [] };
     },
     storage: {
       async upload(cloudPath) { calls.upload.push(cloudPath); return `cloud://env/${cloudPath}`; },
@@ -120,105 +124,62 @@ const submitEvent = (requestId = "req-20260913-abcd1234") => ({
   familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", requestId, purpose: "illustration",
 });
 
-// ---------- 腾讯云签名 ----------
+function jsonResponse(status, body) {
+  return { ok: status >= 200 && status < 300, status, json: async () => body };
+}
 
-test("TC3 签名的规范请求与待签字符串和腾讯云官方示例一致", () => {
-  const payload = '{"Limit": 1, "Filters": [{"Values": ["\\u672a\\u547d\\u540d"], "Name": "instance-name"}]}';
-  const canonical = hunyuan.canonicalRequest({ host: "cvm.tencentcloudapi.com", action: "DescribeInstances", payload });
-  assert.equal(
-    crypto.createHash("sha256").update(payload).digest("hex"),
-    "35e9c5b0e3ae67532d3c9f17ead6c90222632e5b1ff7f6e89887f1398934f064",
-  );
-  assert.equal(canonical.text, [
-    "POST",
-    "/",
-    "",
-    "content-type:application/json; charset=utf-8",
-    "host:cvm.tencentcloudapi.com",
-    "x-tc-action:describeinstances",
-    "",
-    "content-type;host;x-tc-action",
-    "35e9c5b0e3ae67532d3c9f17ead6c90222632e5b1ff7f6e89887f1398934f064",
-  ].join("\n"));
-  const toSign = hunyuan.stringToSign({ timestamp: 1551113065, service: "cvm", canonical: canonical.text });
-  assert.equal(toSign.text, [
-    "TC3-HMAC-SHA256",
-    "1551113065",
-    "2019-02-25/cvm/tc3_request",
-    "7019a55be8395899b900fb5564e4200d984910f34794a27cb3fb7d10ff6a1e84",
-  ].join("\n"));
-});
+// ---------- TokenHub 出图客户端 ----------
 
-test("混元请求头带上动作、版本、地域和按 UTC 日期计算的凭证范围", () => {
-  const headers = hunyuan.signRequest({
-    secretId: "AKIDTEST", secretKey: "secret", action: "SubmitTextToImageJob",
-    region: "ap-guangzhou", timestamp: 1757721600, payload: "{}",
-  });
-  assert.equal(headers["X-TC-Action"], "SubmitTextToImageJob");
-  assert.equal(headers["X-TC-Version"], "2022-12-29");
-  assert.equal(headers["X-TC-Region"], "ap-guangzhou");
-  assert.equal(headers.Host, "aiart.tencentcloudapi.com");
-  assert.match(headers.Authorization,
-    /^TC3-HMAC-SHA256 Credential=AKIDTEST\/2025-09-13\/aiart\/tc3_request, SignedHeaders=content-type;host;x-tc-action, Signature=[0-9a-f]{64}$/);
-});
-
-test("混元提交任务关闭提示词改写、保留 AI 生成标识", async () => {
+test("TokenHub 出图：同步接口、API Key 鉴权、关闭改写、明确带上 AI 生成水印", async () => {
   let sent;
-  const client = hunyuan.createHunyuanClient({
-    secretId: "id", secretKey: "key",
-    now: () => 1757721600000,
+  const client = tokenhub.createTokenHubImageClient({
+    apiKey: "sk-test",
     fetchImpl: async (url, init) => {
       sent = { url, init };
-      return { ok: true, status: 200, json: async () => ({ Response: { JobId: "job-9", RequestId: "r" } }) };
+      return jsonResponse(200, {
+        id: "4-WandImage-abc", data: [{ url: "https://aigc-image.cos.myqcloud.com/x/result.png", revised_prompt: "改写后" }],
+        request_id: "r", tokenhub_usage: { total_tokens: 1024 },
+      });
     },
   });
-  assert.deepEqual(await client.submit({ prompt: "画面", width: 1024, height: 768 }), { providerJobId: "job-9" });
-  assert.equal(sent.url, "https://aiart.tencentcloudapi.com");
-  assert.deepEqual(JSON.parse(sent.init.body), { Prompt: "画面", Resolution: "1024:768", Revise: 0, LogoAdd: 1 });
+  assert.equal(client.configured, true);
+  const result = await client.generate({ prompt: "画面", width: 1024, height: 768 });
+  assert.deepEqual(result, {
+    resultUrl: "https://aigc-image.cos.myqcloud.com/x/result.png", revisedPrompt: "改写后", providerJobId: "4-WandImage-abc", usageTokens: 1024,
+  });
+  assert.equal(sent.url, "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation");
+  assert.equal(sent.init.method, "POST");
+  assert.equal(sent.init.headers.Authorization, "Bearer sk-test");
+  assert.deepEqual(JSON.parse(sent.init.body), { model: "hy-image-v3", prompt: "画面", size: "1024x768", revise: false, footnote: "图片由AI生成" });
+  assert.equal(tokenhub.createTokenHubImageClient({ apiKey: "" }).configured, false);
 });
 
-test("混元返回的错误带着错误码抛出，便于区分审核拦截和普通失败", async () => {
-  const client = hunyuan.createHunyuanClient({
-    secretId: "id", secretKey: "key",
-    fetchImpl: async () => ({
-      ok: true, status: 200,
-      json: async () => ({ Response: { Error: { Code: "OperationDenied.TextIllegalDetected", Message: "x" } } }),
-    }),
-  });
-  await assert.rejects(client.submit({ prompt: "p", width: 1, height: 1 }), error => {
-    assert.equal(error.providerCode, "OperationDenied.TextIllegalDetected");
-    return true;
-  });
+test("TokenHub 出图：拒绝的请求带着 HTTP 状态码抛出，成功却没有图片的算不确定", async () => {
+  const refused = tokenhub.createTokenHubImageClient({ apiKey: "k", fetchImpl: async () => jsonResponse(422, {}) });
+  await assert.rejects(refused.generate({ prompt: "p", width: 1024, height: 768 }), error => error.httpStatus === 422);
+  const empty = tokenhub.createTokenHubImageClient({ apiKey: "k", fetchImpl: async () => jsonResponse(200, { data: [] }) });
+  await assert.rejects(empty.generate({ prompt: "p", width: 1024, height: 768 }), error => error.httpStatus === undefined && error.message === "TOKENHUB_NO_IMAGE");
+  const tooBig = tokenhub.createTokenHubImageClient({ apiKey: "k", fetchImpl: async () => { throw new Error("should not call"); } });
+  await assert.rejects(tooBig.generate({ prompt: "p", width: 2048, height: 1024 }), error => error.httpStatus === 400);
 });
 
-test("混元任务状态：进行中、完成、失败与审核拦截分开", () => {
-  assert.deepEqual(hunyuan.mapQueryResponse({ JobStatusCode: "1" }), { state: "running" });
-  assert.deepEqual(hunyuan.mapQueryResponse({ JobStatusCode: "2" }), { state: "running" });
-  assert.deepEqual(
-    hunyuan.mapQueryResponse({ JobStatusCode: "5", ResultImage: ["https://x/1.png"], RevisedPrompt: ["改写"] }),
-    { state: "done", imageUrl: "https://x/1.png", revisedPrompt: "改写" },
-  );
-  assert.deepEqual(hunyuan.mapQueryResponse({ JobStatusCode: "5", ResultImage: [] }), { state: "failed", errorCode: "EMPTY_RESULT" });
-  assert.deepEqual(
-    hunyuan.mapQueryResponse({ JobStatusCode: "4", JobErrorCode: "OperationDenied.ImageIllegalDetected" }),
-    { state: "blocked", errorCode: "OperationDenied.ImageIllegalDetected" },
-  );
-  assert.deepEqual(
-    hunyuan.mapQueryResponse({ JobStatusCode: "4", JobErrorCode: "FailedOperation.ServerError" }),
-    { state: "failed", errorCode: "FailedOperation.ServerError" },
-  );
+test("两种配图尺寸都在 TokenHub 允许的范围内", () => {
+  for (const style of Object.values(core.STYLES)) {
+    assert.ok(style.width >= 512 && style.width <= 2048 && style.height >= 512 && style.height <= 2048);
+    assert.ok(style.width * style.height <= tokenhub.MAX_IMAGE_AREA);
+  }
 });
 
 test("结果图链接失效时标记为过期，其他下载错误可以稍后重试", async () => {
   await assert.rejects(
-    hunyuan.downloadResult("https://x/1.png", { fetchImpl: async () => ({ ok: false, status: 403 }) }),
+    tokenhub.downloadResult("https://x/1.png", { fetchImpl: async () => ({ ok: false, status: 403 }) }),
     error => error.expired === true,
   );
   await assert.rejects(
-    hunyuan.downloadResult("https://x/1.png", { fetchImpl: async () => ({ ok: false, status: 502 }) }),
+    tokenhub.downloadResult("https://x/1.png", { fetchImpl: async () => ({ ok: false, status: 502 }) }),
     error => !error.expired,
   );
-  const image = await hunyuan.downloadResult("https://x/1.png", {
+  const image = await tokenhub.downloadResult("https://x/1.png", {
     fetchImpl: async () => ({
       ok: true, status: 200,
       headers: { get: () => "image/jpeg; charset=binary" },
@@ -227,6 +188,17 @@ test("结果图链接失效时标记为过期，其他下载错误可以稍后�
   });
   assert.equal(image.contentType, "image/jpeg");
   assert.equal(image.buffer.length, 3);
+});
+
+test("出图失败的结局：审核拦截、明确拒绝不占名额；超时、服务端错误算不确定", () => {
+  assert.deepEqual(core.classifyGenerateError({ httpStatus: 422 }), { status: "blocked", errorCode: "CONTENT_BLOCKED" });
+  assert.deepEqual(core.classifyGenerateError({ httpStatus: 429 }), { status: "failed", errorCode: "HTTP_429" });
+  assert.deepEqual(core.classifyGenerateError({ httpStatus: 401 }), { status: "failed", errorCode: "HTTP_401" });
+  assert.deepEqual(core.classifyGenerateError({ httpStatus: 500 }), { status: "unknown", errorCode: "HTTP_500" });
+  assert.deepEqual(core.classifyGenerateError({ name: "AbortError" }), { status: "unknown", errorCode: "GENERATE_TIMEOUT" });
+  assert.deepEqual(core.classifyGenerateError(new Error("TOKENHUB_NO_IMAGE")), { status: "unknown", errorCode: "GENERATE_UNCERTAIN" });
+  assert.equal(core.MESSAGES.failed, "没画成，这次不占名额，可以再试一次");
+  assert.equal(core.MESSAGES.unknown, "不确定有没有画成，可能已经扣费");
 });
 
 // ---------- 校验与提示词 ----------
@@ -264,13 +236,15 @@ test("章节正文取这个档案最新保存的版本，只读文字，不读�
   assert.equal(core.latestDraftForMember(personal, "owner").chapters[0].id, "chapter-1");
 });
 
-test("限额：每天 10 张、每个故事 30 张，按北京时间换日", () => {
+test("限额：每天 10 张、每个故事 30 张，按北京时间换日；排队和画着的也算", () => {
   assert.deepEqual(core.quotaDecision({ todayCount: 9, bookCount: 29 }), { allowed: true });
   assert.equal(core.quotaDecision({ todayCount: 10, bookCount: 0 }).code, "DAILY_LIMIT");
   assert.equal(core.quotaDecision({ todayCount: 0, bookCount: 30 }).code, "BOOK_LIMIT");
+  for (const status of ["submitted", "queued", "generating", "generated", "storing", "stored", "unknown", "expired"]) {
+    assert.ok(core.COUNTED_STATUSES.includes(status), status);
+  }
   assert.ok(!core.COUNTED_STATUSES.includes("failed"));
   assert.ok(!core.COUNTED_STATUSES.includes("blocked"));
-  assert.ok(core.COUNTED_STATUSES.includes("unknown"));
   assert.equal(core.chinaDayKey(Date.parse("2026-09-12T16:30:00.000Z")), "2026-09-13");
   assert.equal(core.chinaDayKey(Date.parse("2026-09-12T15:59:00.000Z")), "2026-09-12");
 });
@@ -278,20 +252,20 @@ test("限额：每天 10 张、每个故事 30 张，按北京时间换日", () 
 test("模型给的画面只保留约定字段，清掉控制字符并限制长度", () => {
   const parsed = core.parseSceneJson('好的：{"scene":"院子里\\u0007晒被子。","objects":["竹竿","棉被","","a","b","c","d","e"],"light":"冬天","mood":"安静","eraHint":"","figures":["远景中的背影"],"extra":"忽略"}');
   assert.deepEqual(parsed, {
-    scene: "院子里 晒被子", objects: ["竹竿", "棉被", "a", "b", "c", "d"], light: "冬天",
-    mood: "安静", eraHint: "", figures: ["远景中的背影"], setting: "",
+    scene: "院子里 晒被子", setting: "", objects: ["竹竿", "棉被", "a", "b", "c", "d"], light: "冬天",
+    mood: "安静", eraHint: "", figures: ["远景中的背影"],
   });
+  assert.equal(core.parseSceneJson('{"scene":"院子","setting":"冬天的小院。"}').setting, "冬天的小院");
   assert.throws(() => core.parseSceneJson("没有 JSON"), error => error.code === "SCENE_PARSE_FAILED");
   assert.throws(() => core.parseSceneJson('{"objects":["棉被"]}'), error => error.code === "SCENE_PARSE_FAILED");
 });
 
-test("出图提示词只用肯定式描述，不列禁止画的东西", () => {
+test("插图提示词只用肯定式描述，不列禁止画的东西", () => {
   const { prompt, width, height } = core.buildImagePrompt(
-    { scene: "冬天的院子里晒着被子", objects: ["竹竿", "棉被"], light: "冬日午后", mood: "安静", eraHint: "", figures: ["远景中的背影"] },
+    { scene: "冬天的院子里晒着被子", setting: "", objects: ["竹竿", "棉被"], light: "冬日午后", mood: "安静", eraHint: "", figures: ["远景中的背影"] },
     "illustration",
   );
-  assert.equal(width, 1024);
-  assert.equal(height, 768);
+  assert.deepEqual([width, height], [1024, 768]);
   assert.match(prompt, /纸本淡彩水彩插画/);
   assert.match(prompt, /画中有竹竿、棉被。/);
   assert.match(prompt, /人物以远景或局部呈现：远景中的背影。/);
@@ -299,22 +273,23 @@ test("出图提示词只用肯定式描述，不列禁止画的东西", () => {
   assert.doesNotMatch(prompt, /时代感/);
 });
 
-test("提交失败的结局：服务商明确报错不扣费，连接断了算不确定", () => {
-  assert.deepEqual(core.classifySubmitError({ providerCode: "OperationDenied.TextIllegalDetected" }),
-    { status: "blocked", errorCode: "OperationDenied.TextIllegalDetected" });
-  assert.deepEqual(core.classifySubmitError({ providerCode: "RequestLimitExceeded.JobNumExceed" }),
-    { status: "failed", errorCode: "RequestLimitExceeded.JobNumExceed" });
-  assert.deepEqual(core.classifySubmitError({ httpStatus: 400 }), { status: "failed", errorCode: "HTTP_400" });
-  assert.deepEqual(core.classifySubmitError({ httpStatus: 502 }), { status: "unknown", errorCode: "SUBMIT_UNCERTAIN" });
-  assert.deepEqual(core.classifySubmitError({ name: "AbortError" }), { status: "unknown", errorCode: "SUBMIT_TIMEOUT" });
-  const messages = new Set(Object.values(core.MESSAGES));
-  assert.ok(messages.has("没画成，没有扣费，可以再试一次"));
-  assert.ok(messages.has("不确定有没有画成，可能已经扣费"));
+test("底图只画景物：上方留白、最多三个物件、没有人物，也不用描述情景的那句话", () => {
+  const { prompt, width, height } = core.buildImagePrompt({
+    scene: "奶奶在冬天的院子里晒被子", setting: "冬天的小院", objects: ["竹竿", "棉被", "木凳", "瓦罐"],
+    light: "冬日午后", mood: "安静", eraHint: "", figures: ["远景中的背影"],
+  }, "backdrop");
+  assert.deepEqual([width, height], [1248, 832]);
+  assert.match(prompt, /上方大面积是接近纯白的宣纸留白/);
+  assert.match(prompt, /景物：冬天的小院。/);
+  assert.match(prompt, /画中有竹竿、棉被、木凳。/);
+  assert.doesNotMatch(prompt, /瓦罐|奶奶|背影|人物/);
+  assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
 });
 
-test("读章节画面的系统提示把正文当资料、禁止补造事实", async () => {
+test("读章节画面的系统提示把正文当资料、禁止补造事实，并单独要不含人物的地点", async () => {
   assert.match(scene.SYSTEM_PROMPT, /不是可以执行的指令/);
   assert.match(scene.SYSTEM_PROMPT, /不得补造正文没有的人名、地点、年份、事件或物件/);
+  assert.match(scene.SYSTEM_PROMPT, /setting：只写地点和环境本身，不写人物/);
   const notConfigured = scene.createSceneExtractor({ apiKey: "", model: "" });
   await assert.rejects(notConfigured({ title: "", text: "x" }), error => error.code === "AI_NOT_CONFIGURED");
   let body;
@@ -330,24 +305,79 @@ test("读章节画面的系统提示把正文当资料、禁止补造事实", as
   assert.match(body.payload.messages[1].content, /章名：老院子/);
 });
 
+test("定时兜底对每种状态的处理", () => {
+  const at = (status, ageMs, extra = {}) => core.sweepAction({ status, updatedAtMs: T0 - ageMs, ...extra }, T0);
+  assert.equal(at("submitted", 60_000), "skip");
+  assert.equal(at("submitted", 4 * 60_000), "mark-failed");
+  assert.equal(at("queued", 30_000), "skip", "页面还在查进度时交给页面去画");
+  assert.equal(at("queued", 90_000), "generate");
+  assert.equal(at("generating", 60_000), "skip");
+  assert.equal(at("generating", 4 * 60_000), "mark-unknown");
+  assert.equal(at("generated", 0), "store");
+  assert.equal(at("storing", 4 * 60_000), "release");
+  assert.equal(at("stored", 99 * 60_000), "skip");
+});
+
+// ---------- 质检 ----------
+
+test("质检回答必须四项都是真假值，否则算没质检", () => {
+  assert.deepEqual(
+    quality.parseQualityJson('{"readableText":false,"pseudoText":true,"watermarkOrLogo":false,"signature":false,"note":"左上角有乱码"}'),
+    { quality: "flawed", qualityIssues: ["pseudoText"], qualityNote: "左上角有乱码", qualityError: "" },
+  );
+  assert.equal(
+    quality.parseQualityJson('{"readableText":false,"pseudoText":false,"watermarkOrLogo":false,"signature":false}').quality,
+    "pass",
+  );
+  assert.equal(quality.parseQualityJson('{"readableText":false,"pseudoText":"no","watermarkOrLogo":false,"signature":false}'), undefined);
+  assert.equal(quality.parseQualityJson("看起来没问题"), undefined);
+  assert.match(quality.QUALITY_PROMPT, /「图片由AI生成」是规定必须保留的标识，不算问题/);
+});
+
+test("质检走 TokenHub 的看图模型；没配置、超时或出错时都记为没质检", async () => {
+  const notConfigured = quality.createQualityChecker({ apiKey: "" });
+  assert.equal(notConfigured.configured, false);
+  assert.deepEqual(await notConfigured.check("https://x/1.png"), { quality: "unchecked", qualityIssues: [], qualityNote: "", qualityError: "VISION_NOT_CONFIGURED" });
+
+  let sent;
+  const ok = quality.createQualityChecker({
+    apiKey: "k",
+    fetchImpl: async (url, init) => {
+      sent = { url, headers: init.headers, body: JSON.parse(init.body) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"readableText":false,"pseudoText":false,"watermarkOrLogo":false,"signature":false}' } }] }) };
+    },
+  });
+  assert.equal((await ok.check("https://x/1.png")).quality, "pass");
+  assert.equal(sent.url, "https://tokenhub.tencentmaas.com/v1/chat/completions");
+  assert.equal(sent.headers.Authorization, "Bearer k");
+  assert.equal(sent.body.model, "hy-vision-2.0-instruct");
+  assert.deepEqual(sent.body.messages[0].content[1], { type: "image_url", image_url: { url: "https://x/1.png" } });
+
+  const timeout = quality.createQualityChecker({ apiKey: "k", fetchImpl: async () => { const error = new Error("aborted"); error.name = "AbortError"; throw error; } });
+  assert.equal((await timeout.check("https://x/1.png")).qualityError, "VISION_TIMEOUT");
+  const broken = quality.createQualityChecker({ apiKey: "k", fetchImpl: async () => ({ ok: false, status: 429 }) });
+  assert.deepEqual(await broken.check("https://x/1.png"), { quality: "unchecked", qualityIssues: [], qualityNote: "", qualityError: "VISION_HTTP_429" });
+});
+
 // ---------- 流程 ----------
 
-test("提交配图：先留记录再调混元，重复点击不会重复扣费", async () => {
+test("点配图只读章节、写好提示词、排进队，马上返回；重复点击不重复排队", async () => {
   const { handlers, repo, calls } = harness();
   const first = await handlers.submit(ctx, submitEvent());
-  assert.equal(first.job.status, "running");
-  assert.equal(calls.submit.length, 1);
+  assert.equal(first.job.status, "queued");
+  assert.equal(calls.generate.length, 0, "提交时还不出图");
   assert.equal(calls.scene[0].text, "那年冬天，奶奶在院子里晒被子。");
   const job = repo.jobs.get(`${FAMILY}_req-20260913-abcd1234`);
-  assert.equal(job.providerJobId, "hunyuan-job-1");
+  assert.equal(job.provider, "tokenhub");
+  assert.equal(job.model, "hy-image-v3");
   assert.equal(job.referencePhotoCount, 0);
   assert.equal(job.dayKey, "2026-09-13");
   assert.match(job.prompt, /冬天的院子里晒着被子/);
-  assert.equal(job.source.textLength, "那年冬天，奶奶在院子里晒被子。".length);
+  assert.deepEqual([job.width, job.height], [1024, 768]);
 
   const again = await handlers.submit(ctx, submitEvent());
   assert.equal(again.job.jobId, first.job.jobId);
-  assert.equal(calls.submit.length, 1);
+  assert.equal(calls.scene.length, 1);
 });
 
 test("没配置出图密钥时不留记录、不占名额", async () => {
@@ -363,61 +393,102 @@ test("别人的记忆之家不能提交", async () => {
 });
 
 test("今天画满 10 张就拦下，没画成的不占名额", async () => {
-  const { handlers, repo, calls } = harness();
+  const { handlers, repo } = harness();
   for (let index = 0; index < 10; index++) {
     await repo.createJob(`${FAMILY}_req-used-000${index}`, {
       familyId: FAMILY, memberId: "owner", dayKey: "2026-09-13", status: index < 3 ? "failed" : "stored", createdAtMs: 0,
     });
   }
-  const accepted = await handlers.submit(ctx, submitEvent("req-20260913-fresh001"));
-  assert.equal(accepted.job.status, "running");
-  for (let index = 0; index < 2; index++) {
-    await handlers.submit(ctx, submitEvent(`req-20260913-more000${index}`));
+  for (let index = 0; index < 3; index++) {
+    assert.equal((await handlers.submit(ctx, submitEvent(`req-20260913-fresh00${index}`))).job.status, "queued");
   }
   await assert.rejects(handlers.submit(ctx, submitEvent("req-20260913-over0001")), error => error.code === "DAILY_LIMIT");
-  assert.equal(calls.submit.length, 3);
   assert.equal(repo.jobs.has(`${FAMILY}_req-20260913-over0001`), false);
 });
 
-test("提交时连接断了记为不确定，照样占名额，也不自动重试", async () => {
-  const { handlers, repo, calls } = harness({
-    provider: { async submit() { const error = new Error("aborted"); error.name = "AbortError"; throw error; } },
-  });
-  const result = await handlers.submit(ctx, submitEvent());
-  assert.equal(result.job.status, "unknown");
-  assert.equal(result.job.message, "不确定有没有画成，可能已经扣费");
-  assert.equal(repo.jobs.get(result.job.jobId).errorCode, "SUBMIT_TIMEOUT");
-  assert.equal(await repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 1);
-  assert.equal(calls.submit.length, 0);
-});
-
-test("读不懂章节画面时记为没画成，不调用混元", async () => {
+test("读不懂章节画面时记为没画成，不排队出图", async () => {
   const { handlers, calls } = harness({
     deps: { async extractScene() { throw new core.StoryImageError("SCENE_PARSE_FAILED", "x"); } },
   });
   const result = await handlers.submit(ctx, submitEvent());
   assert.equal(result.job.status, "failed");
-  assert.equal(calls.submit.length, 0);
+  assert.equal(calls.generate.length, 0);
 });
 
-test("画好后转存进云存储、登记图片、送去内容安全检测；并发查询只转存一次", async () => {
+test("页面查进度时才出图：画好先记下链接，再转存云存储、登记图片、送内容安全检测", async () => {
   const { handlers, repo, calls } = harness();
   const { job } = await handlers.submit(ctx, submitEvent());
-  const [first, second] = await Promise.all([
-    handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId }),
-    handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId }),
-  ]);
-  assert.equal(calls.upload.length, 1);
-  assert.equal(calls.upload[0], "story-images/family_o-owner/owner/req-20260913-abcd1234.png");
-  const stored = [first, second].find(result => result.image);
-  assert.equal(stored.job.status, "stored");
-  assert.equal(stored.image.chapterId, "chapter-1");
-  assert.equal(stored.image.aiGenerated, true);
-  assert.match(stored.image.url, /^https:\/\/tmp\.example\//);
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(calls.generate.length, 1);
+  assert.deepEqual(calls.generate[0], { prompt: repo.jobs.get(job.jobId).prompt, width: 1024, height: 768 });
+  assert.deepEqual(calls.download, ["https://result.example/1.png"]);
+  assert.deepEqual(calls.upload, ["story-images/family_o-owner/owner/req-20260913-abcd1234.png"]);
+  assert.equal(result.job.status, "stored");
+  assert.equal(result.image.chapterId, "chapter-1");
+  assert.equal(result.image.aiGenerated, true);
+  assert.equal(result.image.quality, "unchecked");
+  const stored = repo.jobs.get(job.jobId);
+  assert.equal(stored.resultUrl, "https://result.example/1.png");
+  assert.equal(stored.providerJobId, "tokenhub-1");
+  assert.equal(stored.usageTokens, 1024);
   const image = repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`);
   assert.equal(image.moderation, "pending");
-  assert.equal(image.moderationTraceId, "trace-1");
   assert.deepEqual(calls.moderation, [{ fileID: image.fileID, openid: OWNER_OPENID }]);
+});
+
+test("两个查询同时到达，只出一张图、只转存一次", async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { handlers, calls } = harness({
+    provider: {
+      async generate(input) {
+        calls.generate.push(input);
+        await gate;
+        return { resultUrl: "https://result.example/1.png", revisedPrompt: "", providerJobId: "tokenhub-1", usageTokens: 1 };
+      },
+    },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const first = handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  const second = handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  release();
+  const results = await Promise.all([first, second]);
+  assert.equal(calls.generate.length, 1);
+  assert.equal(calls.upload.length, 1);
+  assert.ok(results.some(result => result.job.status === "stored"));
+});
+
+test("审核拦截显示没通过审核；超时算不确定并占名额，都不自动重画", async () => {
+  const blocked = harness({ provider: { async generate() { const error = new Error("TOKENHUB_HTTP_422"); error.httpStatus = 422; throw error; } } });
+  const a = await blocked.handlers.submit(ctx, submitEvent());
+  assert.equal((await blocked.handlers.status(ctx, { familyId: FAMILY, jobId: a.job.jobId })).job.status, "blocked");
+
+  const timedOut = harness({ provider: { async generate() { const error = new Error("aborted"); error.name = "AbortError"; throw error; } } });
+  const b = await timedOut.handlers.submit(ctx, submitEvent());
+  const result = await timedOut.handlers.status(ctx, { familyId: FAMILY, jobId: b.job.jobId });
+  assert.equal(result.job.status, "unknown");
+  assert.equal(result.job.message, "不确定有没有画成，可能已经扣费");
+  assert.equal(await timedOut.repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 1);
+  await timedOut.handlers.status(ctx, { familyId: FAMILY, jobId: b.job.jobId });
+});
+
+test("上传失败时退回「已画好」，下次用同一个链接重试，不重新出图", async () => {
+  let uploads = 0;
+  const { handlers, calls, repo } = harness({
+    deps: {
+      storage: {
+        async upload(cloudPath) { uploads++; if (uploads === 1) throw new Error("upload failed"); return `cloud://env/${cloudPath}`; },
+        async tempUrls(fileIDs) { return Object.fromEntries(fileIDs.map(id => [id, "https://tmp.example/x"])); },
+        async remove() {},
+      },
+    },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  assert.equal((await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId })).job.status, "generated");
+  assert.equal((await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId })).job.status, "stored");
+  assert.equal(calls.generate.length, 1);
+  assert.equal(uploads, 2);
+  assert.equal(repo.images.size, 1);
 });
 
 test("结果链接过期时明确告诉用户画好了但没保存", async () => {
@@ -430,15 +501,6 @@ test("结果链接过期时明确告诉用户画好了但没保存", async () =>
   assert.equal(result.job.message, "画好了但没来得及保存");
 });
 
-test("混元审核拦下的任务显示没通过审核", async () => {
-  const { handlers } = harness({
-    provider: { async query() { return { state: "blocked", errorCode: "OperationDenied.ImageIllegalDetected" }; } },
-  });
-  const { job } = await handlers.submit(ctx, submitEvent());
-  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
-  assert.equal(result.job.status, "blocked");
-});
-
 test("查询别人家的任务一律说找不到", async () => {
   const { handlers } = harness();
   const { job } = await handlers.submit(ctx, submitEvent());
@@ -446,30 +508,88 @@ test("查询别人家的任务一律说找不到", async () => {
     error => error.code === "JOB_NOT_FOUND");
 });
 
-test("定时兜底：卡住的提交记为不确定，卡住的转存放回重查，进行中的去查进度", async () => {
-  const { handlers, repo, calls, tick } = harness({
-    provider: { async query(id) { calls.query.push(id); return { state: "running" }; } },
+test("转存后用云存储链接做质检，发现乱码字就标出来给用户看", async () => {
+  const checked = [];
+  const { handlers, repo } = harness({
+    deps: {
+      qualityChecker: {
+        configured: true,
+        async check(url) { checked.push(url); return { quality: "flawed", qualityIssues: ["pseudoText"], qualityNote: "左上角有乱码", qualityError: "" }; },
+      },
+    },
   });
-  await repo.createJob(`${FAMILY}_req-stuck-submit`, { familyId: FAMILY, memberId: "owner", status: "submitted", createdAtMs: Date.parse("2026-09-13T02:00:00.000Z"), updatedAtMs: Date.parse("2026-09-13T02:00:00.000Z") });
-  await repo.createJob(`${FAMILY}_req-stuck-store`, { familyId: FAMILY, memberId: "owner", status: "storing", providerJobId: "p2", createdAtMs: Date.parse("2026-09-13T02:00:00.000Z"), updatedAtMs: Date.parse("2026-09-13T02:00:00.000Z") });
-  await repo.createJob(`${FAMILY}_req-running-1`, { familyId: FAMILY, memberId: "owner", status: "running", providerJobId: "p3", createdAtMs: Date.parse("2026-09-13T02:00:00.000Z"), updatedAtMs: Date.parse("2026-09-13T02:00:00.000Z") });
-  tick(4 * 60 * 1000);
-  const result = await handlers.sweep();
-  assert.equal(result.swept, 3);
-  assert.equal(repo.jobs.get(`${FAMILY}_req-stuck-submit`).status, "unknown");
-  assert.equal(repo.jobs.get(`${FAMILY}_req-stuck-store`).status, "running");
-  assert.deepEqual(calls.query, ["p3"]);
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(checked.length, 1);
+  assert.match(checked[0], /^https:\/\/tmp\.example\//);
+  assert.equal(result.image.quality, "flawed");
+  assert.deepEqual(result.image.qualityIssues, ["有乱码字"]);
+  assert.equal(repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`).qualityNote, "左上角有乱码");
+});
+
+test("出图太慢挤掉了质检的时间，就先标质检中，由定时任务补上", async () => {
+  const checked = [];
+  let h;
+  h = harness({
+    provider: {
+      async generate() { h.tick(45_000); return { resultUrl: "https://result.example/1.png", revisedPrompt: "", providerJobId: "t", usageTokens: 1 }; },
+    },
+    deps: {
+      qualityChecker: { configured: true, async check(url) { checked.push(url); return { quality: "pass", qualityIssues: [], qualityNote: "", qualityError: "" }; } },
+    },
+  });
+  const { job } = await h.handlers.submit(ctx, submitEvent());
+  const result = await h.handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(result.job.status, "stored");
+  assert.equal(result.image.quality, "pending");
+  assert.equal(checked.length, 0);
+
+  const swept = await h.handlers.sweep();
+  assert.equal(swept.qualityChecked, 1);
+  assert.equal(h.repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`).quality, "pass");
+});
+
+test("定时兜底：卡住的准备算没画成、没人查的排队去画、卡住的出图算不确定、卡住的转存放回重试", async () => {
+  let h;
+  h = harness({
+    provider: {
+      async generate(input) { h.calls.generate.push(input); h.tick(30_000); return { resultUrl: "https://result.example/1.png", revisedPrompt: "", providerJobId: "t", usageTokens: 1 }; },
+    },
+  });
+  const job = (id, status, extra = {}) => h.repo.createJob(`${FAMILY}_req-sweep-${id}`, {
+    familyId: FAMILY, memberId: "owner", requestId: `req-sweep-${id}`, chapterId: "chapter-1", purpose: "illustration",
+    status, prompt: "画面", width: 1024, height: 768, requesterOpenId: OWNER_OPENID,
+    createdAtMs: T0 - 5 * 60_000, updatedAtMs: T0 - 5 * 60_000, ...extra,
+  });
+  await job("submitted", "submitted");
+  await job("generating", "generating");
+  await job("storing", "storing", { resultUrl: "https://result.example/s.png" });
+  await job("queued-a", "queued");
+  await job("queued-b", "queued");
+  await job("fresh", "queued", { updatedAtMs: T0 - 10_000 });
+
+  const result = await h.handlers.sweep();
+  const statusOf = id => h.repo.jobs.get(`${FAMILY}_req-sweep-${id}`).status;
+  assert.equal(statusOf("submitted"), "failed");
+  assert.equal(statusOf("generating"), "unknown");
+  assert.equal(statusOf("storing"), "generated");
+  assert.equal(statusOf("queued-a"), "stored");
+  assert.equal(statusOf("queued-b"), "queued", "一次只开始一张同步出图，剩下的留到下一分钟");
+  assert.equal(statusOf("fresh"), "queued", "刚排队的交给正在查进度的页面");
+  assert.equal(h.calls.generate.length, 1);
+  assert.equal(result.deferred, 1);
 });
 
 test("管理页列出没删除、没被判违规的图，并算出占用空间；删除会删掉云存储文件", async () => {
   const { handlers, repo, calls } = harness();
-  await repo.createImage(`${FAMILY}_img_a`, { familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", purpose: "illustration", fileID: "cloud://a", bytes: 100, moderation: "pass", createdAtMs: 1, jobId: `${FAMILY}_req-a` });
-  await repo.createImage(`${FAMILY}_img_b`, { familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", purpose: "illustration", fileID: "cloud://b", bytes: 50, moderation: "pending", createdAtMs: 2 });
+  await repo.createImage(`${FAMILY}_img_a`, { familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", purpose: "illustration", fileID: "cloud://a", bytes: 100, moderation: "pass", quality: "pass", createdAtMs: 1, jobId: `${FAMILY}_req-a` });
+  await repo.createImage(`${FAMILY}_img_b`, { familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", purpose: "backdrop", fileID: "cloud://b", bytes: 50, moderation: "pending", createdAtMs: 2 });
   await repo.createImage(`${FAMILY}_img_c`, { familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", purpose: "illustration", fileID: "cloud://c", bytes: 999, moderation: "risky", createdAtMs: 3 });
   await repo.createJob(`${FAMILY}_req-a`, { familyId: FAMILY, memberId: "owner", status: "stored", createdAtMs: 1 });
 
   const listed = await handlers.list(ctx, { familyId: FAMILY, memberId: "owner" });
   assert.deepEqual(listed.images.map(image => image.imageId), [`${FAMILY}_img_b`, `${FAMILY}_img_a`]);
+  assert.equal(listed.images[0].quality, "unchecked");
   assert.deepEqual(listed.usage, { count: 2, bytes: 150 });
   assert.deepEqual(listed.limits, { daily: 10, book: 30 });
 
@@ -492,9 +612,17 @@ test("内容安全检测判为违规的图会被隐藏并删除文件", async ()
   assert.deepEqual(await handlers.moderationResult({ trace_id: "missing", result: { suggest: "pass" } }), { ok: false });
 });
 
+test("云函数配置：每分钟补做一次，申请内容安全接口；不再依赖腾讯云签名密钥", () => {
+  const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/config.json"), "utf8"));
+  assert.deepEqual(config.permissions.openapi, ["security.mediaCheckAsync"]);
+  assert.equal(config.triggers[0].config, "0 * * * * * *");
+  const index = fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/index.js"), "utf8");
+  assert.match(index, /process\.env\.TOKENHUB_API_KEY/);
+  assert.doesNotMatch(index, /HUNYUAN_SECRET/);
+  assert.equal(fs.existsSync(path.join(__dirname, "../cloudfunctions/storyImages/hunyuan.js")), false);
+});
+
 test("清空记忆之家时先删云存储里的配图文件，再删配图记录", () => {
-  const fs = require("node:fs");
-  const path = require("node:path");
   for (const name of ["resetCurrentUserRoom", "deleteDemoFamilyOnce"]) {
     const source = fs.readFileSync(path.join(__dirname, `../cloudfunctions/${name}/index.js`), "utf8");
     assert.match(source, /imageJobs:\s*"image_jobs"/);
@@ -512,118 +640,98 @@ test("清空记忆之家时先删云存储里的配图文件，再删配图记�
   assert.ok(CORE_COLLECTIONS.includes("story_images"));
 });
 
-// ---------- 阶段 2a：底图与质检 ----------
+// ---------- Node 16 运行环境 ----------
 
-test("底图只画景物：上方留白、最多三个物件、没有人物，也不用描述情景的那句话", () => {
-  const { prompt, width, height } = core.buildImagePrompt({
-    scene: "奶奶在冬天的院子里晒被子", setting: "冬天的小院", objects: ["竹竿", "棉被", "木凳", "瓦罐"],
-    light: "冬日午后", mood: "安静", eraHint: "", figures: ["远景中的背影"],
-  }, "backdrop");
-  assert.equal(width, 1248);
-  assert.equal(height, 832);
-  assert.match(prompt, /上方大面积是接近纯白的宣纸留白/);
-  assert.match(prompt, /景物：冬天的小院。/);
-  assert.match(prompt, /画中有竹竿、棉被、木凳。/);
-  assert.doesNotMatch(prompt, /瓦罐/);
-  assert.doesNotMatch(prompt, /奶奶|背影|人物/);
-  assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
+test("云函数在没有内置 fetch 的 Node 16 上也能发请求：POST、JSON、二进制、状态码与超时中止", async context => {
+  const http = require("node:http");
+  const { nodeFetch } = require("../cloudfunctions/storyImages/httpFetch.js");
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.on("data", chunk => { body += chunk; });
+    request.on("end", () => {
+      if (request.url === "/json") {
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ method: request.method, auth: request.headers.authorization, body: JSON.parse(body) }));
+      } else if (request.url === "/bytes") {
+        response.writeHead(200, { "Content-Type": "image/png" });
+        response.end(Buffer.from([1, 2, 3, 4]));
+      } else if (request.url === "/refused") {
+        response.writeHead(422);
+        response.end("{}");
+      } else {
+        setTimeout(() => { response.writeHead(200); response.end("late"); }, 2_000);
+      }
+    });
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => { server.closeAllConnections?.(); server.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const json = await nodeFetch(`${base}/json`, {
+    method: "POST", headers: { Authorization: "Bearer k", "Content-Type": "application/json" }, body: JSON.stringify({ prompt: "画面" }),
+  });
+  assert.equal(json.ok, true);
+  assert.deepEqual(await json.json(), { method: "POST", auth: "Bearer k", body: { prompt: "画面" } });
+
+  const bytes = await nodeFetch(`${base}/bytes`);
+  assert.equal(bytes.headers.get("content-type"), "image/png");
+  assert.deepEqual([...new Uint8Array(await bytes.arrayBuffer())], [1, 2, 3, 4]);
+
+  const refused = await nodeFetch(`${base}/refused`, { method: "POST", body: "{}" });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.status, 422);
+
+  const controller = new AbortController();
+  const slow = nodeFetch(`${base}/slow`, { signal: controller.signal });
+  setTimeout(() => controller.abort(), 20);
+  await assert.rejects(slow, error => error.name === "AbortError");
 });
 
-test("提炼画面时单独要一个不含人物的地点，模型没给就留空", () => {
-  assert.match(scene.SYSTEM_PROMPT, /setting：只写地点和环境本身，不写人物/);
-  assert.equal(core.parseSceneJson('{"scene":"院子","setting":"冬天的小院。"}').setting, "冬天的小院");
-  assert.equal(core.parseSceneJson('{"scene":"院子"}').setting, "");
-  const { prompt } = core.buildImagePrompt({ scene: "院子", setting: "", objects: [], light: "", mood: "", eraHint: "", figures: [] }, "backdrop");
-  assert.doesNotMatch(prompt, /景物：/);
+test("出图、读章节、质检、下载都不直接依赖全局 fetch", () => {
+  for (const name of ["tokenhub", "scene", "quality"]) {
+    const source = fs.readFileSync(path.join(__dirname, `../cloudfunctions/storyImages/${name}.js`), "utf8");
+    assert.doesNotMatch(source, /fetchImpl = fetch\b/, `${name}.js 仍然默认使用全局 fetch`);
+    assert.match(source, /require\("\.\/httpFetch"\)/);
+  }
 });
 
-test("提交底图按底图尺寸出图", async () => {
+// ---------- 补回改接 TokenHub 时变弱的流程覆盖 ----------
+
+test("提交底图：按底图尺寸排队，出图时用 1248x832，入库记为底图", async () => {
   const { handlers, calls, repo } = harness();
   const { job } = await handlers.submit(ctx, { ...submitEvent(), purpose: "backdrop" });
   assert.equal(job.purpose, "backdrop");
-  assert.deepEqual([calls.submit[0].width, calls.submit[0].height], [1248, 832]);
-  assert.doesNotMatch(calls.submit[0].prompt, /晒着被子/);
-  assert.equal(repo.jobs.get(job.jobId).purpose, "backdrop");
-});
-
-test("质检回答必须四项都是真假值，否则算没质检", () => {
-  assert.deepEqual(
-    quality.parseQualityJson('{"readableText":false,"pseudoText":true,"watermarkOrLogo":false,"signature":false,"note":"左上角有乱码"}'),
-    { quality: "flawed", qualityIssues: ["pseudoText"], qualityNote: "左上角有乱码", qualityError: "" },
-  );
-  assert.equal(
-    quality.parseQualityJson('{"readableText":false,"pseudoText":false,"watermarkOrLogo":false,"signature":false}').quality,
-    "pass",
-  );
-  assert.equal(quality.parseQualityJson('{"readableText":false,"pseudoText":"no","watermarkOrLogo":false,"signature":false}'), undefined);
-  assert.equal(quality.parseQualityJson("看起来没问题"), undefined);
-  assert.match(quality.QUALITY_PROMPT, /「图片由AI生成」是规定必须保留的标识，不算问题/);
-});
-
-test("质检服务没配置、超时或出错时都记为没质检，不会当作通过", async () => {
-  const notConfigured = quality.createQualityChecker({ apiKey: "" });
-  assert.equal(notConfigured.configured, false);
-  assert.deepEqual(await notConfigured.check("https://x/1.png"), { quality: "unchecked", qualityIssues: [], qualityNote: "", qualityError: "VISION_NOT_CONFIGURED" });
-
-  let sent;
-  const ok = quality.createQualityChecker({
-    apiKey: "k",
-    fetchImpl: async (url, init) => {
-      sent = { url, body: JSON.parse(init.body) };
-      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"readableText":false,"pseudoText":false,"watermarkOrLogo":false,"signature":false}' } }] }) };
-    },
-  });
-  assert.equal((await ok.check("https://x/1.png")).quality, "pass");
-  assert.equal(sent.url, "https://api.hunyuan.cloud.tencent.com/v1/chat/completions");
-  assert.equal(sent.body.model, "hunyuan-vision");
-  assert.deepEqual(sent.body.messages[0].content[1], { type: "image_url", image_url: { url: "https://x/1.png" } });
-
-  const timeout = quality.createQualityChecker({ apiKey: "k", fetchImpl: async () => { const error = new Error("aborted"); error.name = "AbortError"; throw error; } });
-  assert.equal((await timeout.check("https://x/1.png")).qualityError, "VISION_TIMEOUT");
-  const broken = quality.createQualityChecker({ apiKey: "k", fetchImpl: async () => ({ ok: false, status: 429 }) });
-  assert.deepEqual(await broken.check("https://x/1.png"), { quality: "unchecked", qualityIssues: [], qualityNote: "", qualityError: "VISION_HTTP_429" });
-});
-
-test("转存后用结果图做质检，发现乱码字就标出来给用户看", async () => {
-  const checked = [];
-  const { handlers, repo } = harness({
-    deps: {
-      qualityChecker: {
-        configured: true,
-        async check(url) { checked.push(url); return { quality: "flawed", qualityIssues: ["pseudoText"], qualityNote: "左上角有乱码", qualityError: "" }; },
-      },
-    },
-  });
-  const { job } = await handlers.submit(ctx, submitEvent());
-  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
-  assert.deepEqual(checked, ["https://result.example/1.png"]);
-  assert.equal(result.image.quality, "flawed");
-  assert.deepEqual(result.image.qualityIssues, ["有乱码字"]);
-  assert.equal(repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`).qualityNote, "左上角有乱码");
-});
-
-test("没配置质检时图片照常转存，标为没质检", async () => {
-  const { handlers } = harness();
-  const { job } = await handlers.submit(ctx, submitEvent());
+  const queued = repo.jobs.get(job.jobId);
+  assert.deepEqual([queued.width, queued.height], [1248, 832]);
+  assert.doesNotMatch(queued.prompt, /晒着被子/, "底图不用描述情景的那句话");
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(result.job.status, "stored");
-  assert.equal(result.image.quality, "unchecked");
-  assert.deepEqual(result.image.qualityIssues, []);
+  assert.deepEqual([calls.generate[0].width, calls.generate[0].height], [1248, 832]);
+  assert.equal(repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`).purpose, "backdrop");
+  assert.equal(result.image.purpose, "backdrop");
 });
 
-test("定时兜底超过 20 秒就不再开始新的任务，留到下一轮", async () => {
-  const queried = [];
-  let h;
-  h = harness({ provider: { async query(id) { queried.push(id); h.tick(15_000); return { state: "running" }; } } });
-  for (const id of ["a", "b", "c"]) {
-    await h.repo.createJob(`${FAMILY}_req-sweep-00${id}`, {
-      familyId: FAMILY, memberId: "owner", status: "running", providerJobId: `p-${id}`,
-      createdAtMs: Date.parse("2026-09-13T02:00:00.000Z"), updatedAtMs: Date.parse("2026-09-13T02:00:00.000Z"),
-    });
-  }
-  const result = await h.handlers.sweep();
-  assert.deepEqual(queried, ["p-a", "p-b"]);
-  assert.equal(result.swept, 2);
-  assert.equal(result.deferred, 1);
-  assert.equal(result.results[2].action, "deferred");
+test("TokenHub 明确拒绝（如并发超限 429）记为没画成、不占名额，可以马上再提交", async () => {
+  const { handlers, repo } = harness({
+    provider: { async generate() { const error = new Error("TOKENHUB_HTTP_429"); error.httpStatus = 429; throw error; } },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(result.job.status, "failed");
+  assert.equal(result.job.message, "没画成，这次不占名额，可以再试一次");
+  assert.equal(repo.jobs.get(job.jobId).errorCode, "HTTP_429");
+  assert.equal(await repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 0);
+  assert.equal((await handlers.submit(ctx, submitEvent("req-20260913-retry001"))).job.status, "queued");
+});
+
+test("TokenHub 返回成功却没有图片时记为不确定，占名额，不当成失败", async () => {
+  const { handlers, repo, calls } = harness({
+    provider: { async generate() { throw new Error("TOKENHUB_NO_IMAGE"); } },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(result.job.status, "unknown");
+  assert.equal(repo.jobs.get(job.jobId).errorCode, "GENERATE_UNCERTAIN");
+  assert.equal(await repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 1);
+  assert.equal(calls.upload.length, 0);
 });

@@ -4,7 +4,7 @@ import { requestAiConsent } from "./aiConsent";
 import { currentFamilyId } from "./cloudRoomStorage";
 
 export type StoryImageStatus =
-  | "submitted" | "running" | "storing" | "stored" | "failed" | "blocked" | "unknown" | "expired";
+  | "submitted" | "queued" | "generating" | "generated" | "storing" | "stored" | "failed" | "blocked" | "unknown" | "expired";
 
 export type StoryImagePurpose = "illustration" | "backdrop";
 
@@ -44,7 +44,7 @@ export class StoryImageServiceError extends Error {
   }
 }
 
-const ACTIVE_STATUSES: StoryImageStatus[] = ["submitted", "running", "storing"];
+const ACTIVE_STATUSES: StoryImageStatus[] = ["submitted", "queued", "generating", "generated", "storing"];
 
 export function isActiveJob(job: Pick<StoryImageJob, "status">): boolean {
   return ACTIVE_STATUSES.includes(job.status);
@@ -56,7 +56,7 @@ export function newImageRequestId(now = Date.now(), random = Math.random): strin
   return `req-${now.toString(36)}-${suffix}`;
 }
 
-/** Most pictures finish within a minute; poll briskly, then back off. */
+/** The first poll draws the picture and can take tens of seconds; later polls back off. */
 export function nextPollDelayMs(elapsedMs: number): number {
   return elapsedMs < 90_000 ? 3_000 : 10_000;
 }
@@ -77,6 +77,7 @@ export function moderationLabel(moderation: string): string {
 export function qualityLabel(image: Pick<StoryImage, "quality" | "qualityIssues">): string {
   if (image.quality === "flawed") return "有瑕疵：" + (image.qualityIssues.length ? image.qualityIssues.join("、") : "请看大图");
   if (image.quality === "pass") return "";
+  if (image.quality === "pending") return "质检中";
   return "没质检";
 }
 

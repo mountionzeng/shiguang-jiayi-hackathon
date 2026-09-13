@@ -2,12 +2,22 @@ const core = require("./core");
 
 const RECENT_JOB_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SWEEP_BATCH = 10;
-/** The timer shares the function's timeout; stop starting new jobs well before it. */
+/** The timer shares the function's 60-second timeout; stop starting new work well before it. */
 const SWEEP_BUDGET_MS = 20_000;
+/** A synchronous generation can take tens of seconds, so only start one while the invocation is fresh. */
+const GENERATE_START_WINDOW_MS = 5_000;
+/** Downloading and uploading need a few seconds of the remaining time. */
+const STORE_START_WINDOW_MS = 48_000;
+/** The quality check waits up to 12 seconds; otherwise the sweep runs it later. */
+const QUALITY_START_WINDOW_MS = 40_000;
+const QUALITY_BATCH = 3;
 
 /**
- * Every outside effect (database, storage, Hunyuan, the text model, WeChat
+ * Every outside effect (database, storage, TokenHub, the text model, WeChat
  * content checks, the clock) is passed in, so the whole flow runs in tests.
+ *
+ * Tapping 配图 only reads the chapter and queues a prompt, so it returns quickly.
+ * The picture is drawn by the next status poll, or by the timer when nobody polls.
  */
 function createStoryImageHandlers(deps) {
   const {
@@ -22,6 +32,7 @@ function createStoryImageHandlers(deps) {
     now = () => Date.now(),
     log = console,
   } = deps;
+  const qualityEnabled = Boolean(qualityChecker && qualityChecker.configured);
 
   async function submit(ctx, event) {
     const input = core.normalizeSubmitInput(event);
@@ -47,8 +58,7 @@ function createStoryImageHandlers(deps) {
     const quota = core.quotaDecision({ todayCount, bookCount });
     if (!quota.allowed) throw new core.StoryImageError(quota.code, quota.message);
 
-    // The record is written before any paid call, so an interrupted request
-    // leaves a trace that the sweep can mark as uncertain instead of losing it.
+    // The record is written before any model call, so an interrupted request still leaves a trace.
     const job = {
       _id: jobId,
       familyId: input.familyId,
@@ -80,22 +90,9 @@ function createStoryImageHandlers(deps) {
     }
 
     const { prompt, width, height } = core.buildImagePrompt(scene, input.purpose);
-    await repo.updateJob(jobId, { prompt, scene, width, height, updatedAtMs: now() });
-
-    let submitted;
-    try {
-      submitted = await provider.submit({ prompt, width, height });
-    } catch (error) {
-      const outcome = core.classifySubmitError(error);
-      log.error("storyImages submit", outcome.errorCode, String(error && error.message));
-      const patch = { status: outcome.status, errorCode: outcome.errorCode, updatedAtMs: now() };
-      await repo.updateJob(jobId, patch);
-      return { job: core.publicJob({ ...job, ...patch }) };
-    }
-
-    const patch = { status: "running", providerJobId: submitted.providerJobId, submittedAtMs: now(), updatedAtMs: now() };
+    const patch = { status: "queued", prompt, scene, width, height, queuedAtMs: now(), updatedAtMs: now() };
     await repo.updateJob(jobId, patch);
-    return { job: core.publicJob({ ...job, prompt, width, height, ...patch }) };
+    return { job: core.publicJob({ ...job, ...patch }) };
   }
 
   async function requestModeration(imageId, image, openid) {
@@ -111,11 +108,12 @@ function createStoryImageHandlers(deps) {
     }
   }
 
-  /** Looks for stray text, watermarks or logos. The checker reports "unchecked" rather than throwing. */
-  async function runQualityCheck(imageId, imageUrl) {
-    if (!qualityChecker || !qualityChecker.configured) return;
+  /** Looks for stray text, watermarks or logos. A missing link leaves it pending for the sweep. */
+  async function runQualityCheck(imageId, image) {
     try {
-      const outcome = await qualityChecker.check(imageUrl);
+      const url = (await storage.tempUrls([image.fileID]))[image.fileID];
+      if (!url) return;
+      const outcome = await qualityChecker.check(url);
       await repo.updateImage(imageId, {
         quality: outcome.quality,
         qualityIssues: outcome.qualityIssues || [],
@@ -127,10 +125,42 @@ function createStoryImageHandlers(deps) {
     }
   }
 
-  async function store(job, result) {
+  async function generate(job) {
+    const claimed = await repo.claimJob(job._id, ["queued"], { status: "generating", generatingAtMs: now(), updatedAtMs: now() });
+    if (!claimed) return (await repo.getJob(job._id)) || job;
+    let result;
+    try {
+      result = await provider.generate({ prompt: job.prompt, width: job.width, height: job.height });
+    } catch (error) {
+      const outcome = core.classifyGenerateError(error);
+      log.error("storyImages generate", outcome.errorCode, String(error && error.message));
+      const patch = { status: outcome.status, errorCode: outcome.errorCode, updatedAtMs: now() };
+      await repo.updateJob(job._id, patch);
+      return { ...job, ...patch };
+    }
+    // The link is saved first, so a failed upload retries from it instead of paying for a new picture.
+    const patch = {
+      status: "generated",
+      resultUrl: result.resultUrl,
+      revisedPrompt: result.revisedPrompt || "",
+      providerJobId: result.providerJobId || "",
+      usageTokens: result.usageTokens || 0,
+      generatedAtMs: now(),
+      updatedAtMs: now(),
+    };
+    await repo.updateJob(job._id, patch);
+    return { ...job, ...patch };
+  }
+
+  async function store(job, startedMs) {
+    const release = async () => {
+      const patch = { status: "generated", updatedAtMs: now() };
+      await repo.updateJob(job._id, patch);
+      return { ...job, ...patch };
+    };
     let image;
     try {
-      image = await downloadImage(result.imageUrl);
+      image = await downloadImage(job.resultUrl);
     } catch (error) {
       if (error && error.expired) {
         const patch = { status: "expired", errorCode: String(error.message).slice(0, 40), updatedAtMs: now() };
@@ -138,9 +168,7 @@ function createStoryImageHandlers(deps) {
         return { ...job, ...patch };
       }
       log.error("storyImages download", String(error && error.message));
-      const patch = { status: "running", updatedAtMs: now() };
-      await repo.updateJob(job._id, patch);
-      return { ...job, ...patch };
+      return release();
     }
 
     const imageId = `${job.familyId}_img_${job.requestId}`;
@@ -150,9 +178,7 @@ function createStoryImageHandlers(deps) {
       fileID = await storage.upload(cloudPath, image.buffer);
     } catch (error) {
       log.error("storyImages upload", String(error && error.message));
-      const patch = { status: "running", updatedAtMs: now() };
-      await repo.updateJob(job._id, patch);
-      return { ...job, ...patch };
+      return release();
     }
 
     const nowMs = now();
@@ -168,44 +194,34 @@ function createStoryImageHandlers(deps) {
       bytes: image.buffer.length,
       contentType: image.contentType,
       moderation: "unchecked",
-      quality: "unchecked",
+      quality: qualityEnabled ? "pending" : "unchecked",
       qualityIssues: [],
       aiGenerated: true,
       jobId: job._id,
       createdAtMs: nowMs,
     };
     await repo.createImage(imageId, imageDoc);
-    const patch = { status: "stored", imageId, revisedPrompt: result.revisedPrompt || "", storedAtMs: nowMs, updatedAtMs: nowMs };
+    const patch = { status: "stored", imageId, storedAtMs: nowMs, updatedAtMs: nowMs };
     await repo.updateJob(job._id, patch);
     await requestModeration(imageId, imageDoc, job.requesterOpenId);
-    await runQualityCheck(imageId, result.imageUrl);
+    if (qualityEnabled && now() - startedMs <= QUALITY_START_WINDOW_MS) await runQualityCheck(imageId, imageDoc);
     return { ...job, ...patch };
   }
 
-  async function advance(job) {
-    if (job.status !== "running" || !job.providerJobId) return job;
-    let result;
-    try {
-      result = await provider.query(job.providerJobId);
-    } catch (error) {
-      if (error && error.providerCode === "FailedOperation.JobNotExist") {
-        const patch = { status: "unknown", errorCode: error.providerCode, updatedAtMs: now() };
-        await repo.updateJob(job._id, patch);
-        return { ...job, ...patch };
-      }
-      log.error("storyImages query", String(error && error.message));
-      return job;
+  async function advance(job, startedMs) {
+    let current = job;
+    if (current.status === "queued") {
+      if (now() - startedMs > GENERATE_START_WINDOW_MS) return current;
+      current = await generate(current);
     }
-    if (result.state === "running") return job;
-    if (result.state === "failed" || result.state === "blocked") {
-      const patch = { status: result.state, errorCode: result.errorCode || "", updatedAtMs: now() };
-      await repo.updateJob(job._id, patch);
-      return { ...job, ...patch };
+    if (current.status === "generated") {
+      if (now() - startedMs > STORE_START_WINDOW_MS) return current;
+      // Two polls can see the same finished picture; only the one that claims it stores the file.
+      const claimed = await repo.claimJob(current._id, ["generated"], { status: "storing", updatedAtMs: now() });
+      if (!claimed) return (await repo.getJob(current._id)) || current;
+      current = await store({ ...current, status: "storing" }, startedMs);
     }
-    // Two polls can see the same finished job; only the one that claims it stores the file.
-    const claimed = await repo.claimJob(job._id, ["running"], { status: "storing", updatedAtMs: now() });
-    if (!claimed) return (await repo.getJob(job._id)) || job;
-    return store({ ...job, status: "storing" }, result);
+    return current;
   }
 
   async function loadOwnedJob(ctx, event) {
@@ -218,7 +234,8 @@ function createStoryImageHandlers(deps) {
   }
 
   async function status(ctx, event) {
-    const job = await advance(await loadOwnedJob(ctx, event));
+    const startedMs = now();
+    const job = await advance(await loadOwnedJob(ctx, event), startedMs);
     if (job.status !== "stored" || !job.imageId) return { job: core.publicJob(job) };
     const image = await repo.getImage(job.imageId);
     if (!image || image.deletedAtMs !== undefined) return { job: core.publicJob(job) };
@@ -273,27 +290,40 @@ function createStoryImageHandlers(deps) {
     const startedMs = now();
     const results = [];
     for (const job of await repo.listActiveJobs(SWEEP_BATCH)) {
-      if (now() - startedMs > SWEEP_BUDGET_MS) {
+      const action = core.sweepAction(job, now());
+      if (action === "skip") continue;
+      const elapsed = now() - startedMs;
+      if (elapsed > SWEEP_BUDGET_MS || (action === "generate" && elapsed > GENERATE_START_WINDOW_MS)) {
         results.push({ jobId: job._id, action: "deferred" });
         continue;
       }
-      const nowMs = now();
-      const action = core.sweepAction(job, nowMs);
       try {
-        if (action === "mark-unknown") {
-          await repo.claimJob(job._id, ["submitted"], { status: "unknown", errorCode: "SUBMIT_INTERRUPTED", updatedAtMs: nowMs });
+        if (action === "mark-failed") {
+          await repo.claimJob(job._id, ["submitted"], { status: "failed", errorCode: "SCENE_INTERRUPTED", updatedAtMs: now() });
+        } else if (action === "mark-unknown") {
+          await repo.claimJob(job._id, ["generating"], { status: "unknown", errorCode: "GENERATE_INTERRUPTED", updatedAtMs: now() });
         } else if (action === "release") {
-          await repo.claimJob(job._id, ["storing"], { status: "running", updatedAtMs: nowMs });
-        } else if (action === "poll") {
-          await advance(job);
+          await repo.claimJob(job._id, ["storing"], { status: "generated", updatedAtMs: now() });
+        } else {
+          await advance(job, startedMs);
         }
       } catch (error) {
         log.error("storyImages sweep", job._id, String(error && error.message));
       }
       results.push({ jobId: job._id, action });
     }
+
+    // Pictures whose quality check did not fit inside the request that stored them.
+    let qualityChecked = 0;
+    if (qualityEnabled) {
+      for (const image of await repo.listImagesPendingQuality(QUALITY_BATCH)) {
+        if (now() - startedMs > QUALITY_START_WINDOW_MS) break;
+        await runQualityCheck(image._id, image);
+        qualityChecked++;
+      }
+    }
     const deferred = results.filter(item => item.action === "deferred").length;
-    return { swept: results.length - deferred, deferred, results };
+    return { swept: results.length - deferred, deferred, qualityChecked, results };
   }
 
   /** WeChat pushes wxa_media_check within 30 minutes of a request. */

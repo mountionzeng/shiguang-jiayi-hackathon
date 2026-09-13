@@ -1,4 +1,5 @@
 const { StoryImageError, parseSceneJson } = require("./core");
+const { defaultFetch } = require("./httpFetch");
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
@@ -23,7 +24,7 @@ function buildSceneMessages({ title, text }) {
   ];
 }
 
-function createSceneExtractor({ apiKey, model, baseUrl, fetchImpl = fetch, timeoutMs = 15_000 }) {
+function createSceneExtractor({ apiKey, model, baseUrl, fetchImpl = defaultFetch, timeoutMs = 15_000 }) {
   const root = String(baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
   return async function extractScene(source) {
     if (!apiKey || !model) throw new StoryImageError("AI_NOT_CONFIGURED", "在线 AI 还没配置好");

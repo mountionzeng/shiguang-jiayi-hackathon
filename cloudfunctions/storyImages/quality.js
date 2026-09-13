@@ -1,7 +1,9 @@
 const { QUALITY_ISSUE_KEYS, cleanText } = require("./core");
+const { defaultFetch } = require("./httpFetch");
 
-const DEFAULT_BASE_URL = "https://api.hunyuan.cloud.tencent.com/v1";
-const DEFAULT_MODEL = "hunyuan-vision";
+// The old hunyuan-vision entry closed on 2026-06-22; vision models now live on TokenHub.
+const DEFAULT_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
+const DEFAULT_MODEL = "hy-vision-2.0-instruct";
 
 const QUALITY_PROMPT = [
   "你是图片质检员，请检查这张 AI 生成的插画。",
@@ -38,7 +40,7 @@ function parseQualityJson(content) {
 }
 
 /** Never throws: a check that cannot finish leaves the picture unchecked, never blocked. */
-function createQualityChecker({ apiKey, model, baseUrl, fetchImpl = fetch, timeoutMs = 12_000 }) {
+function createQualityChecker({ apiKey, model, baseUrl, fetchImpl = defaultFetch, timeoutMs = 12_000 }) {
   const root = String(baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
   const configured = Boolean(apiKey);
   async function check(imageUrl) {

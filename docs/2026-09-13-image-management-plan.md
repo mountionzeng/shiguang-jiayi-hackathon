@@ -45,6 +45,8 @@
 
 ## 四、云函数拆分
 
+> **2026-09-13 更新：出图与质检已改接 TokenHub，流程与配置以第十六节为准；本节关于腾讯云签名、异步提交查询的描述已被替代。**
+
 > **阶段 1 实现调整（2026-09-13）**：下表的四个职责合并成**一个云函数 `storyImages`**，按 `action` 分派（`submit` / `status` / `list` / `remove`），同一个函数挂定时触发器（每 5 分钟）并接收 `wxa_media_check` 推送。原因：微信每个云函数目录单独部署，拆成四个要把签名、出图、数据库代码复制四份；仓库里 `familyInvite` 也是一个函数多个动作。
 > 超时**不能写在 `config.json` 里**（官方文档只列了 `triggers` 与 `permissions`），部署后在云开发控制台把 `storyImages` 超时设为 30 秒。
 > 混元接口域名按产品名取 `aiart.tencentcloudapi.com`（公共参数页未逐字写出），版本 `2022-12-29`，地域默认 `ap-guangzhou`（官方支持广州、上海）；首次真实调用时核实。
@@ -222,6 +224,8 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 
 ## 十一、需要用户本人在后台做的事（我不做）
 
+> **2026-09-13 更新：第 1、5、8 项（CAM 子账号 SecretId、混元生文 API Key、HUNYUAN_* 环境变量）已被第十六节替代。**
+
 1. 腾讯云开通混元生图，领免费额度；建 CAM 子账号只授权混元生图，把密钥填进云函数环境变量；
 2. 控制台"合同管理"下载含算法备案信息的订单合同；**不要在腾讯云授权"输入内容用于改进模型"**（条款 4.2 默认不用，除非另行授权）；
 3. 小程序后台申请【深度合成-AI绘画】类目；
@@ -326,3 +330,58 @@ query(providerJobId) -> { state: "running" | "done" | "failed" | "blocked", imag
 
 - 章节合并 / 拆分功能出来后，按问题四打算的 id 规则，被合并掉的那一章的底图选择会丢，届时要提示用户；
 - 底图仍不使用用户照片（阶段 2b 的内容）。
+
+## 十六、改接 TokenHub（2026-09-13）
+
+**为什么改**
+
+- 腾讯混元大模型原平台 **2026-09-30 停服下线**，新开通模型服务只能去 TokenHub；
+- 混元生图快速入门把旧控制台 `console.cloud.tencent.com/aiart` 标为"逐步迁移下线中"，推荐 TokenHub；
+- 混元多模态理解模型在原入口 **2026-06-22 已下线**，看图质检原默认的 `hunyuan-vision` 已不可用；
+- 旧的 `aiart.tencentcloudapi.com` 签名接口是否随之停用，公告没有写明。**不再依赖它**，删除了 TC3 签名代码。
+
+**TokenHub 接口事实（见「Hy 生图调用指南」）**
+
+| 项 | 内容 |
+|---|---|
+| 出图接口 | `POST https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation`，**同步**返回 |
+| 鉴权 | `Authorization: Bearer <API Key>`，在 TokenHub 控制台创建 |
+| 模型 | `hy-image-v3`；尺寸 `宽x高`，每边 512–2048、面积不超过 1024×1024；参考图 0–3 张（URL 或 base64，≤10MB）；`revise` 布尔；`footnote` 水印文字 ≤16 字 |
+| 返回 | `data[0].url`，**临时地址有效期 12 小时**；`revised_prompt`；`tokenhub_usage.total_tokens` |
+| 错误 | 400 格式错、401 鉴权失败、**422 输入或输出审核不通过**、429 并发超限、500 内部错误 |
+| 价格 | Hy-Image-3.0 每张 ¥0.2（20000 tokens × 10 元/百万 tokens）；每个模型一次新人免费体验，活动至 2026-12-31 |
+| 看图模型 | `hy-vision-2.0-instruct`，OpenAI 兼容 `https://tokenhub.tencentmaas.com/v1/chat/completions`，图片可传链接或 base64；价格输入 7.5 元、输出 17.5 元每百万 tokens |
+
+**实现调整**
+
+- 状态流：`submitted`（读章节）→ `queued`（提示词已排队）→ `generating`（正在调用 TokenHub）→ `generated`（拿到链接，已记下）→ `storing` → `stored`；
+- 点「配图」只读章节、写提示词、排队，很快返回；**页面第一次查进度时才出图**，同一次调用里接着转存；若离开页面，定时触发器**每分钟**补做；
+- 同步出图可能耗时几十秒，所以只在调用开始 5 秒内才启动出图；48 秒后不再开始转存；质检放不下就标「质检中」，由定时任务补上；每次定时任务最多开始一张出图；
+- 拿到结果链接先写库，上传失败退回 `generated` 用同一链接重试，**不重新出图**；
+- 每张图显式传 `footnote: "图片由AI生成"`、`revise: false`；
+- 结局对应：422 → 没通过审核；其他 4xx → 没画成（不占名额）；超时、5xx、成功却没有图片 → 不确定（占名额，不自动重画）；
+- 文案"没画成，没有扣费"改为"没画成，这次不占名额"——TokenHub 文档没有写被拒请求是否计费，不说没核实的话。
+
+**部署与配置（替代第十一节第 1、5、8 项）**
+
+1. [TokenHub 模型广场](https://console.cloud.tencent.com/tokenhub/models) 开通 **Hy-Image-3.0**、**HY-Vision-2.0-Instruct**（腾讯云账号需实名）；
+2. [TokenHub API Key 管理](https://console.cloud.tencent.com/tokenhub/apikey) 创建 API Key。**密钥不经过对话，由用户本人填进云函数环境变量**；
+3. 部署命令（需用户同意）：`cli cloud functions deploy --env cloud1-d0g8c8yg0513a6068 --names storyImages --project <项目路径> --remote-npm-install`；
+4. 部署后在微信开发者工具「云开发 → 云函数 → storyImages」设置：
+   - 环境变量 `TOKENHUB_API_KEY`；从 `generateBiography` 照抄 `AI_API_KEY`、`AI_MODEL`、`AI_BASE_URL`；
+   - 可选：`VISION_API_KEY`（默认用 `TOKENHUB_API_KEY`）、`VISION_MODEL`、`VISION_BASE_URL`、`TOKENHUB_BASE_URL`；
+   - 超时时间 **60 秒**；
+5. 消息推送 `wxa_media_check` → `storyImages` 不变。
+
+**没验证的**
+
+- TokenHub 出图的实际耗时（文档未写），60 秒内能否稳定完成出图加转存；
+- `footnote` 生成的水印是否就是可见的"AI 生成"标识、位置在哪，以及是否写入隐式标识；
+- 除 422 外被拒请求是否计费；API Key 能否限定只调这两个模型（文档未写）；
+- 上架所需的算法备案材料在 TokenHub 上如何获取，还没查；
+- 看图模型在 TokenHub 上是否稳定按要求输出 JSON。
+
+**依据**
+
+- [TokenHub Hy 生图调用指南](https://cloud.tencent.com/document/product/1823/135745)、[图像生成模型调用概览](https://cloud.tencent.com/document/product/1823/135744)、[TokenHub API 使用说明](https://cloud.tencent.com/document/product/1823/130078)、[TokenHub 模型列表](https://cloud.tencent.com/document/product/1823/130051)
+- [腾讯混元生图快速入门（旧控制台迁移下线中）](https://cloud.tencent.com/document/product/1668/87020)、[旧版本模型下线迁移公告（原平台 9 月 30 日停服）](https://cloud.tencent.com/document/product/1729/131925)、[混元多模态模型服务迁移通知](https://cloud.tencent.com/announce/detail/2310)
