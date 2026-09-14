@@ -1,6 +1,16 @@
 <view class="link-page"><image class="paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill"></image><view class="content">
-  <view class="title serif">把网页版故事带回来</view><view class="note">验证 Drinking Time 邮箱后，只会列出这个账号自己的故事。导入内容默认仅自己可见，不会自动分享给亲友。</view>
-  <view class="card" wx:if="{{!linked}}"><input placeholder="Drinking Time 登录邮箱" value="{{email}}" bindinput="onEmail"/><view class="otp"><input placeholder="六位验证码" maxlength="6" value="{{otp}}" bindinput="onOtp"/><button bindtap="sendOtp" disabled="{{busy}}">获取验证码</button></view><button class="primary" bindtap="link" loading="{{busy}}">验证并关联</button><view class="hint">两边都有内容时不会自动合并；系统会停下来保护原故事。</view></view>
-  <view wx:else><view class="section serif">选择要导入的故事</view><view class="linked-hint" wx:if="{{linkedEmailHint}}">已关联 {{linkedEmailHint}}</view><button class="story" wx:for="{{stories}}" wx:key="id" data-id="{{item.id}}" bindtap="choose" disabled="{{busy}}"><text>{{item.title}}</text><text>查看与导入 ›</text></button><button class="load-more" wx:if="{{nextCursor!==null}}" bindtap="loadMore" loading="{{busy}}">再看一些故事</button><view class="empty" wx:if="{{stories.length===0}}">这个账号暂时没有可导入的故事</view></view>
-</view>
-<view class="mask" wx:if="{{previewOpen}}"><view class="sheet"><view class="sheet-title serif">{{selectedTitle}}</view><scroll-view class="body-preview" scroll-y><text user-select>{{selectedBody}}</text></scroll-view><view class="hint">上面是完整正文。可直接导入整篇；也可以在下面保留或改写一个 500 字以内的片段。</view><textarea value="{{fragment}}" maxlength="500" bindinput="onFragment"/><view class="actions"><button bindtap="closePreview">取消</button><button bindtap="importFragment" loading="{{busy}}">导入片段</button><button class="primary" bindtap="importFull" loading="{{busy}}">导入整篇</button></view></view></view></view>
+  <view class="title serif">在电脑上继续</view>
+  <view class="note">选择一个微信里的故事，生成五分钟有效的一次性登录码。电脑会进入这个微信账号，并保留故事的记忆、人物、地点和整理好的章节。</view>
+  <view class="code-card" wx:if="{{code}}">
+    <view class="code-title serif">{{selectedTitle}}</view><view class="code" user-select>{{code}}</view>
+    <view class="expires">{{expiresLabel}} · 只能使用一次</view>
+    <button class="primary" bindtap="copyCode">复制登录码</button>
+    <view class="hint">电脑打开 test.drinkingtime.top/login，选择“微信登录”，填入上面的码。</view>
+  </view>
+  <view class="section serif">选择要带到电脑的故事</view>
+  <button class="story" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" data-title="{{item.title}}" bindtap="choose" disabled="{{busy}}">
+    <view><text class="story-title">{{item.title}}</text><text class="story-detail">{{item.detail}}</text><text class="story-excerpt">{{item.excerpt}}</text></view><text class="story-arrow">生成电脑码 ›</text>
+  </button>
+  <button class="load-more" wx:if="{{loadError}}" bindtap="refresh" loading="{{busy}}">{{loadError}}</button>
+  <view class="empty" wx:if="{{!busy && !loadError && stories.length===0}}">还没有可以带到电脑的故事</view>
+</view></view>

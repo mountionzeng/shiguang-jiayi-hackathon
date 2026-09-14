@@ -1,5 +1,28 @@
-const assert=require("node:assert/strict"),test=require("node:test"),core=require("../cloudfunctions/drinkingTimeBridge/core.js");
-test("跨端身份不暴露OPENID且签名绑定路径和正文",()=>{const subject=core.subjectFor("wx-app","openid-secret");assert.match(subject,/^shiguang:[0-9a-f]{64}$/);assert.ok(!subject.includes("openid-secret"));const a=core.signature("x".repeat(32),"/stories","1","nonce",{b:2,a:1});const b=core.signature("x".repeat(32),"/stories","1","nonce",{a:1,b:2});assert.equal(a,b);assert.notEqual(a,core.signature("x".repeat(32),"/stories/read","1","nonce",{a:1,b:2}));});
-test("服务地址保留 Drinking Time 的桥接前缀",()=>{assert.equal(core.bridgeUrl("https://test.drinkingtime.top/api/shiguang","/stories/read").toString(),"https://test.drinkingtime.top/api/shiguang/stories/read");});
-test("客户端不能向云函数注入微信身份",()=>{const body=core.requestBody("read",{openid:"forged",subject:"shiguang:"+"f".repeat(64),userId:99,storyId:7},{APPID:"wx-app",OPENID:"trusted-openid"});assert.equal(body.subject,core.subjectFor("wx-app","trusted-openid"));assert.equal(body.storyId,7);assert.equal("openid" in body,false);assert.equal("userId" in body,false);});
-test("签名协议与 Drinking Time 服务端共享固定测试向量",()=>{const body={subject:`shiguang:${"a".repeat(64)}`,email:"me@example.com"};assert.equal(core.signature("test-shiguang-bridge-secret-at-least-32","/link/email/otp/request","1700000000000","nonce_for_golden_vector",body),"71212c4e14c99d63994fdfe96783691d8f85e3cbcf07e8cee59597e5b62ad86b");});
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const core = require("../cloudfunctions/drinkingTimeBridge/core.js");
+
+test("跨端身份不暴露 OPENID 且签名绑定路径和故事正文", () => {
+  const story = { sourceKey: "story:外婆", sourceRevision: "0123456789abcdef" };
+  const body = core.requestBody("issueDesktop", { story, subject: "forged", userId: 99 }, { APPID: "wx-app", OPENID: "openid-secret" });
+  assert.match(body.subject, /^shiguang:[0-9a-f]{64}$/);
+  assert.ok(!body.subject.includes("openid-secret"));
+  assert.deepEqual(body.story, story);
+  assert.equal("userId" in body, false);
+  const signature = core.signature("x".repeat(32), "/desktop/pair/issue", "1", "nonce", body);
+  assert.notEqual(signature, core.signature("x".repeat(32), "/desktop/pair/issue", "1", "nonce", { ...body, story: { ...story, sourceRevision: "fedcba9876543210" } }));
+});
+
+test("服务地址保留 Drinking Time 桥接前缀", () => {
+  assert.equal(core.bridgeUrl("https://test.drinkingtime.top/api/shiguang", "/desktop/pair/issue").toString(), "https://test.drinkingtime.top/api/shiguang/desktop/pair/issue");
+});
+
+test("云函数只接受微信故事进入电脑这个方向", () => {
+  const context = { APPID: "wx-app", OPENID: "openid-secret" };
+  assert.throws(() => core.requestBody("list", {}, context), /invalid_input/);
+  assert.throws(() => core.requestBody("issueDesktop", { story: null }, context), /invalid_input/);
+});
+
+test("签名序列化与实际 JSON 请求一样忽略 undefined 字段", () => {
+  assert.equal(core.canonicalJson({ a: 1, missing: undefined }), '{"a":1}');
+});

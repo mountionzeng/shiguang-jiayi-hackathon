@@ -110,7 +110,7 @@
 
   <view class="me-section-title">账号</view>
   <view class="me-list">
-    <button class="me-row" bindtap="openAccountLink" hover-class="none"><text class="me-row-icon">联</text><view class="me-row-copy"><text class="me-row-title">关联 Drinking Time</text><text class="me-row-note">验证邮箱，选择导入网页版故事或片段</text></view><text class="me-row-arrow">›</text></button>
+    <button class="me-row" bindtap="openAccountLink" hover-class="none"><text class="me-row-icon">屏</text><view class="me-row-copy"><text class="me-row-title">在电脑上继续</text><text class="me-row-note">选择微信故事，生成一次性电脑登录码</text></view><text class="me-row-arrow">›</text></button>
     <button class="me-row" bindtap="editAccountProfile" hover-class="none">
       <text class="me-row-icon">称</text>
       <view class="me-row-copy"><text class="me-row-title">修改个人信息</text><text class="me-row-note">称呼与一个字头像</text></view>

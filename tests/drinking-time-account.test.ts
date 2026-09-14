@@ -1,59 +1,54 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
+import { FamilyRoomState } from "../miniprogram/domain/biography";
 import {
+  desktopStoryOptions,
+  desktopStorySnapshot,
   drinkingTimeAccountTest,
-  importedContributions,
-  pendingImportedContributions,
-  splitImportedStory,
 } from "../miniprogram/services/drinkingTimeAccount";
 
-const member = { id: "owner", name: "岱", relation: "自己", avatarText: "岱", role: "owner" as const };
-const document = (body: string, sourceRevision = "a".repeat(24)) => ({
-  id: 7,
-  title: "旧故事",
-  body,
-  bodyAvailable: true,
-  sourceRevision,
-  sourceUpdatedAt: 1_800_000_000_000,
+const state = (): FamilyRoomState => ({
+  roomName: "我的拾光房间",
+  protagonistName: "岱",
+  members: [{ id: "owner", name: "岱", relation: "自己", avatarText: "岱", role: "owner", kind: "recording-profile" }],
+  contributions: [
+    { id: "m1", authorMemberId: "owner", authorName: "岱", relation: "自己", text: "厨房里总有热气。", title: "灶台", summary: "外婆做饭", people: ["外婆"], places: ["厨房"], storyTitle: "外婆的厨房", scope: "personal", visibility: "private", reviewStatus: "confirmed", createdAt: "2026-09-13T10:00:00.000Z" },
+    { id: "m2", authorMemberId: "owner", authorName: "岱", relation: "自己", text: "已删除的内容", storyTitle: "旧故事", scope: "personal", visibility: "private", reviewStatus: "confirmed", createdAt: "2026-09-12T10:00:00.000Z" },
+  ],
+  personalDrafts: {
+    owner: {
+      title: "外婆的厨房",
+      paragraphs: ["这是整理后的第一章。"],
+      sourceCount: 1,
+      generatedAt: "2026-09-14T10:00:00.000Z",
+      generationMode: "local-demo",
+      chapters: [{ id: "c1", title: "灶台边", memoryIds: ["m1"], content: [{ text: "这是整理后的第一章。" }, { photoId: "photo-local-1" }] }],
+    },
+  },
+  deletedStories: [{ key: "story:旧故事", title: "旧故事", deletedAt: "2026-09-14T09:00:00.000Z" }],
 });
 
-test("整篇导入按500字拆分且默认仅自己可见", () => {
-  const chunks = splitImportedStory("甲".repeat(620));
-  assert.deepEqual(chunks.map(item => item.length), [500, 120]);
-  const rows = importedContributions(document("甲".repeat(620)), member);
-  assert.equal(rows.length, 2);
-  assert.ok(rows.every(row => row.scope === "personal" && row.visibility === "private" && row.reviewStatus === "confirmed"));
-  assert.equal(rows[0].storyTitle, "旧故事");
-  assert.equal(rows[0].createdAt, new Date(1_800_000_000_000).toISOString());
+test("只列出当前有效的拾光故事，已删除故事不会重新出现", () => {
+  assert.deepEqual(desktopStoryOptions(state()).map(item => item.title), ["外婆的厨房"]);
 });
 
-test("相同来源可安全重试，修改后的版本和两个不同片段都不会互相覆盖", () => {
-  const first = importedContributions(document("一段正文"), member);
-  assert.deepEqual(first.map(item => item.id), importedContributions(document("一段正文"), member).map(item => item.id));
-  assert.notDeepEqual(first.map(item => item.id), importedContributions(document("更新正文", "b".repeat(24)), member).map(item => item.id));
-  const fragmentA = importedContributions(document("完整正文"), member, "第一个片段");
-  const fragmentB = importedContributions(document("完整正文"), member, "第二个片段");
-  assert.notEqual(fragmentA[0].id, fragmentB[0].id);
-  assert.deepEqual(pendingImportedContributions(first, first), []);
-  assert.deepEqual(pendingImportedContributions([...first, ...fragmentA], first).map(item => item.id), fragmentA.map(item => item.id));
+test("故事快照保留记忆、人物地点、章节正文和照片引用", () => {
+  const snapshot = desktopStorySnapshot(state(), "story:外婆的厨房");
+  assert.equal(snapshot.title, "外婆的厨房");
+  assert.equal(snapshot.memories[0].text, "厨房里总有热气。");
+  assert.deepEqual(snapshot.memories[0].people, ["外婆"]);
+  assert.deepEqual(snapshot.manuscript?.chapters[0].content, [{ text: "这是整理后的第一章。" }, { photoId: "photo-local-1" }]);
+  assert.match(snapshot.sourceRevision, /^[0-9a-f]{16}$/);
+  assert.equal(snapshot.sourceRevision, desktopStorySnapshot(state(), "story:外婆的厨房").sourceRevision);
 });
 
-test("片段与整篇超过明确上限时拒绝而不是静默截断", () => {
-  assert.throws(() => importedContributions(document("甲".repeat(50_001)), member), /超过 5 万字/);
-  assert.throws(() => importedContributions(document("正文"), member, "乙".repeat(501)), /片段最多 500 字/);
-  const punctuated = `${"甲".repeat(479)}。`.repeat(100);
-  assert.equal(punctuated.length, 48_000);
-  assert.equal(importedContributions(document(punctuated), member).length, 96);
+test("删除或空故事无法生成过期快照", () => {
+  assert.throws(() => desktopStorySnapshot(state(), "story:旧故事"), /已经删除或更新/);
 });
 
-test("错误与未知响应不会被泛型断言伪装成成功", () => {
-  assert.throws(() => drinkingTimeAccountTest.recordFrom(null), /无法识别/);
-  assert.match(drinkingTimeAccountTest.friendlyBridgeError(new Error("not_found")).message, /不存在/);
-  assert.match(drinkingTimeAccountTest.friendlyBridgeError(new Error("replayed_request")).message, /已处理/);
-  assert.match(drinkingTimeAccountTest.friendlyBridgeError(new Error("bridge_response_too_large")).message, /过大/);
-  assert.deepEqual(drinkingTimeAccountTest.storyPageFrom({ stories: [{ id: 7, title: "旧故事" }], nextCursor: 50 }, 0), {
-    stories: [{ id: 7, title: "旧故事" }], nextCursor: 50,
-  });
-  assert.throws(() => drinkingTimeAccountTest.storyPageFrom({ stories: [{ id: "7", title: "旧故事" }], nextCursor: null }, 0), /格式已变化/);
-  assert.throws(() => drinkingTimeAccountTest.storyPageFrom({ stories: [], nextCursor: 0 }, 0), /分页状态异常/);
+test("电脑码响应必须完整且符合无歧义字母表", () => {
+  const result = drinkingTimeAccountTest.transferResult({ code: "ABC234", expiresAt: "2026-09-14T10:05:00.000Z", storyId: 3, imported: true });
+  assert.equal(result.storyId, 3);
+  assert.throws(() => drinkingTimeAccountTest.transferResult({ code: "000000", expiresAt: "bad" }), /返回异常/);
 });
