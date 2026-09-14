@@ -492,10 +492,10 @@ test("云端取不到底图时书稿照常打开，只是不显示底图", async
   assert.equal(page.data.loadError, "");
 });
 
-test("书稿里显示底图时正文区另外标「AI 生成」，键盘打开时和底图一起隐藏", () => {
+test("书稿里显示底图时正文区另外标「图片 AI 生成」，和正文的「文字 AI 生成」分开，键盘打开时和底图一起隐藏", () => {
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
   const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");
-  assert.match(markup, /<view wx:if="\{\{backdropUrl\}\}" class="backdrop-ai-label">AI 生成<\/view>/);
+  assert.match(markup, /<view wx:if="\{\{backdropUrl\}\}" class="backdrop-ai-label">图片 AI 生成<\/view>/);
   const labelRule = styles.match(/\.backdrop-ai-label \{([^}]*)\}/)?.[1] ?? "";
   assert.match(labelRule, /z-index: 2/, "角标要压在底图和渐隐之上");
   assert.doesNotMatch(labelRule, /opacity:\s*0/);
