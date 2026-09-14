@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createContribution, FamilyRoomState } from "../miniprogram/domain/biography";
+import { createContribution, createEmptyRoomState, FamilyRoomState } from "../miniprogram/domain/biography";
 import { makeRevision } from "../miniprogram/services/manuscript";
 import { createDemoRoomStateForTests } from "./fixtures";
 
@@ -92,6 +92,17 @@ test("Memory Home shows memories whether or not they are written into a book", a
   call(room, "openMemory", tap("with-friend"));
   call(room, "openPeople");
   assert.deepEqual(env.navigations.slice(-2), ["/pages/archive/archive?id=with-friend", "/pages/profiles/profiles?mode=people"]);
+});
+
+test("a new room without profiles displays an empty state instead of a load error", async (context) => {
+  const env = install(createEmptyRoomState());
+  context.after(env.restore);
+  const room = await loadRoom();
+  await call(room, "refresh");
+  assert.equal(room.data.loadError, "");
+  assert.equal(room.data.hasAnyMemory, false);
+  assert.deepEqual(ids(room.data.people), ["me"]);
+  assert.equal(room.data.viewerId, "");
 });
 
 test("a person with no memories yet says so instead of looking empty", async (context) => {

@@ -221,23 +221,3 @@
 </scroll-view>
 
 <story-switcher current="home"></story-switcher>
-
-<view class="account-prompt-mask" wx:if="{{accountPromptOpen}}">
-  <view class="account-prompt-card">
-    <view class="account-prompt-avatar serif">
-      <image class="account-prompt-avatar-bg" src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
-      <text>{{accountAvatarPreview}}</text>
-    </view>
-    <view class="account-prompt-title serif">你希望我们叫你什么？</view>
-    <view class="account-prompt-note">一个字也很好。这个称呼会出现在你的故事和邀请中，以后可以在“我的”里修改。</view>
-    <input
-      class="account-prompt-input"
-      value="{{accountNameInput}}"
-      maxlength="8"
-      focus
-      bindinput="onAccountNameInput"
-      placeholder="例如：岱"
-    />
-    <button class="account-prompt-confirm" bindtap="confirmAccountName" loading="{{accountSaving}}" disabled="{{accountSaving}}">就这样叫我</button>
-  </view>
-</view>

@@ -607,6 +607,36 @@ test("home groups a story into one recent row and keeps the newest excerpt", asy
   assert.equal(stories[0]?.countLabel, "已聊 2 段");
 });
 
+test("an incomplete account can browse home and start recording without filling a name", async (context) => {
+  const initial = createInitialRoomState();
+  initial.contributions = [];
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  (wx as any).cloud = {
+    callFunction: async () => ({ result: {
+      accountLinked: true,
+      account: { accountId: "new-account", primaryFamilyId: "new-family", displayName: "", profileComplete: false },
+    } }),
+  };
+  const page = instantiate(await pageDefinition("index"));
+  await callPage(page, "refresh", initial);
+  assert.notEqual(page.data.accountPromptOpen, true, "first visit must not block browsing with a name prompt");
+  assert.equal(page.data.hasRecentStories, false);
+  callPage(page, "startInterview");
+  assert.equal(last(storage.navigations), "/pages/interview/interview");
+  await callPage(page, "refresh", initial);
+  assert.notEqual(page.data.accountPromptOpen, true, "returning home must not reopen a profile prompt");
+
+  delete (wx as any).cloud;
+  const me = instantiate(await pageDefinition("me"));
+  await callPage(me, "refresh", initial);
+  assert.equal(me.data.editingAccount, false);
+  callPage(me, "editAccountProfile");
+  assert.equal(me.data.editingAccount, true);
+  callPage(me, "cancelAccountProfile");
+  assert.equal(me.data.editingAccount, false);
+});
+
 test("home is about the story you are on: the cover is that story, and the avatar is the account owner", async (context) => {
   const initial = createInitialRoomState();
   const ownerStory = initial.contributions.find(

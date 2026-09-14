@@ -19,7 +19,6 @@ import {
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
-import { loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
 
 interface RecentStoryView {
   id: string;
@@ -216,10 +215,6 @@ Page({
     hasRecommendedQuestion: false,
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
-    accountPromptOpen: false,
-    accountNameInput: "",
-    accountAvatarPreview: "忆",
-    accountSaving: false,
   },
 
   onShow() {
@@ -295,40 +290,7 @@ Page({
       hasRecentStories: recentStories.length > 0,
     });
 
-    if (!wx.cloud) return;
-    try {
-      const account = await loadCurrentAccount();
-      this.setData({
-        accountPromptOpen: !account.profileComplete,
-        accountNameInput: account.profileComplete ? account.displayName : current.name,
-        accountAvatarPreview: account.profileComplete
-          ? (account.avatarText || "忆")
-          : (Array.from(current.name)[0] || "忆"),
-      });
-    } catch (error) {
-      console.warn("拾光账号资料暂未加载", error);
-    }
-  },
-
-  onAccountNameInput(event: WechatMiniprogram.Input) {
-    this.setData({
-      accountNameInput: event.detail.value,
-      accountAvatarPreview: Array.from(event.detail.value.trim())[0] || "忆",
-    });
-  },
-
-  async confirmAccountName() {
-    if (this.data.accountSaving) return;
-    this.setData({ accountSaving: true });
-    try {
-      await saveCurrentAccountName(this.data.accountNameInput);
-      this.setData({ accountPromptOpen: false });
-      wx.showToast({ title: "记住啦", icon: "success" });
-    } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : "暂时无法保存称呼", icon: "none" });
-    } finally {
-      this.setData({ accountSaving: false });
-    }
+    // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
   },
 
   startInterview() {

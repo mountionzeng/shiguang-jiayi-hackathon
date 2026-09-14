@@ -83,8 +83,8 @@ Page({
 
   async refresh(state?: FamilyRoomState) {
     let currentState: FamilyRoomState;
-    let viewer: FamilyMember;
-    let viewerRole: FamilyMember["role"];
+    let viewer: FamilyMember | undefined;
+    let viewerRole: FamilyMember["role"] | "";
     if (!state && this.data.sharedFamilyId) {
       const shared = await loadSharedFamilyRoom(this.data.sharedFamilyId);
       currentState = shared.state;
@@ -95,8 +95,8 @@ Page({
     } else {
       currentState = state ?? await loadRoomStateRemoteFirst();
       viewer = currentState.members.find(member => member.relation === "自己") ?? currentState.members[0];
-      if (!viewer) throw new Error("请先写下你的名字");
-      viewerRole = viewer.role;
+      // 新用户还没有人物档案时，个人记忆之家仍可浏览空状态。
+      viewerRole = viewer?.role ?? "";
     }
     const pool = memoryPool(currentState.contributions);
     const placements = memoryPlacements(currentState);
@@ -137,8 +137,8 @@ Page({
       hasMemories: memories.length > 0,
       hasAnyMemory: pool.length > 0,
       loadError: "",
-      viewerId: viewer.id,
-      viewerName: viewer.name,
+      viewerId: viewer?.id ?? "",
+      viewerName: viewer?.name ?? "",
       viewerRole,
       canInvite: this.data.sharedFamilyId ? viewerRole === "owner" : true,
     });
