@@ -7,6 +7,7 @@ import {
 } from "../../services/roomRepository";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
+import { logLoadError } from "../../services/loadErrorLog";
 
 interface StoryRow {
   key: string;
@@ -45,7 +46,7 @@ Page({
     }
   },
 
-  onShow() { void this.refresh().catch(() => this.setData({ loadError: "故事暂时未加载成功，请重试。" })); },
+  onShow() { void this.refresh().catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
     const pool = memoryPool(state.contributions);
@@ -77,7 +78,7 @@ Page({
     // 只有整理好的章节、还没有记忆的故事，直接打开章节。
     if (!row.memoryCount && row.manuscriptMemberId) { this.openManuscript(row.manuscriptMemberId); return; }
     this.setData({ selectedKey: row.key });
-    await this.refresh().catch(() => this.setData({ loadError: "故事暂时未加载成功，请重试。" }));
+    await this.refresh().catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); });
   },
   /** 书稿页仍按档案读取；打开哪个故事的章节，就先切到它所在的档案。 */
   openManuscript(memberId: string) {

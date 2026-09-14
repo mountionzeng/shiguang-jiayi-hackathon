@@ -7,6 +7,7 @@ import {
   formatBytes, isActiveJob, moderationLabel, nextPollDelayMs, qualityLabel, StoryImage, StoryImageJob, StoryImagePurpose,
   StoryImageServiceError, storyImageApi,
 } from "../../services/storyImageService";
+import { logLoadError } from "../../services/loadErrorLog";
 
 interface ImageCard {
   imageId: string; url: string; sizeLabel: string; purposeLabel: string;
@@ -63,7 +64,7 @@ Page({
   },
   onShow() {
     this.hidden = false;
-    void this.refresh().catch(error => this.setData({ loading: false, loadError: messageOf(error, "配图暂时没加载出来，请重试。") }));
+    void this.refresh().catch(error => { logLoadError("story-images", error); this.setData({ loading: false, loadError: messageOf(error, "配图暂时没加载出来，请重试。") }); });
   },
   onHide() {
     this.hidden = true;
@@ -133,7 +134,7 @@ Page({
     }
     if (this.unloaded || this.hidden) return;
     if (changed) {
-      await this.refresh().catch(error => this.setData({ notice: messageOf(error, "配图暂时没加载出来，请重试。") }));
+      await this.refresh().catch(error => { logLoadError("story-images", error); this.setData({ notice: messageOf(error, "配图暂时没加载出来，请重试。") }); });
     } else {
       this.schedulePoll();
     }
@@ -152,7 +153,7 @@ Page({
       if (this.unloaded) return;
       this.setData({ notice: messageOf(error, "配图没成功，请稍后再试") });
       if (error instanceof StoryImageServiceError && error.code === "TIMEOUT") {
-        await this.refresh().catch(() => undefined);
+        await this.refresh().catch((error) => logLoadError("story-images", error));
       }
     } finally {
       if (!this.unloaded) this.setData({ submitting: "" });

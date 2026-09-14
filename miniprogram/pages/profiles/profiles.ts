@@ -13,6 +13,7 @@ import {
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
 import { deleteMemberWithConfirm } from "../../services/memberActions";
+import { logLoadError } from "../../services/loadErrorLog";
 
 /**
  * 「家人和朋友」：本账号就是主笔，这里只管拉人进来，并在每个人旁边标出权限。
@@ -71,7 +72,7 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch(() => this.setData({ loadError: "名单暂时没加载出来，请重试。" }));
+    void this.refresh().catch((error) => { logLoadError("profiles", error); this.setData({ loadError: "名单暂时没加载出来，请重试。" }); });
   },
 
   async refresh(state?: FamilyRoomState) {

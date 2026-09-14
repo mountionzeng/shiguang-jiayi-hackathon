@@ -13,6 +13,7 @@ import {
 import { clearAiConsent, requestAiConsent } from "../../services/aiConsent";
 import { formatComputeBalance, loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
 import { JoinedFamilyRoom, loadJoinedFamilyRooms } from "../../services/familyInviteService";
+import { logLoadError } from "../../services/loadErrorLog";
 
 Page({
   data: {
@@ -34,7 +35,7 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
+    void this.refresh().catch((error) => { logLoadError("me", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   async refresh(state?: FamilyRoomState) {

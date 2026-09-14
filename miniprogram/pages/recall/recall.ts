@@ -1,6 +1,7 @@
 import { contributionStoryTitle, MemoryContribution, memoryPool } from "../../domain/biography";
 import { memoryDisplayTitle } from "../../domain/memoryTitle";
 import { loadRoomStateRemoteFirst } from "../../services/roomRepository";
+import { logLoadError } from "../../services/loadErrorLog";
 
 interface RecallRow {
   id: string;
@@ -40,7 +41,7 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch(() => this.setData({ loadError: "回忆暂时没加载出来，请重试。" }));
+    void this.refresh().catch((error) => { logLoadError("recall", error); this.setData({ loadError: "回忆暂时没加载出来，请重试。" }); });
   },
 
   async refresh() {
