@@ -40,7 +40,7 @@
 | 份 | 规格（**清晰度待定，见第十四节 D1**） | 用途 |
 |---|---|---|
 | 显示图 `display` | JPEG，长边 ≤ 1600，质量 80（约 200–500 KB） | 书稿和记忆里显示、换手机后恢复 |
-| 小图 `small` | JPEG，长边 ≤ 768，逐步降质量到 ≤ 100 KB | 列表缩略图、看图写一句话、参考图出图（问题五要求参考图 ≤ 100 KB） |
+| 小图 `small` | JPEG，长边 ≤ 768，逐步降质量到 ≤ 100 KB | 列表缩略图、看图写一句话（参考图出图改用显示图，问题五 09-15 定） |
 
 两份都在手机上用 `wx.compressImage` 压好再上传，云函数里不装图片处理库。**原图不上传。** 手机本机保存的那份保持现状，不删。
 
@@ -77,7 +77,10 @@ _id: "<familyId>__<photoId>"
 
 - 云存储规则改为：`user-photos/` 下只有上传者能读写；其他路径维持现状（先在控制台看清当前规则，再给出完整规则文本请用户确认）。
 - 本人读自己的照片：小程序端直接 `wx.cloud.downloadFile`，规则放行。
-- **家人读照片：** 不开放小程序端直接读。新云函数 `photoAccess`（超时设 10 秒）按 `{ familyId, photoIds }` 核对：调用者是否能看到至少一条引用了这张照片的记忆，或一个引用了它的书稿版本。核对通过，才返回显示图的临时链接。核对规则按问题三的房间级方案（**待对齐问题三**）。
+- **家人读照片：** 不开放小程序端直接读。新云函数 `photoAccess`（超时设 10 秒）按 `{ familyId, photoIds }` 核对：调用者能看到至少一条引用了这张照片的记忆（`photoIds` 里有它），才返回显示图的临时链接。
+  - 判断「能看到这条记忆」：照抄 `familyInvite/core.js` 的 `visibleMemoriesForAccess` 那条判断（房主全部可见；否则是作者本人，或者是 `scope=personal` 且 `sharedWithMemberIds` 里有这个人）。云函数之间没有公共代码层，所以代码注释里写明「须和 familyInvite/core.js 的 visibleMemoriesForAccess 保持一致」。（问题三 09-15 确认）
+  - **第一版不做「书稿版本」这一条。** 现在受邀家人本来就看不到任何书稿版本（`familyInvite` 的 `loadRoom` 对非房主返回空的 `manuscriptRevisions`），版本可见范围还没有规则，归问题四定。所以只出现在书稿里、不在任何记忆里的照片，家人第一版看不到。问题四定了规则再加这一条，不自己假设。
+  - 受邀家人自己上传的照片，存在房主家庭的目录 `user-photos/<房主 familyId>/` 下，文件归上传者（存储规则按上传者核对）。房主重置房间时一并删除。
 - 不做章节级授权，不识别人脸，不判断照片里是谁。
 
 ### 3.5 读取顺序（新客户端）与兼容
@@ -86,8 +89,8 @@ _id: "<familyId>__<photoId>"
 
 1. 本机原图：现有 `readLocalPhoto`，完全不变。
 2. 本机缓存：`USER_DATA_PATH/cloud-<photoId>.jpg`，也登记在 `shiguang-local-<photoId>` 下，所以旧逻辑也能读到。
-3. 云端：本人用 `downloadFile(displayFileID)` 下载后写进缓存；非本人调 `photoAccess` 拿临时链接，只显示不缓存。**家人手机上是否缓存照片，待对齐问题三。**
-4. 都没有：显示「这张照片没加载出来 · 点一下重试」，不悄悄变成空白（**待对齐问题六**的加载失败规范）。
+3. 云端：本人用 `downloadFile(displayFileID)` 下载后写进缓存；非本人调 `photoAccess` 拿临时链接，**只显示、不缓存**。这样收回分享后立刻看不到，和现在记忆的权限行为一致（问题三 09-15 同意）。
+4. 都没有：先调 `logLoadError("book-photo", error)` 记进实时日志（问题六 `fix/review-load-error@6197f5e` 的 `services/loadErrorLog.ts`；它进 main 前要用就 cherry-pick 这个提交，不另写），再显示「这张照片没加载出来 · 点一下重试」，不悄悄变成空白。这句文案和样式先问问题八。
 
 - 缓存文件单独计数，超过 100 MB 时从最久没用的删起；**只删缓存，不删本机原图**（本机上限 200 MB）。
 - **旧客户端**（体验版和已发出的版本）：书稿里还是 `{ photoId }`，读不到本机文件时照旧显示「【本机照片：…】」占位，保存时占位会还原成 `photoId`（`contentFromDelta` 已经这样处理），不崩也不丢引用。旧客户端插入的新照片不会上传，新客户端下次打开时由补传流程补上。
@@ -111,9 +114,8 @@ _id: "<familyId>__<photoId>"
 {
   action: "read",
   familyId: string,
-  photoIds: string[],              // 1–9 个
-  variant: "small" | "display",
-  format: "url" | "base64",        // base64 只允许 variant=small
+  photoIds: string[],              // 1–9 个；ai-reference 最多 3 个
+  variant: "small" | "display",    // 看图起草用 small，参考图出图用 display
   purpose: "view" | "ai-caption" | "ai-reference",
   // 只有云函数之间调用时才带：
   onBehalfOfOpenid?: string,
@@ -131,7 +133,7 @@ _id: "<familyId>__<photoId>"
 | purpose | 谁能读 |
 |---|---|
 | `view`（显示） | 上传者本人；家人按问题三的房间级规则（**待对齐问题三**） |
-| `ai-caption`、`ai-reference`（发给模型） | **只有上传者本人**，而且 `familyId` 是本人的家庭。把照片发给模型只能由本人决定；发之前的单独同意由问题五在调用前取得，本接口不代替它问 |
+| `ai-caption`、`ai-reference`（发给模型） | **只有上传者本人**（`photos._openid` 等于调用者），不要求是家庭主人：受邀家人可以让 AI 看自己上传的照片，但房主不能把家人上传的照片发给模型。把照片发给模型只能由上传者决定；「存到云端」和「发给腾讯云 TokenHub 做 AI 处理」是两次单独同意（个保法第 23 条），后者由问题五在调用前取得，本接口不代替它问 |
 
 **返回**
 
@@ -141,11 +143,12 @@ _id: "<familyId>__<photoId>"
     photoId,
     status: "ok" | "not_uploaded" | "deleted" | "forbidden" | "not_found",
     contentType?: "image/jpeg", width?, height?, bytes?,
-    url?: string,        // format=url
-    base64?: string      // format=base64，不带 data: 前缀
+    url?: string         // 临时链接
   }]
 }
 ```
+
+- **只返回临时链接，不返回 base64**（问题五 09-15：TokenHub 支持图片链接，它的质检已经这样用）。代价是链接会被服务商拿去下载，这一点写进看图和参考图的单独同意里。
 
 - 每张照片单独给状态，一张失败不影响其他照片。`not_uploaded` 表示手机里有，但还没传到云端，调用方提示用户稍后再试。
 - **不返回 fileID**，避免调用方拿到 fileID 后绕过这里的权限核对。
@@ -222,7 +225,8 @@ MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photo
 
 - **触发**：只有用户点「让 AI 看看照片，帮我起个头」才发，不自动识别。
 - **单独同意**（和文字 AI 授权分开）：写明发给谁（腾讯云 TokenHub 上的看图模型）、发什么（这几张照片的小图）、用来做什么（只起草一句话），不识别照片里的人是谁；拾光家忆只保存用户最后确认的那句话，不另存分析结果；服务商的日志政策仍适用。**文案和同意范围待问题七定**（每次问，还是每次打开小程序问一次）。
-- **调用**：由问题五在 `storyImages` 里实现，复用 `quality.js` 的看图客户端。照片通过 3.7 节 `photoAccess.read` 读取（`format: "base64"`，`variant: "small"`），以 `data:image/jpeg;base64,…` 发给模型。
+- **调用**：由问题五在 `storyImages` 里实现：把看图调用抽成 `vision.js`，再写 `caption`。照片通过 3.7 节 `photoAccess.read` 读取（`variant: "small"`，临时链接）。次数单独计，不占出图名额。
+- **标识（问题七 09-15/16 定）**：只要记忆里有照片，AI 文字一律标「文字 AI 生成」，用户改过标「文字 AI 生成 · 已由你修改」，免得被误以为照片是 AI 画的。用户把草稿整个删空、自己重写的不标。
 - **提示词要点**：用一句中文（不超过 60 字）写照片里看得见的场景、物件、光线、季节和年代线索；不猜人物身份、姓名、关系，不描述长相；看不清就说看不清，不编。
 - **结果**：填进输入框作为草稿，框上标「AI 生成」。用户改过再保存时，标识按问题七的规范（参照「文字 AI 生成 · 已由你修改」），**待问题七定**。存进记忆时，这一段的 `organizationMode` 记为 `"cloud-ai"`。
 - **失败兜底**：超时（15 秒）、没通过审核、服务没配置时，提示「没看出来，自己写一句吧」，输入框保持用户原来的内容，不自动重试。每人每天最多用 30 次（**待定**）。
@@ -230,7 +234,7 @@ MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photo
 
 ## 七、参考图出图（阶段 4，问题五主做）
 
-- 问题五原方案 7.1 是「手机上压到 ≤ 100 KB，base64 随调用发给云函数，不存云端」。照片上云后改为：`storyImages` 通过 3.7 节 `photoAccess.read` 读小图（`purpose: "ai-reference"`，`variant: "small"`，本来就 ≤ 100 KB），不再从手机传图，也不直接读 `photos` 集合。
+- 问题五原方案 7.1 是「手机上压到 ≤ 100 KB，base64 随调用发给云函数，不存云端」。照片上云后改为：`storyImages` 通过 3.7 节 `photoAccess.read` 读**显示图**的临时链接（`purpose: "ai-reference"`，`variant: "display"`，最多 3 张，已删除的跳过），不再从手机传图。100 KB 的限制原本只是为了随调用传图，现在不需要了（问题五 09-15 定，它的方案已在 `feat/image-reference-photos@6e65573` 更新 7.1）。图片任务里只记 `photoIds` 和张数，不存照片内容。
 - 我提供：3.7 节的读取接口和小图规格。
 - 保持问题五的护栏：「识别长相」单独开关，默认关闭；用户自己挑选只有场景和物件的照片作参考图；不自动判断照片里有没有人脸、是谁。
 
@@ -285,11 +289,11 @@ MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photo
 |---|---|
 | 问题四 | ① `MemorySegmentSource` 加 `"import"`；② 用多段新建记忆的函数；③ `photoIds` 字段；④ 允许文字为空、只有照片的记忆；⑤ 段内换行是否保留；⑥ `familyInvite/core.js:79`（超过 500 字拒绝）和 `generateBiography/index.js:24`（只读前 500 字）谁来改；⑦ 合并顺序 |
 | 问题八 | 「导入」入口、类型提示、写一句话弹层、照片上传状态和失败重试、「我的 → 云端照片」、补传进度；它的 `feat/ui-clarity` 改了 `book.ts`、`me.wxml`、聊天页样式，合并顺序 |
-| 问题五 | **尽快定下 3.7 节读取接口**（入参、返回临时地址还是 base64、权限）；看图起草和参考图都走这个接口；它方案 7.1「不保存照片」由它更新；它要用我的实现时，把本分支合进它的分支 |
+| 问题五 | **09-15 已回复并按它的意见改**：只返回临时链接；参考图用显示图，最多 3 张；发给模型的照片只看上传者；它方案 7.1 已更新（`feat/image-reference-photos@6e65573`）。**还在等**：能不能接受云函数之间用 `onBehalfOfOpenid` 加 token 的调用方式。它要用我的实现时，把本分支合进它的分支 |
 | 问题七 | 第十节全部（照片上云、选聊天文件、补传弹窗、删除确认）；看图同意和 AI 草稿的标识改由问题五去问 |
-| 问题三 | `photoAccess` 核对规则（房间级）；家人手机上是否缓存照片 |
+| 问题三 | **09-15 已回复**：照抄 `visibleMemoriesForAccess` 判断记忆可见；版本级可见范围不存在，第一版不做；家人不缓存照片 |
 | 问题一 | 第十一节：这一版不升版本。**09-15 已确认无异议**（photoId 只作占位，服务端不获取、不等待）；带不带照片等 D2 定了再找它和网页端 |
-| 问题六 | 照片加载失败的统一提示和重试（不吞错） |
+| 问题六 | **09-15 已回复**：没有通用失败组件，失败时先 `logLoadError`（`6197f5e`），提示文案归问题八；它不碰 `book.ts` 读照片的地方，不用排先后 |
 
 ## 十三、分阶段
 
