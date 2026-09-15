@@ -145,6 +145,30 @@ export interface DeletedStory {
   deletedAt: string;
 }
 
+/**
+ * 一个真正的故事记录（阶段 A：只是类型，还没有集合在读写它）。
+ * id 稳定：改名、书稿和同名记忆合并，都不会变。
+ *
+ * 规则来源：docs/2026-09-14-story-records-plan.md，用户 2026-09-14 确认。
+ */
+export interface Story {
+  id: string;
+  familyId: string;
+  /** 同一账号内不重名（去掉首尾空格后比较，不含已删除的故事）。 */
+  title: string;
+  /** 这个故事的主人公；可以是任何人，也可以没有。 */
+  protagonistMemberIds: string[];
+  /** 这个故事的素材：属于它的全部记忆，不论写没写进章节。一段记忆可以在多个故事里。 */
+  memoryIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+  /** 预留给问题五：故事封面图片引用。 */
+  coverImageId?: string;
+  /** 从旧数据迁移来的故事，记一笔来源，方便回溯和旧客户端兼容。只读，不参与身份判断。 */
+  legacy?: { memberId?: string; storyTitle?: string };
+}
+
 export interface ManuscriptRevision {
   id: string;
   memberId: string;

@@ -95,6 +95,26 @@ export function assignMemory(chapters: ManuscriptChapter[], memoryId: string, ch
   });
 }
 
+/**
+ * Adds a memory to one chapter without removing it from any other — a story's memory
+ * can sit in several chapters at once (用户 2026-09-14 定). Every other chapter is
+ * copied unchanged; adding it again is a no-op.
+ */
+export function addMemoryToChapter(chapters: ManuscriptChapter[], memoryId: string, chapterId: string): ManuscriptChapter[] {
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId || chapter.memoryIds.includes(memoryId)) return copyChapter(chapter);
+    return { ...copyChapter(chapter), memoryIds: [...chapter.memoryIds, memoryId] };
+  });
+}
+
+/** Removes a memory from one chapter only; it stays in every other chapter it was placed in. */
+export function removeMemoryFromChapter(chapters: ManuscriptChapter[], memoryId: string, chapterId: string): ManuscriptChapter[] {
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId) return copyChapter(chapter);
+    return { ...copyChapter(chapter), memoryIds: chapter.memoryIds.filter(id => id !== memoryId) };
+  });
+}
+
 /** Puts a memory into one chapter and appends its original text once, preserving existing text and photos. */
 export function placeMemoryInChapter(
   chapters: ManuscriptChapter[],
