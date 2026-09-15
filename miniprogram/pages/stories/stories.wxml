@@ -25,6 +25,7 @@
       </view>
       <view class="note-list selected-memory-list">
         <button class="story-memory" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="editMemory">
+          <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
           <view class="note-title serif">{{item.title || '一段记忆'}}</view><view class="note-excerpt">{{item.text}}</view><view class="note-archive">点开编辑或调整归类</view>
         </button>
       </view>
@@ -33,9 +34,7 @@
       <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>慢慢写，慢慢成书</text></view>
       <view class="story-shelf">
         <button class="story-book book-layout-{{index % 4}} {{!item.manuscriptMemberId ? 'story-book-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="story-book-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
-          <image class="story-book-shell" src="/assets/illustrations/ancient-book-shell.png" mode="scaleToFill" aria-hidden="true"></image>
-          <view class="book-cover-tint" aria-hidden="true"></view>
-          <view class="book-cover-mark" aria-hidden="true"><view></view><view></view><view></view></view>
+          <image class="story-book-shell" src="/assets/illustrations/story-book-cover.png" mode="scaleToFill" aria-hidden="true"></image>
           <view class="book-cover">
             <view class="book-number">拾光录 / {{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
             <view class="book-title-slip"><view class="book-name serif">{{item.title}}</view></view>
@@ -47,7 +46,7 @@
           </view>
         </button>
         <navigator class="story-book story-book-new" url="/pages/index/index" hover-class="story-book-pressed" aria-label="新的故事，去首页选择换一个故事聊">
-          <image class="story-book-shell" src="/assets/illustrations/ancient-book-shell.png" mode="scaleToFill" aria-hidden="true"></image>
+          <image class="story-book-shell" src="/assets/illustrations/story-book-cover.png" mode="scaleToFill" aria-hidden="true"></image>
           <view class="book-cover-tint" aria-hidden="true"></view>
           <view class="book-cover">
             <view class="book-new-plus" aria-hidden="true">＋</view>

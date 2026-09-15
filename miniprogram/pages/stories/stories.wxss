@@ -24,15 +24,15 @@
 .book-layout-3 { transform: translateY(7rpx) rotate(.35deg); }
 .book-cover { position: relative; z-index: 4; display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 43rpx 28rpx 48rpx 68rpx; }
 .book-number { padding-right: 68rpx; color: var(--ink-soft); font-size: 18rpx; line-height: 1.5; letter-spacing: 2rpx; }
-.book-title-slip { position: relative; flex-shrink: 0; margin: 48rpx 4rpx 0 0; padding: 10rpx 8rpx; border-top: 1rpx solid rgba(42,46,43,.25); border-bottom: 1rpx solid rgba(42,46,43,.25); background: rgba(255,254,251,.44); }
+.book-title-slip { position: relative; flex-shrink: 0; margin: 48rpx 4rpx 0 0; padding: 10rpx 8rpx; border-top: 1rpx solid rgba(42,46,43,.25); border-bottom: 1rpx solid rgba(42,46,43,.25); background: rgba(255,253,246,.84); }
 .book-title-slip::before { position: absolute; top: -6rpx; bottom: -6rpx; left: -5rpx; width: 3rpx; border-radius: 3rpx; background: var(--jade); content: ""; opacity: .66; }
 .story-book:nth-child(4n+2) .book-title-slip::before { background: var(--lake); }
 .story-book:nth-child(4n+3) .book-title-slip::before { background: var(--apricot); }
 .story-book:nth-child(4n+4) .book-title-slip::before { background: var(--coral); }
 .book-name { display: -webkit-box; overflow: hidden; font-size: 32rpx; font-weight: 600; line-height: 1.38; overflow-wrap: anywhere; word-break: break-all; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.book-excerpt { display: -webkit-box; margin-top: 15rpx; overflow: hidden; color: var(--ink-soft); font-size: 21rpx; line-height: 1.58; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.book-meta { margin-top: 15rpx; color: var(--ink-soft); font-size: 19rpx; line-height: 1.5; }
-.book-open { display: flex; flex-shrink: 0; justify-content: space-between; margin-top: auto; padding-top: 10rpx; border-top: 1rpx solid rgba(42,46,43,.12); color: var(--jade); font-size: 20rpx; line-height: 1.4; }
+.book-excerpt { display: -webkit-box; margin-top: 15rpx; padding: 2rpx 6rpx; overflow: hidden; border-radius: 6rpx; background: rgba(255,253,246,.62); color: var(--ink); font-size: 21rpx; line-height: 1.58; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.book-meta { align-self: flex-start; margin-top: 12rpx; padding: 0 6rpx; border-radius: 6rpx; background: rgba(255,253,246,.62); color: var(--ink); font-size: 19rpx; line-height: 1.5; }
+.book-open { display: flex; flex-shrink: 0; justify-content: space-between; margin-top: auto; padding: 8rpx 12rpx; border-radius: 8rpx; background: rgba(255,253,246,.88); color: var(--jade); font-size: 22rpx; line-height: 1.4; }
 .story-book-empty .book-title-slip { border-top-style: dashed; border-bottom-style: dashed; }
 .story-shelf .story-book-new { min-height: 0; background: transparent; border: 0; box-shadow: none; }
 .story-book-new .story-book-shell { opacity: .66; filter: saturate(.55); }
@@ -70,5 +70,5 @@
 .selected-memory-list { margin-top: 34rpx; padding-top: 22rpx; border-top: 1rpx solid rgba(79,127,107,.15); }
 .selected-memory-list::before { display: block; margin-bottom: 16rpx; color: var(--ink-soft); content: "这个故事的记忆"; font-size: 23rpx; letter-spacing: 2rpx; }
 .story-memory { position: relative; width: 100%; border: 1rpx solid rgba(176,130,57,.14); background: rgba(255,254,251,.86); box-shadow: 4rpx 7rpx 16rpx rgba(42,46,43,.05); }
-.story-memory::before { position: absolute; top: 28rpx; bottom: 28rpx; left: 15rpx; width: 4rpx; border-radius: 4rpx; background: rgba(79,127,107,.42); content: ""; }
+.story-memory { min-height: 190rpx; padding-left: 96rpx; }
 @media (prefers-reduced-motion: reduce) { .story-book { transition: none; } }
