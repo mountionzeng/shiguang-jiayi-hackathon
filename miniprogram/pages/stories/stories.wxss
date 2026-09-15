@@ -61,3 +61,27 @@
 .shelf-books .spine-new .spine-body { display: flex; flex-direction: column; align-items: center; height: 86%; padding-top: 26rpx; border: 3rpx dashed rgba(79,127,107,.45); border-radius: 8rpx; background: rgba(234,241,237,.6); filter: none; }
 .spine-new-plus { margin-bottom: 12rpx; color: var(--jade); font-size: 40rpx; line-height: 1; }
 .spine-new-title { color: var(--jade); font-weight: 500; }
+
+/* ---- 整理记忆大按钮 + 最近删除小按钮 ---- */
+.story-content .memory-organize { position: relative; display: flex; align-items: center; width: 100%; min-height: 150rpx; margin: 12rpx 0 0; padding: 20rpx 28rpx 20rpx 24rpx; border: 2rpx solid rgba(79,127,107,.28); border-radius: 12rpx 26rpx 22rpx 12rpx; background: rgba(255,254,251,.94); box-shadow: 6rpx 12rpx 26rpx rgba(42,46,43,.07); color: var(--ink); text-align: left; line-height: 1.3; }
+.story-content .memory-organize::after { border: 0; }
+.memory-organize-pressed { transform: translateY(3rpx); opacity: .88; }
+.memory-organize-art { flex: none; width: 44rpx; height: 110rpx; margin-right: 24rpx; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%); mask-image: linear-gradient(to bottom, #000 72%, transparent 100%); }
+.memory-organize-bookmark { display: block; width: 44rpx; }
+.memory-organize-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.memory-organize-title { font-size: 38rpx; font-weight: 600; }
+.memory-organize-note { margin-top: 8rpx; color: var(--ink-soft); font-size: 26rpx; }
+.memory-organize-arrow { flex: none; margin-left: 12rpx; color: var(--jade); font-family: serif; font-size: 52rpx; line-height: 1; }
+.story-content .btn-jade { margin-top: 20rpx; }
+.story-content .trash-entry { display: block; width: auto; min-height: 76rpx; margin: 22rpx auto 0; padding: 0 30rpx; border-radius: 999rpx; background: transparent; color: var(--ink-soft); font-size: 26rpx; line-height: 76rpx; text-decoration: underline; text-underline-offset: 6rpx; }
+.story-content .trash-entry::after { border: 0; }
+.trash-mask { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 49; background: rgba(36,43,39,.32); }
+.trash-sheet { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 50; display: flex; flex-direction: column; justify-content: flex-end; }
+.trash-panel { max-height: 78vh; padding: 36rpx 36rpx calc(28rpx + env(safe-area-inset-bottom)); border-radius: 32rpx 32rpx 0 0; background: var(--paper); box-shadow: 0 -12rpx 40rpx rgba(36,43,39,.12); }
+.trash-heading { color: var(--ink); font-size: 36rpx; font-weight: 600; }
+.trash-note { margin-top: 8rpx; color: var(--ink-soft); font-size: 25rpx; line-height: 1.6; }
+.trash-list { max-height: 52vh; margin-top: 12rpx; }
+.trash-empty { padding: 48rpx 0; color: var(--ink-soft); font-size: 26rpx; text-align: center; }
+.deleted-story-row .deleted-story-restore { width: auto; height: 72rpx; margin: 0 0 0 18rpx; padding: 0 32rpx; font-size: 27rpx; line-height: 70rpx; }
+.trash-panel .trash-close { width: 100%; min-height: 88rpx; margin: 24rpx 0 0; border: 2rpx solid var(--line); border-radius: 44rpx; background: var(--paper-card); color: var(--ink); font-size: 29rpx; line-height: 84rpx; }
+.trash-panel .trash-close::after { border: 0; }

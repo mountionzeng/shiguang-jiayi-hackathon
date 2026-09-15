@@ -32,6 +32,7 @@ Page({
   data: {
     stories: [] as StoryRow[],
     deletedStories: [] as DeletedStoryRow[],
+    trashOpen: false,
     selectedKey: "", selectedTitle: "", selectedManuscriptMemberId: "",
     memories: [] as MemoryContribution[], ungroupedCount: 0, hasManuscript: false, ownerId: "", loadError: "",
   },
@@ -120,6 +121,10 @@ Page({
       wx.showToast({ title: error instanceof Error ? error.message : "恢复没有完成，请重试", icon: "none" });
     }
   },
+  openTrash() { this.setData({ trashOpen: true }); },
+  closeTrash() { this.setData({ trashOpen: false }); },
+  /** 点弹层里的内容不关，点弹层外的空白才关。 */
+  keepTrashOpen() {},
   retryLoad() { this.onShow(); },
   editMemory(event: { currentTarget: { dataset: { id: string } } }) {
     wx.navigateTo({ url: "/pages/archive/archive?id=" + encodeURIComponent(event.currentTarget.dataset.id) });

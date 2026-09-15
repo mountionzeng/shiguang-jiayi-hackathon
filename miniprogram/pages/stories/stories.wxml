@@ -47,20 +47,36 @@
           </navigator>
         </view>
       </view>
-      <button class="btn btn-ghost" bindtap="openMemories">整理原始记忆 · {{ungroupedCount}} 段还没放进故事</button>
-      <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
-      <view class="deleted-story-panel" wx:if="{{deletedStories.length}}">
-        <view class="deleted-story-heading">最近删除</view>
-        <view class="deleted-story-note">原始记忆和书稿仍然保留，可以随时恢复。</view>
-        <view class="deleted-story-row" wx:for="{{deletedStories}}" wx:key="key">
-          <view class="deleted-story-copy">
-            <view class="deleted-story-title serif">{{item.title}}</view>
-            <view class="deleted-story-date">{{item.deletedLabel}}</view>
-          </view>
-          <button class="deleted-story-restore" data-key="{{item.key}}" bindtap="restoreStory" hover-class="none">恢复</button>
+      <button class="memory-organize" bindtap="openMemories" hover-class="memory-organize-pressed" aria-label="整理记忆，{{ungroupedCount}} 段还没放进故事">
+        <view class="memory-organize-art" aria-hidden="true"><image class="memory-organize-bookmark" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
+        <view class="memory-organize-copy">
+          <text class="memory-organize-title serif">整理记忆</text>
+          <text class="memory-organize-note">{{ungroupedCount ? ungroupedCount + ' 段还没放进故事' : '所有记忆都在这里'}}</text>
         </view>
-      </view>
+        <text class="memory-organize-arrow" aria-hidden="true">›</text>
+      </button>
+      <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
+      <button class="trash-entry" bindtap="openTrash" hover-class="none">最近删除{{deletedStories.length ? ' · ' + deletedStories.length : ''}}</button>
     </block>
+  </view>
+</view>
+
+<view class="trash-mask" wx:if="{{trashOpen}}" bindtap="closeTrash"></view>
+<view class="trash-sheet" wx:if="{{trashOpen}}" bindtap="closeTrash" role="dialog" aria-label="最近删除，点空白处关闭">
+  <view class="trash-panel" catchtap="keepTrashOpen">
+    <view class="trash-heading serif">最近删除</view>
+    <view class="trash-note">删掉的故事在这里，原始记忆和书稿都还在，恢复后原样回来。</view>
+    <scroll-view class="trash-list" scroll-y>
+      <view class="deleted-story-row" wx:for="{{deletedStories}}" wx:key="key">
+        <view class="deleted-story-copy">
+          <view class="deleted-story-title serif">{{item.title}}</view>
+          <view class="deleted-story-date">{{item.deletedLabel}}</view>
+        </view>
+        <button class="deleted-story-restore" data-key="{{item.key}}" bindtap="restoreStory" hover-class="none">恢复</button>
+      </view>
+      <view class="trash-empty" wx:if="{{!deletedStories.length}}">这里是空的。</view>
+    </scroll-view>
+    <button class="trash-close" bindtap="closeTrash" hover-class="none">关闭</button>
   </view>
 </view>
 
