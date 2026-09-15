@@ -56,7 +56,7 @@
         <text class="memory-organize-arrow" aria-hidden="true">›</text>
       </button>
       <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
-      <button class="trash-entry" bindtap="openTrash" hover-class="none">最近删除{{deletedStories.length ? ' · ' + deletedStories.length : ''}}</button>
+      <button class="trash-entry" bindtap="openTrash" hover-class="none">最近删除{{deletedItems.length ? ' · ' + deletedItems.length : ''}}</button>
     </block>
   </view>
 </view>
@@ -65,17 +65,19 @@
 <view class="trash-sheet" wx:if="{{trashOpen}}" bindtap="closeTrash" role="dialog" aria-label="最近删除，点空白处关闭">
   <view class="trash-panel" catchtap="keepTrashOpen">
     <view class="trash-heading serif">最近删除</view>
-    <view class="trash-note">删掉的故事在这里，原始记忆和书稿都还在，恢复后原样回来。</view>
+    <view class="trash-note">删掉的故事和记忆都在这里，恢复后原样回来。永久删除后就找不回来了。</view>
     <scroll-view class="trash-list" scroll-y>
-      <view class="deleted-story-row" wx:for="{{deletedStories}}" wx:key="key">
+      <view class="deleted-story-row" wx:for="{{deletedItems}}" wx:key="id">
         <view class="deleted-story-copy">
           <view class="deleted-story-title serif">{{item.title}}</view>
           <view class="deleted-story-date">{{item.deletedLabel}}</view>
         </view>
-        <button class="deleted-story-restore" data-key="{{item.key}}" bindtap="restoreStory" hover-class="none">恢复</button>
+        <button wx:if="{{item.type === 'memory'}}" class="trash-purge" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="purgeItem" hover-class="none">永久删除</button>
+        <button class="deleted-story-restore" data-type="{{item.type}}" data-id="{{item.id}}" bindtap="restoreItem" hover-class="none">恢复</button>
       </view>
-      <view class="trash-empty" wx:if="{{!deletedStories.length}}">这里是空的。</view>
+      <view class="trash-empty" wx:if="{{!deletedItems.length}}">这里是空的。</view>
     </scroll-view>
+    <button wx:if="{{deletedMemoryCount}}" class="trash-clear" bindtap="purgeAll" hover-class="none">清空已删除的记忆 · {{deletedMemoryCount}}</button>
     <button class="trash-close" bindtap="closeTrash" hover-class="none">关闭</button>
   </view>
 </view>

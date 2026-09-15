@@ -85,3 +85,7 @@
 .deleted-story-row .deleted-story-restore { width: auto; height: 72rpx; margin: 0 0 0 18rpx; padding: 0 32rpx; font-size: 27rpx; line-height: 70rpx; }
 .trash-panel .trash-close { width: 100%; min-height: 88rpx; margin: 24rpx 0 0; border: 2rpx solid var(--line); border-radius: 44rpx; background: var(--paper-card); color: var(--ink); font-size: 29rpx; line-height: 84rpx; }
 .trash-panel .trash-close::after { border: 0; }
+.deleted-story-row .trash-purge { flex-shrink: 0; width: auto; height: 72rpx; margin: 0 0 0 12rpx; padding: 0 20rpx; border: 0; background: transparent; color: #b4503c; font-size: 25rpx; line-height: 72rpx; }
+.deleted-story-row .trash-purge::after { border: 0; }
+.trash-panel .trash-clear { width: 100%; min-height: 88rpx; margin: 20rpx 0 0; border: 2rpx solid rgba(180,80,60,.35); border-radius: 44rpx; background: rgba(248,231,226,.6); color: #b4503c; font-size: 29rpx; line-height: 84rpx; }
+.trash-panel .trash-clear::after { border: 0; }

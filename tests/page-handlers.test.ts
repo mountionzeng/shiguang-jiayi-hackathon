@@ -1023,11 +1023,21 @@ test("the memory archive supports swipe reveal and deleting a quick note", async
   await callPage(page, "confirmDeleteMemory", "demo-personal-rain");
 
   assert.ok(
-    !storage.roomState().contributions.some((memory) => memory.id === "demo-personal-rain"),
+    storage.roomState().contributions.some((memory) => memory.id === "demo-personal-rain" && memory.deletedAt),
+    "everyday delete moves the memory into recently deleted instead of erasing it",
   );
   assert.equal(page.data.noteCount, 0);
   assert.equal(page.data.hasItems, false);
-  assert.equal(last(storage.toasts), "已删除");
+  assert.equal(last(storage.toasts), "已放进最近删除");
+
+  const shelf = instantiate(await pageDefinition("stories"));
+  await callPage(shelf, "refresh");
+  const deleted = shelf.data.deletedItems as Array<{ type: string; id: string }>;
+  assert.deepEqual(deleted.map((item) => [item.type, item.id]), [["memory", "demo-personal-rain"]]);
+  assert.equal(shelf.data.deletedMemoryCount, 1);
+  await callPage(shelf, "restoreItem", { currentTarget: { dataset: { type: "memory", id: "demo-personal-rain" } } });
+  assert.equal((shelf.data.deletedItems as unknown[]).length, 0);
+  assert.ok(storage.roomState().contributions.some((memory) => memory.id === "demo-personal-rain" && !memory.deletedAt));
 });
 
 test("the memory archive retains both telling styles as original records", async (context) => {
