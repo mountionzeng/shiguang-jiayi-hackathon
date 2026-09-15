@@ -23,10 +23,21 @@ const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
   malformed: "在线 AI 返回的内容不完整",
 };
 
-type MemoryRow = { id: string; text: string };
+type MemoryRow = { id: string; text: string; title: string; excerpt: string; dateLabel: string; createdAt: string };
 const photoCount = (content: ManuscriptContent[]) => content.filter(item => item.photoId).length;
 const plainText = (content: ManuscriptContent[]) => content.map(item => item.text ?? "").join("");
-const memoryRow = (memory: MemoryContribution): MemoryRow => ({ id: memory.id, text: (memory.title ? memory.title + "：" : "") + memory.text.slice(0, 60) });
+const memoryDate = (iso: string) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : `${date.getMonth() + 1}月${date.getDate()}日`;
+};
+const memoryRow = (memory: MemoryContribution): MemoryRow => ({
+  id: memory.id,
+  text: (memory.title ? memory.title + "：" : "") + memory.text.slice(0, 60),
+  title: memory.title?.trim() || memory.text.slice(0, 16),
+  excerpt: memory.text.slice(0, 60),
+  dateLabel: memoryDate(memory.createdAt),
+  createdAt: memory.createdAt,
+});
 
 Page({
   data: {
@@ -231,7 +242,9 @@ Page({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
         memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: photoCount(chapter.content),
       })),
-      unassigned: unassignedMemoryIds(this.chapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!)),
+      // 最近讲的记忆排在最前面。
+      unassigned: unassignedMemoryIds(this.chapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
       chapterMemories: active ? active.memoryIds.flatMap(id => known.has(id) ? [memoryRow(known.get(id)!)] : []) : [],
       chapterLabelText: active ? chapterLabel(this.chapters.indexOf(active) + 1) : "",
       storyOptions: Array.from(stories, ([title, count]) => ({ title, count })),

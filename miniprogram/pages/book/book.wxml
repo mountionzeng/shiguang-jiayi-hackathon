@@ -40,22 +40,35 @@
   </view>
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
   <scroll-view class="reading-panel contents-view" scroll-y hidden="{{!draft || panel || view !== 'contents'}}">
-    <view class="panel-content">
-      <view class="title-field">
-        <view class="field-label">书稿标题</view>
-        <input class="manuscript-title serif" value="{{editTitle}}" maxlength="80" bindinput="onEditTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{saving || generating}}" placeholder="写一个标题" />
+    <view class="panel-content contents-content">
+      <view class="contents-head">
+        <image class="contents-cover" src="/assets/illustrations/story-book-cover.png" mode="aspectFit" aria-hidden="true"></image>
+        <view class="title-field contents-title-field">
+          <view class="field-label">书名</view>
+          <input class="manuscript-title serif" value="{{editTitle}}" maxlength="80" bindinput="onEditTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{saving || generating}}" placeholder="写一个标题" />
+          <view class="contents-summary">{{chapterRows.length}} 章 · {{unassigned.length}} 段记忆还没写进</view>
+        </view>
       </view>
-      <view class="field-label contents-label">目录 · 点一章开始写</view>
+      <view class="contents-section serif">目录</view>
       <button class="chapter-row" wx:for="{{chapterRows}}" wx:key="id" data-id="{{item.id}}" bindtap="openChapter">
-        <text class="chapter-name serif">{{item.label}}{{item.title ? '　' + item.title : ''}}</text>
-        <text class="version-date">{{item.memoryCount}} 条记忆 · {{item.photoCount}} 张照片</text>
+        <text class="chapter-number">{{item.label}}</text>
+        <view class="chapter-copy">
+          <text class="chapter-name serif">{{item.title || '还没起名字'}}</text>
+          <text class="chapter-meta">{{item.memoryCount}} 段记忆 · {{item.photoCount}} 张照片</text>
+        </view>
+        <text class="chapter-arrow" aria-hidden="true">›</text>
       </button>
-      <button class="tool-button add-chapter" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>＋ 新开一章</button>
+      <button class="tool-button add-chapter contents-add" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新开一章</button>
       <block wx:if="{{unassigned.length}}">
-        <view class="field-label contents-label">还没放进书稿的记忆 · {{unassigned.length}}</view>
-        <view class="memory-row" wx:for="{{unassigned}}" wx:key="id">
-          <text class="memory-text">{{item.text}}</text>
-          <button class="tool-button" data-id="{{item.id}}" bindtap="chooseChapterFor"><view class="action-icon icon-insert" aria-hidden="true"></view>放进…</button>
+        <view class="contents-section serif">还没写进书的记忆<text class="contents-count">最近的在前</text></view>
+        <view class="contents-memory" wx:for="{{unassigned}}" wx:key="id">
+          <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
+          <view class="contents-memory-date">{{item.dateLabel}}</view>
+          <view class="contents-memory-title serif">{{item.title}}</view>
+          <view class="contents-memory-excerpt">{{item.excerpt}}</view>
+          <view class="contents-memory-foot">
+            <button class="contents-place" data-id="{{item.id}}" bindtap="chooseChapterFor" hover-class="contents-place-pressed">放进哪一章 ›</button>
+          </view>
         </view>
       </block>
     </view>
