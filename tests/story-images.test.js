@@ -688,7 +688,9 @@ test("云函数在没有内置 fetch 的 Node 16 上也能发请求：POST、JSO
 });
 
 test("出图、读章节、质检、下载都不直接依赖全局 fetch", () => {
-  for (const name of ["tokenhub", "scene", "quality"]) {
+  const qualitySource = fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/quality.js"), "utf8");
+  assert.match(qualitySource, /require\("\.\/vision"\)/, "质检通过共用的看图调用发请求");
+  for (const name of ["tokenhub", "scene", "vision"]) {
     const source = fs.readFileSync(path.join(__dirname, `../cloudfunctions/storyImages/${name}.js`), "utf8");
     assert.doesNotMatch(source, /fetchImpl = fetch\b/, `${name}.js 仍然默认使用全局 fetch`);
     assert.match(source, /require\("\.\/httpFetch"\)/);
@@ -894,4 +896,46 @@ test("入口接上了诊断动作，由环境变量里的口令把关", () => {
   const index = fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/index.js"), "utf8");
   assert.match(index, /case "diagnose": return await diagnostics\.run\(ctx, event\);/);
   assert.match(index, /expectedToken: process\.env\.STORY_IMAGES_DIAGNOSE_TOKEN/);
+});
+
+// ---------- 共用的看图调用 ----------
+
+test("看图调用：没配置时不发请求；配置后按 TokenHub 格式发文字和图片（链接或 base64），拿回模型的原话", async () => {
+  const { createVisionClient, DEFAULT_MODEL } = require("../cloudfunctions/storyImages/vision.js");
+  let calls = 0;
+  const idle = createVisionClient({ apiKey: "", fetchImpl: async () => { calls++; return jsonResponse(200, {}); } });
+  assert.equal(idle.configured, false);
+  assert.deepEqual(await idle.ask({ text: "看看", images: ["https://x/1.png"] }), { ok: false, errorCode: "VISION_NOT_CONFIGURED" });
+  assert.equal(calls, 0);
+
+  let sent;
+  const client = createVisionClient({
+    apiKey: "k", baseUrl: "https://vision.example/v1/",
+    fetchImpl: async (url, init) => {
+      sent = { url, headers: init.headers, body: JSON.parse(init.body) };
+      return jsonResponse(200, { choices: [{ message: { content: "院子里晒着被子" } }] });
+    },
+  });
+  const answer = await client.ask({ text: "用一句话说说", images: ["https://x/1.png", "data:image/jpeg;base64,AAAA"] });
+  assert.deepEqual(answer, { ok: true, content: "院子里晒着被子" });
+  assert.equal(sent.url, "https://vision.example/v1/chat/completions");
+  assert.equal(sent.headers.Authorization, "Bearer k");
+  assert.equal(sent.body.model, DEFAULT_MODEL);
+  assert.equal(DEFAULT_MODEL, "hy-vision-2.0-instruct");
+  assert.equal(sent.body.temperature, 0);
+  assert.deepEqual(sent.body.messages[0].content, [
+    { type: "text", text: "用一句话说说" },
+    { type: "image_url", image_url: { url: "https://x/1.png" } },
+    { type: "image_url", image_url: { url: "data:image/jpeg;base64,AAAA" } },
+  ]);
+});
+
+test("看图调用：被拒、超时、连不上都返回错误码，不抛异常", async () => {
+  const { createVisionClient } = require("../cloudfunctions/storyImages/vision.js");
+  const refused = createVisionClient({ apiKey: "k", fetchImpl: async () => jsonResponse(422, {}) });
+  assert.deepEqual(await refused.ask({ text: "t", images: [] }), { ok: false, errorCode: "VISION_HTTP_422", httpStatus: 422 });
+  const timedOut = createVisionClient({ apiKey: "k", fetchImpl: async () => { const error = new Error("aborted"); error.name = "AbortError"; throw error; } });
+  assert.deepEqual(await timedOut.ask({ text: "t", images: [] }), { ok: false, errorCode: "VISION_TIMEOUT" });
+  const offline = createVisionClient({ apiKey: "k", fetchImpl: async () => { throw new Error("ECONNRESET"); } });
+  assert.deepEqual(await offline.ask({ text: "t", images: [] }), { ok: false, errorCode: "VISION_REQUEST_FAILED" });
 });
