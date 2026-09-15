@@ -3,9 +3,13 @@ import {
   FamilyRoomState,
   isRecordingProfile,
   memoryPool,
+  memorySegmentCount,
+  MemoryContribution,
+  ManuscriptChapter,
   Story,
 } from "../domain/biography";
 import { currentManuscript, manuscriptHistory } from "./manuscript";
+import { hasUnwrittenSegments } from "./chapters";
 
 /**
  * 阶段 A：故事记录的样子，和「从旧数据算出固定 id 的故事」。
@@ -129,4 +133,27 @@ export function deriveLegacyStories(state: FamilyRoomState): Story[] {
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     // 重名时，最近动过的那个留原名，其余的显示加「（2）」「（3）」……只影响这次算出来的展示，不写库。
     .map((story) => ({ ...story, title: dedupeDisplayTitle(story.title, seenTitles) }));
+}
+
+/**
+ * 记忆分段（docs/2026-09-15-memory-segments-plan.md）：每日一问要不要问「这段要不要
+ * 写进《XX》」。只在这条记忆已经被这个故事的某一章用过、又有新段、且没被点过「先不用」
+ * （或者点过之后又多讲了新段）时才问。选「写进」不受影响，随时可以在故事页里主动补写。
+ */
+export function shouldAskToWriteIn(
+  story: Story,
+  memory: MemoryContribution,
+  chapters: ManuscriptChapter[],
+): boolean {
+  if (!hasUnwrittenSegments(chapters, memory)) return false;
+  const declinedAt = story.declinedSegments?.[memory.id];
+  return declinedAt === undefined || memorySegmentCount(memory) > declinedAt;
+}
+
+/** 用户在这个故事里点了「先不用」：记下这条记忆当时的段数，之前的记录只会往大改。 */
+export function declineStorySegment(story: Story, memory: MemoryContribution): Story {
+  const count = memorySegmentCount(memory);
+  const previous = story.declinedSegments?.[memory.id] ?? 0;
+  if (count <= previous) return story;
+  return { ...story, declinedSegments: { ...story.declinedSegments, [memory.id]: count } };
 }

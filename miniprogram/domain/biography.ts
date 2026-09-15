@@ -12,6 +12,21 @@ export type OrganizationMode = "local-demo" | "cloud-ai";
  */
 export type MemoryType = "note" | "memoir";
 
+/**
+ * 记忆分段：接着讲＝给同一条记忆追加一段，不再另存一条记忆。
+ * 规则来源：docs/2026-09-15-memory-segments-plan.md，问题八转达用户 2026-09-15 决定。
+ */
+export type MemorySegmentSource = "note" | "continue" | "daily-question";
+
+export interface MemorySegment {
+  /** 段内唯一，不跨记忆。 */
+  id: string;
+  text: string;
+  createdAt: string;
+  source: MemorySegmentSource;
+  organizationMode?: OrganizationMode;
+}
+
 export interface FamilyMember {
   id: string;
   name: string;
@@ -87,6 +102,11 @@ export interface MemoryContribution {
   sharedWithMemberIds?: string[];
   reviewStatus: ReviewStatus;
   createdAt: string;
+  /**
+   * 接着讲追加的段落。有这个字段时，`text` 始终等于各段按顺序拼接（旧客户端、
+   * AI 整理入口、列表摘要都只读 text，不用改）。没有这个字段的旧记忆按只有一段处理。
+   */
+  segments?: MemorySegment[];
 }
 
 export interface BiographyDraft {
@@ -121,6 +141,12 @@ export interface ManuscriptChapter {
   generatedAt?: string;
   /** A picture from the storyImages cloud function shown under this chapter's text; travels with the version. */
   backdropImageId?: string;
+  /**
+   * memoryId -> 这一章上次用到这条记忆时，它一共有几段。不精确记到第几段，
+   * 只用来推出「这一章有没有新的一段没写进」：当前段数比这个数大就是有。
+   * 规则来源：docs/2026-09-15-memory-segments-plan.md。
+   */
+  memorySegmentCounts?: Record<string, number>;
 }
 
 export interface FamilyRoomState {
@@ -165,6 +191,12 @@ export interface Story {
   deletedAt?: string;
   /** 预留给问题五：故事封面图片引用。 */
   coverImageId?: string;
+  /**
+   * memoryId -> 用户在这个故事里对这条记忆点过「先不用」时，它当时有几段。
+   * 每日一问只在当前段数比这个数还多时才会再问同一条记忆；选「写进」不受影响。
+   * 规则来源：docs/2026-09-15-memory-segments-plan.md。
+   */
+  declinedSegments?: Record<string, number>;
   /** 从旧数据迁移来的故事，记一笔来源，方便回溯和旧客户端兼容。只读，不参与身份判断。 */
   legacy?: {
     memberId?: string;
@@ -222,6 +254,71 @@ export const VISIBILITY_LABELS: Record<Visibility, string> = {
 
 export function contributionScope(contribution: MemoryContribution): MemoryScope {
   return contribution.scope ?? "family";
+}
+
+/**
+ * 这条记忆的段落。旧记忆（没有 `segments`）当作只有一段，段本身就是整条记忆：
+ * 段 id 复用记忆 id，来源按 note 处理，时间用记忆自己的 createdAt。
+ * 对损坏字段失败关闭：非法的 `segments` 一律当作没有，回退成单段读法。
+ */
+export function memorySegments(contribution: MemoryContribution): MemorySegment[] {
+  const stored: unknown = contribution.segments;
+  if (
+    Array.isArray(stored) &&
+    stored.length > 0 &&
+    stored.every((segment) =>
+      segment &&
+      typeof segment.id === "string" &&
+      typeof segment.text === "string" &&
+      typeof segment.createdAt === "string")
+  ) {
+    return stored as MemorySegment[];
+  }
+  return [{
+    id: contribution.id,
+    text: contribution.text,
+    createdAt: contribution.createdAt,
+    source: "note",
+    organizationMode: contribution.organizationMode,
+  }];
+}
+
+export function memorySegmentCount(contribution: MemoryContribution): number {
+  return memorySegments(contribution).length;
+}
+
+/**
+ * 接着讲：给这条记忆追加一段，`text` 跟着更新成新的拼接结果，其余字段（包括
+ * `reviewStatus`、`storyTitle`）原样保留——归类和权限不因为多讲了一段而改变。
+ * 新增段落单独受 500 字限制，拼起来的整条记忆不设上限。
+ */
+export function appendMemorySegment(
+  contribution: MemoryContribution,
+  text: string,
+  source: MemorySegmentSource,
+  organizationMode?: OrganizationMode,
+  now = new Date(),
+): MemoryContribution {
+  const normalized = normalizeMemoryText(text);
+  if (!normalized) throw new Error("请先写下这一段");
+  if (normalized.length > MAX_MEMORY_LENGTH) {
+    throw new Error(`单次回忆不能超过 ${MAX_MEMORY_LENGTH} 字`);
+  }
+  const existing = memorySegments(contribution);
+  const segment: MemorySegment = {
+    id: `segment-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    text: normalized,
+    createdAt: now.toISOString(),
+    source,
+    organizationMode,
+  };
+  const segments = [...existing, segment];
+  return {
+    ...contribution,
+    segments,
+    text: segments.map((item) => item.text).join("\n"),
+    organizationMode: organizationMode ?? contribution.organizationMode,
+  };
 }
 
 /** 旧缓存可能被手工写坏；展示和分组时只接受真正的字符串故事名。 */

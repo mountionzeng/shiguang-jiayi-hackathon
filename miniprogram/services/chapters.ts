@@ -1,4 +1,4 @@
-import { BiographyDraft, ManuscriptChapter, ManuscriptContent, MemoryContribution } from "../domain/biography";
+import { BiographyDraft, ManuscriptChapter, ManuscriptContent, memorySegmentCount, memorySegments, MemoryContribution } from "../domain/biography";
 import { contentFromDelta, contentToDelta, validateContent } from "./bookImages";
 
 const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
@@ -137,6 +137,56 @@ export function placeMemoryInChapter(
       ...chapter,
       content: [...chapter.content.map(item => ({ ...item })), { text: separator + memoryText + "\n" }],
       handEdited: true,
+    };
+  });
+}
+
+/**
+ * 「这一章有没有新的一段没写进」：只对已经用过这条记忆的章节才有意义——还没被任何
+ * 章节引用的记忆走「还没放进书稿」那一套，不是这里说的「新段」。
+ */
+export function chapterHasNewSegment(chapter: ManuscriptChapter, memory: MemoryContribution): boolean {
+  if (!chapter.memoryIds.includes(memory.id)) return false;
+  return memorySegmentCount(memory) > (chapter.memorySegmentCounts?.[memory.id] ?? 0);
+}
+
+/** 这个故事（这一组章节）里，有没有任何一章还欠着这条记忆的新段。 */
+export function hasUnwrittenSegments(chapters: ManuscriptChapter[], memory: MemoryContribution): boolean {
+  return chapters.some(chapter => chapterHasNewSegment(chapter, memory));
+}
+
+/**
+ * 写进：只把水位之后新增的那些段的原文追加到这一章末尾（老段落已经在正文里，不重复
+ * 加一遍），更新这条记忆在这一章的水位；这条记忆不在这一章时，先放进去（不影响它在
+ * 别的章节——用户 2026-09-14 定，一段记忆可以同时在好几章）。这不算 AI 生成，
+ * `handEdited` 按现有追加正文的规则处理（会先确认，走原来那一套）。
+ */
+export function appendNewMemorySegments(
+  chapters: ManuscriptChapter[],
+  memory: MemoryContribution,
+  chapterId: string,
+): ManuscriptChapter[] {
+  const target = chapters.find(chapter => chapter.id === chapterId);
+  if (!target) return chapters.map(copyChapter);
+  const segments = memorySegments(memory);
+  const watermark = target.memorySegmentCounts?.[memory.id] ?? 0;
+  const newText = segments.slice(watermark).map(item => item.text.trim()).filter(Boolean).join("\n").trim();
+  const withMemory = target.memoryIds.includes(memory.id) ? chapters.map(copyChapter) : addMemoryToChapter(chapters, memory.id, chapterId);
+
+  return withMemory.map(chapter => {
+    if (chapter.id !== chapterId) return chapter;
+    const memorySegmentCounts = { ...chapter.memorySegmentCounts, [memory.id]: segments.length };
+    if (!newText) return { ...chapter, memorySegmentCounts };
+    const existingText = chapter.content.map(item => item.text ?? "").join("");
+    if (existingText.includes(newText)) return { ...chapter, memorySegmentCounts };
+    const last = chapter.content[chapter.content.length - 1];
+    const separator = !last ? "" : typeof last.text !== "string" ? "\n"
+      : last.text.endsWith("\n\n") ? "" : last.text.endsWith("\n") ? "\n" : "\n\n";
+    return {
+      ...chapter,
+      content: [...chapter.content.map(item => ({ ...item })), { text: separator + newText + "\n" }],
+      handEdited: true,
+      memorySegmentCounts,
     };
   });
 }
