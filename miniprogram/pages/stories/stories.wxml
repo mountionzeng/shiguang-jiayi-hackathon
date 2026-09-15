@@ -31,30 +31,21 @@
       </view>
     </block>
     <block wx:else>
-      <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>慢慢写，慢慢成书</text></view>
-      <view class="story-shelf">
-        <button class="story-book book-layout-{{index % 4}} {{!item.manuscriptMemberId ? 'story-book-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="story-book-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
-          <image class="story-book-shell" src="/assets/illustrations/story-book-cover.png" mode="scaleToFill" aria-hidden="true"></image>
-          <view class="book-cover-tint" aria-hidden="true"></view>
-          <view class="book-cover">
-            <view class="book-number">拾光录 / {{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
-            <view class="book-title-slip"><view class="book-name serif">{{item.title}}</view></view>
-            <view class="book-excerpt" wx:if="{{item.excerpt}}">{{item.excerpt}}</view>
-            <view class="book-excerpt" wx:else>留一些空白，等记忆慢慢写进来。</view>
-            <view class="book-meta">{{item.label || '还没有章节'}}</view>
-            <view class="book-meta" wx:if="{{item.peopleCount !== undefined}}">{{item.peopleCount}} 个人</view>
-            <view class="book-open">{{item.manuscriptMemberId ? '翻开故事' : '接着写故事'}} <text aria-hidden="true">↗</text></view>
-          </view>
-        </button>
-        <navigator class="story-book story-book-new" url="/pages/index/index" hover-class="story-book-pressed" aria-label="新的故事，去首页选择换一个故事聊">
-          <image class="story-book-shell" src="/assets/illustrations/story-book-cover.png" mode="scaleToFill" aria-hidden="true"></image>
-          <view class="book-cover-tint" aria-hidden="true"></view>
-          <view class="book-cover">
-            <view class="book-new-plus" aria-hidden="true">＋</view>
-            <view class="book-title-slip"><view class="book-name serif">新的故事</view></view>
-            <view class="book-excerpt">去首页「换一个故事聊」<text>开启新的一本</text></view>
-          </view>
-        </navigator>
+      <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>点一本书打开</text></view>
+      <view class="bookshelf">
+        <view class="shelf-books">
+          <button class="story-book spine spine-tone-{{index % 4}} spine-h-{{index % 3}} {{!item.manuscriptMemberId ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
+            <view class="spine-body">
+              <image class="spine-art" src="/assets/illustrations/story-book-spine.png" mode="scaleToFill" aria-hidden="true"></image>
+              <view class="spine-tint" aria-hidden="true"></view>
+              <view class="spine-label"><text class="spine-title serif">{{item.title}}</text></view>
+              <text class="spine-no" aria-hidden="true">{{index + 1 < 10 ? '0' : ''}}{{index + 1}}</text>
+            </view>
+          </button>
+          <navigator class="story-book spine spine-new" url="/pages/index/index" hover-class="spine-pressed" aria-label="新的故事，去首页选择换一个故事聊">
+            <view class="spine-body"><text class="spine-new-plus" aria-hidden="true">＋</text><text class="spine-title spine-new-title">新的故事</text></view>
+          </navigator>
+        </view>
       </view>
       <button class="btn btn-ghost" bindtap="openMemories">整理原始记忆 · {{ungroupedCount}} 段还没放进故事</button>
       <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>

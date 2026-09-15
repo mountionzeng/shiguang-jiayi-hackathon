@@ -4,46 +4,7 @@
 /* 底部固定着三入口切换栏，内容要留出它的高度。 */
 .story-page { padding-bottom: calc(276rpx + env(safe-area-inset-bottom)); }.story-memory { margin: 20rpx 0; padding: 28rpx; text-align: left; background: #fffdf6; border-radius: 12rpx 24rpx 18rpx 10rpx; }
 
-/* A book is the interaction unit. The existing line-bound shell supplies real binding and deckled page edges. */
 .shelf-caption { display: flex; justify-content: space-between; margin: 42rpx 0 22rpx; color: var(--ink-soft); font-size: 23rpx; }
-.story-shelf { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 34rpx 20rpx; padding: 12rpx 4rpx 48rpx 0; perspective: 1200rpx; }
-.story-book { position: relative; box-sizing: border-box; display: flex; width: calc(50% - 10rpx); height: 500rpx; margin: 0; padding: 0; overflow: visible; text-align: left; white-space: normal; color: var(--ink); background: transparent; border: 0; box-shadow: none; transition: transform 180ms ease, filter 180ms ease; }
-.story-book::after { position: absolute; right: 4rpx; bottom: -9rpx; left: 20rpx; z-index: 0; height: 13rpx; border: 0; border-radius: 50%; background: rgba(42,46,43,.14); filter: blur(8rpx); content: ""; }
-.story-book-shell { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; pointer-events: none; }
-.book-cover-tint { position: absolute; top: 19rpx; right: 15rpx; bottom: 29rpx; left: 52rpx; z-index: 2; border-radius: 2rpx 8rpx 10rpx 2rpx; background: rgba(79,127,107,.06); pointer-events: none; }
-.story-book:nth-child(4n+2) .book-cover-tint { background: rgba(74,110,136,.18); }
-.story-book:nth-child(4n+3) .book-cover-tint { background: rgba(176,130,57,.2); }
-.story-book:nth-child(4n+4) .book-cover-tint { background: rgba(180,80,60,.14); }
-.book-cover-mark { position: absolute; top: 48rpx; right: 34rpx; z-index: 3; width: 72rpx; height: 62rpx; opacity: .52; pointer-events: none; }
-.book-cover-mark view { position: absolute; border-radius: 50%; }
-.book-cover-mark view:nth-child(1) { top: 0; left: 0; width: 46rpx; height: 46rpx; background: rgba(79,127,107,.30); }
-.book-cover-mark view:nth-child(2) { right: 0; bottom: 0; width: 39rpx; height: 39rpx; background: rgba(74,110,136,.25); }
-.book-cover-mark view:nth-child(3) { right: 27rpx; bottom: 7rpx; width: 22rpx; height: 22rpx; background: rgba(176,130,57,.22); }
-.book-layout-1 { transform: translateY(10rpx) rotate(.7deg); }
-.book-layout-2 { transform: translateY(-5rpx) rotate(-.5deg); }
-.book-layout-3 { transform: translateY(7rpx) rotate(.35deg); }
-.book-cover { position: relative; z-index: 4; display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 43rpx 28rpx 48rpx 68rpx; }
-.book-number { padding-right: 68rpx; color: var(--ink-soft); font-size: 18rpx; line-height: 1.5; letter-spacing: 2rpx; }
-.book-title-slip { position: relative; flex-shrink: 0; margin: 48rpx 4rpx 0 0; padding: 10rpx 8rpx; border-top: 1rpx solid rgba(42,46,43,.25); border-bottom: 1rpx solid rgba(42,46,43,.25); background: rgba(255,253,246,.84); }
-.book-title-slip::before { position: absolute; top: -6rpx; bottom: -6rpx; left: -5rpx; width: 3rpx; border-radius: 3rpx; background: var(--jade); content: ""; opacity: .66; }
-.story-book:nth-child(4n+2) .book-title-slip::before { background: var(--lake); }
-.story-book:nth-child(4n+3) .book-title-slip::before { background: var(--apricot); }
-.story-book:nth-child(4n+4) .book-title-slip::before { background: var(--coral); }
-.book-name { display: -webkit-box; overflow: hidden; font-size: 32rpx; font-weight: 600; line-height: 1.38; overflow-wrap: anywhere; word-break: break-all; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.book-excerpt { display: -webkit-box; margin-top: 15rpx; padding: 2rpx 6rpx; overflow: hidden; border-radius: 6rpx; background: rgba(255,253,246,.62); color: var(--ink); font-size: 21rpx; line-height: 1.58; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.book-meta { align-self: flex-start; margin-top: 12rpx; padding: 0 6rpx; border-radius: 6rpx; background: rgba(255,253,246,.62); color: var(--ink); font-size: 19rpx; line-height: 1.5; }
-.book-open { display: flex; flex-shrink: 0; justify-content: space-between; margin-top: auto; padding: 8rpx 12rpx; border-radius: 8rpx; background: rgba(255,253,246,.88); color: var(--jade); font-size: 22rpx; line-height: 1.4; }
-.story-book-empty .book-title-slip { border-top-style: dashed; border-bottom-style: dashed; }
-.story-shelf .story-book-new { min-height: 0; background: transparent; border: 0; box-shadow: none; }
-.story-book-new .story-book-shell { opacity: .66; filter: saturate(.55); }
-.story-book-new .book-cover-tint { background: rgba(251,248,241,.42); border: 2rpx dashed rgba(79,127,107,.34); }
-.story-book-new .book-cover { justify-content: center; }
-.book-new-plus { display: flex; align-items: center; justify-content: center; width: 64rpx; height: 64rpx; margin-left: 2rpx; border: 2rpx solid var(--jade); border-radius: 50%; color: var(--jade); font-size: 45rpx; font-weight: 300; line-height: 1; }
-.story-book-new .book-title-slip { margin-top: 24rpx; border-bottom-style: dashed; border-top-style: dashed; }
-.story-book-new .book-name { font-size: 30rpx; }
-.story-book-new .book-excerpt { display: block; }
-.story-book-new .book-excerpt text { display: block; }
-.story-book-pressed { z-index: 5; transform: translateY(-9rpx) rotate(-1deg) scale(1.018); filter: drop-shadow(0 18rpx 15rpx rgba(42,46,43,.18)); }
 /* Hook-only states: the story-structure owner supplies drag and reorder behavior. */
 .story-book.is-dragging { z-index: 5; transform: translateY(-24rpx) rotate(-3deg) scale(1.035); filter: drop-shadow(10rpx 26rpx 18rpx rgba(42,46,43,.24)); }
 .story-book.is-drop-target { outline: 3rpx dashed var(--jade); outline-offset: 9rpx; }
@@ -72,6 +33,31 @@
 .story-memory { position: relative; width: 100%; border: 1rpx solid rgba(176,130,57,.14); background: rgba(255,254,251,.86); box-shadow: 4rpx 7rpx 16rpx rgba(42,46,43,.05); }
 .story-memory { min-height: 190rpx; padding-left: 96rpx; }
 @media (prefers-reduced-motion: reduce) { .story-book { transition: none; } }
-/* 微信按钮默认宽 184px，优先级高于单个类名：书架上的书和记忆卡片都用两层类名写宽度，书才能一行两本。 */
-.story-shelf .story-book { width: calc(50% - 10rpx); margin: 0; }
+/* 微信按钮默认宽 184px，优先级高于单个类名：记忆卡片用两层类名写宽度。 */
 .note-list .story-memory { width: 100%; margin-right: 0; margin-left: 0; }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.story-action.story-action { width: 100%; margin-left: 0; margin-right: 0; }
+
+/* ---- 书架：每个故事是一本立着的线装书，一层层摆在木板上 ---- */
+/* 每本书占位一样高（440rpx），书身高矮错落靠 .spine-body；这样每层书底对齐，重复渐变画出的木板正好接住书底。 */
+.bookshelf { margin: 8rpx 0 40rpx; }
+.shelf-books { display: flex; flex-wrap: wrap; align-items: flex-end; align-content: flex-start; gap: 34rpx 14rpx; padding: 0 10rpx; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 440rpx, rgba(176,130,57,.46) 440rpx, rgba(128,99,58,.52) 452rpx, rgba(42,46,43,.12) 452rpx, transparent 474rpx); }
+.shelf-books .spine { position: relative; display: block; width: 104rpx; height: 440rpx; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; line-height: 1.2; }
+.shelf-books .spine::after { border: 0; }
+.spine-body { position: absolute; right: 0; bottom: 0; left: 0; height: 100%; filter: drop-shadow(3rpx 6rpx 6rpx rgba(42,46,43,.16)); transition: transform 160ms ease; }
+.spine-h-1 .spine-body { height: 93%; }
+.spine-h-2 .spine-body { height: 86%; }
+.spine-art { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: block; width: 100%; height: 100%; }
+.spine-tint { position: absolute; top: 3%; right: 20%; bottom: 1%; left: 3%; background: rgba(79,127,107,.06); }
+.spine-tone-1 .spine-tint { background: rgba(74,110,136,.2); }
+.spine-tone-2 .spine-tint { background: rgba(176,130,57,.22); }
+.spine-tone-3 .spine-tint { background: rgba(180,80,60,.16); }
+.spine-label { position: absolute; top: 12%; right: 25%; bottom: 13%; left: 10%; display: flex; justify-content: center; padding-top: 16rpx; overflow: hidden; }
+.spine-title { width: 1.1em; color: var(--ink); font-size: 30rpx; font-weight: 600; line-height: 1.2; text-align: center; word-break: break-all; }
+.spine-no { position: absolute; right: 20%; bottom: 3%; left: 3%; color: rgba(255,253,246,.92); font-size: 18rpx; text-align: center; }
+.spine-empty .spine-art { opacity: .82; }
+.spine-pressed .spine-body { transform: translateY(-14rpx); }
+.shelf-books .spine-new .spine-body { display: flex; flex-direction: column; align-items: center; height: 86%; padding-top: 26rpx; border: 3rpx dashed rgba(79,127,107,.45); border-radius: 8rpx; background: rgba(234,241,237,.6); filter: none; }
+.spine-new-plus { margin-bottom: 12rpx; color: var(--jade); font-size: 40rpx; line-height: 1; }
+.spine-new-title { color: var(--jade); font-weight: 500; }
