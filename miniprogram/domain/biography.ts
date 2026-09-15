@@ -12,6 +12,21 @@ export type OrganizationMode = "local-demo" | "cloud-ai";
  */
 export type MemoryType = "note" | "memoir";
 
+/**
+ * 记忆分段：接着讲＝给同一条记忆追加一段，不再另存一条记忆。
+ * 规则来源：docs/2026-09-15-memory-segments-plan.md，问题八转达用户 2026-09-15 决定。
+ */
+export type MemorySegmentSource = "note" | "continue" | "daily-question";
+
+export interface MemorySegment {
+  /** 段内唯一，不跨记忆。 */
+  id: string;
+  text: string;
+  createdAt: string;
+  source: MemorySegmentSource;
+  organizationMode?: OrganizationMode;
+}
+
 export interface FamilyMember {
   id: string;
   name: string;
@@ -87,6 +102,20 @@ export interface MemoryContribution {
   sharedWithMemberIds?: string[];
   reviewStatus: ReviewStatus;
   createdAt: string;
+  /**
+   * 接着讲追加的段落。有这个字段时，`text` 始终等于各段按顺序拼接（旧客户端、
+   * AI 整理入口、列表摘要都只读 text，不用改）。没有这个字段的旧记忆按只有一段处理。
+   */
+  segments?: MemorySegment[];
+  /**
+   * 软删除：放进「最近删除」，从所有正常列表里隐去，可以恢复。已经写进某一章的原文
+   * 不受影响——删除来源记忆，不会拿掉书稿里已经存下的字。真正永久删除是另一个动作。
+   */
+  deletedAt?: string;
+}
+
+export function isActiveMemory(contribution: MemoryContribution): boolean {
+  return !contribution.deletedAt;
 }
 
 export interface BiographyDraft {
@@ -121,6 +150,53 @@ export interface ManuscriptChapter {
   generatedAt?: string;
   /** A picture from the storyImages cloud function shown under this chapter's text; travels with the version. */
   backdropImageId?: string;
+  /**
+   * memoryId -> 这一章上次用到这条记忆时，它一共有几段。不精确记到第几段，
+   * 只用来推出「这一章有没有新的一段没写进」：当前段数比这个数大就是有。
+   * 规则来源：docs/2026-09-15-memory-segments-plan.md。
+   */
+  memorySegmentCounts?: Record<string, number>;
+  /**
+   * 待确认的修订：写进一条记忆、或（以后）AI 重新整理这一章时产生，逐条确认/不要，
+   * 全部处理完才会生成新版本；处理到一半退出页面，这个字段还在，下次回来接着确认。
+   * 规则来源：docs/2026-09-15-memory-segments-plan.md，问题八转达用户 2026-09-15 决定。
+   */
+  pendingRevision?: PendingChapterRevision;
+  /**
+   * 这一章的正文里有没有 AI 生成的文字（哪怕只是接受了其中一处新增），和
+   * `generationMode`（整章由谁生成的）、`handEdited`（用户在编辑器里亲手改过）分开记：
+   * 一章可以同时「含 AI 文字」又「被手改过」。只会被置为 true，不会自动退回 false。
+   */
+  containsAiText?: boolean;
+}
+
+export type ChapterEditSource = "ai" | "memory";
+export type ChapterEditStatus = "pending" | "accepted" | "rejected";
+
+export interface ChapterEdit {
+  id: string;
+  kind: "insert" | "delete";
+  /** insert：提议新增的文字；delete：提议删掉的原文，用来对照展示，也用来核对 anchor 有没有对上。 */
+  text: string;
+  /** ai：AI 新增/建议删除/改写，框里标「AI 生成」/「AI 建议删除」；memory：用户原话直接追加，不标。 */
+  source: ChapterEditSource;
+  memoryId?: string;
+  /** insert 且来自某条记忆时：提出这条修订那一刻，这条记忆一共有几段；确认后用它更新水位，不用重新查记忆。 */
+  memorySegmentCountAtProposal?: number;
+  /**
+   * 定位在正文里的具体位置：用「这一章跳过图片、把文本块按顺序拼起来的纯文字」
+   * 算字符偏移（services/chapters.ts 的 chapterPlainText）。delete 必须有 anchor，
+   * 标出要删的原文在哪一段；insert 没有 anchor 时接到正文末尾（写进一条记忆的默认做法），
+   * 有 anchor 时插在这个位置（start===end 是插入点，比如紧跟在同一次提出的删除之后）。
+   * 选段跨了图片或跨了两个文本块时不生成 anchor，交给前端提前拦住。
+   */
+  anchor?: { start: number; end: number };
+  status: ChapterEditStatus;
+}
+
+export interface PendingChapterRevision {
+  createdAt: string;
+  edits: ChapterEdit[];
 }
 
 export interface FamilyRoomState {
@@ -143,6 +219,42 @@ export interface DeletedStory {
   key: string;
   title: string;
   deletedAt: string;
+}
+
+/**
+ * 一个真正的故事记录（阶段 A：只是类型，还没有集合在读写它）。
+ * id 稳定：改名、书稿和同名记忆合并，都不会变。
+ *
+ * 规则来源：docs/2026-09-14-story-records-plan.md，用户 2026-09-14 确认。
+ */
+export interface Story {
+  id: string;
+  familyId: string;
+  /** 同一账号内不重名（去掉首尾空格后比较，不含已删除的故事）。 */
+  title: string;
+  /** 这个故事的主人公；可以是任何人，也可以没有。 */
+  protagonistMemberIds: string[];
+  /** 这个故事的素材：属于它的全部记忆，不论写没写进章节。一段记忆可以在多个故事里。 */
+  memoryIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+  /** 预留给问题五：故事封面图片引用。 */
+  coverImageId?: string;
+  /**
+   * memoryId -> 用户在这个故事里对这条记忆点过「先不用」时，它当时有几段。
+   * 每日一问只在当前段数比这个数还多时才会再问同一条记忆；选「写进」不受影响。
+   * 规则来源：docs/2026-09-15-memory-segments-plan.md。
+   */
+  declinedSegments?: Record<string, number>;
+  /** 从旧数据迁移来的故事，记一笔来源，方便回溯和旧客户端兼容。只读，不参与身份判断。 */
+  legacy?: {
+    memberId?: string;
+    storyTitle?: string;
+    /** 迁移前这个故事在 services/storyShelf.ts 里的 key（`story:标题` 或 `manuscript:档案id`）。
+     * 给发到电脑端的快照做过渡：新旧 key 都带上，服务端按旧 key 认出同一个故事，避免换 id 后重复入库。 */
+    previousShelfKey?: string;
+  };
 }
 
 export interface ManuscriptRevision {
@@ -192,6 +304,71 @@ export const VISIBILITY_LABELS: Record<Visibility, string> = {
 
 export function contributionScope(contribution: MemoryContribution): MemoryScope {
   return contribution.scope ?? "family";
+}
+
+/**
+ * 这条记忆的段落。旧记忆（没有 `segments`）当作只有一段，段本身就是整条记忆：
+ * 段 id 复用记忆 id，来源按 note 处理，时间用记忆自己的 createdAt。
+ * 对损坏字段失败关闭：非法的 `segments` 一律当作没有，回退成单段读法。
+ */
+export function memorySegments(contribution: MemoryContribution): MemorySegment[] {
+  const stored: unknown = contribution.segments;
+  if (
+    Array.isArray(stored) &&
+    stored.length > 0 &&
+    stored.every((segment) =>
+      segment &&
+      typeof segment.id === "string" &&
+      typeof segment.text === "string" &&
+      typeof segment.createdAt === "string")
+  ) {
+    return stored as MemorySegment[];
+  }
+  return [{
+    id: contribution.id,
+    text: contribution.text,
+    createdAt: contribution.createdAt,
+    source: "note",
+    organizationMode: contribution.organizationMode,
+  }];
+}
+
+export function memorySegmentCount(contribution: MemoryContribution): number {
+  return memorySegments(contribution).length;
+}
+
+/**
+ * 接着讲：给这条记忆追加一段，`text` 跟着更新成新的拼接结果，其余字段（包括
+ * `reviewStatus`、`storyTitle`）原样保留——归类和权限不因为多讲了一段而改变。
+ * 新增段落单独受 500 字限制，拼起来的整条记忆不设上限。
+ */
+export function appendMemorySegment(
+  contribution: MemoryContribution,
+  text: string,
+  source: MemorySegmentSource,
+  organizationMode?: OrganizationMode,
+  now = new Date(),
+): MemoryContribution {
+  const normalized = normalizeMemoryText(text);
+  if (!normalized) throw new Error("请先写下这一段");
+  if (normalized.length > MAX_MEMORY_LENGTH) {
+    throw new Error(`单次回忆不能超过 ${MAX_MEMORY_LENGTH} 字`);
+  }
+  const existing = memorySegments(contribution);
+  const segment: MemorySegment = {
+    id: `segment-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    text: normalized,
+    createdAt: now.toISOString(),
+    source,
+    organizationMode,
+  };
+  const segments = [...existing, segment];
+  return {
+    ...contribution,
+    segments,
+    text: segments.map((item) => item.text).join("\n"),
+    organizationMode: organizationMode ?? contribution.organizationMode,
+  };
 }
 
 /** 旧缓存可能被手工写坏；展示和分组时只接受真正的字符串故事名。 */
@@ -320,6 +497,7 @@ export function pendingFamilyContributions(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
+      isActiveMemory(contribution) &&
       contributionScope(contribution) === "family" &&
       contribution.reviewStatus === "pending",
   );
@@ -328,7 +506,7 @@ export function pendingFamilyContributions(
 export function confirmedContributions(
   contributions: MemoryContribution[],
 ): MemoryContribution[] {
-  return contributions.filter((contribution) => contribution.reviewStatus === "confirmed");
+  return contributions.filter((contribution) => isActiveMemory(contribution) && contribution.reviewStatus === "confirmed");
 }
 
 export function biographySourceContributions(
@@ -336,6 +514,7 @@ export function biographySourceContributions(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
+      isActiveMemory(contribution) &&
       contributionScope(contribution) === "family" &&
       contribution.reviewStatus === "confirmed" &&
       contribution.visibility === "family",
@@ -347,7 +526,7 @@ export function biographySourceContributions(
  * 删除某个档案也不会带走它讲过的记忆。家庭确认流程的旧投稿不在其中。
  */
 export function memoryPool(contributions: MemoryContribution[]): MemoryContribution[] {
-  return contributions.filter((contribution) => contributionScope(contribution) === "personal");
+  return contributions.filter((contribution) => isActiveMemory(contribution) && contributionScope(contribution) === "personal");
 }
 
 /** 某个档案亲自讲述的个人故事（讲述人，而不是书的归属）。 */
@@ -357,6 +536,7 @@ export function personalBookContributions(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
+      isActiveMemory(contribution) &&
       contributionScope(contribution) === "personal" &&
       contribution.authorMemberId === memberId,
   );
@@ -390,6 +570,7 @@ export function sharedPersonalContributionsForMember(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
+      isActiveMemory(contribution) &&
       contributionScope(contribution) === "personal" &&
       contribution.authorMemberId !== memberId &&
       personalShareTargetMemberIds(contribution).includes(memberId),
@@ -433,6 +614,7 @@ export function visibleContributionsForMember(
   viewer: FamilyMember,
 ): MemoryContribution[] {
   return contributions.filter((contribution) => {
+    if (!isActiveMemory(contribution)) return false;
     if (contributionScope(contribution) === "personal") {
       return (
         contribution.authorMemberId === viewer.id ||

@@ -39,7 +39,16 @@ function revisionContent(revision: ManuscriptRevision) {
     draft.sourceCount, draft.generatedAt, draft.generationMode, draft.content ?? null,
     draft.chapters?.map(chapter => [chapter.id, chapter.title, chapter.memoryIds, chapter.content,
       chapter.handEdited ?? null, chapter.generationMode ?? null, chapter.generatedAt ?? null,
-      chapter.backdropImageId ?? null]) ?? null]);
+      chapter.backdropImageId ?? null, chapter.memorySegmentCounts ?? null,
+      // 位置化：待确认修订是嵌套对象，数据库来回一趟可能重排键顺序，展开成数组才能稳定比对。
+      chapter.pendingRevision
+        ? [chapter.pendingRevision.createdAt, chapter.pendingRevision.edits.map(edit => [
+            edit.id, edit.kind, edit.text, edit.source, edit.memoryId ?? null,
+            edit.memorySegmentCountAtProposal ?? null, edit.status,
+            edit.anchor ? [edit.anchor.start, edit.anchor.end] : null,
+          ])]
+        : null,
+      chapter.containsAiText ?? null]) ?? null]);
 }
 
 export function manuscriptHistory(state: FamilyRoomState, memberId: string) {

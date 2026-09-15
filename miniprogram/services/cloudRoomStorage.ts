@@ -26,6 +26,7 @@ import {
   planRestore,
 } from "./memberLifecycle";
 import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
+import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
 import { loadCurrentMember } from "./roomStorage";
 
 export const CLOUD_COLLECTIONS = {
@@ -71,6 +72,8 @@ interface CloudMemory {
   visibility: Visibility;
   reviewStatus: ReviewStatus;
   createdAt: string;
+  segments?: MemoryContribution["segments"];
+  deletedAt?: string;
 }
 
 interface CloudBiographyDraft {
@@ -278,6 +281,8 @@ async function saveContribution(
       visibility: contribution.visibility,
       reviewStatus: contribution.reviewStatus,
       createdAt: contribution.createdAt,
+      segments: contribution.segments,
+      deletedAt: contribution.deletedAt,
       updatedAt: serverDate(),
     }),
   });
@@ -439,6 +444,8 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
       visibility: memory.visibility,
       reviewStatus: memory.reviewStatus,
       createdAt: memory.createdAt,
+      segments: memory.segments,
+      deletedAt: memory.deletedAt,
     }),
   );
 
@@ -752,6 +759,25 @@ async function saveDeletedStories(familyId: string, deletedStories: DeletedStory
   await collection(CLOUD_COLLECTIONS.families).doc(familyId).update({
     data: { deletedStories, updatedAt: serverDate() },
   });
+}
+
+/** 软删除一段记忆：放进「最近删除」，可以恢复。真正永久删除请用 deleteCloudContribution。 */
+export async function softDeleteCloudMemory(contributionId: string, now = new Date()): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const updated = planDeleteMemory(state, contributionId, now);
+  if (!updated) return state;
+  await saveContribution(familyId, updated);
+  return { ...state, contributions: state.contributions.map(item => item.id === contributionId ? updated : item) };
+}
+
+export async function restoreCloudMemory(contributionId: string): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const updated = planRestoreMemory(state, contributionId);
+  if (!updated) return state;
+  await saveContribution(familyId, updated);
+  return { ...state, contributions: state.contributions.map(item => item.id === contributionId ? updated : item) };
 }
 
 export async function deleteCloudStory(key: string, title: string): Promise<FamilyRoomState> {

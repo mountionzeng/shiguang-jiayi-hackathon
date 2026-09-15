@@ -74,6 +74,24 @@ test("a long book near the limits still saves because the flattened copy is not 
   await assert.rejects(saveManuscriptRevision(makeRevision("owner", tooManyPhotos, "", "version", "十张照片"), ""), /最多放 9 张照片/);
 });
 
+test("addMemoryToChapter and removeMemoryFromChapter let one memory sit in several chapters at once", async () => {
+  const { addMemoryToChapter, removeMemoryFromChapter } = await import("../miniprogram/services/chapters");
+  const one = { ...chapter("chapter-1", "相识", "第一章正文\n"), memoryIds: ["m1"] };
+  const two = { ...chapter("chapter-2", "婚礼", "第二章正文\n"), memoryIds: [] };
+
+  // 用户 2026-09-14 定：同一个故事里，一段记忆可以放进好几章。
+  const inBoth = addMemoryToChapter([one, two], "m1", "chapter-2");
+  assert.deepEqual(inBoth.map(item => item.memoryIds), [["m1"], ["m1"]], "第一章不受影响，第二章多了这段");
+  assert.deepEqual(inBoth[0].content, one.content, "只改归属，正文不动");
+
+  // 重复加同一段到同一章是空操作。
+  assert.deepEqual(addMemoryToChapter(inBoth, "m1", "chapter-2").map(item => item.memoryIds), [["m1"], ["m1"]]);
+
+  // 从其中一章移出，另一章仍然保留这段。
+  const onlyFirst = removeMemoryFromChapter(inBoth, "m1", "chapter-2");
+  assert.deepEqual(onlyFirst.map(item => item.memoryIds), [["m1"], []]);
+});
+
 test("chapter operations keep one memory in one chapter and only append to the selected chapter", async () => {
   const { addChapter, assignMemory, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter } = await import("../miniprogram/services/chapters");
   const one = { ...chapter("chapter-1", "一", "第一章正文\n", ["photo-a"]), memoryIds: ["m1", "m2"] };
