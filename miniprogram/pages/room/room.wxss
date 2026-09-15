@@ -190,10 +190,12 @@
 }
 
 .tl-body {
+  position: relative;
   flex: 1;
   min-width: 0;
+  min-height: 190rpx;
   margin-bottom: 28rpx;
-  padding: 26rpx 28rpx;
+  padding: 26rpx 28rpx 26rpx 96rpx;
   border-radius: 26rpx;
   background: var(--paper-card);
   border: 2rpx solid var(--line);

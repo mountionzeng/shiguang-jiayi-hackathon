@@ -31,7 +31,7 @@
         <view class="note-swipe" wx:for="{{unrecordedItems}}" wx:key="id">
           <button class="note-delete" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="deleteMemory" disabled="{{!!deletingItemId}}" aria-label="删除{{item.title}}"><view class="note-delete-badge">删除</view></button>
           <view class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}" data-id="{{item.id}}" bindtouchstart="onNoteTouchStart" bindtouchend="onNoteTouchEnd" bindtap="openMemory" role="button" aria-label="编辑{{item.title}}">
-            <view class="note-pin"></view>
+            <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
             <view class="note-date">{{item.dateLabel}}</view>
             <view class="note-title serif">{{item.title}}</view>
             <view class="note-excerpt">{{item.excerpt}}</view>
@@ -46,7 +46,7 @@
         <view class="note-swipe" wx:for="{{recordedItems}}" wx:key="id">
           <button class="note-delete" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="deleteMemory" disabled="{{!!deletingItemId}}" aria-label="删除{{item.title}}"><view class="note-delete-badge">删除</view></button>
           <view class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}" data-id="{{item.id}}" bindtouchstart="onNoteTouchStart" bindtouchend="onNoteTouchEnd" bindtap="openMemory" role="button" aria-label="编辑{{item.title}}">
-            <view class="note-pin"></view>
+            <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
             <view class="note-date">{{item.dateLabel}}</view>
             <view class="note-title serif">{{item.title}}</view>
             <view class="note-excerpt">{{item.excerpt}}</view>

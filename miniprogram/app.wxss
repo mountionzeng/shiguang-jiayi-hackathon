@@ -297,6 +297,28 @@ button::after {
   background-size: contain;
 }
 
+/* ---------- 书签：一段记忆在所有列表里的统一样子 ---------- */
+/* 书签插画竖贴在记忆卡片左侧，底部淡出；卡片左内边距要给它留 96rpx。 */
+
+.bookmark-tab {
+  position: absolute;
+  top: 12rpx;
+  bottom: 12rpx;
+  left: 22rpx;
+  z-index: 2;
+  width: 52rpx;
+  max-height: 200rpx;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+}
+
+.bookmark-tab-art {
+  display: block;
+  width: 52rpx;
+}
+
 /* ---------- 进入动画：极轻的弥散 ---------- */
 
 .page-enter {

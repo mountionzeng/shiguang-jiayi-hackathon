@@ -46,6 +46,7 @@
         <view class="tl-line"></view>
       </view>
       <view class="tl-body">
+        <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
         <view class="tl-title serif" wx:if="{{item.title}}">{{item.title}}</view>
         <view class="tl-text serif">{{item.text}}</view>
         <view class="tl-foot">
