@@ -97,6 +97,61 @@ test("a personal story can grant independent reading access to chosen people", (
   assert.deepEqual(biographySourceContributions([personal]), []);
 });
 
+test("sharing with the mentioned people is the default; an explicit choice still overrides it", () => {
+  const withMentions = createContribution({
+    id: "mentions-default-share",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "和周明一起走夜路回家的那次。",
+    scope: "personal",
+    visibility: "private",
+    relatedMemberIds: ["friend-1", "member-1"],
+    now: fixedNow,
+  });
+  assert.deepEqual(withMentions.sharedWithMemberIds, ["friend-1", "member-1"]);
+
+  const explicitSubset = createContribution({
+    id: "explicit-subset",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "提到了两个人，但只想让其中一位看到。",
+    scope: "personal",
+    visibility: "private",
+    relatedMemberIds: ["friend-1", "member-1"],
+    sharedWithMemberIds: ["friend-1"],
+    now: fixedNow,
+  });
+  assert.deepEqual(explicitSubset.sharedWithMemberIds, ["friend-1"]);
+
+  const explicitlyPrivate = createContribution({
+    id: "explicit-empty-share",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "提到了人，但明确谁也不给看。",
+    scope: "personal",
+    visibility: "private",
+    relatedMemberIds: ["friend-1"],
+    sharedWithMemberIds: [],
+    now: fixedNow,
+  });
+  assert.equal(explicitlyPrivate.sharedWithMemberIds, undefined);
+
+  const noMentions = createContribution({
+    id: "no-mentions",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "没有提到任何人的一段回忆。",
+    scope: "personal",
+    visibility: "private",
+    now: fixedNow,
+  });
+  assert.equal(noMentions.sharedWithMemberIds, undefined);
+});
+
 test("only the author can change a personal story's readers", () => {
   const state = createInitialRoomState();
   const author = state.members.find((member) => member.id === "owner");
