@@ -147,6 +147,39 @@ export interface ManuscriptChapter {
    * 规则来源：docs/2026-09-15-memory-segments-plan.md。
    */
   memorySegmentCounts?: Record<string, number>;
+  /**
+   * 待确认的修订：写进一条记忆、或（以后）AI 重新整理这一章时产生，逐条确认/不要，
+   * 全部处理完才会生成新版本；处理到一半退出页面，这个字段还在，下次回来接着确认。
+   * 规则来源：docs/2026-09-15-memory-segments-plan.md，问题八转达用户 2026-09-15 决定。
+   */
+  pendingRevision?: PendingChapterRevision;
+  /**
+   * 这一章的正文里有没有 AI 生成的文字（哪怕只是接受了其中一处新增），和
+   * `generationMode`（整章由谁生成的）、`handEdited`（用户在编辑器里亲手改过）分开记：
+   * 一章可以同时「含 AI 文字」又「被手改过」。只会被置为 true，不会自动退回 false。
+   */
+  containsAiText?: boolean;
+}
+
+export type ChapterEditSource = "ai" | "memory";
+export type ChapterEditStatus = "pending" | "accepted" | "rejected";
+
+export interface ChapterEdit {
+  id: string;
+  kind: "insert" | "delete";
+  /** insert：提议新增的文字；delete：提议删掉的原文，只做对照展示，不参与定位。 */
+  text: string;
+  /** ai：AI 新增或建议删除，框里标「AI 生成」/「AI 建议删除」；memory：用户原话直接追加，不标。 */
+  source: ChapterEditSource;
+  memoryId?: string;
+  /** insert 且来自某条记忆时：提出这条修订那一刻，这条记忆一共有几段；确认后用它更新水位，不用重新查记忆。 */
+  memorySegmentCountAtProposal?: number;
+  status: ChapterEditStatus;
+}
+
+export interface PendingChapterRevision {
+  createdAt: string;
+  edits: ChapterEdit[];
 }
 
 export interface FamilyRoomState {

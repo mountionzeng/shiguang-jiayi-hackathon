@@ -39,7 +39,8 @@ function revisionContent(revision: ManuscriptRevision) {
     draft.sourceCount, draft.generatedAt, draft.generationMode, draft.content ?? null,
     draft.chapters?.map(chapter => [chapter.id, chapter.title, chapter.memoryIds, chapter.content,
       chapter.handEdited ?? null, chapter.generationMode ?? null, chapter.generatedAt ?? null,
-      chapter.backdropImageId ?? null]) ?? null]);
+      chapter.backdropImageId ?? null, chapter.memorySegmentCounts ?? null,
+      chapter.pendingRevision ?? null, chapter.containsAiText ?? null]) ?? null]);
 }
 
 export function manuscriptHistory(state: FamilyRoomState, memberId: string) {

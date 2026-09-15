@@ -46,19 +46,47 @@ memorySegmentCounts?: Record<string, number>   // memoryId -> 这一章上次用
 - 每日一问要问的候选：遍历本账号的故事，找「有新段没写进」的记忆，各选一条问「要写进《XX》吗？」
 - 用户选「先不用」：记一笔「这条记忆在这个故事、这个段数时，用户说过先不用」（`story` 或单独一个小记录，故事级别即可），下次再问的条件是段数比这次又多了，不会天天追着同一段问；选「写进」或没理会都不受影响，随时能在故事页里主动补写。
 
-### 写进时怎么更新章节
+### 写进时怎么更新章节（09-15 修订：先待确认，逐条确认才生效）
 
-- 默认：把还没写进的新段原文追加到这一章正文末尾（复用现在 `placeMemoryInChapter` 的做法），更新 `memorySegmentCounts`；这不算 AI 生成，`handEdited`/`generationMode` 按现在的规则处理，不额外标 AIGC。
-- 可选：用户主动选「请 AI 重新整理这一章」——按 AIGC 规范标注（`generationMode: "cloud-ai"`，清空 `handEdited`；显式标识「【AI 生成】」，问题七提的三条要求一起落地）。
-- 这一章已经手改过（`handEdited`）时，两种方式都要先确认，走现在已有的确认流程，不新增一套。
+> 这一节替换掉最初「默认直接追加原文」的写法。问题八转达用户 09-15 定了更细的流程：
+> 写进先进入「待确认」——新增内容淡绿字打框、（以后 AI 整章重新整理时）建议删除的内容
+> 灰字打框，逐处点「确认 / 不要」，**全部处理完才生成新版本**，改之前那一版进历史版本。
+> 并且已经确认：**用户自己讲的原话接上去，也要点一下确认**（框里不标 AI，AI 新增/建议
+> 删除的框里标「AI 生成」/「AI 建议删除」）。
+
+- `ManuscriptChapter` 新增 `pendingRevision?: { createdAt; edits: ChapterEdit[] }`；`ChapterEdit` 有 `id`、`kind`（`insert` / `delete`）、`text`、`source`（`ai` / `memory`）、可选 `memoryId` 和 `memorySegmentCountAtProposal`、`status`（`pending` / `accepted` / `rejected`）。
+- 写进（阶段 1，已实现）：只对着水位之后的新段生成一条 `insert`、`source: "memory"` 的待确认修订，**不碰正文和水位**，函数 `proposeMemorySegmentInsert`。
+- 逐条确认/不要：`resolvePendingEdit`，只改这一条的状态，不碰文字。
+- 全部处理完：`finalizePendingRevision`——接受的新增按提出顺序接到正文末尾，更新这条记忆在这一章的水位和 `memoryIds`；被「不要」的什么都不留下。**确认/不要本身不算手改，不设置 `handEdited`**（只有用户在编辑器里亲手改字才设）。
+- 接受了任意一条 `source: "ai"` 的新增，标 `ManuscriptChapter.containsAiText = true`（只会变 true，不会自动退回 false）；和 `generationMode`（整章由谁生成）、`handEdited`（手改过）分开记，因为一章可以同时「含 AI 文字」又「被手改过」。
+- 标识文字：`chapterAiLabel(chapter)` 给界面小标签用——含 AI 文字时「文字 AI 生成」，再加上手改过时「文字 AI 生成 · 已由你修改」；`chapterAiExportPrefix(chapter)` 给复制/导出用，同样的文字套上书名号变成「【文字 AI 生成】」「【文字 AI 生成 · 已由你修改】」，问题七要求的三条落地在这里。没有 AI 文字时两个函数都返回空字符串，不加标识。
+- **阶段 2（还没做）：AI 整章重新整理**——用户点「请 AI 重新整理这一章」时，需要把 AI 改写的结果和原文做差异对比，产生若干 `insert`（`source: "ai"`）和 `delete`（`source: "ai"`）修订，逐条确认。这需要一个文字差异算法，比阶段 1 复杂得多，本方案先不做，等阶段 1（记忆写进）跑通、问题八界面接线完之后再单独定。
+
+### 待确认状态怎么持久化
+
+- `pendingRevision` 存在正在编辑的那个版本（`ManuscriptRevision`，`kind: "draft"`）里，和现有版本走同一套保存机制；因为 `currentManuscript()` 只看最新一条，它自然会成为「当前」状态，页面能看到待确认的框。
+- 全部确认完，`finalizePendingRevision` 产出的章节正常存成一条 `kind: "version"` 的新版本，成为新的「当前」；中间那条 `kind: "draft"` 仍在历史里，不删除、不算作正式版本。
+- 中途退出页面：`pendingRevision` 已经落在这一版里，下次回来读到的还是同一条，能接着确认（问题八要求的「建议保留」）。
+- `validateChapters` 已经加了对 `pendingRevision`/`containsAiText` 的轻量校验（条数、单条文字长度上限），待确认的文字暂不计入整本书 20000 字的限制，接受后才计入。
 
 ### 发到电脑端快照
 
 - 建议带上 `segments` 明细，不只是合并后的 `text`：问题七要求的 AIGC 标识要按段/按来源判断，只有整段合并文本做不到。这一条会和问题一·小程序端另外对齐字段。
+- 快照文字建议直接调用 `chapterAiExportPrefix`，不要自己再拼一遍「【...】」前缀。
 
 ## 迁移与回退
 
 - 旧记忆没有 `segments`：读的时候当作「只有一段」，`text` 不变；旧章节没有 `memorySegmentCounts`：当作「水位是 0」，即所有段都算新的（保守，宁可多问一次「要不要写进」，不会漏）。
 - 不改任何现有记忆或历史版本；新字段都是可选的，旧客户端忽略即可。
 
-## 还没写代码，等用户点头
+## 进度
+
+- **已实现**（services/chapters.ts、domain/biography.ts）：`MemorySegment`/`segments`、
+  `appendMemorySegment`；`ChapterEdit`/`pendingRevision`/`containsAiText`；
+  `proposeMemorySegmentInsert`/`resolvePendingEdit`/`pendingRevisionResolved`/
+  `pendingEditCount`/`finalizePendingRevision`；`chapterAiLabel`/`chapterAiExportPrefix`；
+  `shouldAskToWriteIn`/`declineStorySegment`（services/storyRecords.ts）。都只是纯函数
+  和类型，没有接线到任何页面，`interview.ts`/`book.ts` 由问题八接线。
+- **还没做**：阶段 2（AI 整章重新整理产出 delete/insert 差异）；真正的「先不用」持久化
+  （现在只有 `declineStorySegment` 这个纯函数，写进 `Story.declinedSegments` 需要等
+  `stories` 集合在阶段 B 真正开始读写）。
