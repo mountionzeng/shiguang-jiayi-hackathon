@@ -1,4 +1,4 @@
-import { BiographyDraft, ChapterEdit, ChapterEditStatus, ManuscriptChapter, ManuscriptContent, memorySegmentCount, memorySegments, MemoryContribution } from "../domain/biography";
+import { BiographyDraft, ChapterEdit, ChapterEditSource, ChapterEditStatus, ManuscriptChapter, ManuscriptContent, memorySegmentCount, memorySegments, MemoryContribution } from "../domain/biography";
 import { contentFromDelta, contentToDelta, validateContent } from "./bookImages";
 
 const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
@@ -203,6 +203,85 @@ export function proposeMemorySegmentInsert(
   });
 }
 
+/**
+ * 这一章可以被选中的纯文字：跳过图片项，把文本块按顺序拼起来。前端把这个当作
+ * 「用户能选中的正文」，选段的起止字符偏移就是相对这个字符串算的。
+ */
+export function chapterPlainText(chapter: ManuscriptChapter): string {
+  return chapter.content.map(item => item.text ?? "").join("");
+}
+
+interface ResolvedAnchor {
+  contentIndex: number;
+  localStart: number;
+  localEnd: number;
+  text: string;
+}
+
+/** 把 chapterPlainText 里的全局偏移，映射回具体是哪一个文本块、块内哪一段；跨块/越界返回 undefined。 */
+function resolveAnchor(chapter: ManuscriptChapter, start: number, end: number): ResolvedAnchor | undefined {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) return undefined;
+  let cursor = 0;
+  for (let index = 0; index < chapter.content.length; index += 1) {
+    const text = chapter.content[index].text;
+    if (typeof text !== "string") continue; // 图片项不占字符，选段也不能落在这上面
+    const blockStart = cursor;
+    const blockEnd = cursor + text.length;
+    if (start >= blockStart && end <= blockEnd) {
+      return { contentIndex: index, localStart: start - blockStart, localEnd: end - blockStart, text: text.slice(start - blockStart, end - blockStart) };
+    }
+    cursor = blockEnd;
+  }
+  return undefined;
+}
+
+/** 前端提交前可以先用这个自查：这段选区能不能定位（没跨图片、没跨两个文本块）。 */
+export function canProposeSelectionRewrite(chapter: ManuscriptChapter, start: number, end: number): boolean {
+  return end > start && Boolean(resolveAnchor(chapter, start, end));
+}
+
+/**
+ * 针对用户选中的一段原文，提一对「删除原文 / 插入新文字」的待确认修订——比如「AI 帮我
+ * 改写这一段」：原文变成灰字打框的删除，AI 给的新文字变成淡绿字打框的新增，紧跟在原文
+ * 后面，两个都要点一下确认才真正生效。选段必须落在同一个文本块里，不能跨图片或跨两段
+ * 文本；这种情况这里直接不生成修订（原样返回），前端应该在提交前用 canProposeSelectionRewrite
+ * 先拦住，给用户一个「选段不能跨图片」之类的提示。
+ */
+export function proposeSelectionRewrite(
+  chapters: ManuscriptChapter[],
+  chapterId: string,
+  start: number,
+  end: number,
+  newText: string,
+  source: ChapterEditSource = "ai",
+  now = new Date(),
+): ManuscriptChapter[] {
+  const target = chapters.find(chapter => chapter.id === chapterId);
+  const resolved = target && resolveAnchor(target, start, end);
+  const trimmed = newText.trim();
+  if (!target || !resolved || !trimmed) return chapters.map(copyChapter);
+
+  const groupId = newEditId(now);
+  const deleteEdit: ChapterEdit = {
+    id: `${groupId}-del`, kind: "delete", text: resolved.text, source, status: "pending",
+    anchor: { start, end },
+  };
+  const insertEdit: ChapterEdit = {
+    id: `${groupId}-ins`, kind: "insert", text: trimmed, source, status: "pending",
+    anchor: { start: end, end }, // 插入点紧跟在被替换的原文之后
+  };
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId) return copyChapter(chapter);
+    return {
+      ...copyChapter(chapter),
+      pendingRevision: {
+        createdAt: chapter.pendingRevision?.createdAt ?? now.toISOString(),
+        edits: [...(chapter.pendingRevision?.edits ?? []), deleteEdit, insertEdit],
+      },
+    };
+  });
+}
+
 /** 逐条确认/不要一处待确认修订；不改任何文字，只改这一条的状态。 */
 export function resolvePendingEdit(
   chapters: ManuscriptChapter[],
@@ -230,10 +309,14 @@ export function pendingEditCount(chapters: ManuscriptChapter[]): number {
 }
 
 /**
- * 全部确认完，生成这一章的正式内容：接受的新增按提出的顺序接到正文末尾（老段落已经
- * 在正文里的不重复加），更新对应记忆的水位和 memoryIds（一条记忆可以同时在好几章，
- * 只更新这一章）；被「不要」的什么都不改。确认/不要本身不算手改，不碰 `handEdited`；
- * 接受了任何一处 AI 来源的新增，标 `containsAiText`。
+ * 全部确认完，生成这一章的正式内容。两类接受的修订分开处理：
+ * - 有 anchor 的（选段改写产生的删除/插入）：原地拼回对应文本块，按位置从后往前应用，
+ *   前面还没处理的修订的位置不会被后面已经生效的改动带偏；两个修订的选段有重叠时，
+ *   后处理的可能对不上，交给前端在生成待确认修订时本来就避免同一处被提两次。
+ * - 没有 anchor 的新增（写进一条记忆的默认做法）：按提出的顺序接到正文末尾。
+ * 被「不要」的什么都不改。确认/不要本身不算手改，不碰 `handEdited`；接受了任何一处
+ * AI 来源的修订，标 `containsAiText`。更新对应记忆的水位和 memoryIds（只更新这一章，
+ * 一条记忆可以同时在好几章）。
  */
 export function finalizePendingRevision(chapters: ManuscriptChapter[], chapterId: string): ManuscriptChapter[] {
   return chapters.map(chapter => {
@@ -245,9 +328,31 @@ export function finalizePendingRevision(chapters: ManuscriptChapter[], chapterId
     const memoryIds = [...chapter.memoryIds];
     const memorySegmentCounts = { ...chapter.memorySegmentCounts };
     let containsAiText = Boolean(chapter.containsAiText);
+    const accepted = chapter.pendingRevision.edits.filter(edit => edit.status === "accepted");
 
-    for (const edit of chapter.pendingRevision.edits) {
-      if (edit.status !== "accepted" || edit.kind !== "insert") continue;
+    const anchored = accepted
+      .filter(edit => edit.anchor)
+      .map(edit => ({ edit, resolved: resolveAnchor(chapter, edit.anchor!.start, edit.anchor!.end) }))
+      .filter((item): item is { edit: ChapterEdit; resolved: ResolvedAnchor } => Boolean(item.resolved))
+      // 从后往前：同一块里位置更靠后的先应用，前面待处理的偏移不受影响；insert 的 localStart
+      // 等于它对应 delete 的 localEnd，天然排在那条 delete 前面，两者按序生效。
+      .sort((left, right) =>
+        right.resolved.contentIndex - left.resolved.contentIndex ||
+        right.resolved.localStart - left.resolved.localStart ||
+        (right.edit.kind === "insert" ? 1 : 0) - (left.edit.kind === "insert" ? 1 : 0));
+
+    for (const { edit, resolved } of anchored) {
+      const block = content[resolved.contentIndex];
+      if (typeof block.text !== "string") continue;
+      const before = block.text.slice(0, resolved.localStart);
+      const after = block.text.slice(resolved.localEnd);
+      const middle = edit.kind === "insert" ? edit.text : "";
+      content[resolved.contentIndex] = { text: before + middle + after };
+      if (edit.source === "ai") containsAiText = true;
+    }
+
+    for (const edit of accepted) {
+      if (edit.anchor || edit.kind !== "insert") continue;
       const last = content[content.length - 1];
       const separator = !last ? "" : typeof last.text !== "string" ? "\n"
         : last.text.endsWith("\n\n") ? "" : last.text.endsWith("\n") ? "\n" : "\n\n";
@@ -347,6 +452,11 @@ function validatePendingRevision(pendingRevision: unknown): void {
     if (typeof edit.text !== "string" || edit.text.length > MAX_EDIT_TEXT) throw new Error("单处修订最多 " + MAX_EDIT_TEXT + " 字");
     if (edit.source !== "ai" && edit.source !== "memory") throw new Error("待确认修订格式无效");
     if (edit.status !== "pending" && edit.status !== "accepted" && edit.status !== "rejected") throw new Error("待确认修订格式无效");
+    if (edit.anchor !== undefined) {
+      const { start, end } = edit.anchor;
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) throw new Error("待确认修订的选段位置无效");
+    }
+    if (edit.kind === "delete" && edit.anchor === undefined) throw new Error("待确认修订格式无效");
   }
 }
 

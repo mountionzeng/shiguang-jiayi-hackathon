@@ -9,14 +9,17 @@ import {
   MemoryContribution,
 } from "../miniprogram/domain/biography";
 import {
+  canProposeSelectionRewrite,
   chapterAiExportPrefix,
   chapterAiLabel,
   chapterHasNewSegment,
+  chapterPlainText,
   finalizePendingRevision,
   hasUnwrittenSegments,
   pendingEditCount,
   pendingRevisionResolved,
   proposeMemorySegmentInsert,
+  proposeSelectionRewrite,
   resolvePendingEdit,
 } from "../miniprogram/services/chapters";
 
@@ -180,4 +183,78 @@ test("chapterAiLabel / chapterAiExportPrefix：没有 AI 文字不标，含 AI �
   // 整章由 AI 生成（generationMode）也算含 AI 文字，即使 containsAiText 还没被这条流程设置过。
   const fullyGenerated = chapter("c4", "", "", { generationMode: "cloud-ai" });
   assert.equal(chapterAiLabel(fullyGenerated), "文字 AI 生成");
+});
+
+test("chapterPlainText 跳过图片，把文本块按顺序拼起来，供前端计算选段偏移", () => {
+  const withPhoto: ManuscriptChapter = {
+    id: "c1", title: "", memoryIds: [],
+    content: [{ text: "第一段。" }, { photoId: "photo-1" }, { text: "第二段。" }],
+  };
+  assert.equal(chapterPlainText(withPhoto), "第一段。第二段。");
+});
+
+test("选中一段文字改写：先只提一对待确认修订，不直接改正文；确认后原地替换", () => {
+  const target = chapter("chapter-1", "灶台", "我羞耻的原因是因为那不是真正的我。");
+  const text = chapterPlainText(target);
+  const start = text.indexOf("因为那不是真正的我");
+  const end = start + "因为那不是真正的我".length;
+  assert.ok(canProposeSelectionRewrite(target, start, end));
+
+  const proposed = proposeSelectionRewrite([target], "chapter-1", start, end, "因为我一直在保护自己");
+  const proposedChapter = proposed.find(item => item.id === "chapter-1")!;
+  assert.equal(proposedChapter.content.map(item => item.text).join(""), target.content[0].text, "正文还没变");
+  assert.equal(pendingEditCount(proposed), 2, "一条删除、一条插入");
+
+  const edits = proposedChapter.pendingRevision!.edits;
+  const del = edits.find(edit => edit.kind === "delete")!;
+  const ins = edits.find(edit => edit.kind === "insert")!;
+  assert.equal(del.text, "因为那不是真正的我");
+  assert.equal(del.source, "ai");
+  assert.deepEqual(del.anchor, { start, end });
+  assert.equal(ins.text, "因为我一直在保护自己");
+  assert.deepEqual(ins.anchor, { start: end, end });
+
+  const accepted = resolvePendingEdit(resolvePendingEdit(proposed, "chapter-1", del.id, "accept"), "chapter-1", ins.id, "accept");
+  const [finalized] = finalizePendingRevision(accepted, "chapter-1");
+  assert.equal(finalized.content.map(item => item.text).join(""), "我羞耻的原因是因为我一直在保护自己。");
+  assert.equal(finalized.containsAiText, true);
+  assert.equal(finalized.handEdited, undefined, "确认/不要本身不算手改");
+  assert.equal(finalized.pendingRevision, undefined);
+});
+
+test("只接受删除、不接受插入：原文被拿掉，不留下新字", () => {
+  const target = chapter("chapter-1", "灶台", "ABCDEF");
+  const proposed = proposeSelectionRewrite([target], "chapter-1", 1, 3, "XY");
+  const edits = proposed[0].pendingRevision!.edits;
+  const del = edits.find(edit => edit.kind === "delete")!;
+  const ins = edits.find(edit => edit.kind === "insert")!;
+  const resolved = resolvePendingEdit(resolvePendingEdit(proposed, "chapter-1", del.id, "accept"), "chapter-1", ins.id, "reject");
+  const [finalized] = finalizePendingRevision(resolved, "chapter-1");
+  assert.equal(finalized.content.map(item => item.text).join(""), "ADEF");
+});
+
+test("跨图片或跨两个文本块的选段不生成修订", () => {
+  const withPhoto: ManuscriptChapter = {
+    id: "chapter-1", title: "", memoryIds: [],
+    content: [{ text: "前段" }, { photoId: "photo-1" }, { text: "后段" }],
+  };
+  assert.equal(canProposeSelectionRewrite(withPhoto, 0, 4), false, "跨过了图片");
+  const untouched = proposeSelectionRewrite([withPhoto], "chapter-1", 0, 4, "改写");
+  assert.equal(untouched[0].pendingRevision, undefined);
+
+  const twoBlocks: ManuscriptChapter = {
+    id: "chapter-2", title: "", memoryIds: [],
+    content: [{ text: "第一块" }, { text: "第二块" }],
+  };
+  assert.equal(canProposeSelectionRewrite(twoBlocks, 1, 4), false, "跨了两个文本块");
+});
+
+test("同一章两处独立的选段改写互不干扰，即使都在同一个文本块里", () => {
+  const target = chapter("chapter-1", "", "ABCDEFGHIJ");
+  const first = proposeSelectionRewrite([target], "chapter-1", 1, 3, "xy"); // BC -> xy
+  const both = proposeSelectionRewrite(first, "chapter-1", 6, 8, "ZZ"); // GH -> ZZ
+  const acceptAll = both[0].pendingRevision!.edits.reduce(
+    (chapters, edit) => resolvePendingEdit(chapters, "chapter-1", edit.id, "accept"), both);
+  const [finalized] = finalizePendingRevision(acceptAll, "chapter-1");
+  assert.equal(finalized.content.map(item => item.text).join(""), "AxyDEFZZIJ");
 });

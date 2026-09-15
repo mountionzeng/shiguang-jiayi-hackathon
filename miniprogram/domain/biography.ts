@@ -167,13 +167,21 @@ export type ChapterEditStatus = "pending" | "accepted" | "rejected";
 export interface ChapterEdit {
   id: string;
   kind: "insert" | "delete";
-  /** insert：提议新增的文字；delete：提议删掉的原文，只做对照展示，不参与定位。 */
+  /** insert：提议新增的文字；delete：提议删掉的原文，用来对照展示，也用来核对 anchor 有没有对上。 */
   text: string;
-  /** ai：AI 新增或建议删除，框里标「AI 生成」/「AI 建议删除」；memory：用户原话直接追加，不标。 */
+  /** ai：AI 新增/建议删除/改写，框里标「AI 生成」/「AI 建议删除」；memory：用户原话直接追加，不标。 */
   source: ChapterEditSource;
   memoryId?: string;
   /** insert 且来自某条记忆时：提出这条修订那一刻，这条记忆一共有几段；确认后用它更新水位，不用重新查记忆。 */
   memorySegmentCountAtProposal?: number;
+  /**
+   * 定位在正文里的具体位置：用「这一章跳过图片、把文本块按顺序拼起来的纯文字」
+   * 算字符偏移（services/chapters.ts 的 chapterPlainText）。delete 必须有 anchor，
+   * 标出要删的原文在哪一段；insert 没有 anchor 时接到正文末尾（写进一条记忆的默认做法），
+   * 有 anchor 时插在这个位置（start===end 是插入点，比如紧跟在同一次提出的删除之后）。
+   * 选段跨了图片或跨了两个文本块时不生成 anchor，交给前端提前拦住。
+   */
+  anchor?: { start: number; end: number };
   status: ChapterEditStatus;
 }
 
