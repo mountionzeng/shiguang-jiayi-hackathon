@@ -70,8 +70,9 @@ _id: "<familyId>__<photoId>"
 }
 ```
 
-- 数据库权限：**仅创建者可读写**。
-- 先传文件，再写记录。有记录，才算这张照片「已在云端」。
+- 记录由 `photoAccess.register` 在云函数里写（3.7）；数据库权限设为**仅创建者可读、仅管理端可写**，小程序端只能读自己的记录。
+- 先传文件，再调 `register` 写记录。有记录，才算这张照片「已在云端」。
+- 增加内容检测字段：`moderation`、`moderationLabel`、`moderationTraceId`、`moderatedAtMs`（3.8）。
 
 ### 3.4 权限规则（**需要用户同意后在控制台改，我不改**）
 
@@ -104,17 +105,17 @@ _id: "<familyId>__<photoId>"
 - 界面显示（界面由问题八做）：照片角上一个小状态「正在存到云端 / 没存上 · 点一下重试」；「我的」页显示「还有 N 张照片没存到云端」。
 - 书稿能不能保存，不取决于照片有没有上传完：文字照常保存，照片慢慢补。
 
-### 3.7 统一的「读取照片」接口（问题五通过它读照片，**待和问题五定稿**）
+### 3.7 统一的「读取照片」接口（**和问题五 09-15 定稿**）
 
-所有要读云端照片的地方都走同一个云函数 `photoAccess` 的 `read` 动作，权限只在这一处核对，不在各处各写一份。
+所有读云端照片的地方都走云函数 `photoAccess`，权限只在这一处核对。问题五用 `cloud.callFunction` 调用，不把读取模块放进它的函数目录。
 
-**入参**
+**`read` 入参**
 
 ```
 {
   action: "read",
   familyId: string,
-  photoIds: string[],              // 1–9 个；ai-reference 最多 3 个
+  photoIds: string[],              // view：1–9 个；ai-caption / ai-reference：1–3 个
   variant: "small" | "display",    // 看图起草用 small，参考图出图用 display
   purpose: "view" | "ai-caption" | "ai-reference",
   // 只有云函数之间调用时才带：
@@ -126,44 +127,80 @@ _id: "<familyId>__<photoId>"
 **身份**
 
 - 小程序端调用：只认 `getWXContext().OPENID`，忽略入参里的 `onBehalfOfOpenid`。
-- 云函数之间调用（例如 `storyImages` 替用户读照片）：调用方先用自己拿到的 OPENID 核对过用户，再把它作为 `onBehalfOfOpenid` 传过来。同时要满足两条，才接受这个身份：`SOURCE` 不是 `wx_client` / `wx_devtools`，并且 `internalToken` 等于环境变量 `PHOTO_ACCESS_INTERNAL_TOKEN`（两个云函数的环境变量里各配一份，不写进代码和文档）。云函数之间调用时 OPENID 会不会自动传过来、`SOURCE` 实际是什么值，都要实测。
+- 云函数之间调用：`SOURCE` 不是 `wx_client` / `wx_devtools`，并且 `internalToken` 等于环境变量 `PHOTO_ACCESS_INTERNAL_TOKEN`（`photoAccess`、`storyImages` 各配一份，不写进代码和文档），才接受 `onBehalfOfOpenid` 作为用户身份。**不要求调用链上还有用户的 OPENID**：`storyImages` 的定时任务每分钟补做排队中的图，调用时没有用户在场，用提交时核对过、记在任务上的 `requesterOpenId`（问题五 09-15 要求）。
 
 **权限**
 
-| purpose | 谁能读 |
-|---|---|
-| `view`（显示） | 上传者本人；家人按问题三的房间级规则（**待对齐问题三**） |
-| `ai-caption`、`ai-reference`（发给模型） | **只有上传者本人**（`photos._openid` 等于调用者），不要求是家庭主人：受邀家人可以让 AI 看自己上传的照片，但房主不能把家人上传的照片发给模型。把照片发给模型只能由上传者决定；「存到云端」和「发给腾讯云 TokenHub 做 AI 处理」是两次单独同意（个保法第 23 条），后者由问题五在调用前取得，本接口不代替它问 |
+| purpose | 谁能读 | 内容检测结果（3.8） |
+|---|---|---|
+| `view` | 上传者本人；家人按记忆可见判断（3.4） | 本人都能看；家人看不到 `risky` |
+| `ai-caption`、`ai-reference` | **只有上传者本人**（`photos._openid` 等于调用者），不要求是家庭主人；房主不能把家人上传的照片发给模型。发给模型前的单独同意由问题五在调用前取得，本接口不代替它问 | `risky` 不发，返回 `blocked`；`pending` / `review` 可发（导入后马上起草时，检测结果多半还没回来） |
 
 **返回**
 
 ```
+// 整次请求失败（token 不对、参数错、张数超限、没有身份），和 storyImages 格式一致：
+{ error: { code, message } }
+
+// 否则：
 {
   photos: [{
     photoId,
-    status: "ok" | "not_uploaded" | "deleted" | "forbidden" | "not_found",
+    status: "ok" | "not_uploaded" | "deleted" | "forbidden" | "not_found" | "blocked" | "too_large",
     contentType?: "image/jpeg", width?, height?, bytes?,
-    url?: string         // 临时链接
+    url?: string,      // purpose=view：临时链接，给小程序显示
+    base64?: string    // purpose=ai-*：不带 data: 前缀
   }]
 }
 ```
 
-- **只返回临时链接，不返回 base64**（问题五 09-15：TokenHub 支持图片链接，它的质检已经这样用）。代价是链接会被服务商拿去下载，这一点写进看图和参考图的单独同意里。
+- **发给模型的一律 base64，不给临时链接**：临时链接会被服务商下载，也可能留在对方日志里（问题五 09-15 同意）。`view` 给小程序显示，用临时链接。
+- `display` 的 base64：单张 ≤ 600 KB、一次合计 ≤ 1.5 MB，超出的那张返回 `too_large`，问题五改取这张的 `small`。云函数之间调用的返回体上限要实测，实测后再调这两个数。
+- 状态含义：`not_uploaded` 手机里有、还没传到云端；`deleted` 用户删了云端照片（问题五据此记「没画成、不占名额」）；`not_found` 照片不存在，**或者不是本人家庭的照片**（不暴露存在与否）；`forbidden` 只用于本家庭内没有权限（例如 `view` 时家人看不到这条记忆）；`blocked` 内容检测为 `risky`。
+- 每张单独给状态；**不返回 fileID**；超时设 10 秒；只读，不调用模型。
 
-- 每张照片单独给状态，一张失败不影响其他照片。`not_uploaded` 表示手机里有，但还没传到云端，调用方提示用户稍后再试。
-- **不返回 fileID**，避免调用方拿到 fileID 后绕过这里的权限核对。
-- 超时设 10 秒。临时链接的实际有效期实测后写进本节。
-- 这个云函数**只读照片**，不调用任何模型、不写日志以外的数据。
+**`register` 动作**（小程序上传完两份文件后调用）
 
-**在照片上云做完之前**：问题五按上面的返回格式，在自己的测试里用虚构测试图做替身，不连真实的 `photos` 集合。要用我的实现时，把本分支合进它的分支，不在两边各写一份。
+`{ action: "register", familyId, photoId, source, width, height, displayBytes, smallBytes }` → 云函数按固定路径核对两份文件存在，写 `photos` 记录，并提交内容检测（3.8）。`photos` 记录由云函数写，小程序端只读自己的记录。
 
-### 3.8 图片内容安全检测（问题七 09-15 要求）
+**先后**：照片上云做完前，问题五按上面的返回格式用虚构测试图做替身；要用我的实现时，把本分支合进它的分支。
 
-- 照片会给家人看，要接 `security.mediaCheckAsync`（`storyImages` 已有调用可参考）。
-- 显示图上传并写好 `photos` 记录后，由云函数提交检测；`photos` 记录增加 `moderation: "pending" | "pass" | "risky"` 和 `moderationTraceId`。检测要求 `openid` 是近两小时访问过小程序的用户，就用上传者本人；刚上传的人一定满足。
-- `photoAccess.read` 的 `view`：本人始终能看自己的照片；**家人只拿得到 `pass` 的照片**，`pending` 显示「照片正在检查」，`risky` 显示「这张照片没通过平台检查」。`ai-*` 用途不受检测结果限制（只发给本人选的模型），是否也限制 `pass` 待问题五意见。
-- ⚠️ 检测结果通过消息推送事件 `wxa_media_check` 回来，目前推送配给了 `storyImages`，一个事件大概只能配一个云函数，**待和问题五定**：由 `storyImages` 收到后按 traceId 同时查 `story_images` 和 `photos`，或者改成一个转发函数。
-- 补传的旧照片同样检测；推送失败或超时由定时任务兜底重查（参考 `storyImages` 的 sweep）。
+### 3.8 图片内容安全检测（问题七、协调会话 09-15 要求）
+
+依据：微信 [mediaCheckAsync](https://developers.weixin.qq.com/miniprogram/dev/server/API/sec-center/sec-check/api_mediacheckasync.html)、[云函数接收消息推送](https://developers.weixin.qq.com/miniprogram/dev/wxcloudservice/wxcloud/guide/functions/openapi.html)。
+
+**官方要点**
+
+- 参数：`media_url`、`media_type: 2`（图片）、`version: 2`、`scene`（1 资料 / 2 评论 / 3 论坛 / 4 社交日志）、`openid`（**用户需在近两小时访问过小程序**）。
+- 限制：单文件 ≤ 10 MB；每个 AppID 每分钟 2000 次、每天 20 万次。
+- 结果：**30 分钟内**通过消息推送事件 `wxa_media_check` 异步返回，含 `trace_id`、`result.suggest`（`pass` / `review` / `risky`）、`result.label`。
+- 推送配置在「云开发控制台 → 设置 → 其他设置 → 消息推送」；**同一个〈消息类型, 事件类型〉只能推到一个环境的一个云函数**。现在 `wxa_media_check` 已配给 `storyImages`，所以不能再给 `photoAccess` 配一份。
+
+**什么时候检测：上传时，所有照片都检测**（不是共享时）
+
+- 家人能不能看，由记忆的分享设置决定，随时会变（问题三的流程），在共享那一刻再检测要去改问题三的每个入口；上传时检测，等到家人看时结果早已回来。
+- 上传那一刻上传者一定在使用小程序，满足「近两小时访问过」。
+- 补传的旧照片同样在补传上传时检测。
+- 检测的是显示图（`register` 时用 `getTempFileURL` 拿临时链接交给微信），`scene: 4`。
+
+**异步结果怎么收（待问题五同意）**
+
+- 不改控制台推送配置，仍推给 `storyImages`。
+- 新增一个很小的登记集合 `media_checks`：谁提交检测，谁写一条 `{ _id: traceId, collection: "photos" | "story_images", docId, submittedAtMs }`。
+- `storyImages` 收到推送后按 `traceId` 查 `media_checks`：属于 `story_images` 的走它原有逻辑；属于 `photos` 的，只把 `moderation`、`moderationLabel`、`moderatedAtMs` 写回 `photos` 记录。照片特有的处理不写进 `storyImages`，由 `photoAccess` 读取时按字段判断。
+- 兜底：提交失败记 `moderation: "unchecked"`；超过 30 分钟还是 `pending` 的，由 `photoAccess` 的定时任务重新提交（上传者近两小时没访问时跳过，下次访问再提交）。
+
+**不合规时怎么处理**（和 `storyImages` 现有做法、问题三的文字检测对齐）
+
+| 结果 | 本人 | 家人 | 发给模型 |
+|---|---|---|---|
+| `pending` / `unchecked` | 正常显示 | 正常显示（与 `storyImages` 一致：只隐藏 `risky`） | 可以 |
+| `pass` | 正常 | 正常 | 可以 |
+| `review` | 正常 | 正常，记录在案 | 可以 |
+| `risky` | 照片上显示「这张照片没通过平台检查，家人看不到」，**不自动删除用户自己的照片**（和 AI 出图不同），本人可以自己删 | 显示「这张照片暂时看不到」，拿不到链接 | 不发，返回 `blocked` |
+
+- 记录：检测结果只存在 `photos` 记录的 `moderation*` 字段上，不另存照片内容。
+- 结果处理（拦截、提示、记录字段名）和问题三的家人共享文字检测（`msgSecCheck`）用同一套：`moderation: "pass" | "review" | "risky" | "pending" | "unchecked"`、`moderationLabel`、`moderatedAtMs`。云函数之间没有公共代码层，把「按 suggest 得出处理方式」的几行函数做成同名小文件 `contentSafety.js`，各函数目录各放一份，注释写明保持一致。**待和问题三对齐。**
 
 ## 四、手机里已有照片的补传
 
