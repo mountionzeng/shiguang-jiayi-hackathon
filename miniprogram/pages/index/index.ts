@@ -11,6 +11,8 @@ import {
   FOLLOW_UP_LABEL,
   InterviewDimension,
   nextInterviewPrompt,
+  pickInterviewQuestion,
+  sharedQuestionSeed,
 } from "../../domain/interview";
 import {
   loadCurrentMemberRemoteFirst,
@@ -205,7 +207,7 @@ Page({
     storyOptions: [] as StoryOptionView[],
     currentStoryTitle: "",
     currentStoryLabel: "",
-    startPrompt: "",
+    dailyQuestion: "",
     recommendedQuestionLabel: "",
     recommendedQuestionContext: "",
     recommendedQuestion: "",
@@ -276,9 +278,8 @@ Page({
       storyOptions: storyOptionsFor(shelf, currentStoryTitle),
       currentStoryTitle,
       currentStoryLabel: currentStoryTitle || "先随便聊聊",
-      startPrompt: currentStoryTitle
-        ? `说说「${currentStoryTitle}」吧，从哪一段开始都行。`
-        : "想到什么就说什么，聊完再决定放进哪个故事。",
+      // 这个故事还没有记忆可接着问时，用当天的共用题目；聊天页开场用同一个种子，问的是同一题。
+      dailyQuestion: pickInterviewQuestion(sharedQuestionSeed(), "personal").text,
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
       recommendedQuestionContext: recommendedQuestion?.context ?? "",
       recommendedQuestion: recommendedQuestion?.text ?? "",

@@ -113,7 +113,7 @@
 
     <view class="recommended" wx:if="{{hasProfile}}">
       <view class="recommended-head">
-        <text class="recommended-title serif">{{hasRecommendedQuestion ? '推荐问' : '开始聊'}}</text>
+        <text class="recommended-title serif">每日一问</text>
         <button
           wx:if="{{hasRecommendedQuestion}}"
           class="recommended-refresh"
@@ -127,23 +127,23 @@
         class="recommended-card"
         bindtap="continueRecommendedQuestion"
         role="button"
-        aria-label="继续回答推荐问题"
+        aria-label="回答每日一问"
       >
-        <view class="recommended-label">{{recommendedQuestionLabel}}</view>
+        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryTitle + '》' : currentStoryLabel}}</view>
         <view class="recommended-context">{{recommendedQuestionContext}}</view>
         <view class="recommended-question">{{recommendedQuestion}}</view>
-        <view class="recommended-action">继续聊聊</view>
+        <view class="recommended-action">回答这一问</view>
       </view>
       <view
         wx:else
         class="recommended-card"
         bindtap="startCurrentStory"
         role="button"
-        aria-label="开始聊{{currentStoryLabel}}"
+        aria-label="回答每日一问：{{currentStoryLabel}}"
       >
-        <view class="recommended-label">{{currentStoryLabel}}</view>
-        <view class="recommended-question">{{startPrompt}}</view>
-        <view class="recommended-action">开始聊</view>
+        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryTitle + '》' : currentStoryLabel}}</view>
+        <view class="recommended-question">{{dailyQuestion}}</view>
+        <view class="recommended-action">回答这一问</view>
       </view>
     </view>
 
@@ -153,21 +153,28 @@
         <text class="recent-note">点开就能接着说</text>
       </view>
 
-      <view
-        class="story-row"
-        wx:for="{{recentStories}}"
-        wx:key="id"
-        data-id="{{item.id}}"
-        data-title="{{item.storyTitle}}"
-        bindtap="continueStory"
-      >
-        <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
-        <view class="story-copy">
-          <view class="story-title serif">{{item.title}}</view>
-          <view class="story-excerpt">{{item.excerpt}}</view>
-          <view class="story-meta">{{item.dateLabel}} · {{item.countLabel}}</view>
+      <view class="recent-timeline">
+        <view
+          class="timeline-row"
+          wx:for="{{recentStories}}"
+          wx:key="id"
+          data-id="{{item.id}}"
+          data-title="{{item.storyTitle}}"
+          bindtap="continueStory"
+        >
+          <view class="timeline-mark" aria-hidden="true">
+            <text class="timeline-date serif">{{item.dateLabel}}</text>
+            <view class="timeline-bookmark"><image class="timeline-bookmark-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
+          </view>
+          <view class="story-row">
+            <view class="story-copy">
+              <view class="story-title serif">{{item.title}}</view>
+              <view class="story-excerpt">{{item.excerpt}}</view>
+              <view class="story-meta">{{item.countLabel}}</view>
+            </view>
+            <view class="story-continue">继续聊</view>
+          </view>
         </view>
-        <view class="story-continue">继续聊</view>
       </view>
     </view>
   </view>
