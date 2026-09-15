@@ -319,6 +319,52 @@ button::after {
   width: 52rpx;
 }
 
+/* ---------- 带日期的书签：时间轴上每段记忆挂一枚，日期竖排叠在书签留白处 ---------- */
+/* 书签中心在 48rpx，时间轴的竖线要画在同一位置。 */
+
+.date-bookmark {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 96rpx;
+  height: 236rpx;
+  margin-right: 12rpx;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 82%, transparent 100%);
+}
+
+.date-bookmark-art {
+  position: absolute;
+  top: 0;
+  left: 16rpx;
+  display: block;
+  width: 64rpx;
+}
+
+.date-bookmark-date {
+  position: absolute;
+  top: 58rpx;
+  left: 16rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 64rpx;
+  color: #3d6556;
+  line-height: 1.12;
+}
+
+.date-bookmark-part {
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.date-bookmark-part:nth-child(2n) {
+  color: var(--ink-soft);
+  font-size: 20rpx;
+  font-weight: 400;
+}
+
 /* ---------- 进入动画：极轻的弥散 ---------- */
 
 .page-enter {

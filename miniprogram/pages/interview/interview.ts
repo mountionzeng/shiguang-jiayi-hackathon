@@ -225,7 +225,7 @@ Page({
       ? `${source.text.slice(0, 72)}${source.text.length > 72 ? "……" : ""}`
       : "";
     // 从首页推荐问点进来时，第一句就是用户刚才点的那个问题，不换成泛泛的“后来你又想起了什么”。
-    const requestedQuestion = source ? decodeQueryValue(options.question).slice(0, 80) : "";
+    const requestedQuestion = decodeQueryValue(options.question).slice(0, 80);
     const requestedDimension = INTERVIEW_DIMENSIONS.find(
       (dimension) => dimension === options.dimension,
     );
@@ -237,7 +237,7 @@ Page({
         : `我们接着这段往下聊吧。\n上次你讲到：“${sourcePreview}”\n${continuation}`
       : requestedMemoryType === "note"
         ? "先把这一刻想到的留下来吧。几句话也可以，聊完后再决定放进哪个故事。"
-        : `${question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事、谁可以看。`;
+        : `${requestedQuestion || question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事。`;
 
     this.setData({
       memberName: member.name,

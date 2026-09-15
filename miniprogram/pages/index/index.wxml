@@ -115,7 +115,6 @@
       <view class="recommended-head">
         <text class="recommended-title serif">每日一问</text>
         <button
-          wx:if="{{hasRecommendedQuestion}}"
           class="recommended-refresh"
           bindtap="changeRecommendedQuestion"
           hover-class="none"
@@ -162,9 +161,9 @@
           data-title="{{item.storyTitle}}"
           bindtap="continueStory"
         >
-          <view class="timeline-mark" aria-hidden="true">
-            <text class="timeline-date serif">{{item.dateLabel}}</text>
-            <view class="timeline-bookmark"><image class="timeline-bookmark-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
+          <view class="date-bookmark" aria-hidden="true">
+            <image class="date-bookmark-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image>
+            <view class="date-bookmark-date serif"><text class="date-bookmark-part" wx:for="{{item.dateParts}}" wx:for-item="part" wx:key="*this">{{part}}</text></view>
           </view>
           <view class="story-row">
             <view class="story-copy">

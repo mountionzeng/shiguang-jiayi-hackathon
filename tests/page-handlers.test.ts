@@ -698,7 +698,11 @@ test("switching the story on home changes what it asks next, and a new story ope
   assert.equal(page.data.currentStoryLabel, "先随便聊聊");
   assert.equal(page.data.hasRecommendedQuestion, false, "no untitled memory to follow up on");
   callPage(page, "startCurrentStory");
-  assert.equal(last(storage.navigations), "/pages/interview/interview?memoryType=note");
+  assert.equal(
+    last(storage.navigations),
+    `/pages/interview/interview?memoryType=memoir&question=${encodeURIComponent(String(page.data.dailyQuestion))}`,
+    "the daily question on home is the first thing chat asks",
+  );
 
   callPage(page, "startNewStory");
   assert.equal(last(storage.toasts), "先给故事起个名字");

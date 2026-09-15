@@ -10,6 +10,7 @@ import {
 import { loadRoomStateRemoteFirst } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
 import { loadSharedFamilyRoom } from "../../services/familyInviteService";
+import { bookmarkDateParts } from "../../services/memoryDates";
 
 interface RoomLoadOptions { familyId?: string; }
 
@@ -41,6 +42,7 @@ interface MemoryRow {
   title: string;
   text: string;
   dateLabel: string;
+  dateParts: string[];
   storyLabel: string;
   placeLabel: string;
 }
@@ -122,6 +124,7 @@ Page({
           title: memory.title ?? "",
           text: memory.text,
           dateLabel: formatDate(memory.createdAt),
+          dateParts: bookmarkDateParts(memory.createdAt),
           storyLabel: contributionStoryTitle(memory),
           placeLabel: places.length
             ? "写进了 " + places.map((place) => `${place.bookName}的书${place.chapter}`).join("、")

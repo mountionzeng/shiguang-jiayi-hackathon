@@ -1083,12 +1083,8 @@
 .story-menu-item.story-menu-item { width: 100%; margin-left: 0; margin-right: 0; }
 
 /* ---- 最近聊过：日期和书签串成一条时间轴 ---- */
-/* 左边一根细线从上到下，每段记忆在线上挂一枚书签，书签上方写日期；右边是记忆卡片。 */
+/* 左边一根细线从上到下，每段记忆在线上挂一枚书签，日期竖排叠在书签上（.date-bookmark 在 app.wxss）；右边是记忆卡片。 */
 .recent-timeline { position: relative; margin-top: 18rpx; }
-.recent-timeline::before { position: absolute; top: 20rpx; bottom: 20rpx; left: 58rpx; width: 2rpx; background: rgba(79, 127, 107, 0.26); content: ""; }
+.recent-timeline::before { position: absolute; top: 20rpx; bottom: 20rpx; left: 47rpx; width: 2rpx; background: rgba(79, 127, 107, 0.26); content: ""; }
 .timeline-row { position: relative; display: flex; align-items: stretch; margin-top: 22rpx; }
 .timeline-row:active { opacity: 0.72; }
-.timeline-mark { position: relative; z-index: 1; display: flex; flex: none; flex-direction: column; align-items: center; width: 118rpx; margin-right: 14rpx; }
-.timeline-date { padding: 4rpx 0; background: var(--paper); color: var(--jade); font-size: 23rpx; font-weight: 600; line-height: 1.3; text-align: center; }
-.timeline-bookmark { width: 40rpx; height: 132rpx; margin-top: 6rpx; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%); mask-image: linear-gradient(to bottom, #000 70%, transparent 100%); }
-.timeline-bookmark-art { display: block; width: 40rpx; }
