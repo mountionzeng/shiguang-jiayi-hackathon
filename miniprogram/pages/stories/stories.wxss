@@ -10,10 +10,10 @@
 .story-book { position: relative; box-sizing: border-box; display: flex; width: calc(50% - 10rpx); height: 500rpx; margin: 0; padding: 0; overflow: visible; text-align: left; white-space: normal; color: var(--ink); background: transparent; border: 0; box-shadow: none; transition: transform 180ms ease, filter 180ms ease; }
 .story-book::after { position: absolute; right: 4rpx; bottom: -9rpx; left: 20rpx; z-index: 0; height: 13rpx; border: 0; border-radius: 50%; background: rgba(42,46,43,.14); filter: blur(8rpx); content: ""; }
 .story-book-shell { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; pointer-events: none; }
-.book-cover-tint { position: absolute; top: 19rpx; right: 15rpx; bottom: 29rpx; left: 52rpx; z-index: 2; border-radius: 2rpx 8rpx 10rpx 2rpx; background: rgba(79,127,107,.10); pointer-events: none; }
-.story-book:nth-child(4n+2) .book-cover-tint { background: rgba(74,110,136,.12); }
-.story-book:nth-child(4n+3) .book-cover-tint { background: rgba(176,130,57,.13); }
-.story-book:nth-child(4n+4) .book-cover-tint { background: rgba(180,80,60,.10); }
+.book-cover-tint { position: absolute; top: 19rpx; right: 15rpx; bottom: 29rpx; left: 52rpx; z-index: 2; border-radius: 2rpx 8rpx 10rpx 2rpx; background: rgba(79,127,107,.06); pointer-events: none; }
+.story-book:nth-child(4n+2) .book-cover-tint { background: rgba(74,110,136,.18); }
+.story-book:nth-child(4n+3) .book-cover-tint { background: rgba(176,130,57,.2); }
+.story-book:nth-child(4n+4) .book-cover-tint { background: rgba(180,80,60,.14); }
 .book-cover-mark { position: absolute; top: 48rpx; right: 34rpx; z-index: 3; width: 72rpx; height: 62rpx; opacity: .52; pointer-events: none; }
 .book-cover-mark view { position: absolute; border-radius: 50%; }
 .book-cover-mark view:nth-child(1) { top: 0; left: 0; width: 46rpx; height: 46rpx; background: rgba(79,127,107,.30); }

@@ -35,6 +35,7 @@
       <view class="story-shelf">
         <button class="story-book book-layout-{{index % 4}} {{!item.manuscriptMemberId ? 'story-book-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="story-book-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
           <image class="story-book-shell" src="/assets/illustrations/story-book-cover.png" mode="scaleToFill" aria-hidden="true"></image>
+          <view class="book-cover-tint" aria-hidden="true"></view>
           <view class="book-cover">
             <view class="book-number">拾光录 / {{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
             <view class="book-title-slip"><view class="book-name serif">{{item.title}}</view></view>
