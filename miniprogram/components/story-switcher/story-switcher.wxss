@@ -535,3 +535,25 @@
   .capture-memory { padding-right: 39rpx; padding-left: 42rpx; }
   .capture-memory-next { font-size: 20rpx; }
 }
+
+/* ---- 回忆录浮层修正 ---- */
+/* 微信按钮默认宽 184px（选择器带属性，优先级比单个类名高），要用两层类名压过去，纸片才能占满一行。 */
+.capture-memory-stack .capture-memory,
+.capture-memory-stack .capture-all {
+  width: 100%;
+  margin-right: 0;
+  margin-left: 0;
+}
+
+/* 浮层垫一张象牙纸，背后页面的字不再透出来；标题改成墨色。 */
+.capture-sheet-recall {
+  padding-top: 28rpx;
+  border-radius: 32rpx 32rpx 0 0;
+  background: rgba(251, 248, 241, 0.97);
+  box-shadow: 0 -12rpx 40rpx rgba(36, 43, 39, 0.12);
+}
+
+.capture-sheet-recall .capture-title {
+  color: var(--ink);
+  text-shadow: none;
+}

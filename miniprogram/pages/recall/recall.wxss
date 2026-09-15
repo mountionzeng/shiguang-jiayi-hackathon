@@ -2,3 +2,5 @@
 .recall-page { padding-bottom: calc(120rpx + env(safe-area-inset-bottom)); }
 .story-memory { position: relative; display: block; width: 100%; min-height: 190rpx; margin: 20rpx 0; padding: 28rpx 28rpx 28rpx 96rpx; text-align: left; background: #fffdf6; border-radius: 12rpx 24rpx 18rpx 10rpx; }
 .story-memory::after { border: 0; }
+/* 微信按钮默认宽 184px，优先级高于单个类名，用两层类名让记忆卡片占满一行。 */
+.note-list .story-memory { width: 100%; margin-right: 0; margin-left: 0; }

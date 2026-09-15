@@ -72,3 +72,6 @@
 .story-memory { position: relative; width: 100%; border: 1rpx solid rgba(176,130,57,.14); background: rgba(255,254,251,.86); box-shadow: 4rpx 7rpx 16rpx rgba(42,46,43,.05); }
 .story-memory { min-height: 190rpx; padding-left: 96rpx; }
 @media (prefers-reduced-motion: reduce) { .story-book { transition: none; } }
+/* 微信按钮默认宽 184px，优先级高于单个类名：书架上的书和记忆卡片都用两层类名写宽度，书才能一行两本。 */
+.story-shelf .story-book { width: calc(50% - 10rpx); margin: 0; }
+.note-list .story-memory { width: 100%; margin-right: 0; margin-left: 0; }

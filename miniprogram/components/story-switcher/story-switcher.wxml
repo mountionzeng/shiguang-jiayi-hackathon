@@ -92,7 +92,7 @@
   </view>
 
   <!-- 回忆录：先挑一段已经讲过的，再接着聊 -->
-  <scroll-view class="capture-recall" scroll-y wx:if="{{memoirOpen}}" catchtap="keepChooserOpen">
+  <scroll-view class="capture-recall" scroll-y wx:if="{{memoirOpen}}">
     <view class="capture-memory-stack">
       <button
         class="capture-memory"
@@ -100,7 +100,7 @@
         wx:key="id"
         data-id="{{item.id}}"
         data-title="{{item.storyTitle}}"
-        bindtap="continueMemory"
+        catchtap="continueMemory"
         hover-class="capture-memory-pressed"
         aria-label="接着聊{{item.title}}"
       >
@@ -125,7 +125,7 @@
 
       <button
         class="capture-all"
-        bindtap="openAllMemories"
+        catchtap="openAllMemories"
         hover-class="capture-all-pressed"
         aria-label="从全部回忆里挑一段"
       >
