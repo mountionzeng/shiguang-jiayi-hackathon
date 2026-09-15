@@ -107,6 +107,15 @@ export interface MemoryContribution {
    * AI 整理入口、列表摘要都只读 text，不用改）。没有这个字段的旧记忆按只有一段处理。
    */
   segments?: MemorySegment[];
+  /**
+   * 软删除：放进「最近删除」，从所有正常列表里隐去，可以恢复。已经写进某一章的原文
+   * 不受影响——删除来源记忆，不会拿掉书稿里已经存下的字。真正永久删除是另一个动作。
+   */
+  deletedAt?: string;
+}
+
+export function isActiveMemory(contribution: MemoryContribution): boolean {
+  return !contribution.deletedAt;
 }
 
 export interface BiographyDraft {
@@ -488,6 +497,7 @@ export function pendingFamilyContributions(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
+      isActiveMemory(contribution) &&
       contributionScope(contribution) === "family" &&
       contribution.reviewStatus === "pending",
   );
@@ -496,7 +506,7 @@ export function pendingFamilyContributions(
 export function confirmedContributions(
   contributions: MemoryContribution[],
 ): MemoryContribution[] {
-  return contributions.filter((contribution) => contribution.reviewStatus === "confirmed");
+  return contributions.filter((contribution) => isActiveMemory(contribution) && contribution.reviewStatus === "confirmed");
 }
 
 export function biographySourceContributions(
@@ -504,6 +514,7 @@ export function biographySourceContributions(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
+      isActiveMemory(contribution) &&
       contributionScope(contribution) === "family" &&
       contribution.reviewStatus === "confirmed" &&
       contribution.visibility === "family",
@@ -515,7 +526,7 @@ export function biographySourceContributions(
  * 删除某个档案也不会带走它讲过的记忆。家庭确认流程的旧投稿不在其中。
  */
 export function memoryPool(contributions: MemoryContribution[]): MemoryContribution[] {
-  return contributions.filter((contribution) => contributionScope(contribution) === "personal");
+  return contributions.filter((contribution) => isActiveMemory(contribution) && contributionScope(contribution) === "personal");
 }
 
 /** 某个档案亲自讲述的个人故事（讲述人，而不是书的归属）。 */
@@ -525,6 +536,7 @@ export function personalBookContributions(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
+      isActiveMemory(contribution) &&
       contributionScope(contribution) === "personal" &&
       contribution.authorMemberId === memberId,
   );
@@ -558,6 +570,7 @@ export function sharedPersonalContributionsForMember(
 ): MemoryContribution[] {
   return contributions.filter(
     (contribution) =>
+      isActiveMemory(contribution) &&
       contributionScope(contribution) === "personal" &&
       contribution.authorMemberId !== memberId &&
       personalShareTargetMemberIds(contribution).includes(memberId),
@@ -601,6 +614,7 @@ export function visibleContributionsForMember(
   viewer: FamilyMember,
 ): MemoryContribution[] {
   return contributions.filter((contribution) => {
+    if (!isActiveMemory(contribution)) return false;
     if (contributionScope(contribution) === "personal") {
       return (
         contribution.authorMemberId === viewer.id ||

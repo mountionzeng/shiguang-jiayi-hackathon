@@ -17,6 +17,8 @@ import {
   deleteCloudMember,
   restoreCloudMember,
   restoreCloudStory,
+  softDeleteCloudMemory,
+  restoreCloudMemory,
   loadCloudRoomState,
   replaceCloudContribution,
   resetCloudCurrentUserRoom,
@@ -33,6 +35,8 @@ import {
   deleteMember,
   restoreMember,
   restoreStory,
+  softDeleteMemory,
+  restoreMemory,
   loadCurrentMember,
   saveCurrentMemberId,
   loadRoomState,
@@ -121,6 +125,40 @@ export async function deleteContributionRemoteFirst(
   }
 
   return deleteContribution(contributionId, loadRoomState());
+}
+
+/** 软删除；随时可以恢复。真正永久删除用 deleteContributionRemoteFirst（例如清空「最近删除」）。 */
+export async function softDeleteMemoryRemoteFirst(contributionId: string): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await softDeleteCloudMemory(contributionId);
+  return softDeleteMemory(contributionId);
+}
+
+export async function restoreMemoryRemoteFirst(contributionId: string): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await restoreCloudMemory(contributionId);
+  return restoreMemory(contributionId);
+}
+
+/**
+ * 永久删除：一条已经在「最近删除」里的记忆，真正从本机/云端拿掉，不能再恢复。
+ * 复用 deleteContributionRemoteFirst 现成的硬删除；只是限定调用点在「最近删除」页里，
+ * 不在日常的「删除」按钮上——日常删除请用 softDeleteMemoryRemoteFirst。
+ */
+export async function purgeMemoryRemoteFirst(contributionId: string): Promise<FamilyRoomState> {
+  return deleteContributionRemoteFirst(contributionId);
+}
+
+/**
+ * 清空「最近删除」：把所有已经软删除的记忆逐条永久删除。故事目前没有单独的永久删除——
+ * 软删除（放进 deletedStories）已经是它能达到的最彻底状态，等以后 stories 变成真正的
+ * 集合再补。一条失败不影响其它条，返回处理到的最新状态。
+ */
+export async function purgeAllDeletedMemoriesRemoteFirst(): Promise<FamilyRoomState> {
+  let state = shouldUseCloudDatabase() ? await loadCloudRoomState() : loadRoomState();
+  const deletedIds = state.contributions.filter((item) => item.deletedAt).map((item) => item.id);
+  for (const contributionId of deletedIds) {
+    state = await purgeMemoryRemoteFirst(contributionId);
+  }
+  return state;
 }
 
 export async function deleteStoryRemoteFirst(key: string, title: string): Promise<FamilyRoomState> {
