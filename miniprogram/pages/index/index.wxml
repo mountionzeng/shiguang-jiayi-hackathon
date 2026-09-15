@@ -161,6 +161,7 @@
         data-title="{{item.storyTitle}}"
         bindtap="continueStory"
       >
+        <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
         <view class="story-copy">
           <view class="story-title serif">{{item.title}}</view>
           <view class="story-excerpt">{{item.excerpt}}</view>

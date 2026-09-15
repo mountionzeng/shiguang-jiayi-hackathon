@@ -996,11 +996,16 @@
 }
 
 .story-row {
+  position: relative;
   display: flex;
   align-items: center;
   min-height: 196rpx;
-  padding: 28rpx 0;
-  border-bottom: 2rpx solid var(--line);
+  margin-top: 20rpx;
+  padding: 24rpx 26rpx 24rpx 96rpx;
+  border: 2rpx solid rgba(129, 117, 93, 0.1);
+  border-radius: 8rpx 22rpx 16rpx 10rpx;
+  background: var(--paper-card);
+  box-shadow: 6rpx 10rpx 24rpx rgba(63, 66, 60, 0.05);
 }
 
 .story-row:active {
@@ -1068,3 +1073,10 @@
   color: var(--ink-faint);
   font-size: 26rpx;
 }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.my-entry.my-entry { width: 84rpx; margin-left: 0; margin-right: 0; }
+.story-switch.story-switch { width: 360rpx; margin-left: 0; margin-right: 0; }
+.book-stat-action.book-stat-action { width: 108rpx; margin-left: 0; margin-right: 0; }
+.home-setup-button.home-setup-button { width: 100%; }
+.story-menu-item.story-menu-item { width: 100%; margin-left: 0; margin-right: 0; }
