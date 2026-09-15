@@ -84,7 +84,7 @@ export function deriveLegacyStories(state: FamilyRoomState): Story[] {
         memoryIds: [memory.id],
         createdAt: memory.createdAt,
         updatedAt: memory.createdAt,
-        legacy: { storyTitle: title },
+        legacy: { storyTitle: title, previousShelfKey: `story:${title}` },
       };
       byTitle.set(title, story);
       legacyDeleteKey.set(story, `story:${title}`);
@@ -99,6 +99,7 @@ export function deriveLegacyStories(state: FamilyRoomState): Story[] {
     const named = title ? byTitle.get(title) : undefined;
     if (named && !named.legacy?.memberId) {
       // 书稿和同名记忆合并成一个故事：素材记忆保留，故事名、id 和旧删除 key 都用记忆那一份的（先出现的赢）。
+      // 旧 key 沿用记忆那一份（storyShelf 合并后 key 不变），不换成书稿的 manuscript:key。
       named.legacy = { ...named.legacy, memberId: member.id };
       if (savedAt > named.updatedAt) named.updatedAt = savedAt;
       return;
@@ -111,7 +112,7 @@ export function deriveLegacyStories(state: FamilyRoomState): Story[] {
       memoryIds: [],
       createdAt: savedAt,
       updatedAt: savedAt,
-      legacy: { memberId: member.id, storyTitle: title || undefined },
+      legacy: { memberId: member.id, storyTitle: title || undefined, previousShelfKey: `manuscript:${member.id}` },
     };
     manuscriptStories.push(story);
     legacyDeleteKey.set(story, `manuscript:${member.id}`);

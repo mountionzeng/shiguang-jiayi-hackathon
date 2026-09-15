@@ -93,7 +93,7 @@
 
 ## 给问题三、问题五的字段约定（确认后正式发出）
 
-- 问题三（邀请）：`storyId`＝`Story.id`；`chapterId`＝`ManuscriptChapter.id`；`versionId`＝`ManuscriptRevision.id`；主人公＝`Story.protagonistMemberIds`；集合 `stories`。成员与按章授权仍只在问题三的服务端集合里。
+- 问题三（成员与邀请）：**用户已定——按章节授权不做，只按房间（本账号空间）授权。** `storyId`＝`Story.id`；`chapterId`＝`ManuscriptChapter.id`、`versionId`＝`ManuscriptRevision.id` 只用于「这段记忆写进了哪个故事哪一章」的展示（`memoryPlacements`），不作为权限判断依据；主人公＝`Story.protagonistMemberIds`，只是故事写的是谁，不代表权限。集合 `stories`。
 - 问题五（图片）：封面 `Story.coverImageId`；章节底图 `ManuscriptChapter.backdropImageId` 不变。
 
 ## 阶段与回退

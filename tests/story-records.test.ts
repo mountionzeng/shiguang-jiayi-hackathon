@@ -75,8 +75,25 @@ test("a manuscript keeps its own fixed id, separate from a same-titled memory st
   const stories = deriveLegacyStories(state);
   const manuscript = stories.find((story) => story.title === "我这一辈子");
   assert.equal(manuscript?.id, legacyManuscriptStoryId("member-1"));
-  assert.deepEqual(manuscript?.legacy, { memberId: "member-1", storyTitle: "我这一辈子" });
+  assert.deepEqual(manuscript?.legacy, {
+    memberId: "member-1",
+    storyTitle: "我这一辈子",
+    previousShelfKey: "manuscript:member-1",
+  });
   assert.deepEqual(manuscript?.memoryIds, []);
+});
+
+test("每个故事带着迁移前的 storyShelf key，供发到电脑端的快照做旧 key 过渡", () => {
+  const initial = createDemoRoomStateForTests();
+  const memoryOnly = deriveLegacyStories(initial).find((story) => story.title === "外公接我放学");
+  assert.equal(memoryOnly?.legacy?.previousShelfKey, "story:外公接我放学");
+
+  const withManuscript = deriveLegacyStories({
+    ...initial,
+    manuscriptRevisions: [revision("owner", "外公接我放学", "2026-09-05T00:00:00.000Z")],
+  }).find((story) => story.title === "外公接我放学");
+  assert.equal(withManuscript?.legacy?.previousShelfKey, "story:外公接我放学",
+    "书稿并入同名记忆故事后，旧 key 仍是记忆那一份的，不换成 manuscript:");
 });
 
 test("a manuscript joining a same-named memory story keeps the memory story's id and picks up the memories", () => {

@@ -166,7 +166,13 @@ export interface Story {
   /** 预留给问题五：故事封面图片引用。 */
   coverImageId?: string;
   /** 从旧数据迁移来的故事，记一笔来源，方便回溯和旧客户端兼容。只读，不参与身份判断。 */
-  legacy?: { memberId?: string; storyTitle?: string };
+  legacy?: {
+    memberId?: string;
+    storyTitle?: string;
+    /** 迁移前这个故事在 services/storyShelf.ts 里的 key（`story:标题` 或 `manuscript:档案id`）。
+     * 给发到电脑端的快照做过渡：新旧 key 都带上，服务端按旧 key 认出同一个故事，避免换 id 后重复入库。 */
+    previousShelfKey?: string;
+  };
 }
 
 export interface ManuscriptRevision {
