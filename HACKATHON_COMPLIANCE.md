@@ -51,6 +51,7 @@
 - **2026-09-13**（首个提交 `fbc6ff6`）：新增 `drinkingTimeBridge` 云函数与账号关联页，曾支持用 Drinking Time 邮箱验证码关联账号，把网页故事单向导入小程序。
 - **2026-09-14**（提交 `ea60254`）：按产品方向纠正数据流，改为**手机端 → 电脑端**：在拾光家忆里选择故事、生成一次性电脑登录码，电脑兑换后进入同一微信主体的 Drinking Time 账号继续制作。**旧的邮箱关联与“网页故事导入微信”流程已移除。** 故事快照包含记忆与当前书稿章节；照片文件仍只保存在手机本机，快照只带照片引用，不传照片字节。细节见 [docs/handoff/2026-09-14-stories-to-desktop.md](docs/handoff/2026-09-14-stories-to-desktop.md)。
 - 两端经 `drinkingTimeBridge` 云函数对接 Drinking Time 服务端，**不共享数据库**。
+- **2026-09-15**：双方约定线上传输格式并逐条核对，写成 [docs/integrations/drinking-time-bridge-contract.md](docs/integrations/drinking-time-bridge-contract.md)（约定版本 1.0.0，权威版本在 Drinking Time 仓库，用户已确认这版约定）。约定只记录两端之间传输的数据和可观察行为，不包含 Drinking Time 内部的表结构、故事内容结构、提示词或素材；本仓库的副本经核对与权威版本逐字节一致。
 
 ### 与参赛版本的边界
 
