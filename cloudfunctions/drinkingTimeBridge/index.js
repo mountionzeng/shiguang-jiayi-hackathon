@@ -1,7 +1,7 @@
 const cloud = require("wx-server-sdk");
 const https = require("node:https");
 const crypto = require("node:crypto");
-const { bridgeUrl, requestBody, signature } = require("./core");
+const { bridgeUrl, issueDesktopResultShapeError, requestBody, signature } = require("./core");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const paths = { issueDesktop: "/desktop/pair/issue" };
@@ -33,8 +33,10 @@ function post(baseUrl, path, body, secret) {
         if (settled) return;
         let data = {};
         try { data = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch {}
-        if ((response.statusCode || 500) >= 200 && (response.statusCode || 500) < 300) finish(null, data);
-        else finish(new Error(data.error || "bridge_unavailable"));
+        if ((response.statusCode || 500) >= 200 && (response.statusCode || 500) < 300) {
+          const shapeError = issueDesktopResultShapeError(response.headers["content-type"], data);
+          shapeError ? finish(new Error(shapeError)) : finish(null, data);
+        } else finish(new Error(data.error || "bridge_unavailable"));
       });
       response.on("error", error => finish(error));
       response.on("aborted", () => finish(new Error("bridge_response_aborted")));

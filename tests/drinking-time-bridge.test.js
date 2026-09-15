@@ -26,3 +26,17 @@ test("云函数只接受微信故事进入电脑这个方向", () => {
 test("签名序列化与实际 JSON 请求一样忽略 undefined 字段", () => {
   assert.equal(core.canonicalJson({ a: 1, missing: undefined }), '{"a":1}');
 });
+
+test("接口约定 1.0.0 第 3.5 节：成功响应形状不对就当作 bridge_unavailable", () => {
+  const ok = { code: "ABC234", expiresAt: "2026-09-14T10:05:00.000Z", storyId: 31, imported: true };
+  assert.equal(core.issueDesktopResultShapeError("application/json", ok), null);
+  assert.equal(core.issueDesktopResultShapeError("application/json; charset=utf-8", ok), null);
+  // 漏挂载点时服务端返回 200 + 网页首页 HTML，不是 JSON。
+  assert.equal(core.issueDesktopResultShapeError("text/html", ok), "bridge_unavailable");
+  assert.equal(core.issueDesktopResultShapeError("application/json", {}), "bridge_unavailable");
+  assert.equal(core.issueDesktopResultShapeError("application/json", { ...ok, code: "000000" }), "bridge_unavailable");
+  assert.equal(core.issueDesktopResultShapeError("application/json", { ...ok, expiresAt: "不是时间" }), "bridge_unavailable");
+  assert.equal(core.issueDesktopResultShapeError("application/json", { ...ok, storyId: 0 }), "bridge_unavailable");
+  assert.equal(core.issueDesktopResultShapeError("application/json", { ...ok, storyId: 1.5 }), "bridge_unavailable");
+  assert.equal(core.issueDesktopResultShapeError("application/json", { ...ok, imported: "true" }), "bridge_unavailable");
+});
