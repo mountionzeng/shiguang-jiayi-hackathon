@@ -251,3 +251,6 @@
 .account-edit-actions button::after { border: 0; }
 .account-edit-actions .account-edit-save { background: #6f4f3a; color: #fffdf7; }
 .me-joined-avatar { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 64rpx; height: 64rpx; margin-right: 18rpx; border-radius: 50%; background: rgba(126, 151, 128, .2); color: #61745f; font-size: 27rpx; font-weight: 700; }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.me-row.me-row { width: 100%; margin-left: 0; margin-right: 0; }

@@ -772,3 +772,6 @@
 .people-grid {
   width: 100%;
 }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.mode-start.mode-start { width: 356rpx; margin-left: auto; margin-right: auto; }

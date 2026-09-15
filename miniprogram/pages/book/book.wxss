@@ -77,3 +77,6 @@ page { height: 100%; overflow: hidden; }
 .contents-memory-foot .contents-place { width: auto; min-height: 72rpx; margin: 0; padding: 0 28rpx; border-radius: 999rpx; background: var(--jade-soft); color: var(--jade); font-size: 27rpx; font-weight: 600; line-height: 72rpx; }
 .contents-memory-foot .contents-place::after { border: 0; }
 .contents-place-pressed { opacity: .7; }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.version-row.version-row { width: 100%; }

@@ -502,3 +502,7 @@
   color: var(--ink-faint);
   font-size: 23rpx;
 }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.room-invite.room-invite { width: 100%; }
+.room-manage.room-manage { width: auto; margin-left: 0; margin-right: 0; }

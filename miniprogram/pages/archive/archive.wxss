@@ -286,3 +286,6 @@
 .story-choices { display: flex; flex-wrap: wrap; margin: 20rpx 0; gap: 12rpx; }
 .story-chip { margin: 0; font-size: 25rpx; color: var(--jade); background: #efeee1; }
 .note-delete-badge { font-size: 22rpx; }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.note-delete.note-delete { width: 116rpx; margin-left: 0; margin-right: 0; }
