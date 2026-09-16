@@ -138,7 +138,7 @@ _id: "<familyId>__<photoId>"
 | purpose | 谁能读 | 内容检测结果（3.8） |
 |---|---|---|
 | `view` | 上传者本人；家人按记忆可见判断（3.4） | 本人都能看；**家人只能看到明确 `pass` 的照片**（3.8，fail closed） |
-| `ai-caption`、`ai-reference` | **只有上传者本人**（`photos._openid` 等于调用者），不要求是家庭主人；房主不能把家人上传的照片发给模型。发给模型前的单独同意由问题五在调用前取得，本接口不代替它问 | `risky` 不发，返回 `blocked`；`pending` / `review` 可发（导入后马上起草时，检测结果多半还没回来） |
+| `ai-caption`、`ai-reference` | **只有上传者本人**（`photos._openid` 等于调用者），不要求是家庭主人；房主不能把家人上传的照片发给模型。发给模型前的单独同意由问题五在调用前取得，本接口不代替它问 | `risky` 不发，返回 `risky`；`pending` / `review` 可发（导入后马上起草时，检测结果多半还没回来。问题五 09-16 同意） |
 
 **返回**
 
@@ -150,7 +150,7 @@ _id: "<familyId>__<photoId>"
 {
   photos: [{
     photoId,
-    status: "ok" | "not_uploaded" | "deleted" | "forbidden" | "not_found" | "blocked" | "too_large",
+    status: "ok" | "not_uploaded" | "deleted" | "forbidden" | "not_found" | "risky" | "too_large",
     contentType?: "image/jpeg", width?, height?, bytes?,
     url?: string,      // purpose=view：临时链接，给小程序显示
     base64?: string    // purpose=ai-*：不带 data: 前缀
@@ -160,7 +160,7 @@ _id: "<familyId>__<photoId>"
 
 - **发给模型的一律 base64，不给临时链接**：临时链接会被服务商下载，也可能留在对方日志里（问题五 09-15 同意）。`view` 给小程序显示，用临时链接。
 - `display` 的 base64：单张 ≤ 600 KB、一次合计 ≤ 1.5 MB，超出的那张返回 `too_large`，问题五改取这张的 `small`。云函数之间调用的返回体上限要实测，实测后再调这两个数。
-- 状态含义：`not_uploaded` 手机里有、还没传到云端；`deleted` 用户删了云端照片（问题五据此记「没画成、不占名额」）；`not_found` 照片不存在，**或者不是本人家庭的照片**（不暴露存在与否）；`forbidden` 只用于本家庭内没有权限（例如 `view` 时家人看不到这条记忆）；`blocked` 内容检测为 `risky`。
+- 状态含义：`not_uploaded` 手机里有、还没传到云端；`deleted` 用户删了云端照片（问题五据此记「没画成、不占名额」）；`not_found` 照片不存在，**或者不是本人家庭的照片**（不暴露存在与否）；`forbidden` 只用于本家庭内没有权限（例如 `view` 时家人看不到这条记忆）；`risky` 内容检测判定有风险，问题五据此提示「这张照片没通过平台审核」，不调用模型、不占次数。
 - 每张单独给状态；**不返回 fileID**；超时设 10 秒；只读，不调用模型。
 
 **`register` 动作**（小程序上传完两份文件后调用）
@@ -187,12 +187,13 @@ _id: "<familyId>__<photoId>"
 - 补传的旧照片同样在补传上传时检测。
 - 检测的是显示图（`register` 时用 `getTempFileURL` 拿临时链接交给微信），`scene: 4`。
 
-**异步结果怎么收（待问题五同意）**
+**异步结果怎么收（问题五 09-16 定，协调会话同意）**
 
-- 不改控制台推送配置，仍推给 `storyImages`。
-- 新增一个很小的登记集合 `media_checks`：谁提交检测，谁写一条 `{ _id: traceId, collection: "photos" | "story_images", docId, submittedAtMs }`。
-- `storyImages` 收到推送后按 `traceId` 查 `media_checks`：属于 `story_images` 的走它原有逻辑；属于 `photos` 的，只把 `moderation`、`moderationLabel`、`moderatedAtMs` 写回 `photos` 记录。照片特有的处理不写进 `storyImages`，由 `photoAccess` 读取时按字段判断。
-- 兜底：提交失败记 `moderation: "unchecked"`；超过 30 分钟还是 `pending` 的，由 `photoAccess` 的定时任务重新提交（上传者近两小时没访问时跳过，下次访问再提交）。
+- 推送配置不动，`wxa_media_check` 仍然只配给 `storyImages`（一个事件只能配一个云函数）。
+- `storyImages` 收到推送，先在自己的 `story_images` 里按 `traceId` 找；找不到，就带内部口令调 `photoAccess` 的新动作 `moderationResult`，把 `{ traceId, suggest, label }` 交过来，由 `photoAccess` 写回 `photos`。
+- `photoAccess` 提交检测时就把 `traceId` 记在 `photos.moderation.traceId` 上，所以照 `traceId` 能直接找到那张照片，**不需要另建 `media_checks` 集合**（原方案里的这一条作废）。
+- `moderationResult` 只接受带 `PHOTO_ACCESS_INTERNAL_TOKEN` 的调用；`photos` 集合始终只有 `photoAccess` 一个云函数写，`storyImages` 不碰它的表。
+- 兜底：提交失败记 `ok: false`；超过 30 分钟还没回来的，由 `photoAccess` 的定时任务重新提交（上传者近两小时没访问小程序时跳过，下次访问再提交）。
 
 **不合规时怎么处理**（和问题三的文字检测同一套原则，09-16 约定）
 
@@ -203,13 +204,14 @@ _id: "<familyId>__<photoId>"
 | `ok: true`（`suggest: "pass"`） | 正常 | 正常 | 可以 |
 | 还没回来（`pending`） | 正常显示，照片上小字「正在检查」 | 「这张照片正在检查，稍后再看」，拿不到链接 | 可以 |
 | `review` | 正常显示，小字「平台在复核」 | 看不到 | 可以 |
-| `risky` | 「这张照片没通过平台检查，家人看不到」；**不自动删除用户自己的照片**（和 AI 出图不同），本人可以自己删 | 看不到 | 不发，返回 `blocked` |
+| `risky` | 「这张照片没通过平台检查，家人看不到」；**不自动删除用户自己的照片**（和 AI 出图不同），本人可以自己删 | 看不到 | 不发，返回 `risky` |
 | 提交失败 / 查不到（`unchecked`） | 正常显示 | 看不到，由定时任务重新提交 | 可以 |
 
 - **本人始终能看自己的照片**：检测是为了「给别人看」这件事，不是替用户审查自己的相册。
 - **发给模型只在 `risky` 时拦**：用户刚导入就点「让 AI 看看」时，结果多半还没回来（最长 30 分钟），按 fail closed 会让这个功能基本不可用；而且这是本人对自己照片的主动请求，不是给别人看。这一条和家人可见的 fail closed 不同，是有意的，已告诉问题三和问题五。
 - 记录：只存在 `photos.moderation` 里，不另存照片内容。
-- 结果处理的外层形状和问题三的 `contentSecurityCheck` 一致（`{ ok, suggest?, label? }`）。云函数之间没有公共代码层，把「按 suggest 得出处理方式」的几行做成同名小文件 `contentSafety.js`，各函数目录各放一份，注释写明保持一致。
+- 分工（协调会话 09-16 定）：**文字检测统一走问题三的 `contentSecurityCheck` 云函数**（它维护），别人用 `cloud.callFunction` 调；**图片检测归问题九**，结果结构沿用同一套 `{ ok, suggest, label }`。三边处理方式：问题九「有风险时家人看不到，不删用户照片」，问题三「仍然保存但强制只自己可见」，问题五「不返回草稿」；提示文案都以问题七为准。
+- 「按 suggest 得出处理方式」的几行做成同名小文件 `contentSafety.js`，各函数目录各放一份（云函数之间没有公共代码层），注释写明和问题三保持一致。
 
 ### 5.1 入口
 
@@ -334,7 +336,7 @@ MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photo
 ### 10.3 弹窗（`wx.showModal` 按钮最多 4 个字）
 
 - **补传**：标题「把照片存到云端？」；内容「这台手机上有 {N} 张照片还没存到云端，约 {X} MB。存到微信云开发云存储后，换手机也能看到。只存压缩后的照片，不传原图。默认只有你能看，你邀请的家人按权限查看。可以在「我的 → 云端照片」里删除。」；按钮「存到云端」「先不」。
-- **看图**（问题五实现）：标题「让 AI 看看这几张照片？」；内容「会把这 {N} 张照片的压缩小图发给腾讯云 TokenHub 上的看图模型，只用来帮你起草一句话，不识别照片里的人是谁。拾光家忆只保存你最后确认的文字。服务商的日志留存政策仍适用。不同意也可以自己写。」；按钮「允许」「自己写」。同意范围问题七建议「每次打开小程序问一次」，由问题五问用户定。
+- **看图**（问题五实现，弹窗已写好）：标题「让 AI 看看这几张照片？」；内容「会把这 {N} 张照片的压缩小图发给腾讯云 TokenHub 上的看图模型，只用来帮你起草一句话，不识别照片里的人是谁。拾光家忆只保存你最后确认的文字。服务商的日志留存政策仍适用。不同意也可以自己写。」；按钮「允许」「自己写」。**用户已定：每次打开小程序问一次，同一次打开里不重复问，每次只发这次选中的照片**（问题五 09-16 转达）。模型写出的那句话返回给用户之前，还要过一次文字内容安全检测，不过或失败就不返回草稿（问题五已实现）。
 - **删除第一次**：标题「删除云端照片？」；内容「会删除你存在云端的全部 {N} 张照片，约 {X} MB。之后在别的手机上、在家人那里，这些照片都会显示「照片已删除」。这台手机上的原图不受影响。」；按钮「继续」「取消」。
 - **删除第二次**：标题「确认删除」；内容「删除后无法恢复。确定删除这 {N} 张云端照片吗？」；按钮「删除」（红色）「不删了」。
 
@@ -359,7 +361,7 @@ MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photo
 |---|---|
 | 问题四 | **09-16 全部答复并实现**（`feat/story-records@16d6eb6`）：加了 `"import"` 来源、`createContributionFromSegments`、`photoIds`（含云端读写与张数校验）、允许只有照片的记忆；`generateBiography` 的 500 字放宽到 4000；段内换行保持现有规范化（我改成一个自然段一段来保排版）；阶段 2 直接 rebase 到它的分支 |
 | 问题八 | 「导入」入口、类型提示、写一句话弹层、照片上传状态和失败重试、「我的 → 云端照片」、补传进度；它的 `feat/ui-clarity` 改了 `book.ts`、`me.wxml`、聊天页样式，合并顺序 |
-| 问题五 | **09-15 已回复并按它的意见改**：只返回临时链接；参考图用显示图，最多 3 张；发给模型的照片只看上传者；它方案 7.1 已更新（`feat/image-reference-photos@6e65573`）。**还在等**：能不能接受云函数之间用 `onBehalfOfOpenid` 加 token 的调用方式。它要用我的实现时，把本分支合进它的分支 |
+| 问题五 | **09-16 全部谈定**：接口按定稿改好（看图用 small、参考图用 display、权限看 `photos._openid`），接受 `onBehalfOfOpenid` 加 token；看图起草后端已写（`feat/image-reference-photos`，用替身）；检测回调由 `storyImages` 转发给 `photoAccess.moderationResult`。等我的 `photoAccess` 能用了发它分支和提交号 |
 | 问题七 | **09-15 已定稿**，见第十节；更正：照片上云不能单独提审，要和带 AI 的完整版一起；要加图片内容安全检测 |
 | 问题三 | **09-15/16 已回复**：照抄 `visibleMemoriesForAccess`；版本级第一版不做；家人不缓存；检测结果用 `{ ok, suggest?, label? }` 形状、只有 `pass` 才给别人看。**还在等**：`familyInvite/core.js:79` 放宽（空文字加照片、超过 500 字）和字段白名单加 `photoIds`、`segments` |
 | 问题一 | 第十一节：这一版不升版本。**09-15 已确认无异议**（photoId 只作占位，服务端不获取、不等待）；带不带照片等 D2 定了再找它和网页端 |
