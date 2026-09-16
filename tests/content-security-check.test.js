@@ -5,7 +5,7 @@ const test = require("node:test");
 
 const core = require("../cloudfunctions/contentSecurityCheck/core.js");
 
-test("检测请求：openid 必填、场景固定为社交日志、正文按码点截到 2500 字", () => {
+test("检测请求：openid 必填、默认社交日志且调用方可选合法场景、正文按码点截到 2500 字", () => {
   const long = "字".repeat(3000);
   const input = core.normalizeCheckInput({ content: `  ${long}  `, title: "  标题  " });
   assert.equal(Array.from(input.content).length, core.MAX_LENGTH);
@@ -16,6 +16,10 @@ test("检测请求：openid 必填、场景固定为社交日志、正文按码�
   assert.equal(request.scene, 4);
   assert.equal(request.openid, "openid-123");
   assert.equal(request.title, "标题");
+
+  const generated = core.normalizeCheckInput({ content: "AI 生成文字", scene: 3 });
+  assert.equal(core.buildCheckRequest(generated, "openid-123").scene, 3);
+  assert.equal(core.normalizeCheckInput({ content: "x", scene: 99 }).scene, 4);
 
   assert.throws(() => core.buildCheckRequest(input, ""), /OPENID_NOT_AVAILABLE/);
 });
