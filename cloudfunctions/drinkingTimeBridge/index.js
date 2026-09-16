@@ -55,7 +55,7 @@ async function main(event = {}) {
   const action = String(event.action || "");
   const path = paths[action];
   if (!path) throw new Error("UNKNOWN_BRIDGE_ACTION");
-  const body = requestBody(action, event, context);
+  const body = requestBody(action, event, context, { appIdFallback: process.env.WECHAT_APP_ID });
   return post(baseUrl, path, body, secret);
 }
 module.exports = { main };

@@ -1,4 +1,14 @@
-export const CLOUD_ENV_ID = "cloud1-d0g8c8yg0513a6068";
+// Account-bound values live here, not in pages or services. When switching to a
+// different mini-program account, add its AppID/environment pair here first.
+// Unknown AppIDs deliberately do not fall back to the old environment: that
+// prevents a new account from writing into the previous account's cloud data.
+const CLOUD_ENV_BY_APP_ID: Record<string, string> = {
+  wx6be512f0fe129b62: "cloud1-d0g8c8yg0513a6068",
+};
+
+export function cloudEnvForAppId(appId: string): string | undefined {
+  return CLOUD_ENV_BY_APP_ID[String(appId || "").trim()];
+}
 // Restore the existing cloud dataset. Do not switch storage without a continuity plan.
 export const CLOUD_DATABASE_ENABLED = true;
 export const CLOUD_AI_ENABLED = true;

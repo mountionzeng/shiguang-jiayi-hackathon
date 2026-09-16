@@ -1,7 +1,7 @@
 import {
   CLOUD_AI_ENABLED,
   CLOUD_DATABASE_ENABLED,
-  CLOUD_ENV_ID,
+  cloudEnvForAppId,
 } from "./config/runtime";
 import { clearAiConsent } from "./services/aiConsent";
 import { beginPhotoUploadSession, resumePhotoUploads } from "./services/photoCloud";
@@ -31,7 +31,13 @@ App<ShiguangAppOptions>({
     }
 
     try {
-      wx.cloud.init({ env: CLOUD_ENV_ID, traceUser: false });
+      const appId = wx.getAccountInfoSync().miniProgram.appId;
+      const cloudEnvId = cloudEnvForAppId(appId);
+      if (!cloudEnvId) {
+        console.warn(`当前 AppID 尚未配置云开发环境：${appId || "unknown"}`);
+        return;
+      }
+      wx.cloud.init({ env: cloudEnvId, traceUser: false });
       this.globalData.cloudReady = true;
       void resumePhotoUploads();
       wx.onNetworkStatusChange(result => { if (result.isConnected) void resumePhotoUploads(); });

@@ -23,6 +23,21 @@ test("云函数只接受微信故事进入电脑这个方向", () => {
   assert.throws(() => core.requestBody("issueDesktop", { story: null }, context), /invalid_input/);
 });
 
+test("跨端身份不回退到旧账号 AppID", () => {
+  const event = { story: { sourceKey: "story:迁移", sourceRevision: "0123456789abcdef" } };
+  assert.throws(
+    () => core.requestBody("issueDesktop", event, { OPENID: "openid-secret" }),
+    /APPID_NOT_AVAILABLE/,
+  );
+  const configured = core.requestBody(
+    "issueDesktop",
+    event,
+    { OPENID: "openid-secret" },
+    { appIdFallback: "wx-new-account" },
+  );
+  assert.equal(configured.subject, core.subjectFor("wx-new-account", "openid-secret"));
+});
+
 test("签名序列化与实际 JSON 请求一样忽略 undefined 字段", () => {
   assert.equal(core.canonicalJson({ a: 1, missing: undefined }), '{"a":1}');
 });

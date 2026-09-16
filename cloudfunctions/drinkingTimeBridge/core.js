@@ -17,14 +17,16 @@ function bridgeUrl(baseUrl, path) {
   if (!/^\/[0-9A-Za-z/_-]+$/.test(path)) throw new Error("invalid_bridge_path");
   return new URL(`${String(baseUrl).replace(/\/+$/, "")}${path}`);
 }
-function requestBody(action, event, context) {
+function requestBody(action, event, context, options = {}) {
   const openid = String(context && context.OPENID || "").trim();
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
+  const appid = String(context && context.APPID || options.appIdFallback || "").trim();
+  if (!appid) throw new Error("APPID_NOT_AVAILABLE");
   if (action !== "issueDesktop" || !event || !event.story || typeof event.story !== "object" || Array.isArray(event.story)) {
     throw new Error("invalid_input");
   }
   return {
-    subject: subjectFor(String(context.APPID || "wx6be512f0fe129b62"), openid),
+    subject: subjectFor(appid, openid),
     story: event.story,
   };
 }
