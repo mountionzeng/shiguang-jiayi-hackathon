@@ -3,13 +3,13 @@
  * which is the only place that checks who may read a photo. storyImages reads on behalf
  * of a user it has already verified, with a token only the two functions share.
  */
-const PHOTO_STATUSES = ["ok", "not_uploaded", "deleted", "forbidden", "not_found", "too_large"];
+const PHOTO_STATUSES = ["ok", "not_uploaded", "deleted", "forbidden", "not_found", "too_large", "risky"];
 
 function createPhotoReader({ callFunction, internalToken }) {
-  async function read({ familyId, photoIds, variant, format, purpose, onBehalfOfOpenid }) {
+  async function read({ familyId, photoIds, variant, purpose, onBehalfOfOpenid }) {
     const response = await callFunction({
       name: "photoAccess",
-      data: { action: "read", familyId, photoIds, variant, format, purpose, onBehalfOfOpenid, internalToken },
+      data: { action: "read", familyId, photoIds, variant, purpose, onBehalfOfOpenid, internalToken },
     });
     const result = response && response.result;
     if (!result || typeof result !== "object") {

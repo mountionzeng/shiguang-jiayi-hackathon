@@ -6,6 +6,7 @@ const { createStoryImageHandlers } = require("./flow");
 const { createQualityChecker } = require("./quality");
 const { createPhotoReader } = require("./photoReader");
 const { createSceneExtractor } = require("./scene");
+const { createTextChecker } = require("./textCheck");
 const { createTokenHubImageClient, downloadResult, IMAGE_MODEL } = require("./tokenhub");
 const { createVisionClient } = require("./vision");
 
@@ -102,8 +103,8 @@ const repo = {
   getCaptionLog: id => getDoc(CAPTION_LOGS, id),
   createCaptionLog: (id, data) => db.collection(CAPTION_LOGS).doc(id).set({ data }),
   updateCaptionLog: (id, patch) => db.collection(CAPTION_LOGS).doc(id).update({ data: patch }),
-  async countCaptionLogs({ familyId, dayKey, statuses }) {
-    const response = await db.collection(CAPTION_LOGS).where({ familyId, dayKey, status: _.in(statuses) }).count();
+  async countCaptionLogs({ requesterOpenId, dayKey, statuses }) {
+    const response = await db.collection(CAPTION_LOGS).where({ requesterOpenId, dayKey, status: _.in(statuses) }).count();
     return response.total;
   },
   async listImagesPendingQuality(limit) {
@@ -176,6 +177,22 @@ const downloadImage = url => downloadResult(url);
 
 const handlers = createStoryImageHandlers({
   repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker,
+  async forwardPhotoModeration({ traceId, suggest, label }) {
+    const response = await cloud.callFunction({
+      name: "photoAccess",
+      data: {
+        action: "moderationResult",
+        traceId,
+        suggest,
+        label,
+        internalToken: process.env.PHOTO_ACCESS_INTERNAL_TOKEN,
+      },
+    });
+    const result = response && response.result;
+    if (!result || typeof result !== "object" || result.error || result.ok !== true) {
+      throw new Error(String((result && result.error && (result.error.code || result.error.message)) || "PHOTO_MODERATION_FORWARD_FAILED"));
+    }
+  },
 });
 // Photos are read only through photoAccess, which owns the permission check (problem nine).
 const photoReader = createPhotoReader({
@@ -187,10 +204,13 @@ const captionVision = createVisionClient({
   model: process.env.VISION_MODEL,
   baseUrl: process.env.VISION_BASE_URL,
 });
+// Text checks go through problem three's shared contentSecurityCheck function.
+const textChecker = createTextChecker({ callFunction: options => cloud.callFunction(options) });
 const captions = createCaptionHandler({
   repo,
   vision: { ...captionVision, model: process.env.VISION_MODEL || "hy-vision-2.0-instruct" },
   readPhotos: input => photoReader.read(input),
+  checkText: input => textChecker.check(input),
 });
 const diagnostics = createDiagnostics({
   repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker,
