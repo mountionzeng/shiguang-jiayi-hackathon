@@ -1,8 +1,8 @@
-# 问题九：导入与照片上云（阶段 0 方案，未写代码）
+# 问题九：导入与照片上云（实施中）
 
 日期：2026-09-15
 分支：`feat/import-and-cloud-photos`（从 `main` 的 `d83f1ed` 建立）
-状态：**方案稿。** 标「待定」的地方一次问用户一件；标「待对齐」的先和对应会话确认，再写代码。
+状态：**阶段 1–2 已完成代码。** 照片上云、统一读取、内容检查、书稿云端恢复、用户删除，以及相册/拍照/微信聊天文件导入均已实现；旧照片经同意补传、问题五的看图整合及真机/云端验证仍待完成。本文保留后续阶段的设计；下文标明的实现决策优先于早期方案。
 
 ## 一、已定的决定
 
@@ -37,7 +37,7 @@
 
 ### 3.1 每张照片存两份
 
-| 份 | 规格（**清晰度待定，见第十四节 D1**） | 用途 |
+| 份 | 规格（已定） | 用途 |
 |---|---|---|
 | 显示图 `display` | JPEG，长边 ≤ 1600，质量 80（约 200–500 KB） | 书稿和记忆里显示、换手机后恢复 |
 | 小图 `small` | JPEG，长边 ≤ 768，逐步降质量到 ≤ 100 KB | 列表缩略图、看图写一句话（参考图出图改用显示图，问题五 09-15 定） |
@@ -66,18 +66,20 @@ _id: "<familyId>__<photoId>"
   width, height, displayBytes, smallBytes,
   source: "book" | "import" | "backfill",
   createdAt, uploadedAt,
-  deletedAt?                   // 用户在「我的」里删掉云端照片时写入
+  deletedAt?                   // 保留给兼容读取；当前删除会移除文件和记录
 }
 ```
 
 - 记录由 `photoAccess.register` 在云函数里写（3.7）；数据库权限设为**仅创建者可读、仅管理端可写**，小程序端只能读自己的记录。
 - 先传文件，再调 `register` 写记录。有记录，才算这张照片「已在云端」。
-- 增加内容检测字段：`moderation`、`moderationLabel`、`moderationTraceId`、`moderatedAtMs`（3.8）。
+- 内容检测字段按问题三 09-16 约定的外层形状存成一个对象（3.8）：
+  `moderation: { ok: boolean, suggest?: "pass" | "review" | "risky", label?: number, traceId?, submittedAtMs?, checkedAtMs? }`。
+  `ok` 表示「能不能给别人看」，`suggest`、`label` 原样存微信的建议值，方便以后排查。没有这个字段的照片按 `ok: false` 处理。
 
 ### 3.4 权限规则（**需要用户同意后在控制台改，我不改**）
 
 - 云存储规则改为：`user-photos/` 下只有上传者能读写；其他路径维持现状（先在控制台看清当前规则，再给出完整规则文本请用户确认）。
-- 本人读自己的照片：小程序端直接 `wx.cloud.downloadFile`，规则放行。
+- 本人和家人都通过 `photoAccess.read` 读取临时链接；小程序端不直接取得 `fileID`。
 - **家人读照片：** 不开放小程序端直接读。新云函数 `photoAccess`（超时设 10 秒）按 `{ familyId, photoIds }` 核对：调用者能看到至少一条引用了这张照片的记忆（`photoIds` 里有它），才返回显示图的临时链接。
   - 判断「能看到这条记忆」：照抄 `familyInvite/core.js` 的 `visibleMemoriesForAccess` 那条判断（房主全部可见；否则是作者本人，或者是 `scope=personal` 且 `sharedWithMemberIds` 里有这个人）。云函数之间没有公共代码层，所以代码注释里写明「须和 familyInvite/core.js 的 visibleMemoriesForAccess 保持一致」。（问题三 09-15 确认）
   - **第一版不做「书稿版本」这一条。** 现在受邀家人本来就看不到任何书稿版本（`familyInvite` 的 `loadRoom` 对非房主返回空的 `manuscriptRevisions`），版本可见范围还没有规则，归问题四定。所以只出现在书稿里、不在任何记忆里的照片，家人第一版看不到。问题四定了规则再加这一条，不自己假设。
@@ -89,9 +91,8 @@ _id: "<familyId>__<photoId>"
 `readPhoto(photoId)`：
 
 1. 本机原图：现有 `readLocalPhoto`，完全不变。
-2. 本机缓存：`USER_DATA_PATH/cloud-<photoId>.jpg`，也登记在 `shiguang-local-<photoId>` 下，所以旧逻辑也能读到。
-3. 云端：本人用 `downloadFile(displayFileID)` 下载后写进缓存；非本人调 `photoAccess` 拿临时链接，**只显示、不缓存**。这样收回分享后立刻看不到，和现在记忆的权限行为一致（问题三 09-15 同意）。
-4. 都没有：先调 `logLoadError("book-photo", error)` 记进实时日志（问题六 `fix/review-load-error@6197f5e` 的 `services/loadErrorLog.ts`；它进 main 前要用就 cherry-pick 这个提交，不另写），再显示「这张照片没加载出来 · 点一下重试」，不悄悄变成空白。这句文案和样式先问问题八。
+2. 云端：本机没有时调 `photoAccess.read` 取得显示图临时链接；接口按本人/家人权限统一核对，且不返回 `fileID`。
+3. 都没有：保留现有照片引用占位，不丢掉 `photoId`。错误日志、重试样式和可撤回缓存仍属于后续阶段。
 
 - 缓存文件单独计数，超过 100 MB 时从最久没用的删起；**只删缓存，不删本机原图**（本机上限 200 MB）。
 - **旧客户端**（体验版和已发出的版本）：书稿里还是 `{ photoId }`，读不到本机文件时照旧显示「【本机照片：…】」占位，保存时占位会还原成 `photoId`（`contentFromDelta` 已经这样处理），不崩也不丢引用。旧客户端插入的新照片不会上传，新客户端下次打开时由补传流程补上。
@@ -118,8 +119,6 @@ _id: "<familyId>__<photoId>"
   photoIds: string[],              // view：1–9 个；ai-caption / ai-reference：1–3 个
   variant: "small" | "display",    // 看图起草用 small，参考图出图用 display
   purpose: "view" | "ai-caption" | "ai-reference",
-  format?: "base64" | "url",       // 可传可不传：由 purpose 决定（ai-* 给 base64，view 给临时链接）；
-                                   // 传了只做校验，和 purpose 不符就报参数错。问题五已按 format:"base64" 写好调用，兼容它
   // 只有云函数之间调用时才带：
   onBehalfOfOpenid?: string,
   internalToken?: string
@@ -135,8 +134,8 @@ _id: "<familyId>__<photoId>"
 
 | purpose | 谁能读 | 内容检测结果（3.8） |
 |---|---|---|
-| `view` | 上传者本人；家人按记忆可见判断（3.4） | 本人都能看；家人看不到 `risky` |
-| `ai-caption`、`ai-reference` | **只有上传者本人**（`photos._openid` 等于调用者），不要求是家庭主人；房主不能把家人上传的照片发给模型。发给模型前的单独同意由问题五在调用前取得，本接口不代替它问 | `risky` 不发，返回 `blocked`；`pending` / `review` 可发（导入后马上起草时，检测结果多半还没回来） |
+| `view` | 上传者本人；家人按记忆可见判断（3.4） | 本人都能看；**家人只能看到明确 `pass` 的照片**（3.8，fail closed） |
+| `ai-caption`、`ai-reference` | **只有上传者本人**（`photos._openid` 等于调用者），不要求是家庭主人；房主不能把家人上传的照片发给模型。发给模型前的单独同意由问题五在调用前取得，本接口不代替它问 | `risky` 不发，返回 `risky`；`pending` / `review` 可发（导入后马上起草时，检测结果多半还没回来。问题五 09-16 同意） |
 
 **返回**
 
@@ -148,17 +147,15 @@ _id: "<familyId>__<photoId>"
 {
   photos: [{
     photoId,
-    status: "ok" | "not_uploaded" | "deleted" | "forbidden" | "not_found" | "blocked" | "too_large",
+    status: "ok" | "not_uploaded" | "deleted" | "forbidden" | "not_found" | "risky" | "too_large",
     contentType?: "image/jpeg", width?, height?, bytes?,
-    url?: string,      // purpose=view：临时链接，给小程序显示
-    base64?: string    // purpose=ai-*：不带 data: 前缀
+    url?: string       // 临时链接；小程序显示或云函数在当前任务中读取
   }]
 }
 ```
 
-- **发给模型的一律 base64，不给临时链接**：临时链接会被服务商下载，也可能留在对方日志里（问题五 09-15 同意）。`view` 给小程序显示，用临时链接。
-- `display` 的 base64：单张 ≤ 600 KB、一次合计 ≤ 1.5 MB，超出的那张返回 `too_large`，问题五改取这张的 `small`。云函数之间调用的返回体上限要实测，实测后再调这两个数。
-- 状态含义：`not_uploaded` 手机里有、还没传到云端；`deleted` 用户删了云端照片（问题五据此记「没画成、不占名额」）；`not_found` 照片不存在，**或者不是本人家庭的照片**（不暴露存在与否）；`forbidden` 只用于本家庭内没有权限（例如 `view` 时家人看不到这条记忆）；`blocked` 内容检测为 `risky`。
+- **最终跨会话决定：所有用途都返回临时链接，不提供 `format` 参数或 base64 返回体。** 调用方只在当前 AI 任务中使用链接；临时链接的实际有效期和服务商取图行为仍需真机/云端验证，不对用户承诺固定时长。
+- 状态含义：`not_uploaded` 手机里有、还没传到云端；`deleted` 用户删了云端照片（问题五据此记「没画成、不占名额」）；`not_found` 照片不存在，**或者不是本人家庭的照片**（不暴露存在与否）；`forbidden` 只用于本家庭内没有权限（例如 `view` 时家人看不到这条记忆）；`risky` 内容检测判定有风险，问题五据此提示「这张照片没通过平台审核」，不调用模型、不占次数。
 - 每张单独给状态；**不返回 fileID**；超时设 10 秒；只读，不调用模型。
 
 **`register` 动作**（小程序上传完两份文件后调用）
@@ -185,35 +182,31 @@ _id: "<familyId>__<photoId>"
 - 补传的旧照片同样在补传上传时检测。
 - 检测的是显示图（`register` 时用 `getTempFileURL` 拿临时链接交给微信），`scene: 4`。
 
-**异步结果怎么收（待问题五同意）**
+**异步结果怎么收（问题五 09-16 定，协调会话同意）**
 
-- 不改控制台推送配置，仍推给 `storyImages`。
-- 新增一个很小的登记集合 `media_checks`：谁提交检测，谁写一条 `{ _id: traceId, collection: "photos" | "story_images", docId, submittedAtMs }`。
-- `storyImages` 收到推送后按 `traceId` 查 `media_checks`：属于 `story_images` 的走它原有逻辑；属于 `photos` 的，只把 `moderation`、`moderationLabel`、`moderatedAtMs` 写回 `photos` 记录。照片特有的处理不写进 `storyImages`，由 `photoAccess` 读取时按字段判断。
-- 兜底：提交失败记 `moderation: "unchecked"`；超过 30 分钟还是 `pending` 的，由 `photoAccess` 的定时任务重新提交（上传者近两小时没访问时跳过，下次访问再提交）。
+- 推送配置不动，`wxa_media_check` 仍然只配给 `storyImages`（一个事件只能配一个云函数）。
+- `storyImages` 收到推送，先在自己的 `story_images` 里按 `traceId` 找；找不到，就带内部口令调 `photoAccess` 的新动作 `moderationResult`，把 `{ traceId, suggest, label }` 交过来，由 `photoAccess` 写回 `photos`。
+- `photoAccess` 提交检测时就把 `traceId` 记在 `photos.moderation.traceId` 上，所以照 `traceId` 能直接找到那张照片，**不需要另建 `media_checks` 集合**（原方案里的这一条作废）。
+- `moderationResult` 只接受带 `PHOTO_ACCESS_INTERNAL_TOKEN` 的调用；`photos` 集合始终只有 `photoAccess` 一个云函数写，`storyImages` 不碰它的表。
+- 兜底：提交失败记 `ok: false`；超过 30 分钟还没回来的，由 `photoAccess` 的定时任务重新提交（上传者近两小时没访问小程序时跳过，下次访问再提交）。
 
-**不合规时怎么处理**（和 `storyImages` 现有做法、问题三的文字检测对齐）
+**不合规时怎么处理**（和问题三的文字检测同一套原则，09-16 约定）
 
-| 结果 | 本人 | 家人 | 发给模型 |
+**只有明确的 `pass` 才算能给别人看；提交失败、网络问题、查不到结果、还没回来，一律按「不能给别人看」处理（fail closed）。** 不因为拿不到结果就放行。
+
+| `moderation` | 本人 | 家人 | 发给模型 |
 |---|---|---|---|
-| `pending` / `unchecked` | 正常显示 | 正常显示（与 `storyImages` 一致：只隐藏 `risky`） | 可以 |
-| `pass` | 正常 | 正常 | 可以 |
-| `review` | 正常 | 正常，记录在案 | 可以 |
-| `risky` | 照片上显示「这张照片没通过平台检查，家人看不到」，**不自动删除用户自己的照片**（和 AI 出图不同），本人可以自己删 | 显示「这张照片暂时看不到」，拿不到链接 | 不发，返回 `blocked` |
+| `ok: true`（`suggest: "pass"`） | 正常 | 正常 | 可以 |
+| 还没回来（`pending`） | 正常显示，照片上小字「正在检查」 | 「这张照片正在检查，稍后再看」，拿不到链接 | 可以 |
+| `review` | 正常显示，小字「平台在复核」 | 看不到 | 可以 |
+| `risky` | 「这张照片没通过平台检查，家人看不到」；**不自动删除用户自己的照片**（和 AI 出图不同），本人可以自己删 | 看不到 | 不发，返回 `risky` |
+| 提交失败 / 查不到（`unchecked`） | 正常显示 | 看不到，由定时任务重新提交 | 可以 |
 
-- 记录：检测结果只存在 `photos` 记录的 `moderation*` 字段上，不另存照片内容。
-- 结果处理（拦截、提示、记录字段名）和问题三的家人共享文字检测（`msgSecCheck`）用同一套：`moderation: "pass" | "review" | "risky" | "pending" | "unchecked"`、`moderationLabel`、`moderatedAtMs`。云函数之间没有公共代码层，把「按 suggest 得出处理方式」的几行函数做成同名小文件 `contentSafety.js`，各函数目录各放一份，注释写明保持一致。**待和问题三对齐。**
-
-## 四、手机里已有照片的补传
-
-1. **找照片**：遍历本账号所有书稿版本（含历史版本）里的 `photoId` 和「【本机照片：…】」占位，去掉 `photos` 集合里已经有记录的。插入过、但从没保存进任何版本的照片不补传。
-2. **征得同意**（单独弹窗，文案待问题七定）：说清找到几张、大约多大、存到哪里（微信云开发云存储）、谁能看（本人；家人按邀请权限）、怎么删（「我的 → 云端照片 → 删除」）；按钮是「补传」「先不」。选「先不」时，「我的」页留一个入口，之后不再主动弹。
-3. **补传**：走第 3.6 节的同一个队列，显示「已存 12 / 40 张」，可以「暂停」。离开页面或退出小程序后，下次接着传。
-4. **找不到的照片**：本机文件已经没了（换过手机、清理过小程序），列出「这台手机上找不到 N 张」，不报错、不重试。换回原来那台手机补传就行。
-5. **不重复**：路径由 `photoId` 决定，而且只补没有记录的照片。
-6. **不碰真实数据的测试**：用虚构家庭加开发者工具测完整流程（中断、重试、找不到文件、重复触发），再请用户用真机体验版确认。动真实照片前，先说明影响和回退办法，征得同意。
-
-## 五、导入流程
+- **本人始终能看自己的照片**：检测是为了「给别人看」这件事，不是替用户审查自己的相册。
+- **发给模型只在 `risky` 时拦**：用户刚导入就点「让 AI 看看」时，结果多半还没回来（最长 30 分钟），按 fail closed 会让这个功能基本不可用；而且这是本人对自己照片的主动请求，不是给别人看。这一条和家人可见的 fail closed 不同，是有意的，已告诉问题三和问题五。
+- 记录：只存在 `photos.moderation` 里，不另存照片内容。
+- 分工（协调会话 09-16 定）：**文字检测统一走问题三的 `contentSecurityCheck` 云函数**（它维护），别人用 `cloud.callFunction` 调；**图片检测归问题九**，结果结构沿用同一套 `{ ok, suggest, label }`。三边处理方式：问题九「有风险时家人看不到，不删用户照片」，问题三「仍然保存但强制只自己可见」，问题五「不返回草稿」；提示文案都以问题七为准。
+- 「按 suggest 得出处理方式」的几行做成同名小文件 `contentSafety.js`，各函数目录各放一份（云函数之间没有公共代码层），注释写明和问题三保持一致。
 
 ### 5.1 入口
 
@@ -239,8 +232,10 @@ _id: "<familyId>__<photoId>"
 - 标题取文件名去掉后缀，截到标题上限。
 - **分段（按用户选的 B）**：
   - 500 字以内，是只有一段的普通记忆。
-  - 超过 500 字，按段落切，每段不超过 500 字。单个段落本身超过 500 字时，在句号、问号、叹号、分号处断开；实在没有标点，才按 500 字硬切（沿用 `splitRecoverableText` 按码点切，不切坏 emoji）。
-  - 段的来源记为 `"import"`（**待问题四确认**）。
+  - 超过 500 字：**一个自然段就是一段**。段落本身超过 500 字时，在句号、问号、叹号、分号处再断开；实在没有标点，才按 500 字硬切（沿用 `splitRecoverableText` 按码点切，不切坏 emoji）。
+  - 为什么一段一个自然段：`normalizeMemoryText` 会把段内的换行压成空格，问题四 09-16 决定不为导入单开一条格式路径（全项目一套规范化）。把每个自然段单独成段，段与段之间用 `segments` 的边界表示，拼接时用换行连接，**这样分段的排版就不会丢**，也不用改规范化。段数多一点没有坏处。
+  - 段的来源记为 `"import"`（问题四 09-16 已加进 `MemorySegmentSource`）。
+  - 用问题四提供的 `createContributionFromSegments(input, segmentTexts, "import")` 新建记忆：第一段走 `createContribution` 的校验，其余段逐条追加，每段各自校验「非空、不超过 500 字」，错误文案直接透传给用户。
 - 这一版一次最多导入 2 万字（约 40 段，与整本书稿 2 万字上限一致）。超过就提示分成几个文件，不自动截断。
 - ⚠️ 现在的 `normalizeMemoryText` 会把所有空白压成一个空格，段内换行会丢。导入的段内是否保留换行，**待问题四确认**。
 
@@ -248,7 +243,8 @@ _id: "<familyId>__<photoId>"
 
 - 弹层（界面由问题八做，输入框和保存逻辑归问题九）：照片缩略图、一个输入框（不超过 500 字）、「跳过」「保存」。「让 AI 看看照片，帮我起个头」这个按钮后面接的是问题五的能力（第六节）。
 - 选「跳过」：存成只有照片、文字为空的记忆。标题默认「照片 · 9月15日」。
-- ⚠️ 现在的 `createContribution` 和 `familyInvite` 云函数都**不接受空文字**，需要改成「文字和照片至少有一样」。旧客户端读到文字为空的记忆会不会出问题，要用虚构数据实测（初步看读取时不按文字过滤）。**待对齐问题四。**
+- `createContribution` 已由问题四改成「文字和照片都空才报错」（新文案「请先写下一段回忆，或者加一张照片」，09-16）。**`cloudfunctions/familyInvite/core.js:79` 还没改**：它既拒绝空文字，也拒绝超过 500 字的记忆，分段后的记忆会合法地超过 500 字。那是问题三的文件，已请问题三放宽（不是删掉检查）。
+- 旧客户端读到文字为空、或超过 500 字的记忆会不会出问题，要用虚构数据实测（初步看读取时不按文字过滤）。
 
 ### 5.5 记忆怎么挂照片（**待问题四确认字段**）
 
@@ -256,6 +252,7 @@ _id: "<familyId>__<photoId>"
 MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photoId
 ```
 
+- **问题四 09-16 已实现**：字段已加，云端 `memories` 集合的读写也接上了（避免像 `segments` 那样「字段加了但云端会丢」），张数和去重在 `createContribution` 里兜底（超过 9 张报「最多放 9 张照片」）。照片 id 的格式校验由我这边加。
 - 照片挂在整条记忆上，不挂在某一段上。接着讲时可以再加照片，但总数不超过 9 张。
 - 写进章节时，这条记忆的照片作为候选插进章节（一本书稿最多 9 张的规则不变）。具体怎么插，由问题四、问题八定。
 - `familyInvite` 云函数 `normalizeContributionInput` 的字段白名单要加上 `photoIds`，否则存进共享故事时照片会被丢掉。
@@ -263,7 +260,7 @@ MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photo
 ### 5.6 合并顺序
 
 - 只有照片、以及 500 字以内的文字：只依赖「记忆挂照片」字段，可以早做。
-- 超过 500 字的文字：依赖问题四 `feat/story-records` 先合进 `main`，并提供「用多段新建记忆」的函数（现在只有 `appendMemorySegment`）。**我不在本分支重写分段逻辑。**
+- 超过 500 字的文字：依赖问题四的 `createContributionFromSegments`（`feat/story-records@16d6eb6` 已有）。问题四 09-16 说不必等它合进 `main`，**阶段 2 直接把本分支 rebase 到 `feat/story-records` 上**（和问题八现在的做法一致）；阶段 1 的照片上云不依赖它，仍从 `main` 起。**我不在本分支重写分段逻辑。**
 - 聊天页底部的改动，排在问题八 `feat/ui-clarity` 合进 `main` 之后，免得两边改同一块。
 
 ## 六、看图写一句话（**问题五负责**，本节只记和问题九的交界和已有设想）
@@ -334,7 +331,7 @@ MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photo
 ### 10.3 弹窗（`wx.showModal` 按钮最多 4 个字）
 
 - **补传**：标题「把照片存到云端？」；内容「这台手机上有 {N} 张照片还没存到云端，约 {X} MB。存到微信云开发云存储后，换手机也能看到。只存压缩后的照片，不传原图。默认只有你能看，你邀请的家人按权限查看。可以在「我的 → 云端照片」里删除。」；按钮「存到云端」「先不」。
-- **看图**（问题五实现）：标题「让 AI 看看这几张照片？」；内容「会把这 {N} 张照片的压缩小图发给腾讯云 TokenHub 上的看图模型，只用来帮你起草一句话，不识别照片里的人是谁。拾光家忆只保存你最后确认的文字。服务商的日志留存政策仍适用。不同意也可以自己写。」；按钮「允许」「自己写」。同意范围问题七建议「每次打开小程序问一次」，由问题五问用户定。
+- **看图**（问题五实现，弹窗已写好）：标题「让 AI 看看这几张照片？」；内容「会把这 {N} 张照片的压缩小图发给腾讯云 TokenHub 上的看图模型，只用来帮你起草一句话，不识别照片里的人是谁。拾光家忆只保存你最后确认的文字。服务商的日志留存政策仍适用。不同意也可以自己写。」；按钮「允许」「自己写」。**用户已定：每次打开小程序问一次，同一次打开里不重复问，每次只发这次选中的照片**（问题五 09-16 转达）。模型写出的那句话返回给用户之前，还要过一次文字内容安全检测，不过或失败就不返回草稿（问题五已实现）。
 - **删除第一次**：标题「删除云端照片？」；内容「会删除你存在云端的全部 {N} 张照片，约 {X} MB。之后在别的手机上、在家人那里，这些照片都会显示「照片已删除」。这台手机上的原图不受影响。」；按钮「继续」「取消」。
 - **删除第二次**：标题「确认删除」；内容「删除后无法恢复。确定删除这 {N} 张云端照片吗？」；按钮「删除」（红色）「不删了」。
 
@@ -357,11 +354,11 @@ MemoryContribution.photoIds?: string[]   // 最多 9 个，格式同书稿 photo
 
 | 会话 | 待对齐 |
 |---|---|
-| 问题四 | ① `MemorySegmentSource` 加 `"import"`；② 用多段新建记忆的函数；③ `photoIds` 字段；④ 允许文字为空、只有照片的记忆；⑤ 段内换行是否保留；⑥ `familyInvite/core.js:79`（超过 500 字拒绝）和 `generateBiography/index.js:24`（只读前 500 字）谁来改；⑦ 合并顺序 |
+| 问题四 | **09-16 全部答复并实现**（`feat/story-records@16d6eb6`）：加了 `"import"` 来源、`createContributionFromSegments`、`photoIds`（含云端读写与张数校验）、允许只有照片的记忆；`generateBiography` 的 500 字放宽到 4000；段内换行保持现有规范化（我改成一个自然段一段来保排版）；阶段 2 直接 rebase 到它的分支 |
 | 问题八 | 「导入」入口、类型提示、写一句话弹层、照片上传状态和失败重试、「我的 → 云端照片」、补传进度；它的 `feat/ui-clarity` 改了 `book.ts`、`me.wxml`、聊天页样式，合并顺序 |
-| 问题五 | **09-15 已回复并按它的意见改**：只返回临时链接；参考图用显示图，最多 3 张；发给模型的照片只看上传者；它方案 7.1 已更新（`feat/image-reference-photos@6e65573`）。**还在等**：能不能接受云函数之间用 `onBehalfOfOpenid` 加 token 的调用方式。它要用我的实现时，把本分支合进它的分支 |
+| 问题五 | **09-16 全部谈定**：接口按定稿改好（看图用 small、参考图用 display、权限看 `photos._openid`），接受 `onBehalfOfOpenid` 加 token；看图起草后端已写（`feat/image-reference-photos`，用替身）；检测回调由 `storyImages` 转发给 `photoAccess.moderationResult`。等我的 `photoAccess` 能用了发它分支和提交号 |
 | 问题七 | **09-15 已定稿**，见第十节；更正：照片上云不能单独提审，要和带 AI 的完整版一起；要加图片内容安全检测 |
-| 问题三 | **09-15 已回复**：照抄 `visibleMemoriesForAccess` 判断记忆可见；版本级可见范围不存在，第一版不做；家人不缓存照片 |
+| 问题三 | **09-15/16 已回复**：照抄 `visibleMemoriesForAccess`；版本级第一版不做；家人不缓存；检测结果用 `{ ok, suggest?, label? }` 形状、只有 `pass` 才给别人看。**还在等**：`familyInvite/core.js:79` 放宽（空文字加照片、超过 500 字）和字段白名单加 `photoIds`、`segments` |
 | 问题一 | 第十一节：这一版不升版本。**09-15 已确认无异议**（photoId 只作占位，服务端不获取、不等待）；带不带照片等 D2 定了再找它和网页端 |
 | 问题六 | **09-15 已回复**：没有通用失败组件，失败时先 `logLoadError`（`6197f5e`），提示文案归问题八；它不碰 `book.ts` 读照片的地方，不用排先后 |
 

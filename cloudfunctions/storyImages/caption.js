@@ -5,7 +5,8 @@ const CAPTION_MAX_PHOTOS = 3;
 const CAPTION_MAX_LENGTH = 60;
 const CAPTION_TIMEOUT_MS = 15_000;
 /** A request that reached the model, or may have, counts toward the daily limit. */
-const CAPTION_COUNTED_STATUSES = ["submitted", "ok", "unknown"];
+const CAPTION_COUNTED_STATUSES = ["submitted", "ok", "unknown", "text_blocked"];
+const FAMILY_ID_PATTERN = /^family_[0-9A-Za-z_-]{1,120}$/;
 const PHOTO_ID_PATTERN = /^photo-[a-z0-9-]{1,80}$/;
 const REQUEST_ID_PATTERN = /^req-[0-9a-z-]{8,60}$/;
 const FALLBACK_MESSAGE = "没看出来，自己写一句吧";
@@ -22,6 +23,8 @@ const PHOTO_MESSAGES = {
   not_uploaded: "这张照片还没存到云端，稍后再试",
   deleted: "这张照片已经删掉了",
   too_large: "这张照片太大了，换一张试试",
+  blocked: "这张照片没通过平台审核",
+  risky: "这张照片没通过平台审核",
   forbidden: "没找到这张照片",
   not_found: "没找到这张照片",
 };
@@ -31,6 +34,7 @@ function normalizeCaptionInput(event) {
   const familyId = String(input.familyId || "").trim();
   const requestId = String(input.requestId || "").trim();
   const photoIds = Array.isArray(input.photoIds) ? input.photoIds.map(id => String(id || "").trim()) : [];
+  if (!FAMILY_ID_PATTERN.test(familyId)) throw new core.StoryImageError("INVALID_FAMILY", "记忆之家信息不完整");
   if (!REQUEST_ID_PATTERN.test(requestId)) throw new core.StoryImageError("INVALID_REQUEST", "请求编号无效，请重试");
   if (photoIds.length < 1 || photoIds.length > CAPTION_MAX_PHOTOS) {
     throw new core.StoryImageError("INVALID_PHOTOS", `一次选 1 到 ${CAPTION_MAX_PHOTOS} 张照片`);
@@ -62,14 +66,16 @@ function classifyVisionError(errorCode) {
 }
 
 /**
- * 看图写一句话: reads 1–3 of the owner's cloud photos (small, base64) through photoAccess,
- * asks the vision model for one sentence and hands it back as a draft marked AI-generated.
- * The log keeps who, which photos and the outcome; it never keeps the sentence or the photos.
+ * 看图写一句话: reads 1–3 of the caller's own cloud photos through photoAccess (which
+ * checks who owns each photo), asks the vision model for one sentence, runs it through
+ * the text content check, and hands it back as a draft marked AI-generated.
+ * The log keeps who, which photos and the outcome; never the sentence or the photos.
  */
-function createCaptionHandler({ repo, vision, readPhotos, now = () => Date.now(), log = console }) {
+function createCaptionHandler({ repo, vision, readPhotos, checkText, now = () => Date.now(), log = console }) {
   async function caption(ctx, event) {
     const input = normalizeCaptionInput(event);
-    core.requireOwner(ctx.openid, input.familyId);
+    // photoAccess decides who may read each photo; here we only need a signed-in caller.
+    if (!ctx.openid) throw new core.StoryImageError("OPENID_NOT_AVAILABLE", "没有拿到微信身份，请重新进入小程序");
     if (!vision.configured) throw new core.StoryImageError("VISION_NOT_CONFIGURED", "看图服务还没配置好");
 
     const logId = `${input.familyId}_${input.requestId}`;
@@ -78,7 +84,7 @@ function createCaptionHandler({ repo, vision, readPhotos, now = () => Date.now()
     }
     const nowMs = now();
     const dayKey = core.chinaDayKey(nowMs);
-    const used = await repo.countCaptionLogs({ familyId: input.familyId, dayKey, statuses: CAPTION_COUNTED_STATUSES });
+    const used = await repo.countCaptionLogs({ requesterOpenId: ctx.openid, dayKey, statuses: CAPTION_COUNTED_STATUSES });
     if (used >= CAPTION_DAILY_LIMIT) {
       throw new core.StoryImageError("CAPTION_LIMIT", `今天已经看了 ${CAPTION_DAILY_LIMIT} 次，明天再来`);
     }
@@ -105,7 +111,6 @@ function createCaptionHandler({ repo, vision, readPhotos, now = () => Date.now()
         familyId: input.familyId,
         photoIds: input.photoIds,
         variant: "small",
-        format: "base64",
         purpose: "ai-caption",
         onBehalfOfOpenid: ctx.openid,
       });
@@ -115,7 +120,7 @@ function createCaptionHandler({ repo, vision, readPhotos, now = () => Date.now()
       return { status: "failed", message: "照片暂时读不出来，稍后再试", aiGenerated: false };
     }
 
-    const unavailable = photos.filter(photo => photo.status !== "ok" || typeof photo.base64 !== "string" || !photo.base64);
+    const unavailable = photos.filter(photo => photo.status !== "ok" || typeof photo.url !== "string" || !photo.url);
     if (unavailable.length) {
       await finish("failed", { errorCode: "PHOTO_UNAVAILABLE" });
       return {
@@ -126,8 +131,7 @@ function createCaptionHandler({ repo, vision, readPhotos, now = () => Date.now()
       };
     }
 
-    const images = photos.map(photo => `data:${photo.contentType || "image/jpeg"};base64,${photo.base64}`);
-    const answer = await vision.ask({ text: CAPTION_PROMPT, images, timeoutMs: CAPTION_TIMEOUT_MS });
+    const answer = await vision.ask({ text: CAPTION_PROMPT, images: photos.map(photo => photo.url), timeoutMs: CAPTION_TIMEOUT_MS });
     if (!answer.ok) {
       const status = classifyVisionError(answer.errorCode);
       await finish(status, { errorCode: answer.errorCode });
@@ -135,8 +139,20 @@ function createCaptionHandler({ repo, vision, readPhotos, now = () => Date.now()
     }
 
     const parsed = parseCaption(answer.content);
-    await finish("ok", { unclear: parsed.unclear, captionLength: Array.from(parsed.caption).length });
-    if (parsed.unclear) return { status: "unclear", message: FALLBACK_MESSAGE, aiGenerated: false };
+    if (parsed.unclear) {
+      await finish("ok", { unclear: true, captionLength: 0 });
+      return { status: "unclear", message: FALLBACK_MESSAGE, aiGenerated: false };
+    }
+
+    // Deep synthesis rules require checking the generated text before it reaches the user.
+    const verdict = await checkText({ text: parsed.caption, openid: ctx.openid });
+    if (!verdict || !verdict.ok) {
+      const status = verdict && verdict.risky ? "text_blocked" : "unknown";
+      await finish(status, { errorCode: (verdict && verdict.errorCode) || "TEXT_CHECK_FAILED" });
+      return { status, message: FALLBACK_MESSAGE, aiGenerated: false };
+    }
+
+    await finish("ok", { unclear: false, captionLength: Array.from(parsed.caption).length });
     return { status: "ok", caption: parsed.caption, aiGenerated: true, message: "" };
   }
 

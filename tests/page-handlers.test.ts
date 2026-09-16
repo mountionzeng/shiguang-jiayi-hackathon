@@ -7,6 +7,7 @@ import {
   FamilyRoomState,
 } from "../miniprogram/domain/biography";
 import { makeRevision } from "../miniprogram/services/manuscript";
+import { storyImageApi } from "../miniprogram/services/storyImageService";
 import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 const ROOM_KEY = "shiguang-family-room-v5";
@@ -819,6 +820,88 @@ test("the personal home page summarizes the active profile", async (context) => 
   assert.equal(page.data.memberName, "林岚");
   assert.equal(page.data.memoryCount, 1);
   assert.equal(page.data.familyCount, 2);
+});
+
+test("聊天页导入长文字文件，按顺序分段但只保存成一条未归类记忆", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const wxMock = (globalThis as unknown as { wx: Record<string, unknown> }).wx;
+  wxMock.showLoading = () => undefined;
+  wxMock.hideLoading = () => undefined;
+  wxMock.getFileSystemManager = () => ({
+    readFile: ({ success }: { success: (result: { data: string }) => void }) => success({
+      data: `第一自然段。\n${"很久以前的往事".repeat(80)}。`,
+    }),
+  });
+  const page = instantiate(await pageDefinition("interview"));
+
+  await callPage(page, "saveImportedFiles", [{ name: "外婆的故事.txt", path: "wxfile://memory.txt", size: 800 }]);
+
+  const imported = last(storage.roomState().contributions);
+  assert.equal(imported?.title, "外婆的故事");
+  assert.equal(imported?.storyTitle, undefined);
+  assert.equal(imported?.scope, "personal");
+  assert.ok((imported?.segments?.length || 0) > 1);
+  assert.ok(imported?.segments?.every(segment => segment.source === "import" && Array.from(segment.text).length <= 500));
+  assert.equal(page.data.saved, false, "导入不应结束或覆盖正在进行的聊天");
+  assert.equal(page.data.importing, false);
+
+  const wxml = readFileSync("miniprogram/pages/interview/interview.wxml", "utf8");
+  assert.match(wxml, /bindtap="importMemory"/);
+  assert.doesNotMatch(wxml, /照片 · 赛后接入|语音 · 赛后接入/);
+});
+
+test("聊天页导入照片时可以跳过写字，原图留在本机并进入云上传队列", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const wxMock = (globalThis as unknown as { wx: Record<string, unknown> }).wx;
+  wxMock.env = { USER_DATA_PATH: "/user" };
+  wxMock.showLoading = () => undefined;
+  wxMock.hideLoading = () => undefined;
+  wxMock.getFileSystemManager = () => ({
+    saveFile: ({ filePath, success }: { filePath: string; success: (result: { savedFilePath: string }) => void }) =>
+      success({ savedFilePath: filePath }),
+    accessSync: () => undefined,
+  });
+  const page = instantiate(await pageDefinition("interview"));
+
+  await callPage(page, "saveImportedFiles", [{ name: "合影.jpg", path: "wxfile://photo.jpg", size: 1200, type: "image" }]);
+  assert.equal(page.data.importDraftOpen, true);
+  assert.equal((page.data.importPhotoPaths as string[])[0].startsWith("/user/photo-"), true);
+  await callPage(page, "savePhotoImport");
+
+  const imported = last(storage.roomState().contributions);
+  assert.equal(imported?.text, "");
+  assert.equal(imported?.photoIds?.length, 1);
+  assert.match(imported?.title || "", /^照片 · \d+月\d+日$/);
+  const queue = (wxMock.getStorageSync as (key: string) => unknown)("shiguang-photo-upload-queue-v1") as unknown[];
+  assert.equal(queue.length, 1);
+});
+
+test("照片导入可以取得 AI 草稿，用户改过后以 AI 已修改标识保存", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const previousCaption = storyImageApi.captionPhotos;
+  context.after(() => { storyImageApi.captionPhotos = previousCaption; });
+  storyImageApi.captionPhotos = async () => ({
+    status: "ok", caption: "院子里晒着被子", message: "", aiGenerated: true,
+  });
+  const wxMock = (globalThis as unknown as { wx: Record<string, unknown> }).wx;
+  wxMock.showLoading = () => undefined;
+  wxMock.hideLoading = () => undefined;
+  const page = instantiate(await pageDefinition("interview"));
+  page.setData({ importDraftOpen: true, importPhotoIds: ["photo-test-ai"], importPhotoPaths: ["/user/test.jpg"] });
+
+  await callPage(page, "generateImportCaption");
+  assert.equal(page.data.importCaption, "院子里晒着被子");
+  assert.equal(page.data.importAiLabel, "文字 AI 生成");
+  callPage(page, "onImportCaptionInput", { detail: { value: "院子里晒着外婆洗好的被子" } });
+  assert.equal(page.data.importAiLabel, "文字 AI 生成 · 已由你修改");
+  await callPage(page, "savePhotoImport");
+
+  const imported = last(storage.roomState().contributions);
+  assert.equal(imported?.text, "院子里晒着外婆洗好的被子");
+  assert.equal(imported?.organizationMode, "cloud-ai");
 });
 
 test("the home cover and its three counts are about the story you are on", async (context) => {

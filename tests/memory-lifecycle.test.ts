@@ -166,6 +166,16 @@ test("cloud round-trip also keeps a memory's segments (regression: they were mis
   } finally { cloud.restore(); }
 });
 
+test("cloud round-trip also keeps a memory's photoIds", async () => {
+  const cloud = installCloud();
+  try {
+    const { appendCloudContribution, loadCloudRoomState } = await import("../miniprogram/services/cloudRoomStorage");
+    await appendCloudContribution(memory({ photoIds: ["family_x_img_req-abc12345"] }));
+    const reloaded = await loadCloudRoomState();
+    assert.deepEqual(reloaded.contributions[0].photoIds, ["family_x_img_req-abc12345"]);
+  } finally { cloud.restore(); }
+});
+
 test("recentlyDeletedItems combines stories and memories, newest deletion first", () => {
   const state: FamilyRoomState = {
     ...createDemoRoomStateForTests(),

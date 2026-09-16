@@ -17,6 +17,7 @@ const COLLECTIONS = {
   generatedArtifacts: "generated_artifacts",
   imageJobs: "image_jobs",
   storyImages: "story_images",
+  photos: "photos",
   photoCaptionLogs: "photo_caption_logs",
 };
 
@@ -85,6 +86,26 @@ async function removeStoryImageFiles(familyId) {
   }
 }
 
+async function removePhotoFiles(familyId) {
+  let removed = 0;
+  for (let offset = 0; ; offset += 100) {
+    let response;
+    try {
+      response = await db.collection(COLLECTIONS.photos).where({ familyId }).skip(offset).limit(100).get();
+    } catch (error) {
+      if (collectionMissing(error)) return removed;
+      throw error;
+    }
+    const records = response.data || [];
+    const fileIDs = records.flatMap(record => [record.displayFileID, record.smallFileID]).filter(Boolean);
+    for (let index = 0; index < fileIDs.length; index += 50) {
+      await cloud.deleteFile({ fileList: fileIDs.slice(index, index + 50) });
+    }
+    removed += fileIDs.length;
+    if (records.length < 100) return removed;
+  }
+}
+
 async function main(event = {}) {
   if (event.confirm !== CONFIRM_TEXT) {
     throw new Error(`CONFIRM_REQUIRED:${CONFIRM_TEXT}`);
@@ -93,6 +114,7 @@ async function main(event = {}) {
   const removedCounts = {
     families: await removeFamilyDoc(),
     storyImageFiles: await removeStoryImageFiles(DEMO_FAMILY_ID),
+    photoFiles: await removePhotoFiles(DEMO_FAMILY_ID),
   };
 
   await Promise.all(

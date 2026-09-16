@@ -1,12 +1,25 @@
 import type { ShiguangAppOptions } from "../app";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
+import { requestPhotoAiConsent } from "./photoAiConsent";
 import { currentFamilyId } from "./cloudRoomStorage";
 
 export type StoryImageStatus =
   | "submitted" | "queued" | "generating" | "generated" | "storing" | "stored" | "failed" | "blocked" | "unknown" | "expired";
 
 export type StoryImagePurpose = "illustration" | "backdrop";
+
+/** 问题七定的标识文案：记忆里有用户自己的照片，所以说「文字」，不说「图片」。 */
+export const CAPTION_LABEL = "文字 AI 生成";
+export const CAPTION_EDITED_LABEL = "文字 AI 生成 · 已由你修改";
+
+export interface PhotoCaptionResult {
+  status: string;
+  caption: string;
+  message: string;
+  aiGenerated: boolean;
+  photos?: Array<{ photoId: string; status: string }>;
+}
 
 export interface StoryImageJob {
   jobId: string;
@@ -151,12 +164,33 @@ async function listStoryImages(memberId: string): Promise<StoryImageList> {
   return result as StoryImageList;
 }
 
+/** 看图写一句话：先单独征得同意，再把选中的照片交给云函数，草稿回来标「文字 AI 生成」。 */
+async function captionPhotos(input: { photoIds: string[]; requestId?: string }): Promise<PhotoCaptionResult> {
+  if (!input.photoIds.length) throw new StoryImageServiceError("INVALID_PHOTOS", "先选一张照片");
+  if (!await requestPhotoAiConsent(input.photoIds.length)) {
+    throw new StoryImageServiceError("CONSENT_DECLINED", "这次没有允许把照片发给 AI；你可以自己写一句");
+  }
+  const result = await callStoryImages<Partial<PhotoCaptionResult>>("caption", {
+    photoIds: input.photoIds,
+    requestId: input.requestId ?? newImageRequestId(),
+  });
+  if (typeof result.status !== "string") throw new StoryImageServiceError("MALFORMED", "看图服务返回的内容不完整");
+  return {
+    status: result.status,
+    caption: typeof result.caption === "string" ? result.caption : "",
+    message: typeof result.message === "string" ? result.message : "",
+    aiGenerated: result.aiGenerated === true,
+    photos: Array.isArray(result.photos) ? result.photos : undefined,
+  };
+}
+
 async function removeStoryImage(imageId: string): Promise<void> {
   await callStoryImages<{ ok?: boolean }>("remove", { imageId });
 }
 
 /** Pages call through this object so page tests can stand in for the cloud. */
 export const storyImageApi = {
+  captionPhotos,
   submitChapterImage,
   checkImageJob,
   listStoryImages,

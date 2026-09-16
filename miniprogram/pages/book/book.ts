@@ -336,7 +336,7 @@ Page({
       }));
       await this.collectEditor();
       this.editManuscript();
-      this.setData({ saveNotice: "照片仅在本机；请点保存。换手机或清理小程序后不可恢复。" });
+      this.setData({ saveNotice: "照片已放进书稿，会自动存到云端；请点保存。" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg ?? "");
       if (!/cancel/i.test(message)) this.setData({ saveNotice: error instanceof Error ? error.message : "无法添加照片，请检查相册权限或本机存储空间后重试" });

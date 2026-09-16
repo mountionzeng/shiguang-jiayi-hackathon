@@ -16,7 +16,7 @@ export type MemoryType = "note" | "memoir";
  * 记忆分段：接着讲＝给同一条记忆追加一段，不再另存一条记忆。
  * 规则来源：docs/2026-09-15-memory-segments-plan.md，问题八转达用户 2026-09-15 决定。
  */
-export type MemorySegmentSource = "note" | "continue" | "daily-question";
+export type MemorySegmentSource = "note" | "continue" | "daily-question" | "import";
 
 export interface MemorySegment {
   /** 段内唯一，不跨记忆。 */
@@ -112,7 +112,14 @@ export interface MemoryContribution {
    * 不受影响——删除来源记忆，不会拿掉书稿里已经存下的字。真正永久删除是另一个动作。
    */
   deletedAt?: string;
+  /**
+   * 挂在整条记忆上，不挂在某一段：最多 9 张，问题九（照片上云）负责上传和格式。
+   * 只有照片、没写一句话时，text 允许为空——见 createContribution 的校验。
+   */
+  photoIds?: string[];
 }
+
+export const MAX_MEMORY_PHOTOS = 9;
 
 export function isActiveMemory(contribution: MemoryContribution): boolean {
   return !contribution.deletedAt;
@@ -289,6 +296,8 @@ export interface CreateContributionInput {
   sharedWithMemberId?: string;
   /** 仅供退出恢复分片使用：输入已经整体规范化，需保留片段边界字符。 */
   preserveNormalizedText?: boolean;
+  /** 有照片时 text 可以留空（只有照片、没写一句话）；最多 9 张，格式由问题九校验。 */
+  photoIds?: string[];
   now?: Date;
   id?: string;
 }
@@ -424,13 +433,24 @@ function normalizeTextTags(tags: unknown, maxCount: number): string[] {
   ).slice(0, maxCount);
 }
 
+/** 失败关闭：不是字符串数组、或超过 9 张，一律当作没有照片，不会绕过张数上限。 */
+function normalizePhotoIds(photoIds: unknown): string[] | undefined {
+  if (!Array.isArray(photoIds) || !photoIds.every((id) => typeof id === "string" && id)) return undefined;
+  const unique = Array.from(new Set(photoIds));
+  if (unique.length === 0) return undefined;
+  if (unique.length > MAX_MEMORY_PHOTOS) throw new Error(`最多放 ${MAX_MEMORY_PHOTOS} 张照片`);
+  return unique;
+}
+
 export function createContribution(input: CreateContributionInput): MemoryContribution {
   const text = input.preserveNormalizedText
     ? input.text
     : normalizeMemoryText(input.text);
+  const photoIds = normalizePhotoIds(input.photoIds);
 
-  if (!text.trim()) {
-    throw new Error("请先写下一段回忆");
+  // 只有照片、没写一句话时允许 text 为空——问题九：导入照片时用户可以跳过写字。
+  if (!text.trim() && !photoIds) {
+    throw new Error("请先写下一段回忆，或者加一张照片");
   }
 
   if (text.length > MAX_MEMORY_LENGTH) {
@@ -478,7 +498,36 @@ export function createContribution(input: CreateContributionInput): MemoryContri
     // 自己讲自己的故事，无需交给另一位“主人公”确认。
     reviewStatus: scope === "personal" ? "confirmed" : "pending",
     createdAt: now.toISOString(),
+    photoIds,
   };
+}
+
+/**
+ * 建一条由好几段组成的新记忆（比如导入的长文字，按顺序切成几段）：第一段照常走
+ * createContribution 的校验建一条记忆，其余段依次用 appendMemorySegment 追加——
+ * 每段都要非空、不超过 500 字，和「随手记」「接着讲」走的是同一套校验，不重复一遍。
+ */
+export function createContributionFromSegments(
+  input: CreateContributionInput,
+  segmentTexts: string[],
+  source: MemorySegmentSource,
+  now = new Date(),
+): MemoryContribution {
+  const [first, ...rest] = segmentTexts.map((text) => text.trim()).filter(Boolean);
+  if (!first) throw new Error("请先写下一段回忆，或者加一张照片");
+
+  let contribution = createContribution({ ...input, text: first, now, preserveNormalizedText: false });
+  if (source !== "note" || rest.length > 0) {
+    // 覆盖 memorySegments() 默认合成的单段（它固定标 "note"），让第一段也带上正确的来源。
+    contribution = {
+      ...contribution,
+      segments: [{ id: contribution.id, text: contribution.text, createdAt: contribution.createdAt, source, organizationMode: input.organizationMode }],
+    };
+  }
+  for (const text of rest) {
+    contribution = appendMemorySegment(contribution, text, source, input.organizationMode, now);
+  }
+  return contribution;
 }
 
 export function reviewContribution(

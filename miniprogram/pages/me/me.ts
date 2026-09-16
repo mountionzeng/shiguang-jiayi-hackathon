@@ -14,6 +14,12 @@ import { clearAiConsent, requestAiConsent } from "../../services/aiConsent";
 import { formatComputeBalance, loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
 import { JoinedFamilyRoom, loadJoinedFamilyRooms } from "../../services/familyInviteService";
 import { logLoadError } from "../../services/loadErrorLog";
+import { clearPhotoUploadQueue, deleteMyCloudPhotos, loadCloudPhotoSummary, pendingPhotoUploads } from "../../services/photoCloud";
+
+function formatPhotoBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 Page({
   data: {
@@ -32,6 +38,11 @@ Page({
     computeBalance: "0.00 算力",
     computeRate: "¥1 = 2 算力",
     joinedRooms: [] as JoinedFamilyRoom[],
+    cloudPhotoCount: 0,
+    cloudPhotoBytes: "0 KB",
+    checkingPhotoCount: 0,
+    pendingPhotoCount: 0,
+    deletingPhotos: false,
   },
 
   onShow() {
@@ -57,12 +68,23 @@ Page({
       memoryCount: memoryPool(currentState.contributions).length,
       sharedCount,
       familyCount,
+      pendingPhotoCount: pendingPhotoUploads().length,
     });
     if (!wx.cloud) {
       this.setData({ accountName: member.name, accountAvatarText: member.avatarText });
       return;
     }
     try {
+      try {
+        const photos = await loadCloudPhotoSummary();
+        this.setData({
+          cloudPhotoCount: photos.count,
+          cloudPhotoBytes: formatPhotoBytes(photos.bytes),
+          checkingPhotoCount: photos.checking,
+        });
+      } catch (error) {
+        console.warn("云端照片统计暂未加载", error);
+      }
       const account = await loadCurrentAccount();
       this.setData({
         accountName: account.displayName || member.name,
@@ -147,10 +169,48 @@ Page({
     wx.showToast({ title: allowed ? "本次可使用在线 AI" : "本次不使用在线 AI", icon: "none" });
   },
 
+  deleteCloudPhotos() {
+    if (this.data.deletingPhotos || this.data.cloudPhotoCount <= 0) return;
+    wx.showModal({
+      title: "删除云端照片？",
+      content: `会删除你存在云端的全部 ${this.data.cloudPhotoCount} 张照片，约 ${this.data.cloudPhotoBytes}。之后在别的手机上、在家人那里，这些照片都会显示“照片已删除”。这台手机上的原图不受影响。`,
+      confirmText: "继续",
+      confirmColor: "#c44738",
+      success: result => { if (result.confirm) this.confirmDeleteCloudPhotos(); },
+    });
+  },
+
+  confirmDeleteCloudPhotos() {
+    wx.showModal({
+      title: "确认删除",
+      content: `删除后无法恢复。确定删除这 ${this.data.cloudPhotoCount} 张云端照片吗？`,
+      confirmText: "删除",
+      confirmColor: "#c44738",
+      success: result => { if (result.confirm) void this.performDeleteCloudPhotos(); },
+    });
+  },
+
+  async performDeleteCloudPhotos() {
+    this.setData({ deletingPhotos: true });
+    wx.showLoading({ title: "正在删除" });
+    try {
+      await deleteMyCloudPhotos();
+      clearPhotoUploadQueue();
+      this.setData({ cloudPhotoCount: 0, cloudPhotoBytes: "0 KB", checkingPhotoCount: 0, pendingPhotoCount: 0 });
+      wx.hideLoading();
+      wx.showToast({ title: "云端照片已删除", icon: "success" });
+    } catch (error) {
+      wx.hideLoading();
+      wx.showToast({ title: error instanceof Error ? error.message : "删除失败，请稍后再试", icon: "none" });
+    } finally {
+      this.setData({ deletingPhotos: false });
+    }
+  },
+
   clearCurrentAccountData() {
     wx.showModal({
       title: "清空当前账号云端档案",
-      content: "将删除当前微信账号的云端档案、人物、记忆和书稿版本，无法撤销。本机照片文件不会一并删除。请确认已自行保留重要内容。",
+      content: "将删除当前微信账号的云端档案、人物、记忆、书稿版本和云端照片，无法撤销。本机照片文件不会一并删除。请确认已自行保留重要内容。",
       confirmText: "清空",
       confirmColor: "#c44738",
       success: (result) => {

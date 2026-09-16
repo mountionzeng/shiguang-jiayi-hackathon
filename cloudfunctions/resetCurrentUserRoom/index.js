@@ -17,6 +17,7 @@ const COLLECTIONS = {
   familyAccess: "family_access",
   imageJobs: "image_jobs",
   storyImages: "story_images",
+  photos: "photos",
   photoCaptionLogs: "photo_caption_logs",
 };
 
@@ -95,6 +96,27 @@ async function removeStoryImageFiles(familyId) {
   }
 }
 
+/** User photos have a display and small file; remove both before deleting their records. */
+async function removePhotoFiles(familyId) {
+  let removed = 0;
+  for (let offset = 0; ; offset += 100) {
+    let response;
+    try {
+      response = await db.collection(COLLECTIONS.photos).where({ familyId }).skip(offset).limit(100).get();
+    } catch (error) {
+      if (collectionMissing(error)) return removed;
+      throw error;
+    }
+    const records = response.data || [];
+    const fileIDs = records.flatMap(record => [record.displayFileID, record.smallFileID]).filter(Boolean);
+    for (let index = 0; index < fileIDs.length; index += 50) {
+      await cloud.deleteFile({ fileList: fileIDs.slice(index, index + 50) });
+    }
+    removed += fileIDs.length;
+    if (records.length < 100) return removed;
+  }
+}
+
 async function countWhere(collectionName, familyId) {
   try {
     const response = await db.collection(collectionName).where({ familyId }).count();
@@ -142,6 +164,7 @@ async function main() {
   const familyId = currentFamilyId(openid);
   await removeFamilyDoc(familyId);
   const removedImageFiles = await removeStoryImageFiles(familyId);
+  const removedPhotoFiles = await removePhotoFiles(familyId);
   const removedCounts = {};
   await Promise.all(
     Object.entries(COLLECTIONS)
@@ -158,6 +181,7 @@ async function main() {
     familyId,
     removedCounts,
     removedImageFiles,
+    removedPhotoFiles,
     afterResetCounts,
   };
 }
