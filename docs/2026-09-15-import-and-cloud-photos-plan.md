@@ -118,6 +118,8 @@ _id: "<familyId>__<photoId>"
   photoIds: string[],              // view：1–9 个；ai-caption / ai-reference：1–3 个
   variant: "small" | "display",    // 看图起草用 small，参考图出图用 display
   purpose: "view" | "ai-caption" | "ai-reference",
+  format?: "base64" | "url",       // 可传可不传：由 purpose 决定（ai-* 给 base64，view 给临时链接）；
+                                   // 传了只做校验，和 purpose 不符就报参数错。问题五已按 format:"base64" 写好调用，兼容它
   // 只有云函数之间调用时才带：
   onBehalfOfOpenid?: string,
   internalToken?: string
