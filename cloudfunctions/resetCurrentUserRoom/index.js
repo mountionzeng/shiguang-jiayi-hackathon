@@ -17,6 +17,7 @@ const COLLECTIONS = {
   familyAccess: "family_access",
   imageJobs: "image_jobs",
   storyImages: "story_images",
+  photoCaptionLogs: "photo_caption_logs",
 };
 
 function sanitizeDocumentPart(value) {

@@ -16,6 +16,7 @@ const COLLECTIONS = {
   generatedArtifacts: "generated_artifacts",
   imageJobs: "image_jobs",
   storyImages: "story_images",
+  photoCaptionLogs: "photo_caption_logs",
 };
 
 function sanitizeDocumentPart(value) {
