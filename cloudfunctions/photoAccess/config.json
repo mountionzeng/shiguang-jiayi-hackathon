@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "openapi": [
+      "security.mediaCheckAsync"
+    ]
+  },
+  "triggers": [
+    {
+      "name": "retryPhotoModeration",
+      "type": "timer",
+      "config": "0 */10 * * * * *"
+    }
+  ]
+}
