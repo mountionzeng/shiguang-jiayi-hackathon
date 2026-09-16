@@ -95,9 +95,9 @@ export interface MemoryContribution {
   scope?: MemoryScope;
   visibility: Visibility;
   /**
-   * 作者可额外授权给指定亲友阅读。
+   * 谁可以阅读这段个人故事。2026-09-15 起默认等于 relatedMemberIds（提到谁，谁就能看到）；
+   * 不再单独询问。仍是独立字段，创建后可以单独调整（例如日后想收回某一位的阅读权）。
    * 这只是阅读权限，不改变故事归属，也不会让内容进入记忆之家或他人的人生之书。
-   * 可以选择多人；每一段故事各自保存权限，互不继承。
    */
   sharedWithMemberIds?: string[];
   reviewStatus: ReviewStatus;
@@ -290,6 +290,7 @@ export interface CreateContributionInput {
   relatedMemberIds?: string[];
   scope?: MemoryScope;
   visibility: Visibility;
+  /** 不传时，个人故事默认分享给 relatedMemberIds；传空数组表示明确不分享给任何人。 */
   sharedWithMemberIds?: string[];
   /** @deprecated 兼容旧调用方；新界面使用 sharedWithMemberIds。 */
   sharedWithMemberId?: string;
@@ -459,16 +460,19 @@ export function createContribution(input: CreateContributionInput): MemoryContri
   const now = input.now ?? new Date();
   const id = input.id ?? `memory-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
   const scope = input.scope ?? "family";
-  const shareTargets = scope === "personal"
-    ? normalizeMemberIds(
-        input.sharedWithMemberIds ?? [input.sharedWithMemberId],
-        input.authorMemberId,
-      )
-    : [];
   const relatedMemberIds = normalizeMemberIds(
     input.relatedMemberIds,
     input.authorMemberId,
   );
+  // 谁可以看不再单独询问：没有明确传入时，跟着「涉及的人」走。显式传入（哪怕是空数组）
+  // 仍然按原样生效，留给日后单独调整阅读权限的调用方。
+  const shareTargets = scope === "personal"
+    ? normalizeMemberIds(
+        input.sharedWithMemberIds
+          ?? (input.sharedWithMemberId ? [input.sharedWithMemberId] : input.relatedMemberIds),
+        input.authorMemberId,
+      )
+    : [];
   const emotions = normalizeTextTags(input.emotions, 4);
   const people = normalizeTextTags(input.people, 8);
   const places = normalizeTextTags(input.places, 8);
