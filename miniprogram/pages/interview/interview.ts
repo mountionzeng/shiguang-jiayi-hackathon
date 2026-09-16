@@ -1,6 +1,7 @@
 import {
   accountOwner,
   createContribution,
+  createContributionFromSegments,
   contributionScope,
   contributionStoryTitle,
   FamilyMember,
@@ -33,6 +34,8 @@ import {
   roomDataModeLabel,
 } from "../../services/roomRepository";
 import { loadSharedFamilyRoom, submitSharedContribution } from "../../services/familyInviteService";
+import { saveLocalPhoto } from "../../services/bookImages";
+import { classifyImportFiles, ImportFileLike, readImportTextFile } from "../../services/memoryImport";
 
 interface MessageView {
   id: string;
@@ -184,6 +187,7 @@ Page({
 
     keyboardHeight: 0,
     sharedFamilyId: "",
+    importing: false,
   },
 
   messageSeq: 0,
@@ -526,8 +530,123 @@ Page({
     });
   },
 
-  notYet() {
-    wx.showToast({ title: "照片和语音赛后接入", icon: "none" });
+  importMemory() {
+    if (this.data.importing) return;
+    if (this.data.sharedFamilyId) {
+      wx.showToast({ title: "请回到自己的记忆里导入", icon: "none" });
+      return;
+    }
+    wx.showActionSheet({
+      itemList: ["从相册或拍照选照片", "从微信聊天选文件"],
+      success: result => {
+        if (result.tapIndex === 0) void this.importFromAlbum();
+        if (result.tapIndex === 1) void this.importFromMessage();
+      },
+    });
+  },
+
+  async importFromAlbum() {
+    try {
+      const response = await new Promise<WechatMiniprogram.ChooseMediaSuccessCallbackResult>((resolve, reject) => wx.chooseMedia({
+        count: 9,
+        mediaType: ["image"],
+        sourceType: ["album", "camera"],
+        sizeType: ["compressed"],
+        success: resolve,
+        fail: reject,
+      }));
+      await this.saveImportedFiles(response.tempFiles.map((file, index) => ({
+        name: `照片${index + 1}.jpg`, path: file.tempFilePath, size: file.size, type: "image",
+      })));
+    } catch (error) {
+      this.showImportError(error);
+    }
+  },
+
+  async importFromMessage() {
+    try {
+      const response = await new Promise<WechatMiniprogram.ChooseMessageFileSuccessCallbackResult>((resolve, reject) => wx.chooseMessageFile({
+        count: 10,
+        type: "all",
+        success: resolve,
+        fail: reject,
+      }));
+      await this.saveImportedFiles(response.tempFiles.map(file => ({
+        name: file.name, path: file.path, size: file.size, type: file.type,
+      })));
+    } catch (error) {
+      this.showImportError(error);
+    }
+  },
+
+  showImportError(error: unknown) {
+    const message = String((error as { errMsg?: string; message?: string })?.errMsg || (error as Error)?.message || error);
+    if (/cancel/i.test(message)) return;
+    wx.showModal({ title: "没能导入", content: message || "导入失败，请重试", showCancel: false });
+  },
+
+  async importCaption(photoCount: number): Promise<string> {
+    return new Promise(resolve => wx.showModal({
+      title: "给照片写一句话",
+      content: `这次选了 ${photoCount} 张照片。可以写一句当时的事，也可以先跳过。`,
+      editable: true,
+      placeholderText: "例如：那年春天，我们在院子里合影",
+      confirmText: "保存",
+      cancelText: "跳过",
+      success: result => resolve(result.confirm ? String(result.content || "").slice(0, MAX_MEMORY_LENGTH) : ""),
+      fail: () => resolve(""),
+    }));
+  },
+
+  async saveImportedFiles(files: ImportFileLike[]) {
+    if (this.data.importing) return;
+    this.setData({ importing: true });
+    wx.showLoading({ title: "正在导入" });
+    try {
+      const classified = classifyImportFiles(files);
+      if (!classified.images.length && !classified.text) {
+        throw new Error("这一版只能导入图片和 .txt、.md 文字文件");
+      }
+      const importedText = classified.text ? await readImportTextFile(classified.text) : undefined;
+      const savedPhotos = [] as Array<{ id: string; path: string }>;
+      for (const image of classified.images) savedPhotos.push(await saveLocalPhoto(image.path, "import"));
+      if (!importedText) wx.hideLoading();
+      const caption = importedText ? "" : await this.importCaption(savedPhotos.length);
+      if (!importedText) wx.showLoading({ title: "正在保存" });
+      const state = await loadRoomStateRemoteFirst();
+      const member = authorFor(state, await loadCurrentMemberRemoteFirst(state));
+      if (!member?.id) throw new Error("请先写下你的名字");
+      const input = {
+        authorMemberId: member.id,
+        authorName: member.name,
+        relation: member.relation,
+        text: importedText?.segments[0] || caption,
+        title: importedText?.title || `照片 · ${new Date().getMonth() + 1}月${new Date().getDate()}日`,
+        memoryType: "note" as const,
+        scope: "personal" as const,
+        visibility: "private" as const,
+        photoIds: savedPhotos.map(photo => photo.id),
+      };
+      const contribution = importedText
+        ? createContributionFromSegments(input, importedText.segments, "import")
+        : createContribution(input);
+      await appendContributionRemoteFirst(contribution);
+      this.setData({ importing: false });
+      wx.hideLoading();
+      if (classified.unsupportedNames.length) {
+        wx.showModal({
+          title: "支持的内容已导入",
+          content: `${classified.unsupportedNames.join("、")} 这一版还不能导入。Word、PDF 可以打开后复制文字，粘贴到聊天框里。`,
+          showCancel: false,
+        });
+      } else {
+        wx.showToast({ title: "已导入到记忆", icon: "success" });
+      }
+    } catch (error) {
+      wx.hideLoading();
+      this.setData({ importing: false });
+      throw error;
+    }
   },
 
   async save() {

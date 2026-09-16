@@ -152,8 +152,7 @@
       </view>
 
       <view class="tool-row">
-        <view class="tool-chip tool-chip-off" bindtap="notYet">照片 · 赛后接入</view>
-        <view class="tool-chip tool-chip-off" bindtap="notYet">语音 · 赛后接入</view>
+        <view class="tool-chip {{importing ? 'tool-chip-off' : ''}}" bindtap="importMemory">{{importing ? '正在导入…' : '导入'}}</view>
         <view class="tool-spacer"></view>
         <view
           class="tidy-btn {{(answers.length === 0 || organizing) ? 'tidy-btn-off' : ''}}"
