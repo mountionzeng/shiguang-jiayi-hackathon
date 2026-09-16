@@ -1,8 +1,8 @@
-# 问题九：导入与照片上云（阶段 0 方案，未写代码）
+# 问题九：导入与照片上云（实施中）
 
 日期：2026-09-15
 分支：`feat/import-and-cloud-photos`（从 `main` 的 `d83f1ed` 建立）
-状态：**方案稿。** 标「待定」的地方一次问用户一件；标「待对齐」的先和对应会话确认，再写代码。
+状态：**阶段 1 实施中。** 照片上云、统一读取、内容检查、书稿云端恢复和用户删除已完成；导入入口、旧照片经同意补传及真机/云端验证仍待完成。本文保留后续阶段的设计；下文标明的实现决策优先于早期方案。
 
 ## 一、已定的决定
 
@@ -37,7 +37,7 @@
 
 ### 3.1 每张照片存两份
 
-| 份 | 规格（**清晰度待定，见第十四节 D1**） | 用途 |
+| 份 | 规格（已定） | 用途 |
 |---|---|---|
 | 显示图 `display` | JPEG，长边 ≤ 1600，质量 80（约 200–500 KB） | 书稿和记忆里显示、换手机后恢复 |
 | 小图 `small` | JPEG，长边 ≤ 768，逐步降质量到 ≤ 100 KB | 列表缩略图、看图写一句话（参考图出图改用显示图，问题五 09-15 定） |
@@ -66,7 +66,7 @@ _id: "<familyId>__<photoId>"
   width, height, displayBytes, smallBytes,
   source: "book" | "import" | "backfill",
   createdAt, uploadedAt,
-  deletedAt?                   // 用户在「我的」里删掉云端照片时写入
+  deletedAt?                   // 保留给兼容读取；当前删除会移除文件和记录
 }
 ```
 
@@ -79,7 +79,7 @@ _id: "<familyId>__<photoId>"
 ### 3.4 权限规则（**需要用户同意后在控制台改，我不改**）
 
 - 云存储规则改为：`user-photos/` 下只有上传者能读写；其他路径维持现状（先在控制台看清当前规则，再给出完整规则文本请用户确认）。
-- 本人读自己的照片：小程序端直接 `wx.cloud.downloadFile`，规则放行。
+- 本人和家人都通过 `photoAccess.read` 读取临时链接；小程序端不直接取得 `fileID`。
 - **家人读照片：** 不开放小程序端直接读。新云函数 `photoAccess`（超时设 10 秒）按 `{ familyId, photoIds }` 核对：调用者能看到至少一条引用了这张照片的记忆（`photoIds` 里有它），才返回显示图的临时链接。
   - 判断「能看到这条记忆」：照抄 `familyInvite/core.js` 的 `visibleMemoriesForAccess` 那条判断（房主全部可见；否则是作者本人，或者是 `scope=personal` 且 `sharedWithMemberIds` 里有这个人）。云函数之间没有公共代码层，所以代码注释里写明「须和 familyInvite/core.js 的 visibleMemoriesForAccess 保持一致」。（问题三 09-15 确认）
   - **第一版不做「书稿版本」这一条。** 现在受邀家人本来就看不到任何书稿版本（`familyInvite` 的 `loadRoom` 对非房主返回空的 `manuscriptRevisions`），版本可见范围还没有规则，归问题四定。所以只出现在书稿里、不在任何记忆里的照片，家人第一版看不到。问题四定了规则再加这一条，不自己假设。
@@ -91,9 +91,8 @@ _id: "<familyId>__<photoId>"
 `readPhoto(photoId)`：
 
 1. 本机原图：现有 `readLocalPhoto`，完全不变。
-2. 本机缓存：`USER_DATA_PATH/cloud-<photoId>.jpg`，也登记在 `shiguang-local-<photoId>` 下，所以旧逻辑也能读到。
-3. 云端：本人用 `downloadFile(displayFileID)` 下载后写进缓存；非本人调 `photoAccess` 拿临时链接，**只显示、不缓存**。这样收回分享后立刻看不到，和现在记忆的权限行为一致（问题三 09-15 同意）。
-4. 都没有：先调 `logLoadError("book-photo", error)` 记进实时日志（问题六 `fix/review-load-error@6197f5e` 的 `services/loadErrorLog.ts`；它进 main 前要用就 cherry-pick 这个提交，不另写），再显示「这张照片没加载出来 · 点一下重试」，不悄悄变成空白。这句文案和样式先问问题八。
+2. 云端：本机没有时调 `photoAccess.read` 取得显示图临时链接；接口按本人/家人权限统一核对，且不返回 `fileID`。
+3. 都没有：保留现有照片引用占位，不丢掉 `photoId`。错误日志、重试样式和可撤回缓存仍属于后续阶段。
 
 - 缓存文件单独计数，超过 100 MB 时从最久没用的删起；**只删缓存，不删本机原图**（本机上限 200 MB）。
 - **旧客户端**（体验版和已发出的版本）：书稿里还是 `{ photoId }`，读不到本机文件时照旧显示「【本机照片：…】」占位，保存时占位会还原成 `photoId`（`contentFromDelta` 已经这样处理），不崩也不丢引用。旧客户端插入的新照片不会上传，新客户端下次打开时由补传流程补上。
@@ -120,8 +119,6 @@ _id: "<familyId>__<photoId>"
   photoIds: string[],              // view：1–9 个；ai-caption / ai-reference：1–3 个
   variant: "small" | "display",    // 看图起草用 small，参考图出图用 display
   purpose: "view" | "ai-caption" | "ai-reference",
-  format?: "base64" | "url",       // 可传可不传：由 purpose 决定（ai-* 给 base64，view 给临时链接）；
-                                   // 传了只做校验，和 purpose 不符就报参数错。问题五已按 format:"base64" 写好调用，兼容它
   // 只有云函数之间调用时才带：
   onBehalfOfOpenid?: string,
   internalToken?: string
@@ -152,14 +149,12 @@ _id: "<familyId>__<photoId>"
     photoId,
     status: "ok" | "not_uploaded" | "deleted" | "forbidden" | "not_found" | "risky" | "too_large",
     contentType?: "image/jpeg", width?, height?, bytes?,
-    url?: string,      // purpose=view：临时链接，给小程序显示
-    base64?: string    // purpose=ai-*：不带 data: 前缀
+    url?: string       // 临时链接；小程序显示或云函数在当前任务中读取
   }]
 }
 ```
 
-- **发给模型的一律 base64，不给临时链接**：临时链接会被服务商下载，也可能留在对方日志里（问题五 09-15 同意）。`view` 给小程序显示，用临时链接。
-- `display` 的 base64：单张 ≤ 600 KB、一次合计 ≤ 1.5 MB，超出的那张返回 `too_large`，问题五改取这张的 `small`。云函数之间调用的返回体上限要实测，实测后再调这两个数。
+- **最终跨会话决定：所有用途都返回临时链接，不提供 `format` 参数或 base64 返回体。** 调用方只在当前 AI 任务中使用链接；临时链接的实际有效期和服务商取图行为仍需真机/云端验证，不对用户承诺固定时长。
 - 状态含义：`not_uploaded` 手机里有、还没传到云端；`deleted` 用户删了云端照片（问题五据此记「没画成、不占名额」）；`not_found` 照片不存在，**或者不是本人家庭的照片**（不暴露存在与否）；`forbidden` 只用于本家庭内没有权限（例如 `view` 时家人看不到这条记忆）；`risky` 内容检测判定有风险，问题五据此提示「这张照片没通过平台审核」，不调用模型、不占次数。
 - 每张单独给状态；**不返回 fileID**；超时设 10 秒；只读，不调用模型。
 
