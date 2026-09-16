@@ -17,8 +17,12 @@ function requiredId(value, pattern, code, message) {
   return id;
 }
 
+function normalizeFamilyId(value) {
+  return requiredId(value, FAMILY_ID_PATTERN, "INVALID_FAMILY", "记忆之家信息不完整");
+}
+
 function normalizeReadInput(event) {
-  const familyId = requiredId(event && event.familyId, FAMILY_ID_PATTERN, "INVALID_FAMILY", "记忆之家信息不完整");
+  const familyId = normalizeFamilyId(event && event.familyId);
   const purpose = String(event && event.purpose || "");
   const variant = String(event && event.variant || "");
   if (!PURPOSES.has(purpose)) throw new PhotoAccessError("INVALID_PURPOSE", "读取照片的用途无效");
@@ -32,7 +36,7 @@ function normalizeReadInput(event) {
 }
 
 function normalizeRegisterInput(event) {
-  const familyId = requiredId(event && event.familyId, FAMILY_ID_PATTERN, "INVALID_FAMILY", "记忆之家信息不完整");
+  const familyId = normalizeFamilyId(event && event.familyId);
   const photoId = requiredId(event && event.photoId, PHOTO_ID_PATTERN, "INVALID_PHOTO", "照片编号无效");
   const source = String(event && event.source || "");
   if (!SOURCES.has(source)) throw new PhotoAccessError("INVALID_SOURCE", "照片来源无效");
@@ -112,6 +116,7 @@ module.exports = {
   canViewSharedPhoto,
   isInternalContext,
   moderationState,
+  normalizeFamilyId,
   normalizeReadInput,
   normalizeRegisterInput,
   publicPhoto,

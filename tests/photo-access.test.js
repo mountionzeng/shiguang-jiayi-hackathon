@@ -92,3 +92,21 @@ test("photoAccess 接线：只返回临时链接、不返回 fileID，图片检�
   const inspect = fs.readFileSync(path.join(__dirname, "../cloudfunctions/inspectFamilyData/index.js"), "utf8");
   assert.match(inspect, /photos:\s*"photos"/);
 });
+
+test("云端照片管理只允许小程序本人操作，确认后先删文件再删记录", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../cloudfunctions/photoAccess/index.js"), "utf8");
+  assert.match(source, /action === "listMine"/);
+  assert.match(source, /action === "deleteMine"/);
+  assert.match(source, /event\.confirm !== "DELETE_MY_CLOUD_PHOTOS"/);
+  assert.match(source, /loadAll\(PHOTOS, \{ familyId, _openid: openid \}\)/);
+  assert.match(source, /if \(isInternalContext\(context\)\) throw new PhotoAccessError\("FORBIDDEN", "只能在小程序里管理照片"\)/);
+  assert.ok(source.indexOf("await cloud.deleteFile") < source.indexOf("photos.map(photo => db.collection(PHOTOS).doc(photo._id).remove())"));
+
+  assert.equal(core.normalizeFamilyId(FAMILY), FAMILY);
+  assert.throws(() => core.normalizeFamilyId("family/other"), error => error.code === "INVALID_FAMILY");
+
+  const page = fs.readFileSync(path.join(__dirname, "../miniprogram/pages/me/me.wxml"), "utf8");
+  assert.match(page, /云端照片 \{\{cloudPhotoCount\}\} 张/);
+  assert.match(page, /还没存到云端的照片只在这台手机上/);
+  assert.match(page, /看照片会另外询问/);
+});

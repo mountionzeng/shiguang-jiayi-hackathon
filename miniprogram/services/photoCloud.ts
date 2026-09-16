@@ -62,6 +62,40 @@ export function retryPhotoUpload(photoId: string) {
   writeQueue(queue);
 }
 
+export interface CloudPhotoSummary {
+  count: number;
+  bytes: number;
+  checking: number;
+}
+
+async function callPhotoAccess<T>(action: string, data: Record<string, unknown> = {}): Promise<T> {
+  const response = await wx.cloud.callFunction({ name: "photoAccess", data: {
+    action,
+    familyId: await currentFamilyId(),
+    ...data,
+  } });
+  const result = response.result as (T & { error?: { code?: string; message?: string } }) | undefined;
+  if (!result || result.error) throw new Error(result?.error?.message || result?.error?.code || "照片服务暂时不可用");
+  return result;
+}
+
+export async function loadCloudPhotoSummary(): Promise<CloudPhotoSummary> {
+  const result = await callPhotoAccess<Partial<CloudPhotoSummary>>("listMine");
+  return {
+    count: Number(result.count || 0),
+    bytes: Number(result.bytes || 0),
+    checking: Number(result.checking || 0),
+  };
+}
+
+export async function deleteMyCloudPhotos(): Promise<void> {
+  await callPhotoAccess("deleteMine", { confirm: "DELETE_MY_CLOUD_PHOTOS" });
+}
+
+export function clearPhotoUploadQueue() {
+  writeQueue([]);
+}
+
 function compress(src: string, dimensions: { width: number; height: number }, quality: number): Promise<string> {
   return new Promise((resolve, reject) => wx.compressImage({
     src,

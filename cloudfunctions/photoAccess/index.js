@@ -3,6 +3,7 @@ const cloud = require("wx-server-sdk");
 const {
   PhotoAccessError,
   isInternalContext,
+  normalizeFamilyId,
   normalizeReadInput,
   normalizeRegisterInput,
   publicPhoto,
@@ -175,6 +176,33 @@ async function moderationResult(event, context) {
   return { ok: true };
 }
 
+async function listMine(event, context) {
+  if (isInternalContext(context)) throw new PhotoAccessError("FORBIDDEN", "只能在小程序里管理照片");
+  const openid = requesterOpenid(context, event, process.env.PHOTO_ACCESS_INTERNAL_TOKEN);
+  const familyId = normalizeFamilyId(event.familyId);
+  const photos = await loadAll(PHOTOS, { familyId, _openid: openid });
+  const active = photos.filter(photo => !photo.deletedAt);
+  return {
+    count: active.length,
+    bytes: active.reduce((sum, photo) => sum + Number(photo.displayBytes || 0) + Number(photo.smallBytes || 0), 0),
+    checking: active.filter(photo => !(photo.moderation && photo.moderation.ok === true)).length,
+  };
+}
+
+async function deleteMine(event, context) {
+  if (isInternalContext(context)) throw new PhotoAccessError("FORBIDDEN", "只能在小程序里管理照片");
+  if (event.confirm !== "DELETE_MY_CLOUD_PHOTOS") throw new PhotoAccessError("CONFIRM_REQUIRED", "请再次确认删除云端照片");
+  const openid = requesterOpenid(context, event, process.env.PHOTO_ACCESS_INTERNAL_TOKEN);
+  const familyId = normalizeFamilyId(event.familyId);
+  const photos = await loadAll(PHOTOS, { familyId, _openid: openid });
+  const fileIDs = photos.flatMap(photo => [photo.displayFileID, photo.smallFileID]).filter(Boolean);
+  for (let index = 0; index < fileIDs.length; index += 50) {
+    await cloud.deleteFile({ fileList: fileIDs.slice(index, index + 50) });
+  }
+  await Promise.all(photos.map(photo => db.collection(PHOTOS).doc(photo._id).remove()));
+  return { ok: true, removed: photos.length, removedFiles: fileIDs.length };
+}
+
 async function retryModeration() {
   const cutoff = Date.now() - 30 * 60 * 1000;
   const response = await db.collection(PHOTOS).where({
@@ -202,6 +230,8 @@ async function main(event = {}) {
     if (event.action === "register") return await register(event, context);
     if (event.action === "read") return await read(event, context);
     if (event.action === "moderationResult") return await moderationResult(event, context);
+    if (event.action === "listMine") return await listMine(event, context);
+    if (event.action === "deleteMine") return await deleteMine(event, context);
     throw new PhotoAccessError("UNKNOWN_ACTION", "不支持的照片操作");
   } catch (error) {
     if (error instanceof PhotoAccessError) return { error: { code: error.code, message: error.message } };

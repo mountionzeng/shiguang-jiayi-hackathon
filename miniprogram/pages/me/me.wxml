@@ -68,7 +68,7 @@
   </block>
 
   <view class="me-section-title">记忆管理</view>
-  <view class="local-storage-note">档案、人物、文字和版本使用原来的微信云端存储。照片文件仅保存在本机，换手机或清理小程序可能丢失；在线 AI 需另行授权。</view>
+  <view class="local-storage-note">档案、人物、文字、版本和照片保存在微信云开发云存储，换手机后可以恢复。还没存到云端的照片只在这台手机上。照片默认只有你能看，家人按邀请权限查看；在线 AI 需另行授权。</view>
   <view class="me-list">
     <button class="me-row" bindtap="openArchive" hover-class="none">
       <text class="me-row-icon">书</text>
@@ -91,6 +91,16 @@
       <view class="me-row-copy">
         <text class="me-row-title">记忆之家</text>
         <text class="me-row-note">查看亲友共享的记忆</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
+    <button class="me-row {{cloudPhotoCount > 0 ? 'me-row-danger' : ''}}" bindtap="deleteCloudPhotos" disabled="{{cloudPhotoCount <= 0 || deletingPhotos}}" hover-class="none">
+      <text class="me-row-icon {{cloudPhotoCount > 0 ? 'me-row-icon-danger' : ''}}">照</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">云端照片 {{cloudPhotoCount}} 张 · {{cloudPhotoBytes}}</text>
+        <text class="me-row-note" wx:if="{{pendingPhotoCount > 0}}">还有 {{pendingPhotoCount}} 张没存到云端</text>
+        <text class="me-row-note" wx:elif="{{checkingPhotoCount > 0}}">{{checkingPhotoCount}} 张正在平台检查</text>
+        <text class="me-row-note" wx:else>可在这里删除全部云端照片；本机原图不受影响</text>
       </view>
       <text class="me-row-arrow">›</text>
     </button>
@@ -118,14 +128,14 @@
     </button>
     <button class="me-row" bindtap="configureAiPrivacy">
       <text class="me-row-icon">私</text>
-      <view class="me-row-copy"><text class="me-row-title">在线 AI 授权</text><text class="me-row-note">本次允许或关闭文字处理，不发送照片</text></view>
+      <view class="me-row-copy"><text class="me-row-title">在线 AI 授权</text><text class="me-row-note">本次允许或关闭文字处理；看照片会另外询问</text></view>
       <text class="me-row-arrow">›</text>
     </button>
     <button class="me-row me-row-danger" bindtap="clearCurrentAccountData" hover-class="none">
       <text class="me-row-icon me-row-icon-danger">清</text>
       <view class="me-row-copy">
         <text class="me-row-title">清空当前账号云端档案</text>
-        <text class="me-row-note">删除人物、记忆和书稿，无法撤销</text>
+        <text class="me-row-note">删除人物、记忆、书稿和云端照片，无法撤销</text>
       </view>
       <text class="me-row-arrow">›</text>
     </button>

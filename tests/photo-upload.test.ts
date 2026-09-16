@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { beginPhotoUploadSession, enqueuePhotoUpload, pendingPhotoUploads, resumePhotoUploads, retryPhotoUpload } from "../miniprogram/services/photoCloud";
+import {
+  beginPhotoUploadSession,
+  clearPhotoUploadQueue,
+  deleteMyCloudPhotos,
+  enqueuePhotoUpload,
+  loadCloudPhotoSummary,
+  pendingPhotoUploads,
+  resumePhotoUploads,
+  retryPhotoUpload,
+} from "../miniprogram/services/photoCloud";
 
 test("照片上传队列生成 1600 显示图和不超过 100KB 的 768 小图，登记成功后清队", async context => {
   const previous = (globalThis as any).wx;
@@ -73,4 +82,34 @@ test("上传失败保留可重试状态，手动重试清零次数", async conte
   assert.equal(pendingPhotoUploads()[0].attempts, 0);
   beginPhotoUploadSession();
   assert.equal(pendingPhotoUploads()[0].attempts, 0);
+});
+
+test("照片管理读取本人统计并以固定确认词删除，删除后可清空待上传队列", async context => {
+  const previous = (globalThis as any).wx;
+  context.after(() => { (globalThis as any).wx = previous; });
+  const stored = new Map<string, unknown>();
+  const calls: Array<{ name: string; data?: Record<string, unknown> }> = [];
+  (globalThis as any).wx = {
+    getStorageSync: (key: string) => stored.get(key),
+    setStorageSync: (key: string, value: unknown) => stored.set(key, structuredClone(value)),
+    cloud: {
+      callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+        calls.push({ name, data });
+        if (name === "getOpenId") return { result: { openid: "owner-openid" } };
+        if (data?.action === "listMine") return { result: { count: 2, bytes: 432100, checking: 1 } };
+        return { result: { ok: true } };
+      },
+    },
+  };
+
+  enqueuePhotoUpload("photo-pending-123", "wxfile://usr/pending.jpg", "book");
+  assert.deepEqual(await loadCloudPhotoSummary(), { count: 2, bytes: 432100, checking: 1 });
+  await deleteMyCloudPhotos();
+  clearPhotoUploadQueue();
+
+  const photoCalls = calls.filter(call => call.name === "photoAccess");
+  assert.deepEqual(photoCalls.map(call => call.data?.action), ["listMine", "deleteMine"]);
+  assert.ok(photoCalls.every(call => call.data?.familyId === "family_owner-openid"));
+  assert.equal(photoCalls[1].data?.confirm, "DELETE_MY_CLOUD_PHOTOS");
+  assert.equal(pendingPhotoUploads().length, 0);
 });
