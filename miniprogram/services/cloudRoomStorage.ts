@@ -73,6 +73,7 @@ interface CloudMemory {
   reviewStatus: ReviewStatus;
   createdAt: string;
   segments?: MemoryContribution["segments"];
+  photoIds?: MemoryContribution["photoIds"];
   deletedAt?: string;
 }
 
@@ -283,6 +284,7 @@ async function saveContribution(
       createdAt: contribution.createdAt,
       segments: contribution.segments,
       deletedAt: contribution.deletedAt,
+      photoIds: contribution.photoIds,
       updatedAt: serverDate(),
     }),
   });
@@ -446,6 +448,7 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
       createdAt: memory.createdAt,
       segments: memory.segments,
       deletedAt: memory.deletedAt,
+      photoIds: memory.photoIds,
     }),
   );
 
