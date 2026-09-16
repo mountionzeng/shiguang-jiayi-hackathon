@@ -80,3 +80,25 @@ test("new photos explicitly request a persistent user path and verify it before 
   assert.equal(checked, requested);
   assert.equal(await readLocalPhoto(photo.id), requested);
 });
+
+test("本机没有照片时通过 photoAccess 读取云端显示图", async context => {
+  const previous = (globalThis as any).wx;
+  context.after(() => { (globalThis as any).wx = previous; });
+  const calls: Array<{ name: string; data?: Record<string, unknown> }> = [];
+  (globalThis as any).wx = {
+    env: { USER_DATA_PATH: "wxfile://usr" },
+    getStorageSync: () => undefined,
+    getFileSystemManager: () => ({ accessSync: () => { throw new Error("missing"); } }),
+    cloud: {
+      callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+        calls.push({ name, data });
+        if (name === "getOpenId") return { result: { openid: "owner-openid" } };
+        return { result: { photos: [{ photoId: "photo-cloud-1", status: "ok", url: "https://tmp.example/photo.jpg" }] } };
+      },
+    },
+  };
+  assert.equal(await readLocalPhoto("photo-cloud-1"), "https://tmp.example/photo.jpg");
+  const read = calls.find(call => call.name === "photoAccess");
+  assert.equal(read?.data?.purpose, "view");
+  assert.equal(read?.data?.variant, "display");
+});
