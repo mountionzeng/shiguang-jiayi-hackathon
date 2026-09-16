@@ -12,6 +12,7 @@ import {
   loadRoomStateRemoteFirst,
   replaceContributionRemoteFirst,
 } from "../../services/roomRepository";
+import { logLoadError } from "../../services/loadErrorLog";
 
 interface FocusView {
   id: string;
@@ -52,7 +53,7 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
+    void this.refresh().catch((error) => { logLoadError("review", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   async refresh(state?: FamilyRoomState) {

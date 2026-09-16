@@ -13,6 +13,7 @@ import {
   roomDataModeLabel,
 } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
+import { logLoadError } from "../../services/loadErrorLog";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -75,7 +76,7 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch(() => this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }));
+    void this.refresh().catch((error) => { logLoadError("archive", error); this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }); });
   },
 
   selectArchiveTab(event: {
@@ -275,7 +276,7 @@ Page({
       wx.showToast({ title: "已放进最近删除", icon: "none" });
     } catch (error) {
       this.setData({ deletingItemId: "" });
-      await this.refresh().catch(() => this.setData({ loadError: "删除结果尚未确认，请刷新后重试。" }));
+      await this.refresh().catch((error) => { logLoadError("archive", error); this.setData({ loadError: "删除结果尚未确认，请刷新后重试。" }); });
       wx.showToast({
         title: error instanceof Error ? error.message : "暂时无法删除",
         icon: "none",

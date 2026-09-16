@@ -22,6 +22,7 @@ import {
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import { bookmarkDateParts } from "../../services/memoryDates";
 import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
+import { logLoadError } from "../../services/loadErrorLog";
 
 interface RecentStoryView {
   id: string;
@@ -230,7 +231,7 @@ Page({
 
   onShow() {
     this.setData({ bookOpening: false });
-    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
+    void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   async refresh(state?: FamilyRoomState) {
@@ -422,7 +423,7 @@ Page({
     for (let tries = 0; !this.data.hasRecommendedQuestion && tries < 12 && dailyQuestionFor(this.recommendationOffset) === previous; tries += 1) {
       this.recommendationOffset += 1;
     }
-    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
+    void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   continueRecommendedQuestion() {
