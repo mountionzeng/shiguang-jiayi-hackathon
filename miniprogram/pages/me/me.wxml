@@ -68,7 +68,7 @@
   </block>
 
   <view class="me-section-title">记忆管理</view>
-  <view class="local-storage-note">档案、人物、文字、版本和照片保存在微信云开发云存储，换手机后可以恢复。还没存到云端的照片只在这台手机上。照片默认只有你能看，家人按邀请权限查看；在线 AI 需另行授权。</view>
+  <view class="local-storage-note">档案、人物、文字和版本保存在微信云开发数据库，压缩后的照片保存在微信云开发云存储，换手机后可以恢复。还没存到云端的照片只在这台手机上。照片默认只有你能看，家人按邀请权限查看；在线 AI 需另行授权。</view>
   <view class="me-list">
     <button class="me-row" bindtap="openArchive" hover-class="none">
       <text class="me-row-icon">忆</text>
