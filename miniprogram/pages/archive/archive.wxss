@@ -195,7 +195,8 @@
 .note-paper {
   position: relative;
   z-index: 1;
-  padding: 30rpx 30rpx 26rpx 36rpx;
+  min-height: 190rpx;
+  padding: 30rpx 30rpx 26rpx 96rpx;
   border: 2rpx solid rgba(129, 117, 93, 0.1);
   border-radius: 8rpx 22rpx 16rpx 10rpx;
   background: rgba(255, 254, 251, 0.96);
@@ -213,16 +214,6 @@
 
 .note-swipe:nth-child(even) .note-paper-open {
   transform: translateX(-116rpx) rotate(-0.35deg);
-}
-
-.note-pin {
-  position: absolute;
-  top: 28rpx;
-  left: 16rpx;
-  width: 6rpx;
-  height: 52rpx;
-  border-radius: 6rpx;
-  background: rgba(79, 127, 107, 0.46);
 }
 
 .note-date {
@@ -295,3 +286,6 @@
 .story-choices { display: flex; flex-wrap: wrap; margin: 20rpx 0; gap: 12rpx; }
 .story-chip { margin: 0; font-size: 25rpx; color: var(--jade); background: #efeee1; }
 .note-delete-badge { font-size: 22rpx; }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.note-delete.note-delete { width: 116rpx; margin-left: 0; margin-right: 0; }

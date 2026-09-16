@@ -26,7 +26,9 @@ import {
   planRestore,
 } from "./memberLifecycle";
 import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
+import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
 import { loadCurrentMember } from "./roomStorage";
+import { checkTextContent } from "./contentSecurityService";
 
 export const CLOUD_COLLECTIONS = {
   families: "families",
@@ -71,6 +73,9 @@ interface CloudMemory {
   visibility: Visibility;
   reviewStatus: ReviewStatus;
   createdAt: string;
+  segments?: MemoryContribution["segments"];
+  photoIds?: MemoryContribution["photoIds"];
+  deletedAt?: string;
 }
 
 interface CloudBiographyDraft {
@@ -278,6 +283,9 @@ async function saveContribution(
       visibility: contribution.visibility,
       reviewStatus: contribution.reviewStatus,
       createdAt: contribution.createdAt,
+      segments: contribution.segments,
+      deletedAt: contribution.deletedAt,
+      photoIds: contribution.photoIds,
       updatedAt: serverDate(),
     }),
   });
@@ -439,6 +447,9 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
       visibility: memory.visibility,
       reviewStatus: memory.reviewStatus,
       createdAt: memory.createdAt,
+      segments: memory.segments,
+      deletedAt: memory.deletedAt,
+      photoIds: memory.photoIds,
     }),
   );
 
@@ -482,6 +493,23 @@ export async function saveCloudManuscriptRevision(revision: ManuscriptRevision):
     });
 }
 
+/**
+ * 提到了别人、或者标了分享对象的个人记忆，写进云端前必须先过内容安全检测（微信要求，
+ * 详见 cloudfunctions/contentSecurityCheck）。纯私密记忆（没提到任何人）不会被别的
+ * 微信账号看到，不需要检测，也不发起这次网络请求。
+ *
+ * 检测没通过、或者检测服务暂时不可用时，仍然保存这段文字，但强制改成只有作者自己能看；
+ * 调用方可以对比保存前后的 sharedWithMemberIds 判断是否发生了这种情况，据此提示作者。
+ */
+async function enforceContentSecurity(contribution: MemoryContribution): Promise<MemoryContribution> {
+  const mayBeShownToOthers = contributionScope(contribution) === "personal" &&
+    (contributionRelatedMemberIds(contribution).length > 0 || personalShareTargetMemberIds(contribution).length > 0);
+  if (!mayBeShownToOthers) return contribution;
+  const result = await checkTextContent(contribution.text, contribution.title);
+  if (result.ok) return contribution;
+  return { ...contribution, sharedWithMemberIds: undefined };
+}
+
 export async function appendCloudContribution(
   contribution: MemoryContribution,
 ): Promise<FamilyRoomState> {
@@ -490,9 +518,10 @@ export async function appendCloudContribution(
 
 /** Bounded multi-record import: load the room once, then write resumable stable IDs. */
 export async function appendCloudContributions(
-  contributions: MemoryContribution[],
+  rawContributions: MemoryContribution[],
 ): Promise<FamilyRoomState> {
-  if (contributions.length === 0) return loadCloudRoomState();
+  if (rawContributions.length === 0) return loadCloudRoomState();
+  const contributions = await Promise.all(rawContributions.map(enforceContentSecurity));
   const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
   for (let offset = 0; offset < contributions.length; offset += 5) {
@@ -556,13 +585,14 @@ export async function addCloudFamilyMember(
 }
 
 export async function replaceCloudContribution(
-  contribution: MemoryContribution,
+  rawContribution: MemoryContribution,
 ): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
-  if (!state.contributions.some(item => item.id === contribution.id)) {
+  if (!state.contributions.some(item => item.id === rawContribution.id)) {
     throw new Error("这段记忆已不存在，请刷新列表");
   }
+  const contribution = await enforceContentSecurity(rawContribution);
   await saveContribution(familyId, contribution);
   await invalidateDraft(familyId, contribution);
   const personalDrafts = { ...(state.personalDrafts ?? {}) };
@@ -752,6 +782,25 @@ async function saveDeletedStories(familyId: string, deletedStories: DeletedStory
   await collection(CLOUD_COLLECTIONS.families).doc(familyId).update({
     data: { deletedStories, updatedAt: serverDate() },
   });
+}
+
+/** 软删除一段记忆：放进「最近删除」，可以恢复。真正永久删除请用 deleteCloudContribution。 */
+export async function softDeleteCloudMemory(contributionId: string, now = new Date()): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const updated = planDeleteMemory(state, contributionId, now);
+  if (!updated) return state;
+  await saveContribution(familyId, updated);
+  return { ...state, contributions: state.contributions.map(item => item.id === contributionId ? updated : item) };
+}
+
+export async function restoreCloudMemory(contributionId: string): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const updated = planRestoreMemory(state, contributionId);
+  if (!updated) return state;
+  await saveContribution(familyId, updated);
+  return { ...state, contributions: state.contributions.map(item => item.id === contributionId ? updated : item) };
 }
 
 export async function deleteCloudStory(key: string, title: string): Promise<FamilyRoomState> {

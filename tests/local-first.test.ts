@@ -49,9 +49,13 @@ test("declining online AI prevents all three AI service paths from transmitting 
   context.after(() => { clearAiConsent(); (globalThis as any).wx = before; (globalThis as any).getApp = beforeApp; });
   clearAiConsent();
   let calls = 0;
+  let consentCopy = "";
   (globalThis as any).getApp = () => ({ globalData: { cloudReady: true } });
   (globalThis as any).wx = {
-    showModal: ({ success }: any) => success({ confirm: false, cancel: true }),
+    showModal: ({ content, success }: any) => {
+      consentCopy = content;
+      success({ confirm: false, cancel: true });
+    },
     cloud: { callFunction: () => { calls++; throw new Error("not authorized"); } },
   };
   const state = createDemoRoomStateForTests();
@@ -59,4 +63,7 @@ test("declining online AI prevents all three AI service paths from transmitting 
   await generateInterviewPrompt({ answer: "不发送的文字", askedDimensions: [] });
   await organizeMemory({ transcript: ["不发送的文字"], memoryType: "note" });
   assert.equal(calls, 0);
+  assert.match(consentCopy, /这项授权不包含照片/);
+  assert.match(consentCopy, /压缩后的照片使用微信云开发云存储，原图仍留在手机/);
+  assert.match(consentCopy, /需要 AI 看照片时会另外询问/);
 });

@@ -2,11 +2,16 @@ import { accountOwner, contributionStoryTitle, MemoryContribution, memoryPool } 
 import {
   deleteStoryRemoteFirst,
   loadRoomStateRemoteFirst,
+  purgeAllDeletedMemoriesRemoteFirst,
+  purgeMemoryRemoteFirst,
+  restoreMemoryRemoteFirst,
   restoreStoryRemoteFirst,
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
+import { recentlyDeletedItems } from "../../services/recentlyDeleted";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
+import { logLoadError } from "../../services/loadErrorLog";
 
 interface StoryRow {
   key: string;
@@ -18,6 +23,7 @@ interface StoryRow {
 }
 
 interface DeletedStoryRow { key: string; title: string; deletedLabel: string; }
+interface DeletedItemRow { type: "story" | "memory"; id: string; title: string; deletedLabel: string; }
 
 function deletedLabel(iso: string): string {
   const date = new Date(iso);
@@ -32,6 +38,9 @@ Page({
   data: {
     stories: [] as StoryRow[],
     deletedStories: [] as DeletedStoryRow[],
+    trashOpen: false,
+    deletedItems: [] as DeletedItemRow[],
+    deletedMemoryCount: 0,
     selectedKey: "", selectedTitle: "", selectedManuscriptMemberId: "",
     memories: [] as MemoryContribution[], ungroupedCount: 0, hasManuscript: false, ownerId: "", loadError: "",
   },
@@ -45,7 +54,7 @@ Page({
     }
   },
 
-  onShow() { void this.refresh().catch(() => this.setData({ loadError: "故事暂时未加载成功，请重试。" })); },
+  onShow() { void this.refresh().catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
     const pool = memoryPool(state.contributions);
@@ -60,6 +69,11 @@ Page({
       deletedStories: (state.deletedStories ?? []).map((story) => ({
         key: story.key, title: story.title, deletedLabel: deletedLabel(story.deletedAt),
       })),
+      deletedItems: recentlyDeletedItems(state).map((item) => ({
+        type: item.type, id: item.id, title: item.title,
+        deletedLabel: `${item.type === "story" ? "故事" : "记忆"} · ${deletedLabel(item.deletedAt)}`,
+      })),
+      deletedMemoryCount: state.contributions.filter((memory) => memory.deletedAt).length,
       // 故事在别处被改名或删掉时，回到故事列表。
       selectedKey: selected?.key ?? "",
       selectedTitle: selected?.title ?? "",
@@ -77,7 +91,7 @@ Page({
     // 只有整理好的章节、还没有记忆的故事，直接打开章节。
     if (!row.memoryCount && row.manuscriptMemberId) { this.openManuscript(row.manuscriptMemberId); return; }
     this.setData({ selectedKey: row.key });
-    await this.refresh().catch(() => this.setData({ loadError: "故事暂时未加载成功，请重试。" }));
+    await this.refresh().catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); });
   },
   /** 书稿页仍按档案读取；打开哪个故事的章节，就先切到它所在的档案。 */
   openManuscript(memberId: string) {
@@ -120,6 +134,63 @@ Page({
       wx.showToast({ title: error instanceof Error ? error.message : "恢复没有完成，请重试", icon: "none" });
     }
   },
+  openTrash() { this.setData({ trashOpen: true }); },
+  /** 最近删除里的一行：故事按 key 恢复，记忆按 id 恢复。 */
+  async restoreItem(event: { currentTarget: { dataset: { type: "story" | "memory"; id: string } } }) {
+    const { type, id } = event.currentTarget.dataset;
+    try {
+      if (type === "story") await restoreStoryRemoteFirst(id);
+      else await restoreMemoryRemoteFirst(id);
+      await this.refresh();
+      wx.showToast({ title: "已恢复", icon: "none" });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "恢复没有完成，请重试", icon: "none" });
+    }
+  },
+  /** 永久删除一段记忆：真删，不能恢复，所以先问一句。故事没有永久删除。 */
+  purgeItem(event: { currentTarget: { dataset: { id: string; title: string } } }) {
+    const { id, title } = event.currentTarget.dataset;
+    wx.showModal({
+      title: "永久删除",
+      content: `「${title}」会被永久删掉，不能再恢复。确定吗？`,
+      confirmText: "永久删除",
+      confirmColor: "#b4503c",
+      success: async (result) => {
+        if (!result.confirm) return;
+        try {
+          await purgeMemoryRemoteFirst(id);
+          await this.refresh();
+          wx.showToast({ title: "已永久删除", icon: "none" });
+        } catch (error) {
+          wx.showToast({ title: error instanceof Error ? error.message : "删除没有完成，请重试", icon: "none" });
+        }
+      },
+    });
+  },
+  /** 一键清空：最近删除里的记忆全部永久删掉；删掉的故事留着，仍可恢复。 */
+  purgeAll() {
+    const count = this.data.deletedMemoryCount;
+    if (!count) return;
+    wx.showModal({
+      title: "清空已删除的记忆",
+      content: `最近删除里的 ${count} 段记忆会被永久删掉，不能再恢复。删掉的故事不受影响。`,
+      confirmText: "全部清空",
+      confirmColor: "#b4503c",
+      success: async (result) => {
+        if (!result.confirm) return;
+        try {
+          await purgeAllDeletedMemoriesRemoteFirst();
+          await this.refresh();
+          wx.showToast({ title: "已清空", icon: "none" });
+        } catch (error) {
+          wx.showToast({ title: error instanceof Error ? error.message : "清空没有完成，请重试", icon: "none" });
+        }
+      },
+    });
+  },
+  closeTrash() { this.setData({ trashOpen: false }); },
+  /** 点弹层里的内容不关，点弹层外的空白才关。 */
+  keepTrashOpen() {},
   retryLoad() { this.onShow(); },
   editMemory(event: { currentTarget: { dataset: { id: string } } }) {
     wx.navigateTo({ url: "/pages/archive/archive?id=" + encodeURIComponent(event.currentTarget.dataset.id) });

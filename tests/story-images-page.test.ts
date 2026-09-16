@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { BiographyDraft, FamilyRoomState, ManuscriptChapter } from "../miniprogram/domain/biography";
 import { clearAiConsent } from "../miniprogram/services/aiConsent";
+import { clearPhotoAiConsent } from "../miniprogram/services/photoAiConsent";
 import { makeRevision } from "../miniprogram/services/manuscript";
 import { withChapterBackdrop } from "../miniprogram/services/chapterBackdrop";
 import { draftWithChapters } from "../miniprogram/services/chapters";
@@ -190,6 +191,35 @@ test("不同意在线 AI 时不调用配图云函数", async context => {
   await assert.rejects(storyImageApi.submitChapterImage({ memberId: "owner", chapterId: "chapter-a", purpose: "backdrop" }),
     (error: unknown) => error instanceof StoryImageServiceError && error.code === "CONSENT_DECLINED");
   assert.deepEqual(calls, []);
+});
+
+test("看图写一句话单独征得照片授权，同一次打开不重复询问", async context => {
+  clearPhotoAiConsent();
+  const calls: Array<{ name: string; data: Record<string, unknown> }> = [];
+  let modalCount = 0;
+  const env = installWx({
+    showModal: ({ success }: { success?: (result: { confirm: boolean; cancel: boolean }) => void }) => {
+      modalCount += 1;
+      success?.({ confirm: true, cancel: false });
+    },
+    cloud: {
+      callFunction: async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
+        calls.push({ name, data });
+        if (name === "getOpenId") return { result: { openid: "o-owner" } };
+        return { result: { status: "ok", caption: "院子里晒着被子", message: "", aiGenerated: true } };
+      },
+    },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearPhotoAiConsent(); });
+
+  await storyImageApi.captionPhotos({ photoIds: ["photo-a"], requestId: "req-caption-one1" });
+  await storyImageApi.captionPhotos({ photoIds: ["photo-b"], requestId: "req-caption-two2" });
+  assert.equal(modalCount, 1);
+  assert.deepEqual(calls.filter(call => call.name === "storyImages").map(call => call.data), [
+    { action: "caption", familyId: "family_o-owner", photoIds: ["photo-a"], requestId: "req-caption-one1" },
+    { action: "caption", familyId: "family_o-owner", photoIds: ["photo-b"], requestId: "req-caption-two2" },
+  ]);
 });
 
 test("云函数的明确错误、没部署和超时分别给出能看懂的提示", async context => {
@@ -490,4 +520,15 @@ test("云端取不到底图时书稿照常打开，只是不显示底图", async
   call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
   assert.equal(page.data.backdropUrl, "");
   assert.equal(page.data.loadError, "");
+});
+
+test("书稿里显示底图时正文区另外标「图片 AI 生成」，和正文的「文字 AI 生成」分开，键盘打开时和底图一起隐藏", () => {
+  const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
+  const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");
+  assert.match(markup, /<view wx:if="\{\{backdropUrl\}\}" class="backdrop-ai-label">图片 AI 生成<\/view>/);
+  const labelRule = styles.match(/\.backdrop-ai-label \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(labelRule, /z-index: 2/, "角标要压在底图和渐隐之上");
+  assert.doesNotMatch(labelRule, /opacity:\s*0/);
+  assert.match(styles, /\.keyboard-open \.chapter-backdrop \{ display: none; \}/);
+  assert.match(styles, /\.keyboard-open \.backdrop-ai-label \{ display: none; \}/);
 });

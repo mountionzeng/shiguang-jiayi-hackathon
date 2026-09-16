@@ -31,7 +31,7 @@
         <view class="note-swipe" wx:for="{{unrecordedItems}}" wx:key="id">
           <button class="note-delete" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="deleteMemory" disabled="{{!!deletingItemId}}" aria-label="删除{{item.title}}"><view class="note-delete-badge">删除</view></button>
           <view class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}" data-id="{{item.id}}" bindtouchstart="onNoteTouchStart" bindtouchend="onNoteTouchEnd" bindtap="openMemory" role="button" aria-label="编辑{{item.title}}">
-            <view class="note-pin"></view>
+            <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
             <view class="note-date">{{item.dateLabel}}</view>
             <view class="note-title serif">{{item.title}}</view>
             <view class="note-excerpt">{{item.excerpt}}</view>
@@ -46,7 +46,7 @@
         <view class="note-swipe" wx:for="{{recordedItems}}" wx:key="id">
           <button class="note-delete" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="deleteMemory" disabled="{{!!deletingItemId}}" aria-label="删除{{item.title}}"><view class="note-delete-badge">删除</view></button>
           <view class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}" data-id="{{item.id}}" bindtouchstart="onNoteTouchStart" bindtouchend="onNoteTouchEnd" bindtap="openMemory" role="button" aria-label="编辑{{item.title}}">
-            <view class="note-pin"></view>
+            <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
             <view class="note-date">{{item.dateLabel}}</view>
             <view class="note-title serif">{{item.title}}</view>
             <view class="note-excerpt">{{item.excerpt}}</view>
@@ -57,7 +57,7 @@
       <view class="note-section-empty" wx:else>还没有写进任何一本书。在书稿里把记忆放进某一章，它就会出现在这里。</view>
     </block>
     <view class="archive-empty" wx:else><view class="archive-empty-title serif">从一句话开始</view><view class="archive-empty-note">随手记和慢慢聊留下的记录，都在这里。</view></view>
-    <view class="archive-version-note">点开可编辑与归类，左滑可删除。整理成故事不会移走原始记忆。删除原始记录不会删除已保存的书稿版本。</view>
+    <view class="archive-version-note">点开可编辑与归类，左滑可删除。删掉的记忆在人生之书的「最近删除」里，可以恢复。</view>
     <button class="btn btn-jade record-button" bindtap="startRecording">记录一段记忆</button>
   </block>
 </view>

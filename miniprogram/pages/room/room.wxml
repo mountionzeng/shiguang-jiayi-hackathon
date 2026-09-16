@@ -41,9 +41,9 @@
 
   <view class="timeline" wx:if="{{hasMemories}}">
     <view class="tl-item" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="openMemory">
-      <view class="tl-rail">
-        <view class="tl-dot"></view>
-        <view class="tl-line"></view>
+      <view class="date-bookmark" aria-hidden="true">
+        <image class="date-bookmark-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image>
+        <view class="date-bookmark-date serif"><text class="date-bookmark-part" wx:for="{{item.dateParts}}" wx:for-item="part" wx:key="*this">{{part}}</text></view>
       </view>
       <view class="tl-body">
         <view class="tl-title serif" wx:if="{{item.title}}">{{item.title}}</view>
@@ -51,7 +51,6 @@
         <view class="tl-foot">
           <text class="tag tag-jade" wx:if="{{item.storyLabel}}"><text class="tag-mark">故</text>{{item.storyLabel}}</text>
           <text class="tl-place">{{item.placeLabel}}</text>
-          <text class="tl-date">{{item.dateLabel}}</text>
         </view>
       </view>
     </view>

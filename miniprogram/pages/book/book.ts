@@ -11,6 +11,7 @@ import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import {
   addChapter, applyOrganized, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter,
 } from "../../services/chapters";
+import { logLoadError } from "../../services/loadErrorLog";
 
 const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
   "cloud-disabled": "这个版本关闭了在线 AI",
@@ -23,10 +24,21 @@ const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
   malformed: "在线 AI 返回的内容不完整",
 };
 
-type MemoryRow = { id: string; text: string };
+type MemoryRow = { id: string; text: string; title: string; excerpt: string; dateLabel: string; createdAt: string };
 const photoCount = (content: ManuscriptContent[]) => content.filter(item => item.photoId).length;
 const plainText = (content: ManuscriptContent[]) => content.map(item => item.text ?? "").join("");
-const memoryRow = (memory: MemoryContribution): MemoryRow => ({ id: memory.id, text: (memory.title ? memory.title + "：" : "") + memory.text.slice(0, 60) });
+const memoryDate = (iso: string) => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : `${date.getMonth() + 1}月${date.getDate()}日`;
+};
+const memoryRow = (memory: MemoryContribution): MemoryRow => ({
+  id: memory.id,
+  text: (memory.title ? memory.title + "：" : "") + memory.text.slice(0, 60),
+  title: memory.title?.trim() || memory.text.slice(0, 16),
+  excerpt: memory.text.slice(0, 60),
+  dateLabel: memoryDate(memory.createdAt),
+  createdAt: memory.createdAt,
+});
 
 Page({
   data: {
@@ -117,7 +129,7 @@ Page({
   },
   onShow() {
     if (!this.organizeCandidate && !this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
-      void this.refresh().catch(() => this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }));
+      void this.refresh().catch((error) => { logLoadError("book", error); this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }); });
     }
   },
   async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
@@ -231,7 +243,9 @@ Page({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
         memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: photoCount(chapter.content),
       })),
-      unassigned: unassignedMemoryIds(this.chapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!)),
+      // 最近讲的记忆排在最前面。
+      unassigned: unassignedMemoryIds(this.chapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
       chapterMemories: active ? active.memoryIds.flatMap(id => known.has(id) ? [memoryRow(known.get(id)!)] : []) : [],
       chapterLabelText: active ? chapterLabel(this.chapters.indexOf(active) + 1) : "",
       storyOptions: Array.from(stories, ([title, count]) => ({ title, count })),
@@ -322,7 +336,7 @@ Page({
       }));
       await this.collectEditor();
       this.editManuscript();
-      this.setData({ saveNotice: "照片仅在本机；请点保存。换手机或清理小程序后不可恢复。" });
+      this.setData({ saveNotice: "照片已放进书稿，会自动存到云端；请点保存。" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg ?? "");
       if (!/cancel/i.test(message)) this.setData({ saveNotice: error instanceof Error ? error.message : "无法添加照片，请检查相册权限或本机存储空间后重试" });

@@ -11,6 +11,8 @@ import {
   FOLLOW_UP_LABEL,
   InterviewDimension,
   nextInterviewPrompt,
+  pickInterviewQuestion,
+  sharedQuestionSeed,
 } from "../../domain/interview";
 import {
   loadCurrentMemberRemoteFirst,
@@ -18,13 +20,16 @@ import {
   saveCurrentMemberIdLocal,
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
+import { bookmarkDateParts } from "../../services/memoryDates";
 import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
+import { logLoadError } from "../../services/loadErrorLog";
 
 interface RecentStoryView {
   id: string;
   title: string;
   excerpt: string;
   dateLabel: string;
+  dateParts: string[];
   countLabel: string;
   storyTitle: string;
 }
@@ -90,6 +95,7 @@ function recentStoriesFor(
         title: storyTitle || "还没取名的片段",
         excerpt: contribution.text,
         dateLabel: formatDate(contribution.createdAt),
+        dateParts: bookmarkDateParts(contribution.createdAt),
         countLabel: "已聊 1 段",
         storyTitle,
         count: 1,
@@ -164,6 +170,12 @@ function recommendedQuestionFor(
   };
 }
 
+/** 当天的共用题目；点「换一个问题」时换种子，挑一道和上一题不同的。 */
+function dailyQuestionFor(offset: number): string {
+  const seed = sharedQuestionSeed();
+  return pickInterviewQuestion(offset ? `${seed}#${offset}` : seed, "personal").text;
+}
+
 function interviewUrl(
   sourceId: string,
   storyTitle: string,
@@ -205,7 +217,7 @@ Page({
     storyOptions: [] as StoryOptionView[],
     currentStoryTitle: "",
     currentStoryLabel: "",
-    startPrompt: "",
+    dailyQuestion: "",
     recommendedQuestionLabel: "",
     recommendedQuestionContext: "",
     recommendedQuestion: "",
@@ -219,7 +231,7 @@ Page({
 
   onShow() {
     this.setData({ bookOpening: false });
-    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
+    void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   async refresh(state?: FamilyRoomState) {
@@ -276,9 +288,8 @@ Page({
       storyOptions: storyOptionsFor(shelf, currentStoryTitle),
       currentStoryTitle,
       currentStoryLabel: currentStoryTitle || "先随便聊聊",
-      startPrompt: currentStoryTitle
-        ? `说说「${currentStoryTitle}」吧，从哪一段开始都行。`
-        : "想到什么就说什么，聊完再决定放进哪个故事。",
+      // 这个故事还没有记忆可接着问时，用当天的共用题目；聊天页开场用同一个种子，问的是同一题。
+      dailyQuestion: dailyQuestionFor(this.recommendationOffset),
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
       recommendedQuestionContext: recommendedQuestion?.context ?? "",
       recommendedQuestion: recommendedQuestion?.text ?? "",
@@ -354,9 +365,10 @@ Page({
   startCurrentStory() {
     const title = this.data.currentStoryTitle;
     wx.navigateTo({
+      // 把首页这道每日一问带过去，聊天页第一句就问它。
       url: title
-        ? `/pages/interview/interview?storyTitle=${encodeURIComponent(title)}`
-        : "/pages/interview/interview?memoryType=note",
+        ? `/pages/interview/interview?storyTitle=${encodeURIComponent(title)}&question=${encodeURIComponent(this.data.dailyQuestion)}`
+        : `/pages/interview/interview?memoryType=memoir&question=${encodeURIComponent(this.data.dailyQuestion)}`,
     });
   },
 
@@ -405,8 +417,13 @@ Page({
   },
 
   changeRecommendedQuestion() {
+    const previous = this.data.dailyQuestion;
     this.recommendationOffset += 1;
-    void this.refresh().catch(() => wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }));
+    // 题库不大，换种子可能又挑到同一题；这个故事还没有记忆可追问时，多换几次直到换出新题。
+    for (let tries = 0; !this.data.hasRecommendedQuestion && tries < 12 && dailyQuestionFor(this.recommendationOffset) === previous; tries += 1) {
+      this.recommendationOffset += 1;
+    }
+    void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   continueRecommendedQuestion() {

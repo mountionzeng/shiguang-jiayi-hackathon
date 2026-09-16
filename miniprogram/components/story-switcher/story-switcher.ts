@@ -1,6 +1,7 @@
 import { contributionStoryTitle, MemoryContribution, memoryPool } from "../../domain/biography";
 import { memoryDisplayTitle } from "../../domain/memoryTitle";
 import { loadRoomStateRemoteFirst } from "../../services/roomRepository";
+import { logLoadError } from "../../services/loadErrorLog";
 
 interface RecentMemoryView {
   id: string;
@@ -79,7 +80,8 @@ Component({
       try {
         const state = await loadRoomStateRemoteFirst();
         this.setData({ recent: recentMemories(state.contributions), recentLoaded: true });
-      } catch {
+      } catch (error) {
+        logLoadError("story-switcher", error);
         this.setData({ recentLoaded: true, recentError: "回忆暂时没加载出来，可以先随手记一段。" });
       }
     },

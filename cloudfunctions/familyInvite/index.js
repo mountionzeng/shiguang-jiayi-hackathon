@@ -330,6 +330,24 @@ async function listRooms(accountId) {
   return { rooms: rooms.filter(Boolean) };
 }
 
+/**
+ * 内容安全检测：调用 contentSecurityCheck 云函数（云函数之间调用会透传原始用户的
+ * OPENID，不需要单独传递）。检测没通过、或者调用失败（网络、配额等）一律按未通过
+ * 处理——这段提交在进入主人的待确认列表之前就被拒绝，不写进数据库。
+ */
+async function passesContentSecurity(content, title) {
+  try {
+    const response = await cloud.callFunction({
+      name: "contentSecurityCheck",
+      data: { content, title },
+    });
+    return Boolean(response && response.result && response.result.ok);
+  } catch (error) {
+    console.warn("内容安全检测调用失败，按未通过处理", error);
+    return false;
+  }
+}
+
 async function submitContribution(event, accountId) {
   const familyId = String(event.familyId || "").trim();
   const access = await requireFamilyAccess(familyId, accountId);
@@ -337,6 +355,9 @@ async function submitContribution(event, accountId) {
   const member = await getDoc("family_members", `${familyId}_${access.memberId}`);
   if (!member || member.accountId !== accountId) throw new Error("成员身份已失效，请重新接受邀请");
   const input = normalizeContributionInput(event);
+  if (!(await passesContentSecurity(input.text, input.title))) {
+    throw new Error("这段内容没有通过内容安全检测，请修改后重试");
+  }
   // Namespace client-generated ids by the authenticated member. A contributor
   // must never be able to guess another person's id and overwrite their story.
   const sourceRecordId = `src_${familyId}_${member.memberId}_${input.id}`;

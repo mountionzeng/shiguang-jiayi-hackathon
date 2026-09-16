@@ -7,12 +7,13 @@ import {
 } from "../../domain/biography";
 import {
   loadCurrentMemberRemoteFirst,
-  deleteContributionRemoteFirst,
+  softDeleteMemoryRemoteFirst,
   loadRoomStateRemoteFirst,
   replaceContributionRemoteFirst,
   roomDataModeLabel,
 } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
+import { logLoadError } from "../../services/loadErrorLog";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -75,7 +76,7 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch(() => this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }));
+    void this.refresh().catch((error) => { logLoadError("archive", error); this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }); });
   },
 
   selectArchiveTab(event: {
@@ -256,7 +257,7 @@ Page({
 
     wx.showModal({
       title: "删除记忆",
-      content: `确定删除「${title}」这条原始记录吗？已保存的书稿与历史版本仍保留。原始记录删除后不可恢复。`,
+      content: `删除「${title}」吗？它会放进人生之书的「最近删除」，随时可以恢复；已经写进书里的文字不受影响。`,
       confirmText: "删除",
       confirmColor: "#c54d3f",
       success: (result) => {
@@ -269,13 +270,13 @@ Page({
   async confirmDeleteMemory(contributionId: string) {
     this.setData({ deletingItemId: contributionId });
     try {
-      await deleteContributionRemoteFirst(contributionId);
+      await softDeleteMemoryRemoteFirst(contributionId);
       this.setData({ swipedItemId: "", deletingItemId: "" });
       await this.refresh();
-      wx.showToast({ title: "已删除", icon: "none" });
+      wx.showToast({ title: "已放进最近删除", icon: "none" });
     } catch (error) {
       this.setData({ deletingItemId: "" });
-      await this.refresh().catch(() => this.setData({ loadError: "删除结果尚未确认，请刷新后重试。" }));
+      await this.refresh().catch((error) => { logLoadError("archive", error); this.setData({ loadError: "删除结果尚未确认，请刷新后重试。" }); });
       wx.showToast({
         title: error instanceof Error ? error.message : "暂时无法删除",
         icon: "none",

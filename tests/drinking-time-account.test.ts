@@ -52,3 +52,9 @@ test("电脑码响应必须完整且符合无歧义字母表", () => {
   assert.equal(result.storyId, 3);
   assert.throws(() => drinkingTimeAccountTest.transferResult({ code: "000000", expiresAt: "bad" }), /返回异常/);
 });
+
+test("接口约定 1.0.0 第 3.5 节：storyId 必须是正整数", () => {
+  const base = { code: "ABC234", expiresAt: "2026-09-14T10:05:00.000Z", imported: true };
+  assert.throws(() => drinkingTimeAccountTest.transferResult({ ...base, storyId: 0 }), /返回异常/);
+  assert.throws(() => drinkingTimeAccountTest.transferResult({ ...base, storyId: -1 }), /返回异常/);
+});

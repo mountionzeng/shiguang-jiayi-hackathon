@@ -7,6 +7,8 @@ const CORE_COLLECTIONS = [
   "generated_artifacts",
   "image_jobs",
   "story_images",
+  "photos",
+  "photo_caption_logs",
   "user_accounts",
   "family_invitations",
   "family_access",

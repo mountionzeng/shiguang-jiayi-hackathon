@@ -27,6 +27,7 @@ function createStoryImageHandlers(deps) {
     sceneConfigured,
     storage,
     moderation,
+    forwardPhotoModeration,
     downloadImage,
     qualityChecker,
     now = () => Date.now(),
@@ -326,13 +327,22 @@ function createStoryImageHandlers(deps) {
     return { swept: results.length - deferred, deferred, qualityChecked, results };
   }
 
-  /** WeChat pushes wxa_media_check within 30 minutes of a request. */
+  /**
+   * WeChat pushes wxa_media_check within 30 minutes, and one event type can only reach
+   * one cloud function, so this is also where photo checks land. Results that do not
+   * belong to a generated story image are forwarded to photoAccess, the sole writer of
+   * the photos collection. User photos are never deleted here.
+   */
   async function moderationResult(event) {
     const traceId = String((event && event.trace_id) || "");
     if (!traceId) return { ok: false };
     const image = await repo.findImageByTrace(traceId);
-    if (!image) return { ok: false };
     const result = (event && event.result) || {};
+    if (!image) {
+      if (!forwardPhotoModeration) return { ok: false };
+      await forwardPhotoModeration({ traceId, suggest: result.suggest, label: result.label });
+      return { ok: true, target: "photos" };
+    }
     const nowMs = now();
     if (result.suggest === "pass") {
       await repo.updateImage(image._id, { moderation: "pass", moderationLabel: result.label, moderatedAtMs: nowMs });
@@ -347,7 +357,7 @@ function createStoryImageHandlers(deps) {
     } else {
       await repo.updateImage(image._id, { moderation: "review", moderationLabel: result.label, moderatedAtMs: nowMs });
     }
-    return { ok: true };
+    return { ok: true, target: "story_images" };
   }
 
   return { submit, status, list, remove, sweep, moderationResult };

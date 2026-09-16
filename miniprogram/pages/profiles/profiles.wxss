@@ -320,3 +320,8 @@
   line-height: 1.6;
   text-align: left;
 }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.profile-create-button.profile-create-button { width: 100%; }
+.trash-toggle.trash-toggle { width: 100%; margin-left: 0; margin-right: 0; }
+.profile-clear-button.profile-clear-button { width: 100%; }

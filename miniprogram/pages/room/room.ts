@@ -10,6 +10,8 @@ import {
 import { loadRoomStateRemoteFirst } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
 import { loadSharedFamilyRoom } from "../../services/familyInviteService";
+import { logLoadError } from "../../services/loadErrorLog";
+import { bookmarkDateParts } from "../../services/memoryDates";
 
 interface RoomLoadOptions { familyId?: string; }
 
@@ -41,6 +43,7 @@ interface MemoryRow {
   title: string;
   text: string;
   dateLabel: string;
+  dateParts: string[];
   storyLabel: string;
   placeLabel: string;
 }
@@ -78,7 +81,7 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch(() => this.setData({ loadError: "记忆暂时没加载出来，请重试。" }));
+    void this.refresh().catch((error) => { logLoadError("room", error); this.setData({ loadError: "记忆暂时没加载出来，请重试。" }); });
   },
 
   async refresh(state?: FamilyRoomState) {
@@ -122,6 +125,7 @@ Page({
           title: memory.title ?? "",
           text: memory.text,
           dateLabel: formatDate(memory.createdAt),
+          dateParts: bookmarkDateParts(memory.createdAt),
           storyLabel: contributionStoryTitle(memory),
           placeLabel: places.length
             ? "写进了 " + places.map((place) => `${place.bookName}的书${place.chapter}`).join("、")
@@ -146,7 +150,7 @@ Page({
 
   choosePerson(event: { currentTarget: { dataset: { id: string } } }) {
     this.setData({ activeId: event.currentTarget.dataset.id });
-    void this.refresh().catch(() => this.setData({ loadError: "记忆暂时没加载出来，请重试。" }));
+    void this.refresh().catch((error) => { logLoadError("room", error); this.setData({ loadError: "记忆暂时没加载出来，请重试。" }); });
   },
 
   openMemory(event: { currentTarget: { dataset: { id: string } } }) {

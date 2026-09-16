@@ -601,15 +601,19 @@ test("管理页列出没删除、没被判违规的图，并算出占用空间�
   await assert.rejects(handlers.remove(ctx, { familyId: FAMILY, imageId: `${FAMILY}_img_a` }), error => error.code === "IMAGE_NOT_FOUND");
 });
 
-test("内容安全检测判为违规的图会被隐藏并删除文件", async () => {
-  const { handlers, repo, calls } = harness();
+test("内容安全检测判为违规的生成图会被隐藏并删除文件，照片结果转发给 photoAccess", async () => {
+  const forwarded = [];
+  const { handlers, repo, calls } = harness({ deps: {
+    async forwardPhotoModeration(result) { forwarded.push(result); },
+  } });
   await repo.createImage(`${FAMILY}_img_x`, { familyId: FAMILY, memberId: "owner", fileID: "cloud://x", moderation: "pending", moderationTraceId: "trace-x" });
-  assert.deepEqual(await handlers.moderationResult({ trace_id: "trace-x", result: { suggest: "risky", label: 20002 } }), { ok: true });
+  assert.deepEqual(await handlers.moderationResult({ trace_id: "trace-x", result: { suggest: "risky", label: 20002 } }), { ok: true, target: "story_images" });
   const image = repo.images.get(`${FAMILY}_img_x`);
   assert.equal(image.moderation, "risky");
   assert.ok(image.deletedAtMs);
   assert.deepEqual(calls.remove, ["cloud://x"]);
-  assert.deepEqual(await handlers.moderationResult({ trace_id: "missing", result: { suggest: "pass" } }), { ok: false });
+  assert.deepEqual(await handlers.moderationResult({ trace_id: "photo-trace", result: { suggest: "pass", label: 100 } }), { ok: true, target: "photos" });
+  assert.deepEqual(forwarded, [{ traceId: "photo-trace", suggest: "pass", label: 100 }]);
 });
 
 test("云函数配置：每分钟补做一次，申请内容安全接口；不再依赖腾讯云签名密钥", () => {
@@ -688,7 +692,9 @@ test("云函数在没有内置 fetch 的 Node 16 上也能发请求：POST、JSO
 });
 
 test("出图、读章节、质检、下载都不直接依赖全局 fetch", () => {
-  for (const name of ["tokenhub", "scene", "quality"]) {
+  const qualitySource = fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/quality.js"), "utf8");
+  assert.match(qualitySource, /require\("\.\/vision"\)/, "质检通过共用的看图调用发请求");
+  for (const name of ["tokenhub", "scene", "vision"]) {
     const source = fs.readFileSync(path.join(__dirname, `../cloudfunctions/storyImages/${name}.js`), "utf8");
     assert.doesNotMatch(source, /fetchImpl = fetch\b/, `${name}.js 仍然默认使用全局 fetch`);
     assert.match(source, /require\("\.\/httpFetch"\)/);
@@ -894,4 +900,162 @@ test("入口接上了诊断动作，由环境变量里的口令把关", () => {
   const index = fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/index.js"), "utf8");
   assert.match(index, /case "diagnose": return await diagnostics\.run\(ctx, event\);/);
   assert.match(index, /expectedToken: process\.env\.STORY_IMAGES_DIAGNOSE_TOKEN/);
+});
+
+// ---------- 共用的看图调用 ----------
+
+test("看图调用：没配置时不发请求；配置后按 TokenHub 格式发文字和图片（链接或 base64），拿回模型的原话", async () => {
+  const { createVisionClient, DEFAULT_MODEL } = require("../cloudfunctions/storyImages/vision.js");
+  let calls = 0;
+  const idle = createVisionClient({ apiKey: "", fetchImpl: async () => { calls++; return jsonResponse(200, {}); } });
+  assert.equal(idle.configured, false);
+  assert.deepEqual(await idle.ask({ text: "看看", images: ["https://x/1.png"] }), { ok: false, errorCode: "VISION_NOT_CONFIGURED" });
+  assert.equal(calls, 0);
+
+  let sent;
+  const client = createVisionClient({
+    apiKey: "k", baseUrl: "https://vision.example/v1/",
+    fetchImpl: async (url, init) => {
+      sent = { url, headers: init.headers, body: JSON.parse(init.body) };
+      return jsonResponse(200, { choices: [{ message: { content: "院子里晒着被子" } }] });
+    },
+  });
+  const answer = await client.ask({ text: "用一句话说说", images: ["https://x/1.png", "data:image/jpeg;base64,AAAA"] });
+  assert.deepEqual(answer, { ok: true, content: "院子里晒着被子" });
+  assert.equal(sent.url, "https://vision.example/v1/chat/completions");
+  assert.equal(sent.headers.Authorization, "Bearer k");
+  assert.equal(sent.body.model, DEFAULT_MODEL);
+  assert.equal(DEFAULT_MODEL, "hy-vision-2.0-instruct");
+  assert.equal(sent.body.temperature, 0);
+  assert.deepEqual(sent.body.messages[0].content, [
+    { type: "text", text: "用一句话说说" },
+    { type: "image_url", image_url: { url: "https://x/1.png" } },
+    { type: "image_url", image_url: { url: "data:image/jpeg;base64,AAAA" } },
+  ]);
+});
+
+test("看图调用：被拒、超时、连不上都返回错误码，不抛异常", async () => {
+  const { createVisionClient } = require("../cloudfunctions/storyImages/vision.js");
+  const refused = createVisionClient({ apiKey: "k", fetchImpl: async () => jsonResponse(422, {}) });
+  assert.deepEqual(await refused.ask({ text: "t", images: [] }), { ok: false, errorCode: "VISION_HTTP_422", httpStatus: 422 });
+  const timedOut = createVisionClient({ apiKey: "k", fetchImpl: async () => { const error = new Error("aborted"); error.name = "AbortError"; throw error; } });
+  assert.deepEqual(await timedOut.ask({ text: "t", images: [] }), { ok: false, errorCode: "VISION_TIMEOUT" });
+  const offline = createVisionClient({ apiKey: "k", fetchImpl: async () => { throw new Error("ECONNRESET"); } });
+  assert.deepEqual(await offline.ask({ text: "t", images: [] }), { ok: false, errorCode: "VISION_REQUEST_FAILED" });
+});
+
+// ---------- 看图写一句话 ----------
+
+const captionModule = require("../cloudfunctions/storyImages/caption.js");
+const { createPhotoReader } = require("../cloudfunctions/storyImages/photoReader.js");
+const { createTextChecker } = require("../cloudfunctions/storyImages/textCheck.js");
+
+function captionHarness({ photos, vision = {}, checkText = async () => ({ ok: true }), readError } = {}) {
+  const logs = new Map();
+  const calls = { read: [], ask: [], checkText: [] };
+  const repo = {
+    logs,
+    async getCaptionLog(id) { return logs.get(id); },
+    async createCaptionLog(id, data) { logs.set(id, { ...data, _id: id }); },
+    async updateCaptionLog(id, patch) { logs.set(id, { ...logs.get(id), ...patch }); },
+    async countCaptionLogs({ requesterOpenId, dayKey, statuses }) {
+      return [...logs.values()].filter(item => item.requesterOpenId === requesterOpenId && item.dayKey === dayKey && statuses.includes(item.status)).length;
+    },
+  };
+  const handler = captionModule.createCaptionHandler({
+    repo,
+    vision: {
+      configured: true,
+      model: "hy-vision-2.0-instruct",
+      async ask(input) { calls.ask.push(input); return { ok: true, content: "清晨的小院里晾着棉被。\n补充说明" }; },
+      ...vision,
+    },
+    async readPhotos(input) {
+      calls.read.push(input);
+      if (readError) throw readError;
+      return photos || input.photoIds.map(photoId => ({ photoId, status: "ok", url: `https://tmp.example/${photoId}.jpg` }));
+    },
+    async checkText(input) { calls.checkText.push(input); return checkText(input); },
+    now: () => T0,
+    log: { error() {} },
+  });
+  return { handler, repo, calls };
+}
+
+const captionEvent = (requestId = "req-caption-0001", photoIds = ["photo-abc-1"]) => ({ action: "caption", familyId: FAMILY, requestId, photoIds });
+
+test("看图写一句话校验家庭、请求和 1 到 3 张不重复照片", () => {
+  assert.deepEqual(captionModule.normalizeCaptionInput(captionEvent()), { familyId: FAMILY, requestId: "req-caption-0001", photoIds: ["photo-abc-1"] });
+  assert.throws(() => captionModule.normalizeCaptionInput({ ...captionEvent(), familyId: "../family" }), error => error.code === "INVALID_FAMILY");
+  assert.throws(() => captionModule.normalizeCaptionInput(captionEvent("bad")), error => error.code === "INVALID_REQUEST");
+  assert.throws(() => captionModule.normalizeCaptionInput(captionEvent("req-caption-0001", [])), error => error.code === "INVALID_PHOTOS");
+  assert.throws(() => captionModule.normalizeCaptionInput(captionEvent("req-caption-0001", ["photo-a1", "photo-a1"])), error => error.code === "INVALID_PHOTOS");
+});
+
+test("看图写一句话通过 photoAccess 取临时链接，文字过检后才返回 AI 草稿", async () => {
+  const { handler, repo, calls } = captionHarness();
+  const result = await handler.caption(ctx, captionEvent("req-caption-ok01", ["photo-abc-1", "photo-abc-2"]));
+  assert.deepEqual(result, { status: "ok", caption: "清晨的小院里晾着棉被", aiGenerated: true, message: "" });
+  assert.deepEqual(calls.read[0], {
+    familyId: FAMILY, photoIds: ["photo-abc-1", "photo-abc-2"], variant: "small", purpose: "ai-caption", onBehalfOfOpenid: OWNER_OPENID,
+  });
+  assert.deepEqual(calls.ask[0].images, ["https://tmp.example/photo-abc-1.jpg", "https://tmp.example/photo-abc-2.jpg"]);
+  assert.deepEqual(calls.checkText, [{ text: "清晨的小院里晾着棉被", openid: OWNER_OPENID }]);
+  const saved = repo.logs.get(`${FAMILY}_req-caption-ok01`);
+  assert.equal(saved.status, "ok");
+  assert.doesNotMatch(JSON.stringify(saved), /清晨|棉被|tmp\.example/);
+});
+
+test("照片违规或文字未明确通过时不调用下一步、不给用户 AI 草稿", async () => {
+  const riskyPhoto = captionHarness({ photos: [{ photoId: "photo-abc-1", status: "risky" }] });
+  assert.deepEqual(await riskyPhoto.handler.caption(ctx, captionEvent("req-caption-risk")), {
+    status: "photo_unavailable", message: "这张照片没通过平台审核", photos: [{ photoId: "photo-abc-1", status: "risky" }], aiGenerated: false,
+  });
+  assert.equal(riskyPhoto.calls.ask.length, 0);
+
+  const riskyText = captionHarness({ checkText: async () => ({ ok: false, risky: true, errorCode: "TEXT_RISKY" }) });
+  assert.deepEqual(await riskyText.handler.caption(ctx, captionEvent("req-caption-text")), {
+    status: "text_blocked", message: "没看出来，自己写一句吧", aiGenerated: false,
+  });
+  assert.equal(riskyText.repo.logs.get(`${FAMILY}_req-caption-text`).status, "text_blocked");
+});
+
+test("photoAccess 只认约定状态并保留请求顺序，不直接读照片存储", async () => {
+  let sent;
+  const reader = createPhotoReader({
+    internalToken: "internal-token",
+    async callFunction(options) {
+      sent = options;
+      return { result: { photos: [{ photoId: "photo-b", status: "risky" }, { photoId: "photo-a", status: "ok", url: "https://tmp/a" }] } };
+    },
+  });
+  const photos = await reader.read({ familyId: FAMILY, photoIds: ["photo-a", "photo-b", "photo-c"], variant: "small", purpose: "ai-caption", onBehalfOfOpenid: OWNER_OPENID });
+  assert.deepEqual(sent, {
+    name: "photoAccess",
+    data: { action: "read", familyId: FAMILY, photoIds: ["photo-a", "photo-b", "photo-c"], variant: "small", purpose: "ai-caption", onBehalfOfOpenid: OWNER_OPENID, internalToken: "internal-token" },
+  });
+  assert.deepEqual(photos.map(photo => [photo.photoId, photo.status]), [["photo-a", "ok"], ["photo-b", "risky"], ["photo-c", "not_found"]]);
+});
+
+test("生成文字统一调用 contentSecurityCheck，接口失败时按未通过处理", async () => {
+  let sent;
+  const checker = createTextChecker({ async callFunction(options) { sent = options; return { result: { ok: true, suggest: "pass" } }; } });
+  assert.deepEqual(await checker.check({ text: "院子里晒着棉被", openid: OWNER_OPENID }), { ok: true, suggest: "pass", label: undefined });
+  assert.deepEqual(sent, { name: "contentSecurityCheck", data: { content: "院子里晒着棉被", scene: 3, openid: OWNER_OPENID } });
+  const broken = createTextChecker({ async callFunction() { throw new Error("offline"); } });
+  assert.equal((await broken.check({ text: "文字", openid: OWNER_OPENID })).ok, false);
+});
+
+test("每天看图额度按微信账号统计，同一请求不会重复调用", async () => {
+  const { handler, repo, calls } = captionHarness();
+  for (let index = 0; index < 30; index++) {
+    await repo.createCaptionLog(`used-${index}`, { requesterOpenId: OWNER_OPENID, dayKey: "2026-09-13", status: "ok" });
+  }
+  await assert.rejects(handler.caption(ctx, captionEvent("req-caption-over")), error => error.code === "CAPTION_LIMIT");
+  assert.equal(calls.read.length, 0);
+
+  const fresh = captionHarness();
+  await fresh.handler.caption(ctx, captionEvent("req-caption-same"));
+  await assert.rejects(fresh.handler.caption(ctx, captionEvent("req-caption-same")), error => error.code === "DUPLICATE_REQUEST");
+  assert.equal(fresh.calls.ask.length, 1);
 });

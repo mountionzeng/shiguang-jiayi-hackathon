@@ -52,15 +52,17 @@
         <view class="book-cover-leaf">
           <image
             class="ancient-book-art"
-            src="/assets/illustrations/ancient-book-shell.png"
+            src="/assets/illustrations/story-book-cover.png"
             mode="aspectFit"
             aria-hidden="true"
           ></image>
           <view class="book-cover-copy">
             <text class="book-kicker typewriter">拾 光 录</text>
             <view class="book-copy">
-              <view class="book-title typewriter">{{coverTitle}}</view>
-              <view class="book-subtitle">{{coverSubtitle}}</view>
+              <view class="book-slip">
+                <view class="book-title typewriter">{{coverTitle}}</view>
+                <view class="book-subtitle">{{coverSubtitle}}</view>
+              </view>
               <view class="book-stats" role="group" aria-label="这个故事的记忆、章节和人物">
                 <button
                   class="book-stat-action book-stat-note"
@@ -111,9 +113,8 @@
 
     <view class="recommended" wx:if="{{hasProfile}}">
       <view class="recommended-head">
-        <text class="recommended-title serif">{{hasRecommendedQuestion ? '推荐问' : '开始聊'}}</text>
+        <text class="recommended-title serif">每日一问</text>
         <button
-          wx:if="{{hasRecommendedQuestion}}"
           class="recommended-refresh"
           bindtap="changeRecommendedQuestion"
           hover-class="none"
@@ -125,23 +126,23 @@
         class="recommended-card"
         bindtap="continueRecommendedQuestion"
         role="button"
-        aria-label="继续回答推荐问题"
+        aria-label="回答每日一问"
       >
-        <view class="recommended-label">{{recommendedQuestionLabel}}</view>
+        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryTitle + '》' : currentStoryLabel}}</view>
         <view class="recommended-context">{{recommendedQuestionContext}}</view>
         <view class="recommended-question">{{recommendedQuestion}}</view>
-        <view class="recommended-action">继续聊聊</view>
+        <view class="recommended-action">回答这一问</view>
       </view>
       <view
         wx:else
         class="recommended-card"
         bindtap="startCurrentStory"
         role="button"
-        aria-label="开始聊{{currentStoryLabel}}"
+        aria-label="回答每日一问：{{currentStoryLabel}}"
       >
-        <view class="recommended-label">{{currentStoryLabel}}</view>
-        <view class="recommended-question">{{startPrompt}}</view>
-        <view class="recommended-action">开始聊</view>
+        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryTitle + '》' : currentStoryLabel}}</view>
+        <view class="recommended-question">{{dailyQuestion}}</view>
+        <view class="recommended-action">回答这一问</view>
       </view>
     </view>
 
@@ -151,20 +152,28 @@
         <text class="recent-note">点开就能接着说</text>
       </view>
 
-      <view
-        class="story-row"
-        wx:for="{{recentStories}}"
-        wx:key="id"
-        data-id="{{item.id}}"
-        data-title="{{item.storyTitle}}"
-        bindtap="continueStory"
-      >
-        <view class="story-copy">
-          <view class="story-title serif">{{item.title}}</view>
-          <view class="story-excerpt">{{item.excerpt}}</view>
-          <view class="story-meta">{{item.dateLabel}} · {{item.countLabel}}</view>
+      <view class="recent-timeline">
+        <view
+          class="timeline-row"
+          wx:for="{{recentStories}}"
+          wx:key="id"
+          data-id="{{item.id}}"
+          data-title="{{item.storyTitle}}"
+          bindtap="continueStory"
+        >
+          <view class="date-bookmark" aria-hidden="true">
+            <image class="date-bookmark-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image>
+            <view class="date-bookmark-date serif"><text class="date-bookmark-part" wx:for="{{item.dateParts}}" wx:for-item="part" wx:key="*this">{{part}}</text></view>
+          </view>
+          <view class="story-row">
+            <view class="story-copy">
+              <view class="story-title serif">{{item.title}}</view>
+              <view class="story-excerpt">{{item.excerpt}}</view>
+              <view class="story-meta">{{item.countLabel}}</view>
+            </view>
+            <view class="story-continue">继续聊</view>
+          </view>
         </view>
-        <view class="story-continue">继续聊</view>
       </view>
     </view>
   </view>

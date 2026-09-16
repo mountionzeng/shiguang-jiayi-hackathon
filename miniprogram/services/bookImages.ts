@@ -1,4 +1,6 @@
 import { ManuscriptContent } from "../domain/biography";
+import { enqueuePhotoUpload, PhotoSource, removeQueuedPhotoUploads } from "./photoCloud";
+import { currentFamilyId } from "./cloudRoomStorage";
 
 const PHOTO_ID = /^photo-[a-z0-9-]{1,80}$/;
 const MARKER = /【本机照片：(photo-[a-z0-9-]{1,80})】/g;
@@ -44,7 +46,7 @@ export function validateContent(content: ManuscriptContent[] | undefined) {
   if (photos > 9) throw new Error("一篇书稿最多放 9 张照片");
 }
 
-export async function saveLocalPhoto(tempFilePath: string): Promise<{ id: string; path: string }> {
+export async function saveLocalPhoto(tempFilePath: string, source: PhotoSource = "book"): Promise<{ id: string; path: string }> {
   const id = "photo-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
   const extension = tempFilePath.match(/\.(jpe?g|png|webp|gif|heic)$/i)?.[1].toLowerCase() ?? "jpg";
   const path = await new Promise<string>((resolve, reject) => wx.getFileSystemManager().saveFile({
@@ -54,23 +56,48 @@ export async function saveLocalPhoto(tempFilePath: string): Promise<{ id: string
   wx.getFileSystemManager().accessSync(path);
   // Use one record per file; do not overwrite or garbage-collect photos referenced by older versions.
   wx.setStorageSync("shiguang-local-" + id, path);
+  enqueuePhotoUpload(id, path, source);
   return { id, path };
+}
+
+/** Cancel a just-started import without uploading or retaining our private copy. The source photo is untouched. */
+export async function discardLocalPhotos(photos: Array<{ id: string; path: string }>): Promise<void> {
+  const safe = photos.filter(photo => PHOTO_ID.test(photo.id) && photo.path.startsWith(`${wx.env.USER_DATA_PATH}/`));
+  removeQueuedPhotoUploads(safe.map(photo => photo.id));
+  await Promise.all(safe.map(photo => new Promise<void>(resolve => {
+    wx.removeStorageSync("shiguang-local-" + photo.id);
+    wx.getFileSystemManager().unlink({ filePath: photo.path, complete: () => resolve() });
+  })));
 }
 
 export async function readLocalPhoto(id: string): Promise<string> {
   if (!PHOTO_ID.test(id)) return "";
   try {
     const path: unknown = wx.getStorageSync("shiguang-local-" + id);
-    if (typeof path !== "string" || /(?:^|\/)\.\.(?:\/|$)|%|[\\?#]/.test(path)) return "";
+    if (typeof path !== "string" || /(?:^|\/)\.\.(?:\/|$)|%|[\\?#]/.test(path)) throw new Error("LOCAL_PHOTO_UNAVAILABLE");
     const fs = wx.getFileSystemManager();
     if (!path.startsWith(wx.env.USER_DATA_PATH + "/")) {
       // saveFile without filePath returns a managed cache file, not a USER_DATA_PATH file.
       // Ask WeChat for its allowlist instead of guessing iOS/Android/devtools path prefixes.
       const saved = await new Promise<WechatMiniprogram.GetSavedFileListSuccessCallbackResult>((resolve, reject) =>
         fs.getSavedFileList({ success: resolve, fail: reject }));
-      if (!saved.fileList.some(file => file.filePath === path)) return "";
+      if (!saved.fileList.some(file => file.filePath === path)) throw new Error("LOCAL_PHOTO_UNAVAILABLE");
     }
     fs.accessSync(path);
     return path;
-  } catch { return ""; }
+  } catch {
+    if (!wx.cloud) return "";
+    try {
+      const response = await wx.cloud.callFunction({ name: "photoAccess", data: {
+        action: "read",
+        familyId: await currentFamilyId(),
+        photoIds: [id],
+        variant: "display",
+        purpose: "view",
+      } });
+      const result = response.result as { photos?: Array<{ status?: string; url?: string }> } | undefined;
+      const photo = result?.photos?.[0];
+      return photo?.status === "ok" && typeof photo.url === "string" ? photo.url : "";
+    } catch { return ""; }
+  }
 }

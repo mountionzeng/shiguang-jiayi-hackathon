@@ -148,6 +148,26 @@ test("被邀请人只看到自己写的或明确分享给自己的个人记忆",
   assert.equal(invite.visibleMemoriesForAccess(memories, { role: "owner", memberId: "owner" }).length, 5);
 });
 
+test("提交进主人待确认列表前先过内容安全检测，不通过就不写库", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../cloudfunctions/familyInvite/index.js"),
+    "utf8",
+  );
+  const submitBody = source.slice(
+    source.indexOf("async function submitContribution"),
+    source.indexOf("async function main"),
+  );
+
+  assert.match(submitBody, /passesContentSecurity\(input\.text, input\.title\)/);
+  // 检测必须发生在写入 memories / source_records 之前。
+  assert.ok(
+    submitBody.indexOf("passesContentSecurity(input.text") <
+      submitBody.indexOf('.collection("source_records")'),
+  );
+  assert.match(source, /name:\s*"contentSecurityCheck"/);
+  assert.match(source, /return false;\s*\n\s*}\s*\n\s*}\s*\n\s*async function submitContribution/);
+});
+
 test("共享页面隐藏被邀请人的名单管理入口", () => {
   const markup = fs.readFileSync(
     path.join(__dirname, "../miniprogram/pages/room/room.wxml"),

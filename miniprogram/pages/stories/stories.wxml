@@ -25,51 +25,60 @@
       </view>
       <view class="note-list selected-memory-list">
         <button class="story-memory" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="editMemory">
+          <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
           <view class="note-title serif">{{item.title || '一段记忆'}}</view><view class="note-excerpt">{{item.text}}</view><view class="note-archive">点开编辑或调整归类</view>
         </button>
       </view>
     </block>
     <block wx:else>
-      <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>慢慢写，慢慢成书</text></view>
-      <view class="story-shelf">
-        <button class="story-book book-layout-{{index % 4}} {{!item.manuscriptMemberId ? 'story-book-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="story-book-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
-          <image class="story-book-shell" src="/assets/illustrations/ancient-book-shell.png" mode="scaleToFill" aria-hidden="true"></image>
-          <view class="book-cover-tint" aria-hidden="true"></view>
-          <view class="book-cover-mark" aria-hidden="true"><view></view><view></view><view></view></view>
-          <view class="book-cover">
-            <view class="book-number">拾光录 / {{index + 1 < 10 ? '0' : ''}}{{index + 1}}</view>
-            <view class="book-title-slip"><view class="book-name serif">{{item.title}}</view></view>
-            <view class="book-excerpt" wx:if="{{item.excerpt}}">{{item.excerpt}}</view>
-            <view class="book-excerpt" wx:else>留一些空白，等记忆慢慢写进来。</view>
-            <view class="book-meta">{{item.label || '还没有章节'}}</view>
-            <view class="book-meta" wx:if="{{item.peopleCount !== undefined}}">{{item.peopleCount}} 个人</view>
-            <view class="book-open">{{item.manuscriptMemberId ? '翻开故事' : '接着写故事'}} <text aria-hidden="true">↗</text></view>
-          </view>
-        </button>
-        <navigator class="story-book story-book-new" url="/pages/index/index" hover-class="story-book-pressed" aria-label="新的故事，去首页选择换一个故事聊">
-          <image class="story-book-shell" src="/assets/illustrations/ancient-book-shell.png" mode="scaleToFill" aria-hidden="true"></image>
-          <view class="book-cover-tint" aria-hidden="true"></view>
-          <view class="book-cover">
-            <view class="book-new-plus" aria-hidden="true">＋</view>
-            <view class="book-title-slip"><view class="book-name serif">新的故事</view></view>
-            <view class="book-excerpt">去首页「换一个故事聊」<text>开启新的一本</text></view>
-          </view>
-        </navigator>
-      </view>
-      <button class="btn btn-ghost" bindtap="openMemories">整理原始记忆 · {{ungroupedCount}} 段还没放进故事</button>
-      <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
-      <view class="deleted-story-panel" wx:if="{{deletedStories.length}}">
-        <view class="deleted-story-heading">最近删除</view>
-        <view class="deleted-story-note">原始记忆和书稿仍然保留，可以随时恢复。</view>
-        <view class="deleted-story-row" wx:for="{{deletedStories}}" wx:key="key">
-          <view class="deleted-story-copy">
-            <view class="deleted-story-title serif">{{item.title}}</view>
-            <view class="deleted-story-date">{{item.deletedLabel}}</view>
-          </view>
-          <button class="deleted-story-restore" data-key="{{item.key}}" bindtap="restoreStory" hover-class="none">恢复</button>
+      <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>点一本书打开</text></view>
+      <view class="bookshelf">
+        <view class="shelf-books">
+          <button class="story-book spine spine-tone-{{index % 4}} spine-h-{{index % 3}} {{!item.manuscriptMemberId ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
+            <view class="spine-body">
+              <image class="spine-art" src="/assets/illustrations/story-book-spine.png" mode="scaleToFill" aria-hidden="true"></image>
+              <view class="spine-tint" aria-hidden="true"></view>
+              <view class="spine-label"><text class="spine-title serif">{{item.title}}</text></view>
+              <text class="spine-no" aria-hidden="true">{{index + 1 < 10 ? '0' : ''}}{{index + 1}}</text>
+            </view>
+          </button>
+          <navigator class="story-book spine spine-new" url="/pages/index/index" hover-class="spine-pressed" aria-label="新的故事，去首页选择换一个故事聊">
+            <view class="spine-body"><text class="spine-new-plus" aria-hidden="true">＋</text><text class="spine-title spine-new-title">新的故事</text></view>
+          </navigator>
         </view>
       </view>
+      <button class="memory-organize" bindtap="openMemories" hover-class="memory-organize-pressed" aria-label="整理记忆，{{ungroupedCount}} 段还没放进故事">
+        <view class="memory-organize-art" aria-hidden="true"><image class="memory-organize-bookmark" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
+        <view class="memory-organize-copy">
+          <text class="memory-organize-title serif">整理记忆</text>
+          <text class="memory-organize-note">{{ungroupedCount ? ungroupedCount + ' 段还没放进故事' : '所有记忆都在这里'}}</text>
+        </view>
+        <text class="memory-organize-arrow" aria-hidden="true">›</text>
+      </button>
+      <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
+      <button class="trash-entry" bindtap="openTrash" hover-class="none">最近删除{{deletedItems.length ? ' · ' + deletedItems.length : ''}}</button>
     </block>
+  </view>
+</view>
+
+<view class="trash-mask" wx:if="{{trashOpen}}" bindtap="closeTrash"></view>
+<view class="trash-sheet" wx:if="{{trashOpen}}" bindtap="closeTrash" role="dialog" aria-label="最近删除，点空白处关闭">
+  <view class="trash-panel" catchtap="keepTrashOpen">
+    <view class="trash-heading serif">最近删除</view>
+    <view class="trash-note">删掉的故事和记忆都在这里，恢复后原样回来。永久删除后就找不回来了。</view>
+    <scroll-view class="trash-list" scroll-y>
+      <view class="deleted-story-row" wx:for="{{deletedItems}}" wx:key="id">
+        <view class="deleted-story-copy">
+          <view class="deleted-story-title serif">{{item.title}}</view>
+          <view class="deleted-story-date">{{item.deletedLabel}}</view>
+        </view>
+        <button wx:if="{{item.type === 'memory'}}" class="trash-purge" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="purgeItem" hover-class="none">永久删除</button>
+        <button class="deleted-story-restore" data-type="{{item.type}}" data-id="{{item.id}}" bindtap="restoreItem" hover-class="none">恢复</button>
+      </view>
+      <view class="trash-empty" wx:if="{{!deletedItems.length}}">这里是空的。</view>
+    </scroll-view>
+    <button wx:if="{{deletedMemoryCount}}" class="trash-clear" bindtap="purgeAll" hover-class="none">清空已删除的记忆 · {{deletedMemoryCount}}</button>
+    <button class="trash-close" bindtap="closeTrash" hover-class="none">关闭</button>
   </view>
 </view>
 

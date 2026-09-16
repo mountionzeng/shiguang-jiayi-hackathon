@@ -1,4 +1,4 @@
-import { BiographyDraft, ManuscriptChapter, ManuscriptContent, MemoryContribution } from "../domain/biography";
+import { BiographyDraft, ChapterEdit, ChapterEditSource, ChapterEditStatus, ManuscriptChapter, ManuscriptContent, memorySegmentCount, memorySegments, MemoryContribution } from "../domain/biography";
 import { contentFromDelta, contentToDelta, validateContent } from "./bookImages";
 
 const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
@@ -95,6 +95,26 @@ export function assignMemory(chapters: ManuscriptChapter[], memoryId: string, ch
   });
 }
 
+/**
+ * Adds a memory to one chapter without removing it from any other — a story's memory
+ * can sit in several chapters at once (用户 2026-09-14 定). Every other chapter is
+ * copied unchanged; adding it again is a no-op.
+ */
+export function addMemoryToChapter(chapters: ManuscriptChapter[], memoryId: string, chapterId: string): ManuscriptChapter[] {
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId || chapter.memoryIds.includes(memoryId)) return copyChapter(chapter);
+    return { ...copyChapter(chapter), memoryIds: [...chapter.memoryIds, memoryId] };
+  });
+}
+
+/** Removes a memory from one chapter only; it stays in every other chapter it was placed in. */
+export function removeMemoryFromChapter(chapters: ManuscriptChapter[], memoryId: string, chapterId: string): ManuscriptChapter[] {
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId) return copyChapter(chapter);
+    return { ...copyChapter(chapter), memoryIds: chapter.memoryIds.filter(id => id !== memoryId) };
+  });
+}
+
 /** Puts a memory into one chapter and appends its original text once, preserving existing text and photos. */
 export function placeMemoryInChapter(
   chapters: ManuscriptChapter[],
@@ -119,6 +139,250 @@ export function placeMemoryInChapter(
       handEdited: true,
     };
   });
+}
+
+/**
+ * 「这一章有没有新的一段没写进」：只对已经用过这条记忆的章节才有意义——还没被任何
+ * 章节引用的记忆走「还没放进书稿」那一套，不是这里说的「新段」。
+ */
+export function chapterHasNewSegment(chapter: ManuscriptChapter, memory: MemoryContribution): boolean {
+  if (!chapter.memoryIds.includes(memory.id)) return false;
+  return memorySegmentCount(memory) > (chapter.memorySegmentCounts?.[memory.id] ?? 0);
+}
+
+/** 这个故事（这一组章节）里，有没有任何一章还欠着这条记忆的新段。 */
+export function hasUnwrittenSegments(chapters: ManuscriptChapter[], memory: MemoryContribution): boolean {
+  return chapters.some(chapter => chapterHasNewSegment(chapter, memory));
+}
+
+function newEditId(now = new Date()): string {
+  return `edit-${now.getTime().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * 写进（阶段 1）：不直接改正文，只给这一章提一条「待确认」的新增——水位之后还没写进的
+ * 那些段，原文拼在一起，标为用户原话（不标 AI）。用户 2026-09-15 定：自己讲的话接上去
+ * 也要点一下确认，跟 AI 改的一视同仁，只是框里不写「AI 生成」。
+ *
+ * 已有其它待确认修订时，追加到同一批里，不打断正在确认的流程。这条记忆当时有几段
+ * 记在这条修订上，确认时不用重新查记忆就能更新水位。
+ *
+ * 阶段 2（AI 整章重新整理，产出「建议删除」的修订）还没做，见 docs/2026-09-15-memory-segments-plan.md。
+ */
+export function proposeMemorySegmentInsert(
+  chapters: ManuscriptChapter[],
+  memory: MemoryContribution,
+  chapterId: string,
+  now = new Date(),
+): ManuscriptChapter[] {
+  const target = chapters.find(chapter => chapter.id === chapterId);
+  if (!target) return chapters.map(copyChapter);
+  const segments = memorySegments(memory);
+  const watermark = target.memorySegmentCounts?.[memory.id] ?? 0;
+  const newText = segments.slice(watermark).map(item => item.text.trim()).filter(Boolean).join("\n").trim();
+  if (!newText) return chapters.map(copyChapter);
+
+  const edit: ChapterEdit = {
+    id: newEditId(now),
+    kind: "insert",
+    text: newText,
+    source: "memory",
+    memoryId: memory.id,
+    memorySegmentCountAtProposal: segments.length,
+    status: "pending",
+  };
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId) return copyChapter(chapter);
+    return {
+      ...copyChapter(chapter),
+      pendingRevision: {
+        createdAt: chapter.pendingRevision?.createdAt ?? now.toISOString(),
+        edits: [...(chapter.pendingRevision?.edits ?? []), edit],
+      },
+    };
+  });
+}
+
+/**
+ * 这一章可以被选中的纯文字：跳过图片项，把文本块按顺序拼起来。前端把这个当作
+ * 「用户能选中的正文」，选段的起止字符偏移就是相对这个字符串算的。
+ */
+export function chapterPlainText(chapter: ManuscriptChapter): string {
+  return chapter.content.map(item => item.text ?? "").join("");
+}
+
+interface ResolvedAnchor {
+  contentIndex: number;
+  localStart: number;
+  localEnd: number;
+  text: string;
+}
+
+/** 把 chapterPlainText 里的全局偏移，映射回具体是哪一个文本块、块内哪一段；跨块/越界返回 undefined。 */
+function resolveAnchor(chapter: ManuscriptChapter, start: number, end: number): ResolvedAnchor | undefined {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) return undefined;
+  let cursor = 0;
+  for (let index = 0; index < chapter.content.length; index += 1) {
+    const text = chapter.content[index].text;
+    if (typeof text !== "string") continue; // 图片项不占字符，选段也不能落在这上面
+    const blockStart = cursor;
+    const blockEnd = cursor + text.length;
+    if (start >= blockStart && end <= blockEnd) {
+      return { contentIndex: index, localStart: start - blockStart, localEnd: end - blockStart, text: text.slice(start - blockStart, end - blockStart) };
+    }
+    cursor = blockEnd;
+  }
+  return undefined;
+}
+
+/** 前端提交前可以先用这个自查：这段选区能不能定位（没跨图片、没跨两个文本块）。 */
+export function canProposeSelectionRewrite(chapter: ManuscriptChapter, start: number, end: number): boolean {
+  return end > start && Boolean(resolveAnchor(chapter, start, end));
+}
+
+/**
+ * 针对用户选中的一段原文，提一对「删除原文 / 插入新文字」的待确认修订——比如「AI 帮我
+ * 改写这一段」：原文变成灰字打框的删除，AI 给的新文字变成淡绿字打框的新增，紧跟在原文
+ * 后面，两个都要点一下确认才真正生效。选段必须落在同一个文本块里，不能跨图片或跨两段
+ * 文本；这种情况这里直接不生成修订（原样返回），前端应该在提交前用 canProposeSelectionRewrite
+ * 先拦住，给用户一个「选段不能跨图片」之类的提示。
+ */
+export function proposeSelectionRewrite(
+  chapters: ManuscriptChapter[],
+  chapterId: string,
+  start: number,
+  end: number,
+  newText: string,
+  source: ChapterEditSource = "ai",
+  now = new Date(),
+): ManuscriptChapter[] {
+  const target = chapters.find(chapter => chapter.id === chapterId);
+  const resolved = target && resolveAnchor(target, start, end);
+  const trimmed = newText.trim();
+  if (!target || !resolved || !trimmed) return chapters.map(copyChapter);
+
+  const groupId = newEditId(now);
+  const deleteEdit: ChapterEdit = {
+    id: `${groupId}-del`, kind: "delete", text: resolved.text, source, status: "pending",
+    anchor: { start, end },
+  };
+  const insertEdit: ChapterEdit = {
+    id: `${groupId}-ins`, kind: "insert", text: trimmed, source, status: "pending",
+    anchor: { start: end, end }, // 插入点紧跟在被替换的原文之后
+  };
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId) return copyChapter(chapter);
+    return {
+      ...copyChapter(chapter),
+      pendingRevision: {
+        createdAt: chapter.pendingRevision?.createdAt ?? now.toISOString(),
+        edits: [...(chapter.pendingRevision?.edits ?? []), deleteEdit, insertEdit],
+      },
+    };
+  });
+}
+
+/** 逐条确认/不要一处待确认修订；不改任何文字，只改这一条的状态。 */
+export function resolvePendingEdit(
+  chapters: ManuscriptChapter[],
+  chapterId: string,
+  editId: string,
+  decision: "accept" | "reject",
+): ManuscriptChapter[] {
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId || !chapter.pendingRevision) return copyChapter(chapter);
+    const status: ChapterEditStatus = decision === "accept" ? "accepted" : "rejected";
+    const edits = chapter.pendingRevision.edits.map(edit => edit.id === editId ? { ...edit, status } : edit);
+    return { ...copyChapter(chapter), pendingRevision: { ...chapter.pendingRevision, edits } };
+  });
+}
+
+/** 还有没确认/不要的修订吗——只有全部处理完，才能生成新版本。 */
+export function pendingRevisionResolved(chapter: ManuscriptChapter): boolean {
+  return !chapter.pendingRevision || chapter.pendingRevision.edits.every(edit => edit.status !== "pending");
+}
+
+/** 底部「还有 N 处等你确认」的数字。 */
+export function pendingEditCount(chapters: ManuscriptChapter[]): number {
+  return chapters.reduce((total, chapter) =>
+    total + (chapter.pendingRevision?.edits.filter(edit => edit.status === "pending").length ?? 0), 0);
+}
+
+/**
+ * 全部确认完，生成这一章的正式内容。两类接受的修订分开处理：
+ * - 有 anchor 的（选段改写产生的删除/插入）：原地拼回对应文本块，按位置从后往前应用，
+ *   前面还没处理的修订的位置不会被后面已经生效的改动带偏；两个修订的选段有重叠时，
+ *   后处理的可能对不上，交给前端在生成待确认修订时本来就避免同一处被提两次。
+ * - 没有 anchor 的新增（写进一条记忆的默认做法）：按提出的顺序接到正文末尾。
+ * 被「不要」的什么都不改。确认/不要本身不算手改，不碰 `handEdited`；接受了任何一处
+ * AI 来源的修订，标 `containsAiText`。更新对应记忆的水位和 memoryIds（只更新这一章，
+ * 一条记忆可以同时在好几章）。
+ */
+export function finalizePendingRevision(chapters: ManuscriptChapter[], chapterId: string): ManuscriptChapter[] {
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId) return copyChapter(chapter);
+    if (!chapter.pendingRevision) return copyChapter(chapter);
+    if (!pendingRevisionResolved(chapter)) throw new Error("还有没确认的修订，请先逐条确认");
+
+    let content = chapter.content.map(item => ({ ...item }));
+    const memoryIds = [...chapter.memoryIds];
+    const memorySegmentCounts = { ...chapter.memorySegmentCounts };
+    let containsAiText = Boolean(chapter.containsAiText);
+    const accepted = chapter.pendingRevision.edits.filter(edit => edit.status === "accepted");
+
+    const anchored = accepted
+      .filter(edit => edit.anchor)
+      .map(edit => ({ edit, resolved: resolveAnchor(chapter, edit.anchor!.start, edit.anchor!.end) }))
+      .filter((item): item is { edit: ChapterEdit; resolved: ResolvedAnchor } => Boolean(item.resolved))
+      // 从后往前：同一块里位置更靠后的先应用，前面待处理的偏移不受影响；insert 的 localStart
+      // 等于它对应 delete 的 localEnd，天然排在那条 delete 前面，两者按序生效。
+      .sort((left, right) =>
+        right.resolved.contentIndex - left.resolved.contentIndex ||
+        right.resolved.localStart - left.resolved.localStart ||
+        (right.edit.kind === "insert" ? 1 : 0) - (left.edit.kind === "insert" ? 1 : 0));
+
+    for (const { edit, resolved } of anchored) {
+      const block = content[resolved.contentIndex];
+      if (typeof block.text !== "string") continue;
+      const before = block.text.slice(0, resolved.localStart);
+      const after = block.text.slice(resolved.localEnd);
+      const middle = edit.kind === "insert" ? edit.text : "";
+      content[resolved.contentIndex] = { text: before + middle + after };
+      if (edit.source === "ai") containsAiText = true;
+    }
+
+    for (const edit of accepted) {
+      if (edit.anchor || edit.kind !== "insert") continue;
+      const last = content[content.length - 1];
+      const separator = !last ? "" : typeof last.text !== "string" ? "\n"
+        : last.text.endsWith("\n\n") ? "" : last.text.endsWith("\n") ? "\n" : "\n\n";
+      content = [...content, { text: separator + edit.text + "\n" }];
+      if (edit.source === "ai") containsAiText = true;
+      if (edit.memoryId) {
+        if (!memoryIds.includes(edit.memoryId)) memoryIds.push(edit.memoryId);
+        if (edit.memorySegmentCountAtProposal !== undefined) {
+          memorySegmentCounts[edit.memoryId] = Math.max(memorySegmentCounts[edit.memoryId] ?? 0, edit.memorySegmentCountAtProposal);
+        }
+      }
+    }
+
+    const next: ManuscriptChapter = { ...copyChapter(chapter), content, memoryIds, memorySegmentCounts };
+    delete next.pendingRevision;
+    if (containsAiText) next.containsAiText = true;
+    return next;
+  });
+}
+
+/** 标识文字：小标签用（不带书名号），复制/导出场景用 chapterAiExportPrefix。 */
+export function chapterAiLabel(chapter: ManuscriptChapter): "" | "文字 AI 生成" | "文字 AI 生成 · 已由你修改" {
+  if (!chapter.containsAiText && chapter.generationMode !== "cloud-ai") return "";
+  return chapter.handEdited ? "文字 AI 生成 · 已由你修改" : "文字 AI 生成";
+}
+
+/** 复制/导出这一章文字时，按《人工智能生成合成内容标识办法》加的显式前缀；没有 AI 文字时不加。 */
+export function chapterAiExportPrefix(chapter: ManuscriptChapter): string {
+  const label = chapterAiLabel(chapter);
+  return label ? `【${label}】` : "";
 }
 
 export function unassignedMemoryIds(chapters: ManuscriptChapter[], memoryIds: string[]) {
@@ -171,6 +435,31 @@ export function applyOrganized(chapters: ManuscriptChapter[], targetId: string, 
   return { chapters: next, chapterId, keptPhotoIds };
 }
 
+const MAX_PENDING_EDITS = 60;
+/** 一处修订可能是好几段记忆拼起来的，上限和整本书正文一样宽松，只是防止异常数据。 */
+const MAX_EDIT_TEXT = MAX_BOOK_TEXT;
+
+function validatePendingRevision(pendingRevision: unknown): void {
+  if (!pendingRevision || typeof pendingRevision !== "object") throw new Error("待确认修订格式无效");
+  const { createdAt, edits } = pendingRevision as { createdAt?: unknown; edits?: unknown };
+  if (typeof createdAt !== "string") throw new Error("待确认修订格式无效");
+  if (!Array.isArray(edits) || edits.length > MAX_PENDING_EDITS) throw new Error("待确认修订太多，请先处理完再继续");
+  const ids = new Set<string>();
+  for (const edit of edits as ChapterEdit[]) {
+    if (!edit || typeof edit.id !== "string" || ids.has(edit.id)) throw new Error("待确认修订格式无效");
+    ids.add(edit.id);
+    if (edit.kind !== "insert" && edit.kind !== "delete") throw new Error("待确认修订格式无效");
+    if (typeof edit.text !== "string" || edit.text.length > MAX_EDIT_TEXT) throw new Error("单处修订最多 " + MAX_EDIT_TEXT + " 字");
+    if (edit.source !== "ai" && edit.source !== "memory") throw new Error("待确认修订格式无效");
+    if (edit.status !== "pending" && edit.status !== "accepted" && edit.status !== "rejected") throw new Error("待确认修订格式无效");
+    if (edit.anchor !== undefined) {
+      const { start, end } = edit.anchor;
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) throw new Error("待确认修订的选段位置无效");
+    }
+    if (edit.kind === "delete" && edit.anchor === undefined) throw new Error("待确认修订格式无效");
+  }
+}
+
 export function validateChapters(chapters: unknown) {
   if (!Array.isArray(chapters) || !chapters.length || chapters.length > MAX_CHAPTERS) throw new Error("一本书稿最多 " + MAX_CHAPTERS + " 章");
   const ids = new Set<string>();
@@ -185,6 +474,8 @@ export function validateChapters(chapters: unknown) {
       !chapter.memoryIds.every(id => typeof id === "string" && id.length <= 120)) throw new Error("章节里的记忆列表无效");
     if (!Array.isArray(chapter.content)) throw new Error("图文内容格式无效");
     all.push(...chapter.content);
+    if (chapter.pendingRevision !== undefined) validatePendingRevision(chapter.pendingRevision);
+    if (chapter.containsAiText !== undefined && typeof chapter.containsAiText !== "boolean") throw new Error("章节标记无效");
   }
   // Limits count each chapter once. The flattened copy for older clients is derived, not counted again.
   validateContent(all);

@@ -475,6 +475,36 @@
   color: var(--ink-faint);
 }
 
+.import-mask {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 28rpx;
+  background: rgba(32, 36, 33, 0.42);
+}
+
+.import-card {
+  width: 100%;
+  padding: 34rpx 30rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 24rpx 24rpx 12rpx 12rpx;
+  background: var(--paper);
+}
+
+.import-title { color: var(--ink); font-size: 36rpx; font-weight: 600; }
+.import-note { margin-top: 10rpx; color: var(--ink-soft); font-size: 24rpx; line-height: 1.6; }
+.import-photos { width: 100%; margin-top: 22rpx; white-space: nowrap; }
+.import-photo { width: 144rpx; height: 144rpx; margin-right: 14rpx; border-radius: 10rpx; }
+.import-caption { box-sizing: border-box; width: 100%; min-height: 150rpx; margin-top: 22rpx; padding: 20rpx; border: 2rpx solid rgba(129, 117, 93, 0.2); border-radius: 10rpx; background: #fffefb; color: var(--ink); font-size: 28rpx; line-height: 1.6; }
+.import-ai-label { margin-top: 8rpx; color: var(--apricot); font-size: 22rpx; }
+.import-ai { width: 100%; margin-top: 18rpx; }
+.import-actions { display: flex; margin-top: 18rpx; gap: 16rpx; }
+.import-actions .btn { flex: 1; }
+
 .tool-spacer {
   flex: 1;
 }
@@ -772,3 +802,6 @@
 .people-grid {
   width: 100%;
 }
+
+/* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
+.mode-start.mode-start { width: 356rpx; margin-left: auto; margin-right: auto; }
