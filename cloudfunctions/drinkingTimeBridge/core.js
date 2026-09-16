@@ -28,4 +28,15 @@ function requestBody(action, event, context) {
     story: event.story,
   };
 }
-module.exports = { bridgeUrl, canonicalJson, requestBody, signature, subjectFor };
+// 接口约定 1.0.0 第 3.5 节：接收方必须校验成功响应的形状，不满足就当作
+// bridge_unavailable，不得显示为成功（漏挂载点时服务端会返回 200 + 网页 HTML）。
+function issueDesktopResultShapeError(contentType, data) {
+  if (!/^application\/json\b/i.test(String(contentType || ""))) return "bridge_unavailable";
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "bridge_unavailable";
+  if (typeof data.code !== "string" || !/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(data.code)) return "bridge_unavailable";
+  if (typeof data.expiresAt !== "string" || !Number.isFinite(Date.parse(data.expiresAt))) return "bridge_unavailable";
+  if (!Number.isSafeInteger(data.storyId) || data.storyId <= 0) return "bridge_unavailable";
+  if (typeof data.imported !== "boolean") return "bridge_unavailable";
+  return null;
+}
+module.exports = { bridgeUrl, canonicalJson, issueDesktopResultShapeError, requestBody, signature, subjectFor };

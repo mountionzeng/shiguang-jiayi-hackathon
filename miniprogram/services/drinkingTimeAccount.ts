@@ -135,7 +135,8 @@ function transferResult(value: unknown): DesktopTransferResult {
   const result = value as Partial<DesktopTransferResult>;
   if (typeof result.code !== "string" || !/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(result.code) ||
     typeof result.expiresAt !== "string" || !Number.isFinite(Date.parse(result.expiresAt)) ||
-    !Number.isSafeInteger(result.storyId) || typeof result.imported !== "boolean") {
+    typeof result.storyId !== "number" || !Number.isSafeInteger(result.storyId) || result.storyId <= 0 ||
+    typeof result.imported !== "boolean") {
     throw new Error("电脑登录码返回异常");
   }
   return result as DesktopTransferResult;
