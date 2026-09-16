@@ -1,10 +1,14 @@
 const cloud = require("wx-server-sdk");
 const { StoryImageError } = require("./core");
+const { createCaptionHandler } = require("./caption");
 const { createDiagnostics } = require("./diagnostics");
 const { createStoryImageHandlers } = require("./flow");
 const { createQualityChecker } = require("./quality");
+const { createPhotoReader } = require("./photoReader");
 const { createSceneExtractor } = require("./scene");
+const { createTextChecker } = require("./textCheck");
 const { createTokenHubImageClient, downloadResult, IMAGE_MODEL } = require("./tokenhub");
+const { createVisionClient } = require("./vision");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
@@ -12,6 +16,7 @@ const _ = db.command;
 
 const JOBS = "image_jobs";
 const IMAGES = "story_images";
+const CAPTION_LOGS = "photo_caption_logs";
 const DRAFTS = "biography_drafts";
 const ACTIVE_STATUSES = ["submitted", "queued", "generating", "generated", "storing"];
 
@@ -30,7 +35,7 @@ function isMissing(error) {
 let collectionsReady = false;
 async function ensureCollections() {
   if (collectionsReady) return;
-  for (const name of [JOBS, IMAGES]) {
+  for (const name of [JOBS, IMAGES, CAPTION_LOGS]) {
     try {
       await db.createCollection(name);
     } catch (error) {
@@ -94,6 +99,13 @@ const repo = {
     const response = await db.collection(JOBS).where({ status: _.in(ACTIVE_STATUSES) })
       .orderBy("updatedAtMs", "asc").limit(limit).get();
     return response.data;
+  },
+  getCaptionLog: id => getDoc(CAPTION_LOGS, id),
+  createCaptionLog: (id, data) => db.collection(CAPTION_LOGS).doc(id).set({ data }),
+  updateCaptionLog: (id, patch) => db.collection(CAPTION_LOGS).doc(id).update({ data: patch }),
+  async countCaptionLogs({ requesterOpenId, dayKey, statuses }) {
+    const response = await db.collection(CAPTION_LOGS).where({ requesterOpenId, dayKey, status: _.in(statuses) }).count();
+    return response.total;
   },
   async listImagesPendingQuality(limit) {
     const response = await db.collection(IMAGES).where({ quality: "pending", deletedAtMs: _.exists(false) })
@@ -165,6 +177,40 @@ const downloadImage = url => downloadResult(url);
 
 const handlers = createStoryImageHandlers({
   repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker,
+  async forwardPhotoModeration({ traceId, suggest, label }) {
+    const response = await cloud.callFunction({
+      name: "photoAccess",
+      data: {
+        action: "moderationResult",
+        traceId,
+        suggest,
+        label,
+        internalToken: process.env.PHOTO_ACCESS_INTERNAL_TOKEN,
+      },
+    });
+    const result = response && response.result;
+    if (!result || typeof result !== "object" || result.error || result.ok !== true) {
+      throw new Error(String((result && result.error && (result.error.code || result.error.message)) || "PHOTO_MODERATION_FORWARD_FAILED"));
+    }
+  },
+});
+// Photos are read only through photoAccess, which owns the permission check (problem nine).
+const photoReader = createPhotoReader({
+  callFunction: options => cloud.callFunction(options),
+  internalToken: process.env.PHOTO_ACCESS_INTERNAL_TOKEN,
+});
+const captionVision = createVisionClient({
+  apiKey: process.env.VISION_API_KEY || tokenHubKey,
+  model: process.env.VISION_MODEL,
+  baseUrl: process.env.VISION_BASE_URL,
+});
+// Text checks go through problem three's shared contentSecurityCheck function.
+const textChecker = createTextChecker({ callFunction: options => cloud.callFunction(options) });
+const captions = createCaptionHandler({
+  repo,
+  vision: { ...captionVision, model: process.env.VISION_MODEL || "hy-vision-2.0-instruct" },
+  readPhotos: input => photoReader.read(input),
+  checkText: input => textChecker.check(input),
 });
 const diagnostics = createDiagnostics({
   repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker,
@@ -191,6 +237,8 @@ async function main(event = {}) {
       case "status": return await handlers.status(ctx, event);
       case "list": return await handlers.list(ctx, event);
       case "remove": return await handlers.remove(ctx, event);
+      // 看图写一句话: the client asks for the separate photo-to-AI consent before calling.
+      case "caption": return await captions.caption(ctx, event);
       // Guarded by STORY_IMAGES_DIAGNOSE_TOKEN; meant for the developer tools' cloud test.
       case "diagnose": return await diagnostics.run(ctx, event);
       default: throw new StoryImageError("UNKNOWN_ACTION", "不支持的操作");

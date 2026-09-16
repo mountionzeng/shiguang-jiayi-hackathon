@@ -8,6 +8,7 @@ const CORE_COLLECTIONS = [
   "image_jobs",
   "story_images",
   "photos",
+  "photo_caption_logs",
   "user_accounts",
   "family_invitations",
   "family_access",
