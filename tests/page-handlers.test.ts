@@ -1086,6 +1086,22 @@ test("the memory archive lists quick notes from the shared memory pool", async (
   assert.equal(page.data.hasNotes, true);
 });
 
+test("the memory archive never offers a deleted story while editing a memory", async (context) => {
+  const state = createInitialRoomState();
+  state.deletedStories = [{
+    key: "story:外公接我放学",
+    title: "外公接我放学",
+    deletedAt: "2026-09-16T00:00:00.000Z",
+  }];
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+
+  await callPage(page, "refresh");
+
+  assert.deepEqual(page.data.storyOptions, []);
+});
+
 test("the memory archive supports swipe reveal and deleting a quick note", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -1308,6 +1324,48 @@ test("AI organizing lists every story instead of treating recording profiles as 
     (page.data.organizeRows as Array<{ id: string; checked: boolean }>).filter(item => item.checked).map(item => item.id),
     ["another-story"],
     "choosing a story selects that story's memories for its new chapter",
+  );
+});
+
+test("choosing a story only shows chapters associated with that story", async context => {
+  const state = createInitialRoomState();
+  state.contributions.push(createContribution({
+    id: "another-story",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "自己",
+    text: "第一次离开家去远方。",
+    storyTitle: "第一次去远方",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-09-12T00:00:00.000Z"),
+  }));
+  state.manuscriptRevisions = [makeRevision("owner", {
+    title: "林岚的人生之书",
+    paragraphs: [],
+    sourceCount: 2,
+    generatedAt: "2026-09-12T00:00:00.000Z",
+    generationMode: "local-demo",
+    chapters: [
+      { id: "chapter-old", title: "外公接我放学", memoryIds: ["demo-personal-rain"], content: [{ text: "外公的故事。\n" }] },
+      { id: "chapter-away", title: "第一次去远方", memoryIds: ["another-story"], content: [{ text: "远方的故事。\n" }] },
+    ],
+  }, "", "draft", "当前稿")];
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+
+  await callPage(page, "refresh");
+  const story = (page.data.organizeBooks as Array<{ id: string; title: string }>).find(item => item.title === "第一次去远方")!;
+  await callPage(page, "onOrganizeBook", { detail: { value: story.id } });
+
+  assert.deepEqual(
+    (page.data.chapterRows as Array<{ id: string }>).map(item => item.id),
+    ["chapter-away"],
+  );
+  assert.deepEqual(
+    (page.data.organizeRows as Array<{ id: string }>).map(item => item.id),
+    ["another-story"],
   );
 });
 

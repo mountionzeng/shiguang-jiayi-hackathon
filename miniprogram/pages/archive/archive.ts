@@ -93,6 +93,7 @@ Page({
     // One pool for every book. A memory is either not written yet, or written into
     // one or more books; the label says where.
     const personal = memoryPool(state.contributions);
+    const deletedStoryTitles = new Set((state.deletedStories ?? []).map((story) => story.title));
     const placements = memoryPlacements(state);
     const toViews = (memoryType?: ArchiveTab) => personal
       .filter((memory) => !memoryType || (memory.memoryType ?? "note") === memoryType)
@@ -126,7 +127,8 @@ Page({
       unrecordedItems: archiveItems.filter((item) => !item.recorded),
       recordedItems: archiveItems.filter((item) => item.recorded),
       hasItems: archiveItems.length > 0,
-      storyOptions: [...new Set(personal.map(contributionStoryTitle).filter(Boolean))],
+      storyOptions: [...new Set(personal.map(contributionStoryTitle)
+        .filter((title) => Boolean(title) && !deletedStoryTitles.has(title)))],
       storageLabel: roomDataModeLabel(),
       loadError: "",
     });

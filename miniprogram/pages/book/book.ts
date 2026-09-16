@@ -93,6 +93,7 @@ Page({
   requestedStoryKey: "",
   requestedStoryTitle: "",
   requestedMemoryIds: [] as string[],
+  storyScopeMemoryIds: undefined as Set<string> | undefined,
   organizeCandidate: undefined as { draft: BiographyDraft; fingerprint: string; chapterId: string; label: string; notice: string; revisionId: string } | undefined,
   onLoad(options: { memberId?: string; chapterId?: string; memoryIds?: string } = {}) {
     this.openOrganizeOnLoad = options.memoryIds !== undefined;
@@ -137,9 +138,15 @@ Page({
     const state = nextState ?? await loadRoomStateRemoteFirst();
     const member = this.requestedMemberId ? state.members.find(item => item.id === this.requestedMemberId && isRecordingProfile(item)) : await loadCurrentMemberRemoteFirst(state);
     if (!member) throw new Error("这本书已不可用，请重新选择");
+    const shelf = storyShelf(state);
+    const selectedStory = shelf.find(story => story.key === this.requestedStoryKey);
+    this.storyScopeMemoryIds = selectedStory?.key.startsWith("story:")
+      ? new Set(selectedStory.memoryIds)
+      : undefined;
     const deletedStoryTitles = new Set((state.deletedStories ?? []).map(story => story.title));
     const qualified = memoryPool(state.contributions)
-      .filter(memory => !deletedStoryTitles.has(contributionStoryTitle(memory)));
+      .filter(memory => !deletedStoryTitles.has(contributionStoryTitle(memory)))
+      .filter(memory => !this.storyScopeMemoryIds || this.storyScopeMemoryIds.has(memory.id));
     const current = currentManuscript(state, member.id);
     if ((this.data.editing && !this.data.saving) || this.data.pickingPhoto || this.unloaded) return;
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
@@ -152,14 +159,15 @@ Page({
       }
     }
     if (this.unloaded || refreshId !== this.refreshId || (this.data.editing && !this.data.saving) || this.data.pickingPhoto) return;
+    const visibleChapters = this.visibleChapters(chapters);
     let view = this.data.view;
-    if (!chapters.length) view = "contents";
+    if (!visibleChapters.length) view = "contents";
     else if (!view) {
       // A single-chapter book (every older book) opens straight into its text, as before.
-      view = chapters.length === 1 ? "chapter" : "contents";
-      if (chapters.length === 1) this.activeChapterId = chapters[0].id;
+      view = visibleChapters.length === 1 ? "chapter" : "contents";
+      if (visibleChapters.length === 1) this.activeChapterId = visibleChapters[0].id;
     }
-    if (view === "chapter" && !chapters.some(chapter => chapter.id === this.activeChapterId)) view = "contents";
+    if (view === "chapter" && !visibleChapters.some(chapter => chapter.id === this.activeChapterId)) view = "contents";
     this.revisionId = current.revisionId;
     this.sourceFingerprint = current.sourceFingerprint;
     this.chapters = chapters;
@@ -168,7 +176,6 @@ Page({
     this.photoPaths = photoPaths;
     this.imageIds = imageIds;
     this.loadActiveChapter();
-    const shelf = storyShelf(state);
     const organizeBooks = shelf.map(story => ({
       id: story.key,
       title: story.title,
@@ -230,24 +237,35 @@ Page({
     this.chapterTitleBuffer = active?.title ?? "";
     this.bodyBuffer = plainText(this.contentBuffer).replace(/\n+$/, "");
   },
+  /** Story selection narrows the view without removing other chapters from the saved manuscript. */
+  visibleChapters(chapters?: ManuscriptChapter[]): ManuscriptChapter[] {
+    const source = chapters ?? this.chapters;
+    const scope = this.storyScopeMemoryIds;
+    if (!scope) return source;
+    return source.filter((chapter: ManuscriptChapter) => (
+      chapter.title.trim() === this.requestedStoryTitle
+      || chapter.memoryIds.some(memoryId => scope.has(memoryId))
+    ));
+  },
   chapterData() {
     const known = new Map(this.memories.map(memory => [memory.id, memory]));
-    const active = this.chapters.find(chapter => chapter.id === this.activeChapterId);
+    const visibleChapters = this.visibleChapters();
+    const active = visibleChapters.find(chapter => chapter.id === this.activeChapterId);
     const stories = new Map<string, number>();
     this.memories.forEach(memory => {
       const title = contributionStoryTitle(memory);
       if (title) stories.set(title, (stories.get(title) ?? 0) + 1);
     });
     return {
-      chapterRows: this.chapters.map((chapter, index) => ({
+      chapterRows: visibleChapters.map((chapter, index) => ({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
         memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: photoCount(chapter.content),
       })),
       // 最近讲的记忆排在最前面。
-      unassigned: unassignedMemoryIds(this.chapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!))
+      unassigned: unassignedMemoryIds(visibleChapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
       chapterMemories: active ? active.memoryIds.flatMap(id => known.has(id) ? [memoryRow(known.get(id)!)] : []) : [],
-      chapterLabelText: active ? chapterLabel(this.chapters.indexOf(active) + 1) : "",
+      chapterLabelText: active ? chapterLabel(visibleChapters.indexOf(active) + 1) : "",
       storyOptions: Array.from(stories, ([title, count]) => ({ title, count })),
       backdropUrl: this.activeBackdropUrl(),
     };
@@ -588,12 +606,13 @@ Page({
   /** AI organizing: step 1 choose memories, step 2 choose a chapter. Defaults follow where the user is. */
   showOrganize() {
     if (!this.memories.length) { this.setData({ saveNotice: "先记录一段经历，再请 AI 整理" }); return; }
-    const active = this.data.view === "chapter" ? this.chapters.find(chapter => chapter.id === this.activeChapterId) : undefined;
+    const visibleChapters = this.visibleChapters();
+    const active = this.data.view === "chapter" ? visibleChapters.find(chapter => chapter.id === this.activeChapterId) : undefined;
     const known = new Set(this.memories.map(memory => memory.id));
     const inChapter = active?.memoryIds.filter(id => known.has(id)) ?? [];
     this.organizeSelection = inChapter.length ? inChapter : unassignedMemoryIds(this.chapters, [...known]);
     const where = new Map<string, string>();
-    this.chapters.forEach((chapter, index) => chapter.memoryIds.forEach(id => where.set(id, "在" + chapterLabel(index + 1))));
+    visibleChapters.forEach((chapter, index) => chapter.memoryIds.forEach(id => where.set(id, "在" + chapterLabel(index + 1))));
     this.setData({
       panel: "organize", organizeTarget: active ? active.id : "new",
       organizeRows: this.memories.map(memory => ({ ...memoryRow(memory), where: where.get(memory.id) ?? "还没放进", checked: this.organizeSelection.includes(memory.id) })),
