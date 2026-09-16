@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "accountBoundFiles": [
+    "project.config.json",
+    "miniprogram/config/runtime.ts"
+  ],
+  "cloudFunctions": {
+    "photoAccess": {
+      "timeoutSeconds": 10,
+      "environmentVariables": ["PHOTO_ACCESS_INTERNAL_TOKEN"],
+      "timerTriggers": ["retryPhotoModeration: every 10 minutes"]
+    },
+    "storyImages": {
+      "timeoutSeconds": 60,
+      "environmentVariables": [
+        "AI_API_KEY",
+        "AI_BASE_URL",
+        "AI_MODEL",
+        "PHOTO_ACCESS_INTERNAL_TOKEN",
+        "STORY_IMAGES_DIAGNOSE_TOKEN",
+        "TOKENHUB_API_KEY"
+      ],
+      "timerTriggers": ["sweepImageJobs: every minute"],
+      "messageRoutes": ["wxa_media_check"]
+    },
+    "contentSecurityCheck": {
+      "timeoutSeconds": 10,
+      "environmentVariables": []
+    },
+    "familyInvite": {
+      "timeoutSeconds": 10,
+      "environmentVariables": []
+    },
+    "drinkingTimeBridge": {
+      "environmentVariables": [
+        "DRINKING_TIME_BRIDGE_BASE_URL",
+        "DRINKING_TIME_BRIDGE_SECRET",
+        "WECHAT_APP_ID"
+      ]
+    }
+  },
+  "collections": {
+    "image_jobs": [
+      "family_member_created_id: familyId, memberId, createdAtMs, _id",
+      "status_updated: status, updatedAtMs",
+      "family_day_status: familyId, dayKey, status"
+    ],
+    "photo_caption_logs": [
+      "requester_day_status: requesterOpenId, dayKey, status"
+    ],
+    "photos": [
+      "family_openid_id: familyId, _openid, _id",
+      "moderation_trace_id: moderation.traceId",
+      "moderation_deleted: deletedAt, moderation.ok"
+    ],
+    "story_images": [
+      "family_member_deleted_id: familyId, memberId, deletedAtMs, _id",
+      "moderation_trace_id: moderationTraceId",
+      "quality_deleted_created: quality, deletedAtMs, createdAtMs"
+    ]
+  },
+  "secretPolicy": "This manifest records names only. Never commit secret values."
+}
