@@ -160,6 +160,29 @@
         >{{organizing ? '正在整理…' : '整理成片段'}}</view>
       </view>
     </view>
+
+    <view class="import-mask" wx:if="{{importDraftOpen}}">
+      <view class="import-card">
+        <view class="import-title serif">给照片写一句话</view>
+        <view class="import-note">可以自己写，也可以让 AI 看最多 3 张照片帮你起个头；不想写就直接保存。</view>
+        <scroll-view class="import-photos" scroll-x>
+          <image class="import-photo" wx:for="{{importPhotoPaths}}" wx:key="*this" src="{{item}}" mode="aspectFill"></image>
+        </scroll-view>
+        <textarea
+          class="import-caption"
+          value="{{importCaption}}"
+          maxlength="500"
+          placeholder="例如：那年春天，我们在院子里合影"
+          bindinput="onImportCaptionInput"
+        ></textarea>
+        <view class="import-ai-label" wx:if="{{importAiLabel}}">{{importAiLabel}}</view>
+        <button class="btn btn-ghost import-ai" bindtap="generateImportCaption" disabled="{{importAiLoading}}">{{importAiLoading ? '正在看…' : '让 AI 看看照片'}}</button>
+        <view class="import-actions">
+          <button class="btn btn-ghost" bindtap="cancelPhotoImport" disabled="{{importAiLoading || importing}}">取消</button>
+          <button class="btn btn-primary" bindtap="savePhotoImport" disabled="{{importing}}">{{importing ? '正在保存…' : (importCaption ? '保存' : '跳过并保存')}}</button>
+        </view>
+      </view>
+    </view>
   </block>
 
   <!-- ============ 整理与保存 ============ -->

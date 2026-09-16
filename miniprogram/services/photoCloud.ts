@@ -96,6 +96,11 @@ export function clearPhotoUploadQueue() {
   writeQueue([]);
 }
 
+export function removeQueuedPhotoUploads(photoIds: string[]) {
+  const removing = new Set(photoIds);
+  writeQueue(readQueue().filter(item => !removing.has(item.photoId)));
+}
+
 function compress(src: string, dimensions: { width: number; height: number }, quality: number): Promise<string> {
   return new Promise((resolve, reject) => wx.compressImage({
     src,

@@ -1,5 +1,5 @@
 import { ManuscriptContent } from "../domain/biography";
-import { enqueuePhotoUpload, PhotoSource } from "./photoCloud";
+import { enqueuePhotoUpload, PhotoSource, removeQueuedPhotoUploads } from "./photoCloud";
 import { currentFamilyId } from "./cloudRoomStorage";
 
 const PHOTO_ID = /^photo-[a-z0-9-]{1,80}$/;
@@ -58,6 +58,16 @@ export async function saveLocalPhoto(tempFilePath: string, source: PhotoSource =
   wx.setStorageSync("shiguang-local-" + id, path);
   enqueuePhotoUpload(id, path, source);
   return { id, path };
+}
+
+/** Cancel a just-started import without uploading or retaining our private copy. The source photo is untouched. */
+export async function discardLocalPhotos(photos: Array<{ id: string; path: string }>): Promise<void> {
+  const safe = photos.filter(photo => PHOTO_ID.test(photo.id) && photo.path.startsWith(`${wx.env.USER_DATA_PATH}/`));
+  removeQueuedPhotoUploads(safe.map(photo => photo.id));
+  await Promise.all(safe.map(photo => new Promise<void>(resolve => {
+    wx.removeStorageSync("shiguang-local-" + photo.id);
+    wx.getFileSystemManager().unlink({ filePath: photo.path, complete: () => resolve() });
+  })));
 }
 
 export async function readLocalPhoto(id: string): Promise<string> {

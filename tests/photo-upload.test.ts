@@ -8,6 +8,7 @@ import {
   enqueuePhotoUpload,
   loadCloudPhotoSummary,
   pendingPhotoUploads,
+  removeQueuedPhotoUploads,
   resumePhotoUploads,
   retryPhotoUpload,
 } from "../miniprogram/services/photoCloud";
@@ -82,6 +83,9 @@ test("上传失败保留可重试状态，手动重试清零次数", async conte
   assert.equal(pendingPhotoUploads()[0].attempts, 0);
   beginPhotoUploadSession();
   assert.equal(pendingPhotoUploads()[0].attempts, 0);
+  enqueuePhotoUpload("photo-keep-123", "wxfile://usr/keep.jpg", "book");
+  removeQueuedPhotoUploads(["photo-fail-123"]);
+  assert.deepEqual(pendingPhotoUploads().map(item => item.photoId), ["photo-keep-123"]);
 });
 
 test("照片管理读取本人统计并以固定确认词删除，删除后可清空待上传队列", async context => {

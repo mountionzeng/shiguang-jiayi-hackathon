@@ -7,6 +7,7 @@ import {
   FamilyRoomState,
 } from "../miniprogram/domain/biography";
 import { makeRevision } from "../miniprogram/services/manuscript";
+import { storyImageApi } from "../miniprogram/services/storyImageService";
 import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 const ROOM_KEY = "shiguang-family-room-v5";
@@ -853,8 +854,6 @@ test("聊天页导入照片时可以跳过写字，原图留在本机并进入�
   wxMock.env = { USER_DATA_PATH: "/user" };
   wxMock.showLoading = () => undefined;
   wxMock.hideLoading = () => undefined;
-  wxMock.showModal = ({ success }: { success: (result: { confirm: boolean; cancel: boolean; content: string }) => void }) =>
-    success({ confirm: false, cancel: true, content: "" });
   wxMock.getFileSystemManager = () => ({
     saveFile: ({ filePath, success }: { filePath: string; success: (result: { savedFilePath: string }) => void }) =>
       success({ savedFilePath: filePath }),
@@ -863,6 +862,9 @@ test("聊天页导入照片时可以跳过写字，原图留在本机并进入�
   const page = instantiate(await pageDefinition("interview"));
 
   await callPage(page, "saveImportedFiles", [{ name: "合影.jpg", path: "wxfile://photo.jpg", size: 1200, type: "image" }]);
+  assert.equal(page.data.importDraftOpen, true);
+  assert.equal((page.data.importPhotoPaths as string[])[0].startsWith("/user/photo-"), true);
+  await callPage(page, "savePhotoImport");
 
   const imported = last(storage.roomState().contributions);
   assert.equal(imported?.text, "");
@@ -870,6 +872,32 @@ test("聊天页导入照片时可以跳过写字，原图留在本机并进入�
   assert.match(imported?.title || "", /^照片 · \d+月\d+日$/);
   const queue = (wxMock.getStorageSync as (key: string) => unknown)("shiguang-photo-upload-queue-v1") as unknown[];
   assert.equal(queue.length, 1);
+});
+
+test("照片导入可以取得 AI 草稿，用户改过后以 AI 已修改标识保存", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const previousCaption = storyImageApi.captionPhotos;
+  context.after(() => { storyImageApi.captionPhotos = previousCaption; });
+  storyImageApi.captionPhotos = async () => ({
+    status: "ok", caption: "院子里晒着被子", message: "", aiGenerated: true,
+  });
+  const wxMock = (globalThis as unknown as { wx: Record<string, unknown> }).wx;
+  wxMock.showLoading = () => undefined;
+  wxMock.hideLoading = () => undefined;
+  const page = instantiate(await pageDefinition("interview"));
+  page.setData({ importDraftOpen: true, importPhotoIds: ["photo-test-ai"], importPhotoPaths: ["/user/test.jpg"] });
+
+  await callPage(page, "generateImportCaption");
+  assert.equal(page.data.importCaption, "院子里晒着被子");
+  assert.equal(page.data.importAiLabel, "文字 AI 生成");
+  callPage(page, "onImportCaptionInput", { detail: { value: "院子里晒着外婆洗好的被子" } });
+  assert.equal(page.data.importAiLabel, "文字 AI 生成 · 已由你修改");
+  await callPage(page, "savePhotoImport");
+
+  const imported = last(storage.roomState().contributions);
+  assert.equal(imported?.text, "院子里晒着外婆洗好的被子");
+  assert.equal(imported?.organizationMode, "cloud-ai");
 });
 
 test("the home cover and its three counts are about the story you are on", async (context) => {
