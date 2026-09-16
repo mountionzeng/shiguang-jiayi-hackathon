@@ -21,7 +21,9 @@ function validateMemories(memories) {
 
     const authorName = memory.authorName.trim().slice(0, 40);
     const relation = memory.relation.trim().slice(0, 40);
-    const text = memory.text.trim().slice(0, 500);
+    // 记忆分段（接着讲追加）后，一条记忆的 text 可能超过单段 500 字的旧上限；
+    // 4000 字对齐现有「章节过长要求新开章」的 AI 输入约定，不再按旧的单段上限截断。
+    const text = memory.text.trim().slice(0, 4000);
     if (!authorName || !relation || !text) {
       throw new Error("INVALID_MEMORY_SOURCE");
     }

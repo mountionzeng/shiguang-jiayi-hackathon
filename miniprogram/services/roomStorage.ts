@@ -22,6 +22,7 @@ import {
   planRestore,
 } from "./memberLifecycle";
 import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
+import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
 
 const STORAGE_KEY = "shiguang-family-room-v5";
 const V3_STORAGE_KEY = "shiguang-family-room-v3";
@@ -207,6 +208,23 @@ export function deleteContribution(
     draft: contributionScope(contribution) === "family" ? undefined : state.draft,
     personalDrafts,
   };
+  saveRoomState(next);
+  return next;
+}
+
+/** 软删除一段记忆：放进「最近删除」，可以恢复。真正永久删除请用 deleteContribution。 */
+export function softDeleteMemory(contributionId: string, state = loadRoomState(), now = new Date()): FamilyRoomState {
+  const updated = planDeleteMemory(state, contributionId, now);
+  if (!updated) return state;
+  const next = { ...state, contributions: state.contributions.map((item) => item.id === contributionId ? updated : item) };
+  saveRoomState(next);
+  return next;
+}
+
+export function restoreMemory(contributionId: string, state = loadRoomState()): FamilyRoomState {
+  const updated = planRestoreMemory(state, contributionId);
+  if (!updated) return state;
+  const next = { ...state, contributions: state.contributions.map((item) => item.id === contributionId ? updated : item) };
   saveRoomState(next);
   return next;
 }
