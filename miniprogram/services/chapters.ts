@@ -414,7 +414,7 @@ export function organizedChapterTitle(aiTitle: string) {
 
 /**
  * Writes an organized text into one chapter (or a new one). Only that chapter's text
- * changes: its photos stay after the new text in their order, the chosen memories move
+ * changes: its pictures stay after the new text in their order, the chosen memories move
  * into it, and every other chapter is copied unchanged.
  */
 export function applyOrganized(chapters: ManuscriptChapter[], targetId: string, organized: BiographyDraft, memoryIds: string[]) {
@@ -423,16 +423,18 @@ export function applyOrganized(chapters: ManuscriptChapter[], targetId: string, 
   const chapterId = creating ? next[next.length - 1].id : targetId;
   for (const memoryId of memoryIds) next = assignMemory(next, memoryId, chapterId);
   let keptPhotoIds: string[] = [];
+  let keptImages: ManuscriptContent[] = [];
   next = next.map(chapter => {
     if (chapter.id !== chapterId) return chapter;
     keptPhotoIds = chapter.content.flatMap(item => item.photoId ? [item.photoId] : []);
+    keptImages = chapter.content.filter(item => item.photoId).map(item => ({ ...item }));
     const content: ManuscriptContent[] = [{ text: organized.paragraphs.join("\n\n") + "\n" }];
-    for (const photoId of keptPhotoIds) content.push({ photoId }, { text: "\n" });
+    for (const image of keptImages) content.push(image, { text: "\n" });
     const written = { ...chapter, title: chapter.title || organizedChapterTitle(organized.title), content, generationMode: organized.generationMode, generatedAt: organized.generatedAt };
     delete written.handEdited;
     return written;
   });
-  return { chapters: next, chapterId, keptPhotoIds };
+  return { chapters: next, chapterId, keptPhotoIds, keptImageCount: keptImages.length };
 }
 
 const MAX_PENDING_EDITS = 60;

@@ -2,6 +2,7 @@
   <view class="writing-toolbar">
     <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '目录' : '返回'}}</button>
     <button class="tool-button" bindtap="addPhoto" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}</button>
+    <button wx:if="{{storyImageSelected}}" class="tool-button" catchtouchstart="placeSelectedStoryImage" disabled="{{!editorReady || refreshingStoryImage || saving || generating || pickingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{refreshingStoryImage ? '准备插图' : '插入插图'}}</button>
     <button class="tool-button" catchtouchstart="openShareSelection" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady || sharingExcerpt}}">发给家人</button>
     <button class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}"><view class="action-icon icon-save" aria-hidden="true"></view>{{saving ? '保存中' : '保存'}}</button>
     <button class="tool-button" bindtap="showMore" disabled="{{saving || generating || pickingPhoto}}"><view class="action-icon icon-more" aria-hidden="true"></view>更多</button>
@@ -56,7 +57,7 @@
         <text class="chapter-number">{{item.label}}</text>
         <view class="chapter-copy">
           <text class="chapter-name serif">{{item.title || '还没起名字'}}</text>
-          <text class="chapter-meta">{{item.memoryCount}} 段记忆 · {{item.photoCount}} 张照片</text>
+          <text class="chapter-meta">{{item.memoryCount}} 段记忆 · {{item.photoCount}} 张图片</text>
         </view>
         <text class="chapter-arrow" aria-hidden="true">›</text>
       </button>

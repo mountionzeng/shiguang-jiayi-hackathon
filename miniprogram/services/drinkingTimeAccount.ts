@@ -2,6 +2,7 @@ import { FamilyRoomState, MemoryContribution } from "../domain/biography";
 import { chaptersOf } from "./chapters";
 import { currentManuscript } from "./manuscript";
 import { storyShelf } from "./storyShelf";
+import { isStoryImageReference } from "./bookImages";
 
 export interface DesktopStoryOption {
   key: string;
@@ -116,7 +117,11 @@ export function desktopStorySnapshot(state: FamilyRoomState, key: string): Deskt
           id: chapter.id,
           title: chapter.title,
           memoryIds: [...chapter.memoryIds],
-          content: chapter.content.map(item => ({ ...item })),
+          // Desktop contract v1 only understands local photos. Keep AI illustrations
+          // explicit instead of mislabeling their opaque references as user photos.
+          content: chapter.content.map(item => item.photoId && isStoryImageReference(item.photoId)
+            ? { text: "〔AI 插图请在小程序查看〕" }
+            : { ...item }),
         })),
       }
     : undefined;

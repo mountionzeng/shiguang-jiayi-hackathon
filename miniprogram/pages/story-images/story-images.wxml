@@ -4,7 +4,7 @@
     <view class="images-title serif">这本书的图</view>
     <view class="images-usage" wx:if="{{usageLabel}}">{{usageLabel}}</view>
     <view class="images-note" wx:if="{{limitsLabel}}">{{limitsLabel}}</view>
-    <view class="images-note">插图和底图都只根据这一章已经保存的文字来画，不会用到你的照片。底图会放在书稿这一章的正文下方。每张图右下角都带「图片由AI生成」。</view>
+    <view class="images-note">画面以本章已经保存的文字为准，只会从同一本书其他章节提取少量人物线索，避免把女孩画成男性；不会用到你的照片。底图会放在正文下方，插图可放进正文光标处。每张图右下角都带「图片由AI生成」。</view>
   </view>
   <view class="notice" wx:if="{{notice || loadError}}">{{notice || loadError}}</view>
   <button wx:if="{{loadError}}" class="tool-button" bindtap="retryLoad">重新加载</button>
@@ -39,8 +39,12 @@
           <text>{{image.sizeLabel}}</text>
           <text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
           <text wx:if="{{image.qualityLabel}}" class="{{image.qualityFlawed ? 'quality-flawed' : ''}}">{{image.qualityLabel}}</text>
+          <text wx:if="{{image.inText}}">正文中使用</text>
         </view>
         <view class="card-actions">
+          <button wx:if="{{!image.isBackdrop && group.id === focusChapterId}}" class="tool-button" data-id="{{image.imageId}}" data-chapter="{{group.id}}" data-url="{{image.url}}" bindtap="insertIntoBook" disabled="{{image.inText}}">
+            <view class="action-icon icon-restore" aria-hidden="true"></view>{{image.inText ? '已在正文中' : '选用这张插图'}}
+          </button>
           <button wx:if="{{image.isBackdrop && !image.inUse}}" class="tool-button" data-chapter="{{group.id}}" data-image="{{image.imageId}}" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
             <view class="action-icon icon-restore" aria-hidden="true"></view>设为本章底图
           </button>

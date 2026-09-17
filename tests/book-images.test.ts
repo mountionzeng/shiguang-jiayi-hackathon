@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { contentFromDelta, contentToDelta, discardLocalPhotos, saveLocalPhoto, readLocalPhoto } from "../miniprogram/services/bookImages";
+import {
+  contentFromDelta, contentToDelta, discardLocalPhotos, isStoryImageId, isStoryImageReference,
+  readLocalPhoto, saveLocalPhoto, storyImageReferenceId, validateContent,
+} from "../miniprogram/services/bookImages";
 
 test("native editor photo stays between text blocks and never serializes a device path", () => {
   const content = contentFromDelta({ ops: [{ insert: "前文\n" }, { insert: { image: "wxfile://saved/p.jpg" } }, { insert: "\n后文\n" }] }, { "wxfile://saved/p.jpg": "photo-123-a" });
@@ -14,6 +17,36 @@ test("missing local photos remain recoverable references; unknown pasted image U
   const delta = contentToDelta(content, {});
   assert.deepEqual(contentFromDelta(delta, {}), [...content, { text: "\n" }]);
   assert.throws(() => contentFromDelta({ ops: [{ insert: { image: "https://untrusted.invalid/x.jpg" } }] }, {}), /照片按钮/);
+});
+
+test("AI illustrations round-trip as opaque ids while temporary URLs stay out of the manuscript", () => {
+  const imageId = "family_o-owner_img_req-abcdefgh";
+  const referenceId = "photo-ai-req-abcdefgh";
+  const url = "https://tmp.example/illustration.png";
+  const content = contentFromDelta({ ops: [{ insert: "前文\n" }, { insert: { image: url } }, { insert: "\n后文" }] }, { [url]: referenceId });
+  assert.deepEqual(content, [{ text: "前文\n" }, { photoId: referenceId }, { text: "\n后文" }]);
+  assert.ok(!JSON.stringify(content).includes("https://"));
+  assert.deepEqual(contentToDelta(content, { [referenceId]: url }).ops[1].insert, { image: url });
+  const markerDelta = contentToDelta([{ photoId: referenceId }], {});
+  assert.deepEqual(contentFromDelta(markerDelta, {}), [{ photoId: referenceId }, { text: "\n" }]);
+  assert.doesNotThrow(() => validateContent(content));
+  assert.throws(() => validateContent([{ photoId: "wrong" }]), /图片引用无效/);
+});
+
+test("AI illustration ids enforce the shared request-id boundaries", () => {
+  for (const requestId of ["req-12345678", `req-${"a".repeat(60)}`]) {
+    const imageId = `family_o-owner_img_${requestId}`;
+    const referenceId = `photo-ai-${requestId}`;
+    assert.equal(isStoryImageId(imageId), true);
+    assert.equal(isStoryImageReference(referenceId), true);
+    assert.equal(storyImageReferenceId(imageId), referenceId);
+    assert.doesNotThrow(() => validateContent([{ photoId: referenceId }]));
+  }
+  for (const requestId of ["req-1234567", `req-${"a".repeat(61)}`]) {
+    assert.equal(isStoryImageId(`family_o-owner_img_${requestId}`), false);
+    assert.equal(isStoryImageReference(`photo-ai-${requestId}`), false);
+    assert.throws(() => validateContent([{ photoId: `photo-ai-${requestId}` }]), /图片引用无效/);
+  }
 });
 
 test("photo is copied out of temporary storage and can be looked up after reopening", async context => {

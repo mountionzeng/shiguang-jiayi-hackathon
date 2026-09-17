@@ -5,8 +5,11 @@ import {
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
 import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel } from "../../services/roomRepository";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
-import { contentFromDelta, contentToDelta, readLocalPhoto, saveLocalPhoto, validateContent } from "../../services/bookImages";
-import { storyImageApi } from "../../services/storyImageService";
+import {
+  contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, saveLocalPhoto,
+  storyImageReferenceId, validateContent,
+} from "../../services/bookImages";
+import { StoryImage, storyImageApi } from "../../services/storyImageService";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import {
   addChapter, applyOrganized, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter,
@@ -25,7 +28,7 @@ const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
 };
 
 type MemoryRow = { id: string; text: string; title: string; excerpt: string; dateLabel: string; createdAt: string };
-const photoCount = (content: ManuscriptContent[]) => content.filter(item => item.photoId).length;
+const imageCount = (content: ManuscriptContent[]) => content.filter(item => item.photoId).length;
 const plainText = (content: ManuscriptContent[]) => content.map(item => item.text ?? "").join("");
 const memoryDate = (iso: string) => {
   const date = new Date(iso);
@@ -51,6 +54,7 @@ Page({
     previewVersion: null as ManuscriptRevision | null,
     loadError: "", storageLabel: "", versionName: "", saveNotice: "",
     keyboardHeight: 0, viewportHeight: 0, panel: "", moreOpen: false, editorKeys: [0], pickingPhoto: false, editorReady: false,
+    storyImageSelected: false, refreshingStoryImage: false,
     previewBlocks: [] as Array<{ text?: string; path?: string }>,
     // "contents" lists the chapters; "chapter" edits one of them. Empty until the first load.
     view: "" as "" | "contents" | "chapter",
@@ -89,6 +93,7 @@ Page({
   pendingSave: undefined as ManuscriptRevision | undefined,
   organizeSelection: [] as string[],
   undoState: undefined as { draft: BiographyDraft; fingerprint: string } | undefined,
+  pendingStoryImage: undefined as { imageId: string; chapterId: string; url: string } | undefined,
 
   openOrganizeOnLoad: false,
   requestedMemberId: "",
@@ -131,6 +136,11 @@ Page({
     this.editorContext = undefined;
   },
   onShow() {
+    if (this.pendingStoryImage) {
+      this.setData({ storyImageSelected: true, refreshingStoryImage: true, saveNotice: "插图已选好。请点正文中的位置，再点顶部「插入插图」。" });
+      void this.refreshSelectedStoryImageUrl();
+      return;
+    }
     if (!this.organizeCandidate && !this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
       void this.refresh().catch((error) => { logLoadError("book", error); this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }); });
     }
@@ -156,10 +166,33 @@ Page({
     const imageIds: Record<string, string> = {};
     for (const item of chapters.flatMap(chapter => chapter.content)) {
       if (item.photoId) {
+        if (isStoryImageReference(item.photoId)) continue;
         const path = await readLocalPhoto(item.photoId);
         if (path) { photoPaths[item.photoId] = path; imageIds[path] = item.photoId; }
       }
     }
+    const storyImageReferences = new Set(chapters.flatMap(chapter => chapter.content)
+      .flatMap(item => item.photoId && isStoryImageReference(item.photoId) ? [item.photoId] : []));
+    const backdropImageIds = new Set(chapters.flatMap(chapter => chapter.backdropImageId ? [chapter.backdropImageId] : []));
+    let cloudImages: StoryImage[] = [];
+    if (storyImageReferences.size || backdropImageIds.size) {
+      try {
+        const list = await storyImageApi.listStoryImages(member.id);
+        cloudImages = list.images;
+      } catch {
+        // Keep an opaque recoverable marker in the editor when a temporary URL is unavailable.
+      }
+    }
+    cloudImages.forEach(image => {
+      const referenceId = storyImageReferenceId(image.imageId);
+      if (storyImageReferences.has(referenceId) && image.url) {
+        photoPaths[referenceId] = image.url;
+        imageIds[image.url] = referenceId;
+      }
+    });
+    const backdropUrls = Object.fromEntries(cloudImages
+      .filter(image => backdropImageIds.has(image.imageId) && image.url)
+      .map(image => [image.imageId, image.url]));
     if (this.unloaded || refreshId !== this.refreshId || (this.data.editing && !this.data.saving) || this.data.pickingPhoto) return;
     const visibleChapters = this.visibleChapters(chapters);
     let view = this.data.view;
@@ -177,6 +210,7 @@ Page({
     this.titleBuffer = current.draft?.title ?? "";
     this.photoPaths = photoPaths;
     this.imageIds = imageIds;
+    this.backdropUrls = backdropUrls;
     this.loadActiveChapter();
     const organizeBooks = shelf.map(story => ({
       id: story.key,
@@ -230,7 +264,6 @@ Page({
         organizeRows: this.data.organizeRows.map(row => ({ ...row, checked: this.organizeSelection.includes(row.id) })),
       });
     }
-    void this.loadBackdrops(member.id, refreshId);
   },
   /** Point the editing buffers at the active chapter's saved text and name. */
   loadActiveChapter() {
@@ -261,7 +294,7 @@ Page({
     return {
       chapterRows: visibleChapters.map((chapter, index) => ({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
-        memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: photoCount(chapter.content),
+        memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: imageCount(chapter.content),
       })),
       // 最近讲的记忆排在最前面。
       unassigned: unassignedMemoryIds(visibleChapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!))
@@ -339,8 +372,8 @@ Page({
     this.setData({ pickingPhoto: true, saveNotice: "" });
     try {
       await this.collectEditor();
-      const otherPhotos = this.chapters.filter(chapter => chapter.id !== this.activeChapterId).reduce((total, chapter) => total + photoCount(chapter.content), 0);
-      if (otherPhotos + photoCount(this.contentBuffer) >= 9) throw new Error("一本书稿最多放 9 张照片");
+      const otherPhotos = this.chapters.filter(chapter => chapter.id !== this.activeChapterId).reduce((total, chapter) => total + imageCount(chapter.content), 0);
+      if (otherPhotos + imageCount(this.contentBuffer) >= 9) throw new Error("一本书稿最多放 9 张照片（含 AI 插图）");
       const picked = await new Promise<WechatMiniprogram.ChooseMediaSuccessCallbackResult>((resolve, reject) =>
         wx.chooseMedia({ count: 1, mediaType: ["image"], sourceType: ["album", "camera"], sizeType: ["compressed"], success: resolve, fail: reject }));
       if (this.unloaded) return;
@@ -361,6 +394,71 @@ Page({
       const message = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg ?? "");
       if (!/cancel/i.test(message)) this.setData({ saveNotice: error instanceof Error ? error.message : "无法添加照片，请检查相册权限或本机存储空间后重试" });
     } finally { if (!this.unloaded) this.setData({ pickingPhoto: false }); }
+  },
+  /** Insert a generated illustration at the native editor's current caret. */
+  async insertStoryImage(input: { imageId: string; chapterId: string; url: string }): Promise<boolean> {
+    if (!this.data.draft || this.data.view !== "chapter" || input.chapterId !== this.activeChapterId) {
+      wx.showToast({ title: "请回到对应章节再插入", icon: "none" });
+      return false;
+    }
+    if (!isStoryImageId(input.imageId) || !/^https:\/\//.test(input.url)) {
+      wx.showToast({ title: "这张插图暂时不可用", icon: "none" });
+      return false;
+    }
+    if (!this.editorContext || !this.data.editorReady) {
+      wx.showToast({ title: "编辑器还没准备好，请稍候", icon: "none" });
+      return false;
+    }
+    try {
+      await this.collectEditor();
+      const referenceId = storyImageReferenceId(input.imageId);
+      if (this.contentBuffer.some(item => item.photoId === referenceId)) throw new Error("这张插图已经在本章正文里了");
+      const otherImages = this.chapters.filter(chapter => chapter.id !== this.activeChapterId)
+        .reduce((total, chapter) => total + imageCount(chapter.content), 0);
+      if (otherImages + imageCount(this.contentBuffer) >= 9) throw new Error("一本书稿最多放 9 张照片（含 AI 插图）");
+      this.photoPaths[referenceId] = input.url;
+      this.imageIds[input.url] = referenceId;
+      await new Promise<void>((resolve, reject) => this.editorContext!.insertImage({
+        src: input.url, alt: "AI 插图", width: "100%", success: () => resolve(), fail: reject,
+      }));
+      await this.collectEditor();
+      this.editManuscript();
+      this.setData({ saveNotice: "插图已放进正文，请点保存。" });
+      return true;
+    } catch (error) {
+      this.setData({ saveNotice: error instanceof Error ? error.message : "插图没有放进去，请重试" });
+      return false;
+    }
+  },
+  /** Runs on touchstart so the native editor keeps the caret the user just chose. */
+  async placeSelectedStoryImage() {
+    const pending = this.pendingStoryImage;
+    if (!pending || this.data.refreshingStoryImage || this.data.saving || this.data.generating || this.data.pickingPhoto) return;
+    if (await this.insertStoryImage(pending)) {
+      this.pendingStoryImage = undefined;
+      this.setData({ storyImageSelected: false });
+    } else {
+      this.setData({ refreshingStoryImage: true });
+      void this.refreshSelectedStoryImageUrl();
+    }
+  },
+  async refreshSelectedStoryImageUrl() {
+    const selected = this.pendingStoryImage;
+    if (!selected) { this.setData({ refreshingStoryImage: false }); return; }
+    try {
+      const list = await storyImageApi.listStoryImages(this.data.memberId);
+      const current = list.images.find(image => image.imageId === selected.imageId && image.url);
+      if (current && this.pendingStoryImage?.imageId === selected.imageId) {
+        this.pendingStoryImage = { ...selected, url: current.url };
+      } else if (!current && this.pendingStoryImage?.imageId === selected.imageId) {
+        this.pendingStoryImage = undefined;
+        this.setData({ storyImageSelected: false, refreshingStoryImage: false, saveNotice: "这张插图已经不在了，请重新选择。" });
+      }
+    } catch {
+      // The URL chosen moments ago is usually still valid; insertion itself will report if it is not.
+    } finally {
+      if (this.pendingStoryImage?.imageId === selected.imageId) this.setData({ refreshingStoryImage: false });
+    }
   },
   retryLoad() { this.onShow(); },
   canLeaveEditor() {
@@ -686,7 +784,11 @@ Page({
     this.setData({ previewVersion: version, previewBlocks: [] });
     const previewBlocks = await Promise.all((version.draft.content ?? version.draft.paragraphs.map(text => ({ text }))).map(async item => {
       if (typeof item.text === "string") return { text: item.text };
-      const path = await readLocalPhoto(item.photoId);
+      if (item.photoId && isStoryImageReference(item.photoId)) {
+        const path = this.photoPaths[item.photoId];
+        return path ? { path } : { text: "〔AI 插图暂时无法读取〕" };
+      }
+      const path = await readLocalPhoto(item.photoId!);
       return path ? { path } : { text: "〔照片仅保存在原设备，本机不可用〕" };
     }));
     if (!this.unloaded && this.data.previewVersion?.id === version.id) this.setData({ previewBlocks });
@@ -748,11 +850,11 @@ Page({
       });
       const latest = await loadRoomStateRemoteFirst();
       if (fingerprint !== personalBookSourceFingerprint(latest, member.id)) throw new Error("素材刚刚变了，请重新整理");
-      const { chapters, chapterId, keptPhotoIds } = applyOrganized(this.chapters, target?.id ?? "new", organized, memoryIds);
+      const { chapters, chapterId, keptImageCount } = applyOrganized(this.chapters, target?.id ?? "new", organized, memoryIds);
       const base = { ...(this.data.draft ?? this.newBookBase()), generationMode: organized.generationMode, generatedAt: organized.generatedAt };
       const label = chapterLabel(chapters.findIndex(chapter => chapter.id === chapterId) + 1);
       const notice = (fallbackReason ? "这次没有用上在线 AI（" + FALLBACK_REASONS[fallbackReason] + "），预览由原话整理。" : "")
-        + (keptPhotoIds.length ? "保留了 " + keptPhotoIds.length + " 张照片。" : "");
+        + (keptImageCount ? "保留了 " + keptImageCount + " 张照片或插图。" : "");
       this.organizeCandidate = { draft: draftWithChapters(base, chapters), fingerprint, chapterId, label, notice, revisionId: this.revisionId };
       const chapter = chapters.find(item => item.id === chapterId)!;
       this.setData({ panel: "organize-preview", previewTitle: chapter.title, previewText: plainText(chapter.content), saveNotice: notice + "尚未写入，请查看并确认。" });
@@ -797,7 +899,14 @@ Page({
       this.data.memberId ? "memberId=" + encodeURIComponent(this.data.memberId) : "",
       chapterId ? "chapterId=" + encodeURIComponent(chapterId) : "",
     ].filter(Boolean).join("&");
-    wx.navigateTo({ url: "/pages/story-images/story-images" + (query ? "?" + query : "") });
+    wx.navigateTo({
+      url: "/pages/story-images/story-images" + (query ? "?" + query : ""),
+      events: {
+        insertStoryImage: (image: { imageId: string; chapterId: string; url: string }) => {
+          this.pendingStoryImage = image;
+        },
+      },
+    });
   },
   goHome() {
     if (!this.canLeaveEditor()) return;

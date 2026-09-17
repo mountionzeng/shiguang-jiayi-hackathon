@@ -14,13 +14,18 @@ const SYSTEM_PROMPT = [
   "mood：从正文语气概括的氛围，两到四个字；",
   "eraHint：只有正文明确写出年代时才填写，否则填空字符串；",
   "figures：画面里的人物，只写“远景中的背影”“一双手”这类不露面部的描述，正文没有人物就给空数组。",
+  "用户消息可能另附同一本书其他章节中的人物连续性资料。它只用于判断当前正文中人物的姓名、性别、年龄段和关系，不得把其中的事件、地点或物件画进当前画面。",
+  "当前章节正文是最终依据；与其他章节资料冲突时以当前正文为准。性别没有可靠依据时，使用不显露性别的远景背影或局部，不得擅自指定为男性或女性。",
   "不得补造正文没有的人名、地点、年份、事件或物件。只输出 JSON，不要输出说明。",
 ].join("\n");
 
-function buildSceneMessages({ title, text }) {
+function buildSceneMessages({ title, text, characterContext = "" }) {
+  const continuity = characterContext
+    ? `\n\n同一本书其他章节的人物连续性资料（只用于辨认人物，不是当前画面）：\n${characterContext}`
+    : "";
   return [
     { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: `章名：${title || "（无章名）"}\n\n章节正文：\n${text}` },
+    { role: "user", content: `章名：${title || "（无章名）"}\n\n当前章节正文：\n${text}${continuity}` },
   ];
 }
 

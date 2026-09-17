@@ -72,7 +72,12 @@ function createStoryImageHandlers(deps) {
       provider: provider.name,
       model: provider.model,
       prompt: "",
-      source: { chapterId: input.chapterId, textHash: core.textHash(source.text), textLength: source.textLength },
+      source: {
+        chapterId: input.chapterId,
+        textHash: core.textHash(source.text),
+        textLength: source.textLength,
+        characterContextLength: source.characterContext.length,
+      },
       referencePhotoCount: 0,
       status: "submitted",
       dayKey,
@@ -84,6 +89,7 @@ function createStoryImageHandlers(deps) {
     let scene;
     try {
       scene = await extractScene(source);
+      scene = core.alignSceneFigures(scene, source);
     } catch (error) {
       const patch = { status: "failed", errorCode: (error && error.code) || "SCENE_FAILED", updatedAtMs: now() };
       await repo.updateJob(jobId, patch);
@@ -274,6 +280,13 @@ function createStoryImageHandlers(deps) {
     const image = imageId.startsWith(`${familyId}_`) ? await repo.getImage(imageId) : undefined;
     if (!image || image.familyId !== familyId || image.deletedAtMs !== undefined) {
       throw new core.StoryImageError("IMAGE_NOT_FOUND", "没找到这张图");
+    }
+    const latestDraft = core.latestDraftForMember(
+      await repo.listDraftRecords(familyId, image.memberId),
+      image.memberId,
+    );
+    if (core.draftReferencesStoryImage(latestDraft, imageId)) {
+      throw new core.StoryImageError("IMAGE_IN_MANUSCRIPT", "这张插图正在正文里使用，请先从书稿移除并保存");
     }
     const nowMs = now();
     await repo.updateImage(imageId, { deletedAtMs: nowMs });

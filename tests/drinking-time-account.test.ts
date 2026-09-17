@@ -43,6 +43,13 @@ test("故事快照保留记忆、人物地点、章节正文和照片引用", ()
   assert.equal(snapshot.sourceRevision, desktopStorySnapshot(state(), "story:外婆的厨房").sourceRevision);
 });
 
+test("电脑端 v1 不把 AI 插图引用误当成本机照片", () => {
+  const room = state();
+  room.personalDrafts!.owner.chapters![0].content.push({ photoId: "photo-ai-req-abcdefgh" });
+  const content = desktopStorySnapshot(room, "story:外婆的厨房").manuscript!.chapters[0].content;
+  assert.deepEqual(content.slice(-2), [{ photoId: "photo-local-1" }, { text: "〔AI 插图请在小程序查看〕" }]);
+});
+
 test("删除或空故事无法生成过期快照", () => {
   assert.throws(() => desktopStorySnapshot(state(), "story:旧故事"), /已经删除或更新/);
 });

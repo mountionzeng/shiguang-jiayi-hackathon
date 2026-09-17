@@ -131,7 +131,7 @@ export interface BiographyDraft {
   sourceCount: number;
   generatedAt: string;
   generationMode: GenerationMode;
-  /** Text and opaque local-photo references only. No device paths or photo bytes go to cloud. */
+  /** Text and opaque image references only. No device paths, temporary URLs or image bytes go to cloud. */
   content?: ManuscriptContent[];
   /**
    * The book's own table of contents; `title` stays the book title. When present,

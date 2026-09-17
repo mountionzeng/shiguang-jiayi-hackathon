@@ -112,7 +112,7 @@ function stateWithBook(backdropImageId = ""): FamilyRoomState {
 function listWith(overrides: Partial<StoryImageList> = {}): StoryImageList {
   return {
     images: [
-      { imageId: "family_o-owner_img_req-a", chapterId: "chapter-a", purpose: "illustration", url: "https://tmp.example/a.png", bytes: 2048, moderation: "pending", quality: "flawed", qualityIssues: ["有乱码字"], aiGenerated: true, createdAtMs: 2 },
+      { imageId: "family_o-owner_img_req-aaaaaaaa", chapterId: "chapter-a", purpose: "illustration", url: "https://tmp.example/a.png", bytes: 2048, moderation: "pending", quality: "flawed", qualityIssues: ["有乱码字"], aiGenerated: true, createdAtMs: 2 },
       { imageId: BACKDROP_ID, chapterId: "chapter-a", purpose: "backdrop", url: "https://tmp.example/b.png", bytes: 1024, moderation: "pass", quality: "pass", qualityIssues: [], aiGenerated: true, createdAtMs: 3 },
     ],
     pending: [{ jobId: "family_o-owner_req-b", status: "queued", message: "正在画，大约 20–60 秒。可以先离开，回来接着看", chapterId: "chapter-b", purpose: "illustration", imageId: "", createdAtMs: 3 }],
@@ -330,12 +330,41 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   assert.equal(page.data.notice, "正在画，大约 20–60 秒。可以先离开，回来接着看");
   assert.equal(page.data.submitting, "");
 
-  await call(page, "remove", { currentTarget: { dataset: { id: "family_o-owner_img_req-a" } } });
-  assert.deepEqual(removed, ["family_o-owner_img_req-a"]);
+  await call(page, "remove", { currentTarget: { dataset: { id: "family_o-owner_img_req-aaaaaaaa" } } });
+  assert.deepEqual(removed, ["family_o-owner_img_req-aaaaaaaa"]);
   assert.equal(page.data.notice, "已删除");
 
   call(page, "previewImage", { currentTarget: { dataset: { url: "https://tmp.example/a.png" } } });
   assert.deepEqual(env.previews, [{ current: "https://tmp.example/a.png", urls: ["https://tmp.example/a.png", "https://tmp.example/b.png"] }]);
+});
+
+test("插图可以回到来源章节的光标处，正文正在使用的原图不能直接删除", async context => {
+  const state = stateWithBook();
+  const env = installWx({ navigateBack: () => undefined }, state);
+  env.setApp(false);
+  const removed: string[] = [];
+  const restoreApi = withApi({
+    listStoryImages: async () => listWith({ pending: [] }),
+    removeStoryImage: async id => { removed.push(id); },
+  });
+  context.after(() => { restoreApi(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  const emitted: unknown[] = [];
+  page.getOpenerEventChannel = () => ({ emit: (name: string, payload: unknown) => emitted.push({ name, payload }) });
+  call(page, "onLoad", { chapterId: "chapter-a" });
+  await call(page, "refresh");
+  call(page, "insertIntoBook", { currentTarget: { dataset: {
+    id: "family_o-owner_img_req-aaaaaaaa", chapter: "chapter-a", url: "https://tmp.example/a.png",
+  } } });
+  assert.deepEqual(emitted, [{ name: "insertStoryImage", payload: {
+    imageId: "family_o-owner_img_req-aaaaaaaa", chapterId: "chapter-a", url: "https://tmp.example/a.png",
+  } }]);
+
+  const group = (page.data.groups as any[])[0];
+  group.images[0].inText = true;
+  await call(page, "remove", { currentTarget: { dataset: { id: "family_o-owner_img_req-aaaaaaaa" } } });
+  assert.deepEqual(removed, [], "正文引用存在时保留云端原图");
 });
 
 test("提交配图失败时把原因显示出来，按钮恢复可点", async context => {
@@ -380,6 +409,64 @@ test("书稿页「更多」里能打开这一章的配图，未保存的修改�
   assert.match(markup, /data-action="images"[^>]*>.*这本书的图/);
   const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as { pages: string[] };
   assert.ok(app.pages.includes("pages/story-images/story-images"));
+});
+
+test("书稿接到选中的 AI 插图后按光标位置插入并保存为图片编号", async context => {
+  const env = installWx({}, stateWithBook());
+  env.setApp(false);
+  const restoreApi = withApi({ listStoryImages: async () => listWith({
+    images: [{
+      imageId: "family_o-owner_img_req-abcdefgh", chapterId: "chapter-a", purpose: "illustration",
+      url: "https://tmp.example/fresh.png", bytes: 2048, moderation: "pass", quality: "pass", qualityIssues: [], aiGenerated: true, createdAtMs: 4,
+    }],
+    pending: [],
+  }) });
+  context.after(() => { restoreApi(); env.restore(); });
+  const page = instantiate(await pageDefinition("book"));
+  await call(page, "refresh");
+  let delta: any = { ops: [{ insert: "院子里晒着被子。\n" }] };
+  const caret = 2;
+  page.editorContext = {
+    setContents: ({ delta: next, success }: any) => { delta = next; success(); },
+    getContents: ({ success }: any) => success({ delta, text: "院子里晒着被子。\n" }),
+    insertImage: ({ src, success }: any) => {
+      const text = delta.ops.map((op: any) => typeof op.insert === "string" ? op.insert : "").join("");
+      delta = { ops: [{ insert: text.slice(0, caret) }, { insert: { image: src } }, { insert: text.slice(caret) }] };
+      success();
+    },
+  };
+  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
+  page.setData({ editorReady: true });
+  page.pendingStoryImage = {
+    imageId: "family_o-owner_img_req-abcdefgh", chapterId: "chapter-a", url: "https://tmp.example/illustration.png",
+  };
+  call(page, "onShow");
+  assert.equal(page.data.storyImageSelected, true);
+  await call(page, "refreshSelectedStoryImageUrl");
+  assert.equal(page.data.refreshingStoryImage, false);
+  assert.equal((page.pendingStoryImage as any).url, "https://tmp.example/fresh.png");
+  await call(page, "placeSelectedStoryImage");
+  assert.equal(page.data.editing, true);
+  assert.equal(page.data.saveNotice, "插图已放进正文，请点保存。");
+  assert.equal(page.data.storyImageSelected, false);
+  assert.deepEqual(page.contentBuffer, [
+    { text: "院子" },
+    { photoId: "photo-ai-req-abcdefgh" },
+    { text: "里晒着被子。\n" },
+  ]);
+  await call(page, "saveEdits");
+  const saved = (page.data.draft as BiographyDraft).chapters![0].content;
+  assert.ok(saved.some(item => item.photoId === "photo-ai-req-abcdefgh"));
+  assert.ok(!JSON.stringify(saved).includes("tmp.example"));
+
+  const reopened = instantiate(await pageDefinition("book"));
+  reopened.activeChapterId = "chapter-a";
+  reopened.setData({ view: "chapter" });
+  let shown: any;
+  reopened.editorContext = { setContents: ({ delta: next, success }: any) => { shown = next; success(); } };
+  await call(reopened, "refresh");
+  assert.deepEqual(shown.ops[1].insert, { image: "https://tmp.example/fresh.png" });
+  assert.ok(!JSON.stringify(reopened.contentBuffer).includes("tmp.example"));
 });
 
 test("从另一人物的书进入配图时继续使用那个人物的书", async context => {

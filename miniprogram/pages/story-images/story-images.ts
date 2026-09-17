@@ -8,10 +8,11 @@ import {
   StoryImageServiceError, storyImageApi,
 } from "../../services/storyImageService";
 import { logLoadError } from "../../services/loadErrorLog";
+import { isStoryImageReference, storyImageMatchesReference } from "../../services/bookImages";
 
 interface ImageCard {
   imageId: string; url: string; sizeLabel: string; purposeLabel: string;
-  isBackdrop: boolean; inUse: boolean; moderationLabel: string; qualityLabel: string; qualityFlawed: boolean;
+  isBackdrop: boolean; inUse: boolean; inText: boolean; moderationLabel: string; qualityLabel: string; qualityFlawed: boolean;
 }
 interface JobRow { jobId: string; message: string; active: boolean; purposeLabel: string }
 interface ChapterGroup {
@@ -21,10 +22,11 @@ interface ChapterGroup {
 
 const PURPOSE_LABELS: Record<string, string> = { illustration: "插图", backdrop: "底图", cover: "封面" };
 
-const card = (image: StoryImage, backdropImageId = ""): ImageCard => ({
+const card = (image: StoryImage, backdropImageId = "", textImageReferences = new Set<string>()): ImageCard => ({
   imageId: image.imageId, url: image.url, sizeLabel: formatBytes(image.bytes),
   purposeLabel: PURPOSE_LABELS[image.purpose] ?? "配图",
   isBackdrop: image.purpose === "backdrop", inUse: !!backdropImageId && image.imageId === backdropImageId,
+  inText: Array.from(textImageReferences).some(reference => storyImageMatchesReference(image.imageId, reference)),
   moderationLabel: moderationLabel(image.moderation), qualityLabel: qualityLabel(image), qualityFlawed: image.quality === "flawed",
 });
 const jobRow = (job: StoryImageJob): JobRow => ({
@@ -34,7 +36,7 @@ const messageOf = (error: unknown, fallback: string) => error instanceof Error &
 
 /**
  * 这本书的图：按章节列出插图和底图，可以给一章配图、选本章底图、看大图、删除，并显示占用的空间。
- * 配图只根据已保存的章节文字来画；正在画的图在页面打开时轮询，离开页面就停。
+ * 配图以本章为画面主体，只从其他章节取人物连续性线索；正在画的图在页面打开时轮询，离开页面就停。
  */
 Page({
   data: {
@@ -93,11 +95,12 @@ Page({
       bookTitle: current.draft?.title ?? "",
       groups: chapters.map((chapter, index) => {
         const backdropImageId = chapter.backdropImageId ?? "";
+        const textImageReferences = new Set(chapter.content.flatMap(item => item.photoId && isStoryImageReference(item.photoId) ? [item.photoId] : []));
         return {
           id: chapter.id, label: chapterLabel(index + 1), title: chapter.title, backdropImageId,
           // The chosen picture was deleted or failed the platform check.
           backdropMissing: !!backdropImageId && !listed.has(backdropImageId),
-          images: list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId)),
+          images: list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
           pending: list.pending.filter(job => job.chapterId === chapter.id).map(jobRow),
         };
       }),
@@ -182,10 +185,29 @@ Page({
     const urls = this.data.groups.flatMap(group => group.images).concat(this.data.otherImages).map(image => image.url).filter(Boolean);
     wx.previewImage({ current: url, urls });
   },
+  insertIntoBook(event: { currentTarget: { dataset: { id: string; chapter: string; url: string } } }) {
+    const { id: imageId, chapter: chapterId, url } = event.currentTarget.dataset;
+    const group = this.data.groups.find(item => item.id === chapterId);
+    const image = group?.images.find(item => item.imageId === imageId);
+    if (!image || image.isBackdrop || chapterId !== this.data.focusChapterId || !url) {
+      wx.showToast({ title: "请从对应章节的书稿页插入", icon: "none" });
+      return;
+    }
+    const channel = this.getOpenerEventChannel();
+    channel.emit?.("insertStoryImage", { imageId, chapterId, url });
+    wx.navigateBack();
+  },
   remove(event: { currentTarget: { dataset: { id: string } } }) {
     const imageId = event.currentTarget.dataset.id;
     if (!imageId || this.data.removingId) return Promise.resolve();
     const usedBy = this.data.groups.find(group => group.backdropImageId === imageId);
+    const usedInText = this.data.groups.find(group => group.images.some(image => image.imageId === imageId && image.inText));
+    if (usedInText) return new Promise<void>(resolve => wx.showModal({
+      title: "先从正文移除",
+      content: `这张插图正在${usedInText.label}的正文里使用。请回到书稿删除图片并保存后，再来删除原图。`,
+      showCancel: false,
+      success: () => resolve(), fail: () => resolve(),
+    }));
     return new Promise<void>(resolve => wx.showModal({
       title: "删掉这张图？",
       content: (usedBy ? "它正在用作" + usedBy.label + "的底图，删掉后这一章就没有底图了。" : "") + "删掉后找不回来；这张图用掉的名额不会返还。",

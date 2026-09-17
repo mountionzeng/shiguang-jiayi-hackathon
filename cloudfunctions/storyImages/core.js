@@ -19,6 +19,8 @@ const QUALITY_ISSUE_LABELS = {
   signature: "有签名或印章",
 };
 const MAX_CHAPTER_TEXT = 4000;
+const MAX_CHARACTER_CONTEXT = 1200;
+const MAX_CHARACTER_SENTENCES = 10;
 const SUBMIT_STALE_MS = 3 * 60 * 1000;
 const QUEUED_PICKUP_MS = 60 * 1000;
 const GENERATING_STALE_MS = 3 * 60 * 1000;
@@ -113,7 +115,82 @@ function chapterSource(draft, chapterId) {
     title: String(chapter.title || "").trim().slice(0, 40),
     text: text.slice(0, MAX_CHAPTER_TEXT),
     textLength: text.length,
+    characterContext: bookCharacterContext(draft, chapterId),
   };
+}
+
+/**
+ * Other chapters are used only to disambiguate recurring people. Keep a small,
+ * bounded set of identity words instead of sending the surrounding sentences
+ * (and their unrelated private events) to the model.
+ */
+function bookCharacterContext(draft, chapterId) {
+  const chapters = draft && Array.isArray(draft.chapters) ? draft.chapters : [];
+  const activeIndex = chapters.findIndex(item => item && item.id === chapterId);
+  if (activeIndex < 0) return "";
+  const cue = /女孩|男孩|女人|男人|姑娘|小伙|女性|男性|少女|少年|女儿|儿子|妻子|丈夫|母亲|父亲|妈妈|爸爸|奶奶|爷爷|外婆|外公|姐姐|哥哥|妹妹|弟弟|阿姨|叔叔|女士|先生|老人|孩子|儿童/g;
+  const ordered = chapters
+    .map((chapter, index) => ({ chapter, index }))
+    .filter(item => item.index !== activeIndex)
+    .sort((left, right) => Math.abs(left.index - activeIndex) - Math.abs(right.index - activeIndex) || left.index - right.index);
+  const snippets = [];
+  const seen = new Set();
+  let length = 0;
+  for (const { chapter } of ordered) {
+    const text = (Array.isArray(chapter && chapter.content) ? chapter.content : [])
+      .map(item => (item && typeof item.text === "string" ? item.text : ""))
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+    const sentences = text.match(/[^。！？!?]+[。！？!?]?/g) || [];
+    for (const raw of sentences) {
+      const sentence = raw.trim().slice(0, 180);
+      const clues = Array.from(new Set(sentence.match(cue) || []));
+      const named = sentence.match(/(?:我叫|名叫|叫作|叫做)([\u3400-\u9fff·]{2,12})/);
+      if (named && !clues.includes(named[1])) clues.unshift(named[1]);
+      if (!clues.length) continue;
+      const snippet = `其他章节人物线索：${clues.join("、")}`;
+      if (seen.has(snippet)) continue;
+      if (length + snippet.length > MAX_CHARACTER_CONTEXT || snippets.length >= MAX_CHARACTER_SENTENCES) return snippets.join("\n");
+      snippets.push(snippet);
+      seen.add(snippet);
+      length += snippet.length;
+    }
+  }
+  return snippets.join("\n");
+}
+
+const FEMALE_CUE = /女孩|女人|姑娘|女性|少女|女儿|妻子|母亲|妈妈|奶奶|外婆|姐姐|妹妹|阿姨|女士|女子/;
+const MALE_CUE = /男孩|男人|小伙|男性|少年|儿子|丈夫|父亲|爸爸|爷爷|外公|哥哥|弟弟|叔叔|先生|男子/;
+
+function genderEvidence(text) {
+  const female = FEMALE_CUE.test(String(text || ""));
+  const male = MALE_CUE.test(String(text || ""));
+  return female === male ? (female ? "mixed" : "unknown") : (female ? "female" : "male");
+}
+
+/** Current-chapter facts win; absent reliable evidence, keep figures gender-neutral. */
+function alignSceneFigures(scene, source) {
+  const current = genderEvidence(source && source.text);
+  const context = genderEvidence(source && source.characterContext);
+  const evidence = current === "unknown" ? (context === "mixed" ? "unknown" : context) : current;
+  const femaleWords = /女孩|女人|姑娘|女性|少女|女儿|妻子|母亲|妈妈|奶奶|外婆|姐姐|妹妹|阿姨|女士|女子/g;
+  const maleWords = /男孩|男人|小伙|男性|少年|儿子|丈夫|父亲|爸爸|爷爷|外公|哥哥|弟弟|叔叔|先生|男子/g;
+  const figures = (scene.figures || []).map(figure => {
+    if (evidence === "female") return figure.replace(/男孩/g, "女孩").replace(/男人|男子/g, "女人").replace(/男性/g, "女性").replace(/少年/g, "少女").replace(/先生/g, "女士").replace(/儿子|丈夫|父亲|爸爸|爷爷|外公|哥哥|弟弟|叔叔/g, "人物");
+    if (evidence === "male") return figure.replace(/女孩/g, "男孩").replace(/女人|女子/g, "男人").replace(/女性/g, "男性").replace(/少女/g, "少年").replace(/女士/g, "先生").replace(/女儿|妻子|母亲|妈妈|奶奶|外婆|姐姐|妹妹|阿姨/g, "人物");
+    if (evidence === "unknown") return figure.replace(femaleWords, "人物").replace(maleWords, "人物");
+    return figure;
+  });
+  return { ...scene, figures };
+}
+
+function draftReferencesStoryImage(draft, imageId) {
+  const match = String(imageId || "").match(/_img_(req-[0-9a-z-]{8,60})$/);
+  const referenceId = match ? `photo-ai-${match[1]}` : "";
+  const chapters = draft && Array.isArray(draft.chapters) ? draft.chapters : [];
+  return chapters.some(chapter => Array.isArray(chapter && chapter.content) &&
+    chapter.content.some(item => item && (item.storyImageId === imageId || (referenceId && item.photoId === referenceId))));
 }
 
 function textHash(text) {
@@ -292,11 +369,14 @@ module.exports = {
   STYLES,
   StoryImageError,
   buildImagePrompt,
+  bookCharacterContext,
+  alignSceneFigures,
   chapterSource,
   chinaDayKey,
   classifyGenerateError,
   cleanText,
   extensionFor,
+  draftReferencesStoryImage,
   familyIdFor,
   latestDraftForMember,
   normalizeMemberInput,

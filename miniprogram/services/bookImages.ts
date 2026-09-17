@@ -2,9 +2,25 @@ import { ManuscriptContent } from "../domain/biography";
 import { enqueuePhotoUpload, PhotoSource, removeQueuedPhotoUploads } from "./photoCloud";
 import { currentFamilyId } from "./cloudRoomStorage";
 
-const PHOTO_ID = /^photo-[a-z0-9-]{1,80}$/;
+const LOCAL_PHOTO_ID = /^photo-(?!ai-)[a-z0-9-]{1,80}$/;
+const STORY_IMAGE_ID = /^family_[0-9A-Za-z_-]{1,120}_img_req-[0-9a-z-]{8,60}$/;
+const STORY_IMAGE_REFERENCE = /^photo-ai-(req-[0-9a-z-]{8,60})$/;
 const MARKER = /【本机照片：(photo-[a-z0-9-]{1,80})】/g;
 export interface EditorDelta { ops: Array<{ insert: string | { image: string }; attributes?: Record<string, unknown> }> }
+
+export const isStoryImageId = (value: string) => STORY_IMAGE_ID.test(value);
+export const isStoryImageReference = (value: string) => STORY_IMAGE_REFERENCE.test(value);
+export function storyImageReferenceId(imageId: string) {
+  if (!isStoryImageId(imageId)) return "";
+  return "photo-ai-" + imageId.slice(imageId.lastIndexOf("_img_") + 5);
+}
+export const storyImageMatchesReference = (imageId: string, referenceId: string) =>
+  storyImageReferenceId(imageId) === referenceId;
+
+function referenceFromId(id: string): ManuscriptContent {
+  if (LOCAL_PHOTO_ID.test(id) || STORY_IMAGE_REFERENCE.test(id)) return { photoId: id };
+  throw new Error("图片引用无效");
+}
 
 export function contentFromDelta(delta: unknown, imageIds: Record<string, string>): ManuscriptContent[] {
   const ops = (delta as EditorDelta)?.ops;
@@ -12,22 +28,30 @@ export function contentFromDelta(delta: unknown, imageIds: Record<string, string
   const content: ManuscriptContent[] = [];
   for (const op of ops) {
     if (typeof op.insert === "string") {
-      const parts = op.insert.split(MARKER);
-      parts.forEach((part, index) => { if (part) content.push(index % 2 ? { photoId: part } : { text: part }); });
+      let start = 0;
+      for (const match of op.insert.matchAll(MARKER)) {
+        if (match.index! > start) content.push({ text: op.insert.slice(start, match.index) });
+        content.push(referenceFromId(match[1]));
+        start = match.index! + match[0].length;
+      }
+      if (start < op.insert.length) content.push({ text: op.insert.slice(start) });
     } else {
       const id = imageIds[op.insert?.image];
-      if (!id || !PHOTO_ID.test(id)) throw new Error("请通过顶部照片按钮插入图片，再保存");
-      content.push({ photoId: id });
+      if (!id) throw new Error("请通过顶部照片按钮或配图按钮插入图片，再保存");
+      content.push(referenceFromId(id));
     }
   }
   return content;
 }
 
 export function contentToDelta(content: ManuscriptContent[], paths: Record<string, string>): EditorDelta {
-  const ops: EditorDelta["ops"] = content.map(item => typeof item.text === "string"
-    ? { insert: item.text }
-    : paths[item.photoId] ? { insert: { image: paths[item.photoId] }, attributes: { width: "100%" } }
-      : { insert: "【本机照片：" + item.photoId + "】" });
+  const ops: EditorDelta["ops"] = content.map(item => {
+    if (typeof item.text === "string") return { insert: item.text };
+    const id = item.photoId;
+    if (!id) throw new Error("图片引用无效");
+    if (paths[id]) return { insert: { image: paths[id] }, attributes: { width: "100%" } };
+    return { insert: `【本机照片：${item.photoId}】` };
+  });
   const last = ops[ops.length - 1]?.insert;
   if (typeof last !== "string" || !last.endsWith("\n")) ops.push({ insert: "\n" });
   return { ops };
@@ -36,14 +60,14 @@ export function contentToDelta(content: ManuscriptContent[], paths: Record<strin
 export function validateContent(content: ManuscriptContent[] | undefined) {
   if (!content) return;
   if (!Array.isArray(content) || content.length > 3000 || JSON.stringify(content).length > 100000) throw new Error("图文内容过长，请分成多个故事");
-  let photos = 0;
+  let images = 0;
   for (const item of content) {
     if (!item || Object.keys(item).length !== 1) throw new Error("图文内容格式无效");
     if (typeof item.text === "string") continue;
-    if (typeof item.photoId !== "string" || !PHOTO_ID.test(item.photoId)) throw new Error("照片引用无效");
-    photos++;
+    if (typeof item.photoId === "string" && (LOCAL_PHOTO_ID.test(item.photoId) || STORY_IMAGE_REFERENCE.test(item.photoId))) { images++; continue; }
+    throw new Error("图片引用无效");
   }
-  if (photos > 9) throw new Error("一篇书稿最多放 9 张照片");
+  if (images > 9) throw new Error("一篇书稿最多放 9 张照片（含 AI 插图）");
 }
 
 export async function saveLocalPhoto(tempFilePath: string, source: PhotoSource = "book"): Promise<{ id: string; path: string }> {
@@ -62,7 +86,7 @@ export async function saveLocalPhoto(tempFilePath: string, source: PhotoSource =
 
 /** Cancel a just-started import without uploading or retaining our private copy. The source photo is untouched. */
 export async function discardLocalPhotos(photos: Array<{ id: string; path: string }>): Promise<void> {
-  const safe = photos.filter(photo => PHOTO_ID.test(photo.id) && photo.path.startsWith(`${wx.env.USER_DATA_PATH}/`));
+  const safe = photos.filter(photo => LOCAL_PHOTO_ID.test(photo.id) && photo.path.startsWith(`${wx.env.USER_DATA_PATH}/`));
   removeQueuedPhotoUploads(safe.map(photo => photo.id));
   await Promise.all(safe.map(photo => new Promise<void>(resolve => {
     wx.removeStorageSync("shiguang-local-" + photo.id);
@@ -71,7 +95,7 @@ export async function discardLocalPhotos(photos: Array<{ id: string; path: strin
 }
 
 export async function readLocalPhoto(id: string): Promise<string> {
-  if (!PHOTO_ID.test(id)) return "";
+  if (!LOCAL_PHOTO_ID.test(id)) return "";
   try {
     const path: unknown = wx.getStorageSync("shiguang-local-" + id);
     if (typeof path !== "string" || /(?:^|\/)\.\.(?:\/|$)|%|[\\?#]/.test(path)) throw new Error("LOCAL_PHOTO_UNAVAILABLE");

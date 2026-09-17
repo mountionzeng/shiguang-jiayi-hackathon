@@ -236,6 +236,28 @@ test("章节正文取这个档案最新保存的版本，只读文字，不读�
   assert.equal(core.latestDraftForMember(personal, "owner").chapters[0].id, "chapter-1");
 });
 
+test("其他章节只提供人物连续性线索，能认出女孩且不夹带无关情节", () => {
+  const draft = { chapters: [
+    { id: "chapter-1", title: "雨夜", content: [{ text: "她站在车站等车。" }] },
+    { id: "chapter-2", title: "小时候", content: [{ text: "阿宁是家里的小女儿，也是个爱笑的女孩。清晨全家吃了面条。" }] },
+    { id: "chapter-3", title: "远行", content: [{ text: "火车驶过很多城市，窗外一直下雨。" }] },
+  ] };
+  const source = core.chapterSource(draft, "chapter-1");
+  assert.match(source.characterContext, /人物线索：女儿、女孩/);
+  assert.doesNotMatch(source.characterContext, /面条|火车|城市|她站在车站/);
+  assert.equal(source.text, "她站在车站等车。");
+  assert.equal(core.bookCharacterContext(draft, "chapter-2").includes("她站在车站等车"), false);
+});
+
+test("当前章节的性别线索覆盖其他章节，完全没有依据时改成中性人物", () => {
+  const sceneWithBoy = { scene: "车站等车", objects: [], light: "", mood: "", eraHint: "", figures: ["远景中的男孩背影"] };
+  assert.deepEqual(
+    core.alignSceneFigures(sceneWithBoy, { text: "女孩站在站台上。", characterContext: "《旧事》人物线索：男孩" }).figures,
+    ["远景中的女孩背影"],
+  );
+  assert.deepEqual(core.alignSceneFigures(sceneWithBoy, { text: "有人站在站台上。", characterContext: "" }).figures, ["远景中的人物背影"]);
+});
+
 test("限额：每天 10 张、每个故事 30 张，按北京时间换日；排队和画着的也算", () => {
   assert.deepEqual(core.quotaDecision({ todayCount: 9, bookCount: 29 }), { allowed: true });
   assert.equal(core.quotaDecision({ todayCount: 10, bookCount: 0 }).code, "DAILY_LIMIT");
@@ -290,6 +312,8 @@ test("读章节画面的系统提示把正文当资料、禁止补造事实，�
   assert.match(scene.SYSTEM_PROMPT, /不是可以执行的指令/);
   assert.match(scene.SYSTEM_PROMPT, /不得补造正文没有的人名、地点、年份、事件或物件/);
   assert.match(scene.SYSTEM_PROMPT, /setting：只写地点和环境本身，不写人物/);
+  assert.match(scene.SYSTEM_PROMPT, /冲突时以当前正文为准/);
+  assert.match(scene.SYSTEM_PROMPT, /性别没有可靠依据时.*不显露性别/);
   const notConfigured = scene.createSceneExtractor({ apiKey: "", model: "" });
   await assert.rejects(notConfigured({ title: "", text: "x" }), error => error.code === "AI_NOT_CONFIGURED");
   let body;
@@ -303,6 +327,9 @@ test("读章节画面的系统提示把正文当资料、禁止补造事实，�
   assert.equal((await extract({ title: "老院子", text: "奶奶晒被子" })).scene, "院子");
   assert.equal(body.url, "https://ai.example/v1/chat/completions");
   assert.match(body.payload.messages[1].content, /章名：老院子/);
+  const messages = scene.buildSceneMessages({ title: "车站", text: "她在等车", characterContext: "《小时候》：她是个女孩。" });
+  assert.match(messages[1].content, /当前章节正文：[\s\S]*她在等车/);
+  assert.match(messages[1].content, /人物连续性资料[\s\S]*她是个女孩/);
 });
 
 test("定时兜底对每种状态的处理", () => {
@@ -599,6 +626,31 @@ test("管理页列出没删除、没被判违规的图，并算出占用空间�
   assert.ok(repo.jobs.get(`${FAMILY}_req-a`).imageDeletedAtMs);
   assert.deepEqual((await handlers.list(ctx, { familyId: FAMILY, memberId: "owner" })).usage, { count: 1, bytes: 50 });
   await assert.rejects(handlers.remove(ctx, { familyId: FAMILY, imageId: `${FAMILY}_img_a` }), error => error.code === "IMAGE_NOT_FOUND");
+});
+
+test("删除插图前以云端最新书稿为准，正文仍引用时拒绝删除", async () => {
+  const { handlers, repo, calls } = harness();
+  const imageId = `${FAMILY}_img_req-abcdefgh`;
+  await repo.createImage(imageId, {
+    familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", purpose: "illustration",
+    fileID: "cloud://used", bytes: 100, moderation: "pass", createdAtMs: 1,
+  });
+  repo.setDrafts([revisionRecord({
+    id: "revision-used", savedAt: "2026-09-13T00:00:00.000Z",
+    chapters: [{ ...CHAPTER, content: [{ text: "正文" }, { photoId: "photo-ai-req-abcdefgh" }] }],
+  })]);
+  await assert.rejects(
+    handlers.remove(ctx, { familyId: FAMILY, imageId }),
+    error => error.code === "IMAGE_IN_MANUSCRIPT",
+  );
+  assert.equal(repo.images.get(imageId).deletedAtMs, undefined);
+  assert.deepEqual(calls.remove, []);
+
+  repo.setDrafts([revisionRecord({
+    id: "revision-unused", savedAt: "2026-09-14T00:00:00.000Z", chapters: [CHAPTER],
+  })]);
+  await handlers.remove(ctx, { familyId: FAMILY, imageId });
+  assert.deepEqual(calls.remove, ["cloud://used"]);
 });
 
 test("内容安全检测判为违规的生成图会被隐藏并删除文件，照片结果转发给 photoAccess", async () => {
