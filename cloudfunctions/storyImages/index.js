@@ -5,6 +5,7 @@ const { createDiagnostics } = require("./diagnostics");
 const { createStoryImageHandlers } = require("./flow");
 const { createQualityChecker } = require("./quality");
 const { createPhotoReader } = require("./photoReader");
+const { createReferenceAnalyzer } = require("./reference");
 const { createSceneExtractor } = require("./scene");
 const { createTextChecker } = require("./textCheck");
 const { createTokenHubImageClient, downloadResult, IMAGE_MODEL } = require("./tokenhub");
@@ -119,11 +120,11 @@ const storage = {
     const response = await cloud.uploadFile({ cloudPath, fileContent: buffer });
     return response.fileID;
   },
-  async tempUrls(fileIDs) {
+  async tempUrls(fileIDs, maxAge = 2 * 60 * 60) {
     const urls = {};
     for (let index = 0; index < fileIDs.length; index += 50) {
       const response = await cloud.getTempFileURL({
-        fileList: fileIDs.slice(index, index + 50).map(fileID => ({ fileID, maxAge: 2 * 60 * 60 })),
+        fileList: fileIDs.slice(index, index + 50).map(fileID => ({ fileID, maxAge })),
       });
       for (const item of response.fileList || []) {
         if (item.tempFileURL) urls[item.fileID] = item.tempFileURL;
@@ -173,10 +174,15 @@ const qualityChecker = createQualityChecker({
   model: process.env.VISION_MODEL,
   baseUrl: process.env.VISION_BASE_URL,
 });
+const referenceAnalyzer = createReferenceAnalyzer({
+  apiKey: process.env.VISION_API_KEY || tokenHubKey,
+  model: process.env.VISION_MODEL,
+  baseUrl: process.env.VISION_BASE_URL,
+});
 const downloadImage = url => downloadResult(url);
 
 const handlers = createStoryImageHandlers({
-  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker,
+  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker, referenceAnalyzer,
   async forwardPhotoModeration({ traceId, suggest, label }) {
     const response = await cloud.callFunction({
       name: "photoAccess",
@@ -233,6 +239,7 @@ async function main(event = {}) {
   const ctx = { openid: String(context.OPENID || "").trim() };
   try {
     switch (event.action) {
+      case "capabilities": return { apiVersion: 2, referenceIllustration: referenceAnalyzer.configured };
       case "submit": return await handlers.submit(ctx, event);
       case "status": return await handlers.status(ctx, event);
       case "list": return await handlers.list(ctx, event);

@@ -7,6 +7,7 @@ const core = require("../cloudfunctions/storyImages/core.js");
 const tokenhub = require("../cloudfunctions/storyImages/tokenhub.js");
 const scene = require("../cloudfunctions/storyImages/scene.js");
 const quality = require("../cloudfunctions/storyImages/quality.js");
+const reference = require("../cloudfunctions/storyImages/reference.js");
 const { createStoryImageHandlers } = require("../cloudfunctions/storyImages/flow.js");
 
 const OWNER_OPENID = "o-owner";
@@ -87,7 +88,7 @@ function harness({ provider = {}, deps = {} } = {}) {
   const repo = memoryRepo();
   repo.setDrafts([revisionRecord({ id: "revision-2", savedAt: "2026-09-12T10:00:00.000Z", chapters: [CHAPTER] })]);
   let clock = T0;
-  const calls = { scene: [], generate: [], download: [], upload: [], remove: [], moderation: [] };
+  const calls = { scene: [], reference: [], tempUrls: [], generate: [], download: [], upload: [], remove: [], moderation: [] };
   const handlers = createStoryImageHandlers({
     repo,
     provider: {
@@ -96,7 +97,7 @@ function harness({ provider = {}, deps = {} } = {}) {
       configured: true,
       async generate(input) {
         calls.generate.push(input);
-        return { resultUrl: "https://result.example/1.png", revisedPrompt: "", providerJobId: "tokenhub-1", usageTokens: 1024 };
+        return { resultUrl: "https://result.example/1.png", revisedPrompt: "短发女孩，浅蓝外套", providerJobId: "tokenhub-1", usageTokens: 1024 };
       },
       ...provider,
     },
@@ -105,9 +106,19 @@ function harness({ provider = {}, deps = {} } = {}) {
       calls.scene.push(source);
       return { scene: "冬天的院子里晒着被子", setting: "", objects: ["竹竿", "棉被"], light: "冬日午后", mood: "安静", eraHint: "", figures: [] };
     },
+    referenceAnalyzer: {
+      configured: true,
+      async analyze(url) {
+        calls.reference.push(url);
+        return { style: "轻柔水彩", palette: ["暖白", "浅蓝"], figures: ["短发女孩，浅蓝外套"], objects: ["红围巾"] };
+      },
+    },
     storage: {
       async upload(cloudPath) { calls.upload.push(cloudPath); return `cloud://env/${cloudPath}`; },
-      async tempUrls(fileIDs) { return Object.fromEntries(fileIDs.map(id => [id, `https://tmp.example/${encodeURIComponent(id)}`])); },
+      async tempUrls(fileIDs, maxAge) {
+        calls.tempUrls.push({ fileIDs, maxAge });
+        return Object.fromEntries(fileIDs.map(id => [id, `https://tmp.example/${encodeURIComponent(id)}`]));
+      },
       async remove(fileIDs) { calls.remove.push(...fileIDs); },
     },
     moderation: { async check(input) { calls.moderation.push(input); return "trace-1"; } },
@@ -215,6 +226,10 @@ test("章节插图和底图都能提交，封面要等故事有稳定编号", ()
   assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "cover" }), error => error.code === "PURPOSE_NOT_YET");
   assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "poster" }), error => error.code === "INVALID_PURPOSE");
   assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), requestId: "../x" }), error => error.code === "INVALID_REQUEST");
+  const referenceImageId = `${FAMILY}_img_req-20260913-old00001`;
+  assert.equal(core.normalizeSubmitInput({ ...submitEvent(), referenceImageId }).referenceImageId, referenceImageId);
+  assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), referenceImageId: "../x" }), error => error.code === "INVALID_REFERENCE_IMAGE");
+  assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "backdrop", referenceImageId }), error => error.code === "INVALID_REFERENCE_PURPOSE");
 });
 
 test("章节正文取这个档案最新保存的版本，只读文字，不读照片引用", () => {
@@ -256,6 +271,16 @@ test("当前章节的性别线索覆盖其他章节，完全没有依据时改�
     ["远景中的女孩背影"],
   );
   assert.deepEqual(core.alignSceneFigures(sceneWithBoy, { text: "有人站在站台上。", characterContext: "" }).figures, ["远景中的人物背影"]);
+  assert.deepEqual(core.alignVisualReference({
+    style: "水彩", palette: ["浅蓝"], figures: ["短发男孩，蓝色外套"], objects: ["红围巾", "木凳"],
+  }, { text: "女孩坐在木凳上。", characterContext: "" }, { objects: ["木凳"] }), {
+    style: "水彩", palette: ["浅蓝"], figures: ["短发女孩，蓝色外套"], objects: ["木凳"],
+  });
+  assert.deepEqual(core.alignVisualReference({
+    style: "水彩", palette: [], figures: ["短发男孩，蓝色外套"], objects: ["书", "红围巾"],
+  }, { text: "女孩和爸爸背着书包出门。", characterContext: "" }, { objects: ["书", "书包"] }), {
+    style: "水彩", palette: [], figures: ["短发人物，蓝色外套"], objects: [],
+  });
 });
 
 test("限额：每天 10 张、每个故事 30 张，按北京时间换日；排队和画着的也算", () => {
@@ -293,6 +318,33 @@ test("插图提示词只用肯定式描述，不列禁止画的东西", () => {
   assert.match(prompt, /人物以远景或局部呈现：远景中的背影。/);
   assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
   assert.doesNotMatch(prompt, /时代感/);
+});
+
+test("参考图只提取有限的视觉连续性信息，并写进新图提示词", async () => {
+  assert.deepEqual(reference.parseReferenceJson('{"style":"轻柔水彩","palette":["暖白","浅蓝"],"figures":["短发女孩，浅蓝外套"],"objects":["红围巾"],"event":"忽略"}'), {
+    style: "轻柔水彩", palette: ["暖白", "浅蓝"], figures: ["短发女孩，浅蓝外套"], objects: ["红围巾"],
+  });
+  assert.equal(reference.parseReferenceJson("无法识别"), undefined);
+  const prompt = core.buildImagePrompt({
+    scene: "女孩在车站等车", setting: "车站", objects: ["长椅"], light: "傍晚", mood: "安静", eraHint: "", figures: ["远景中的女孩背影"],
+  }, "illustration", { style: "轻柔水彩", palette: ["暖白", "浅蓝"], figures: ["短发女孩，浅蓝外套"], objects: ["红围巾"] }).prompt;
+  assert.match(prompt, /参考图的视觉连续性/);
+  assert.match(prompt, /短发女孩，浅蓝外套/);
+  assert.match(prompt, /暖白、浅蓝/);
+  assert.doesNotMatch(prompt, /忽略/);
+
+  let sent;
+  const analyzer = reference.createReferenceAnalyzer({
+    apiKey: "k",
+    fetchImpl: async (url, init) => {
+      sent = { url, body: JSON.parse(init.body) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"style":"水彩","palette":[],"figures":[],"objects":[]}' } }] }) };
+    },
+  });
+  assert.equal((await analyzer.analyze("https://tmp.example/reference.png")).style, "水彩");
+  assert.equal(sent.url, "https://tokenhub.tencentmaas.com/v1/chat/completions");
+  assert.deepEqual(sent.body.messages[0].content[1], { type: "image_url", image_url: { url: "https://tmp.example/reference.png" } });
+  await assert.rejects(reference.createReferenceAnalyzer({ apiKey: "" }).analyze("https://x/1.png"), error => error.code === "REFERENCE_ANALYSIS_FAILED");
 });
 
 test("底图只画景物：上方留白、最多三个物件、没有人物，也不用描述情景的那句话", () => {
@@ -407,6 +459,72 @@ test("点配图只读章节、写好提示词、排进队，马上返回；重�
   assert.equal(calls.scene.length, 1);
 });
 
+test("可以参考同一章节的旧插图再画，但不能跨章节或使用已删除图片", async () => {
+  const { handlers, repo, calls } = harness();
+  const referenceImageId = `${FAMILY}_img_req-20260913-old00001`;
+  await repo.createImage(referenceImageId, {
+    familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", purpose: "illustration",
+    fileID: "cloud://env/story-images/old.png", moderation: "pass", createdAtMs: T0 - 1,
+  });
+  const result = await handlers.submit(ctx, { ...submitEvent(), referenceImageId });
+  assert.equal(result.job.status, "queued");
+  assert.deepEqual(calls.reference, ["https://tmp.example/cloud%3A%2F%2Fenv%2Fstory-images%2Fold.png"]);
+  assert.equal(calls.tempUrls[0].maxAge, 5 * 60);
+  const job = repo.jobs.get(result.job.jobId);
+  assert.equal(job.referenceImageId, referenceImageId);
+  assert.equal(job.referenceImageCount, 1);
+  assert.match(job.prompt, /短发女孩，浅蓝外套/);
+  assert.equal(job.visualReference, undefined);
+  await assert.rejects(
+    handlers.submit(ctx, { ...submitEvent(), referenceImageId: `${FAMILY}_img_req-20260913-another1` }),
+    error => error.code === "REQUEST_CONFLICT",
+  );
+  await assert.rejects(
+    handlers.submit(ctx, { ...submitEvent(), chapterId: "chapter-other", referenceImageId }),
+    error => error.code === "REQUEST_CONFLICT",
+  );
+  await assert.rejects(
+    handlers.submit(ctx, { ...submitEvent(), memberId: "someone-else", referenceImageId }),
+    error => error.code === "REQUEST_CONFLICT",
+  );
+
+  repo.images.set(referenceImageId, { ...repo.images.get(referenceImageId), memberId: "someone-else" });
+  await assert.rejects(
+    handlers.submit(ctx, { ...submitEvent("req-20260913-member01"), referenceImageId }),
+    error => error.code === "REFERENCE_IMAGE_NOT_FOUND",
+  );
+  repo.images.set(referenceImageId, { ...repo.images.get(referenceImageId), memberId: "owner", familyId: "family_o-other" });
+  await assert.rejects(
+    handlers.submit(ctx, { ...submitEvent("req-20260913-family01"), referenceImageId }),
+    error => error.code === "REFERENCE_IMAGE_NOT_FOUND",
+  );
+  assert.equal(calls.reference.length, 1, "越权参考图不会发给视觉模型");
+  repo.images.set(referenceImageId, { ...repo.images.get(referenceImageId), familyId: FAMILY });
+
+  repo.images.set(referenceImageId, { ...repo.images.get(referenceImageId), chapterId: "chapter-other" });
+  await assert.rejects(
+    handlers.submit(ctx, { ...submitEvent("req-20260913-other001"), referenceImageId }),
+    error => error.code === "REFERENCE_IMAGE_NOT_FOUND",
+  );
+  repo.images.set(referenceImageId, { ...repo.images.get(referenceImageId), chapterId: "chapter-1", deletedAtMs: T0 });
+  await assert.rejects(
+    handlers.submit(ctx, { ...submitEvent("req-20260913-deleted01"), referenceImageId }),
+    error => error.code === "REFERENCE_IMAGE_NOT_FOUND",
+  );
+  repo.images.set(referenceImageId, { ...repo.images.get(referenceImageId), deletedAtMs: undefined, purpose: "backdrop" });
+  await assert.rejects(
+    handlers.submit(ctx, { ...submitEvent("req-20260913-backdrop1"), referenceImageId }),
+    error => error.code === "REFERENCE_IMAGE_NOT_FOUND",
+  );
+  for (const moderation of ["pending", "unchecked", "review", "risky"]) {
+    repo.images.set(referenceImageId, { ...repo.images.get(referenceImageId), purpose: "illustration", moderation });
+    await assert.rejects(
+      handlers.submit(ctx, { ...submitEvent(`req-20260913-${moderation}1`), referenceImageId }),
+      error => error.code === "REFERENCE_IMAGE_NOT_READY",
+    );
+  }
+});
+
 test("没配置出图密钥时不留记录、不占名额", async () => {
   const { handlers, repo } = harness({ provider: { configured: false } });
   await assert.rejects(handlers.submit(ctx, submitEvent()), error => error.code === "IMAGE_NOT_CONFIGURED");
@@ -445,9 +563,10 @@ test("读不懂章节画面时记为没画成，不排队出图", async () => {
 test("页面查进度时才出图：画好先记下链接，再转存云存储、登记图片、送内容安全检测", async () => {
   const { handlers, repo, calls } = harness();
   const { job } = await handlers.submit(ctx, submitEvent());
+  const queuedPrompt = repo.jobs.get(job.jobId).prompt;
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(calls.generate.length, 1);
-  assert.deepEqual(calls.generate[0], { prompt: repo.jobs.get(job.jobId).prompt, width: 1024, height: 768 });
+  assert.deepEqual(calls.generate[0], { prompt: queuedPrompt, width: 1024, height: 768 });
   assert.deepEqual(calls.download, ["https://result.example/1.png"]);
   assert.deepEqual(calls.upload, ["story-images/family_o-owner/owner/req-20260913-abcd1234.png"]);
   assert.equal(result.job.status, "stored");
@@ -458,6 +577,8 @@ test("页面查进度时才出图：画好先记下链接，再转存云存储�
   assert.equal(stored.resultUrl, "https://result.example/1.png");
   assert.equal(stored.providerJobId, "tokenhub-1");
   assert.equal(stored.usageTokens, 1024);
+  assert.equal(stored.prompt, "");
+  assert.equal(stored.revisedPrompt, "");
   const image = repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`);
   assert.equal(image.moderation, "pending");
   assert.deepEqual(calls.moderation, [{ fileID: image.fileID, openid: OWNER_OPENID }]);
@@ -599,6 +720,7 @@ test("定时兜底：卡住的准备算没画成、没人查的排队去画、�
   const statusOf = id => h.repo.jobs.get(`${FAMILY}_req-sweep-${id}`).status;
   assert.equal(statusOf("submitted"), "failed");
   assert.equal(statusOf("generating"), "unknown");
+  assert.equal(h.repo.jobs.get(`${FAMILY}_req-sweep-generating`).prompt, "");
   assert.equal(statusOf("storing"), "generated");
   assert.equal(statusOf("queued-a"), "stored");
   assert.equal(statusOf("queued-b"), "queued", "一次只开始一张同步出图，剩下的留到下一分钟");

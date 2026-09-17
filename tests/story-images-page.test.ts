@@ -5,6 +5,7 @@ import test from "node:test";
 import { BiographyDraft, FamilyRoomState, ManuscriptChapter } from "../miniprogram/domain/biography";
 import { clearAiConsent } from "../miniprogram/services/aiConsent";
 import { clearPhotoAiConsent } from "../miniprogram/services/photoAiConsent";
+import { clearIllustrationReferenceConsent, requestIllustrationReferenceConsent } from "../miniprogram/services/illustrationReferenceConsent";
 import { makeRevision } from "../miniprogram/services/manuscript";
 import { withChapterBackdrop } from "../miniprogram/services/chapterBackdrop";
 import { draftWithChapters } from "../miniprogram/services/chapters";
@@ -156,26 +157,161 @@ test("配图请求编号符合云函数的格式，轮询先快后慢，占用�
 
 test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节和请求编号调用云函数", async context => {
   clearAiConsent();
+  clearIllustrationReferenceConsent();
   const calls: Array<{ name: string; data: Record<string, unknown> }> = [];
   const env = installWx({
     cloud: {
       callFunction: async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
         calls.push({ name, data });
         if (name === "getOpenId") return { result: { openid: "o-owner" } };
-        return { result: { job: { jobId: "family_o-owner_req-x", status: "queued", message: "正在画", chapterId: "chapter-a", purpose: "illustration", imageId: "", createdAtMs: 1 } } };
+        if (data.action === "capabilities") return { result: { apiVersion: 2, referenceIllustration: true } };
+        return { result: { job: { jobId: "family_o-owner_req-x", status: "queued", message: "正在画", chapterId: "chapter-a", purpose: "illustration", imageId: "", referenceApplied: true, referenceImageId: "family_o-owner_img_req-aaaaaaaa", createdAtMs: 1 } } };
       },
     },
   });
   env.setApp(true);
-  context.after(() => { env.restore(); clearAiConsent(); });
+  context.after(() => { env.restore(); clearAiConsent(); clearIllustrationReferenceConsent(); });
 
-  const job = await storyImageApi.submitChapterImage({ memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-test-00000001" });
+  const job = await storyImageApi.submitChapterImage({
+    memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-test-00000001",
+    referenceImageId: "family_o-owner_img_req-aaaaaaaa",
+  });
   assert.equal(job.status, "queued");
-  const submit = calls.find(item => item.name === "storyImages");
+  const submit = calls.find(item => item.name === "storyImages" && item.data.action === "submit");
   assert.deepEqual(submit?.data, {
     memberId: "owner", chapterId: "chapter-a", requestId: "req-test-00000001", purpose: "illustration",
+    referenceImageId: "family_o-owner_img_req-aaaaaaaa",
     action: "submit", familyId: "family_o-owner",
   });
+});
+
+test("旧版云函数静默忽略参考图时，新客户端明确报错而不假装已经参考", async context => {
+  clearAiConsent();
+  clearIllustrationReferenceConsent();
+  const actions: unknown[] = [];
+  const env = installWx({
+    cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      actions.push(data?.action);
+      return { result: { error: { code: "UNKNOWN_ACTION", message: "不支持的操作" } } };
+    } },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); clearIllustrationReferenceConsent(); });
+
+  await assert.rejects(storyImageApi.submitChapterImage({
+    memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-test-00000002",
+    referenceImageId: "family_o-owner_img_req-aaaaaaaa",
+  }), (error: unknown) => error instanceof StoryImageServiceError && error.code === "REFERENCE_UNAVAILABLE");
+  assert.deepEqual(actions, ["capabilities"], "能力不支持时不能提交付费出图任务");
+});
+
+test("云端明确报告参考图分析未配置时，不弹参考图授权也不提交任务", async context => {
+  clearAiConsent();
+  clearIllustrationReferenceConsent();
+  const actions: unknown[] = [];
+  let referencePrompts = 0;
+  const env = installWx({
+    showModal: ({ title, success }: { title?: string; success?: (result: { confirm: boolean; cancel: boolean }) => void }) => {
+      if (title === "允许 AI 参考这张插图？") referencePrompts++;
+      success?.({ confirm: true, cancel: false });
+    },
+    cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      actions.push(data?.action);
+      return { result: { apiVersion: 2, referenceIllustration: false } };
+    } },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); clearIllustrationReferenceConsent(); });
+
+  await assert.rejects(storyImageApi.submitChapterImage({
+    memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-test-00000003",
+    referenceImageId: "family_o-owner_img_req-aaaaaaaa",
+  }), (error: unknown) => error instanceof StoryImageServiceError && error.code === "REFERENCE_UNAVAILABLE");
+  assert.deepEqual(actions, ["capabilities"]);
+  assert.equal(referencePrompts, 0);
+});
+
+test("参考插图授权按图片分别确认，同一张图在本次打开中不重复询问", async context => {
+  clearIllustrationReferenceConsent();
+  let prompts = 0;
+  const env = installWx({ showModal: ({ success }: { success?: (result: { confirm: boolean; cancel: boolean }) => void }) => {
+    prompts++;
+    success?.({ confirm: true, cancel: false });
+  } });
+  context.after(() => { env.restore(); clearIllustrationReferenceConsent(); });
+
+  assert.equal(await requestIllustrationReferenceConsent("image-a"), true);
+  assert.equal(await requestIllustrationReferenceConsent("image-a"), true);
+  assert.equal(await requestIllustrationReferenceConsent("image-b"), true);
+  assert.equal(prompts, 2);
+});
+
+test("拒绝或无法显示参考图授权时不发送图片，拒绝后仍可再次选择", async context => {
+  clearAiConsent();
+  clearIllustrationReferenceConsent();
+  const actions: unknown[] = [];
+  let referencePrompts = 0;
+  const env = installWx({
+    showModal: ({ title, success }: { title?: string; success?: (result: { confirm: boolean; cancel: boolean }) => void }) => {
+      if (title === "允许 AI 参考这张插图？") {
+        referencePrompts++;
+        success?.({ confirm: false, cancel: true });
+      } else success?.({ confirm: true, cancel: false });
+    },
+    cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      actions.push(data?.action);
+      return { result: { apiVersion: 2, referenceIllustration: true } };
+    } },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); clearIllustrationReferenceConsent(); });
+
+  const input = {
+    memberId: "owner", chapterId: "chapter-a", purpose: "illustration" as const,
+    referenceImageId: "family_o-owner_img_req-aaaaaaaa",
+  };
+  await assert.rejects(storyImageApi.submitChapterImage(input),
+    (error: unknown) => error instanceof StoryImageServiceError && error.code === "CONSENT_DECLINED");
+  await assert.rejects(storyImageApi.submitChapterImage(input),
+    (error: unknown) => error instanceof StoryImageServiceError && error.code === "CONSENT_DECLINED");
+  assert.deepEqual(actions, ["capabilities", "capabilities"]);
+  assert.equal(referencePrompts, 2, "拒绝不会被缓存，用户下次仍能重新选择");
+});
+
+test("参考图授权弹窗失败时按未授权处理", async context => {
+  clearIllustrationReferenceConsent();
+  const env = installWx({ showModal: ({ fail }: { fail?: () => void }) => fail?.() });
+  context.after(() => { env.restore(); clearIllustrationReferenceConsent(); });
+  assert.equal(await requestIllustrationReferenceConsent("image-fail"), false);
+});
+
+test("能力预检通过但提交没有确认具体参考图时，客户端拒绝静默降级", async context => {
+  clearAiConsent();
+  clearIllustrationReferenceConsent();
+  const actions: unknown[] = [];
+  const env = installWx({
+    cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      actions.push(data?.action);
+      if (data?.action === "capabilities") return { result: { apiVersion: 2, referenceIllustration: true } };
+      return { result: { job: {
+        jobId: "family_o-owner_req-x", status: "queued", message: "正在画", chapterId: "chapter-a",
+        purpose: "illustration", imageId: "", referenceApplied: true,
+        referenceImageId: "family_o-owner_img_req-bbbbbbbb", createdAtMs: 1,
+      } } };
+    } },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); clearIllustrationReferenceConsent(); });
+
+  await assert.rejects(storyImageApi.submitChapterImage({
+    memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-test-00000004",
+    referenceImageId: "family_o-owner_img_req-aaaaaaaa",
+  }), (error: unknown) => error instanceof StoryImageServiceError && error.code === "REFERENCE_UNAVAILABLE");
+  assert.deepEqual(actions, ["capabilities", "submit"]);
 });
 
 test("不同意在线 AI 时不调用配图云函数", async context => {
@@ -323,9 +459,13 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   await call(page, "refresh");
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-b", purpose: "backdrop" } } });
+  await call(page, "generate", { currentTarget: { dataset: {
+    id: "chapter-a", purpose: "illustration", reference: "family_o-owner_img_req-aaaaaaaa",
+  } } });
   assert.deepEqual(submitted, [
     { memberId: "owner", chapterId: "chapter-a", purpose: "illustration" },
     { memberId: "owner", chapterId: "chapter-b", purpose: "backdrop" },
+    { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa" },
   ]);
   assert.equal(page.data.notice, "正在画，大约 20–60 秒。可以先离开，回来接着看");
   assert.equal(page.data.submitting, "");

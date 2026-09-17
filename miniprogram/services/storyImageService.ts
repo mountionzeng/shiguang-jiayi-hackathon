@@ -3,6 +3,7 @@ import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
 import { requestPhotoAiConsent } from "./photoAiConsent";
 import { currentFamilyId } from "./cloudRoomStorage";
+import { requestIllustrationReferenceConsent } from "./illustrationReferenceConsent";
 
 export type StoryImageStatus =
   | "submitted" | "queued" | "generating" | "generated" | "storing" | "stored" | "failed" | "blocked" | "unknown" | "expired";
@@ -28,6 +29,8 @@ export interface StoryImageJob {
   chapterId: string;
   purpose: string;
   imageId: string;
+  referenceApplied?: boolean;
+  referenceImageId?: string;
   createdAtMs: number;
 }
 
@@ -136,17 +139,41 @@ function isJob(value: unknown): value is StoryImageJob {
   return Boolean(job && typeof job.jobId === "string" && typeof job.status === "string" && typeof job.message === "string");
 }
 
-async function submitChapterImage(input: { memberId: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string }): Promise<StoryImageJob> {
+async function submitChapterImage(input: { memberId: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string }): Promise<StoryImageJob> {
   if (!await requestAiConsent()) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图要把这一章的文字发给 AI 服务");
+  }
+  if (input.referenceImageId) {
+    let capabilities: { referenceIllustration?: unknown };
+    try {
+      capabilities = await callStoryImages("capabilities", {});
+    } catch (error) {
+      if (error instanceof StoryImageServiceError && error.code === "UNKNOWN_ACTION") {
+        throw new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试");
+      }
+      throw error;
+    }
+    if (capabilities.referenceIllustration !== true) {
+      throw new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试");
+    }
+    if (!await requestIllustrationReferenceConsent(input.referenceImageId)) {
+      throw new StoryImageServiceError("CONSENT_DECLINED", "这次没有允许 AI 读取参考插图；你可以直接生成不带参考的配图");
+    }
   }
   const result = await callStoryImages<{ job?: unknown }>("submit", {
     memberId: input.memberId,
     chapterId: input.chapterId,
     requestId: input.requestId ?? newImageRequestId(),
     purpose: input.purpose,
+    ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
   });
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
+  if (result.job.chapterId !== input.chapterId || result.job.purpose !== input.purpose) {
+    throw new StoryImageServiceError("REQUEST_CONFLICT", "这次配图对应的章节已经变化，请重新操作");
+  }
+  if (input.referenceImageId && (result.job.referenceApplied !== true || result.job.referenceImageId !== input.referenceImageId)) {
+    throw new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试");
+  }
   return result.job;
 }
 

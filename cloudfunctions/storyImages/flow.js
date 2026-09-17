@@ -30,6 +30,7 @@ function createStoryImageHandlers(deps) {
     forwardPhotoModeration,
     downloadImage,
     qualityChecker,
+    referenceAnalyzer,
     now = () => Date.now(),
     log = console,
   } = deps;
@@ -43,13 +44,36 @@ function createStoryImageHandlers(deps) {
 
     const jobId = `${input.familyId}_${input.requestId}`;
     const existing = await repo.getJob(jobId);
-    if (existing) return { job: core.publicJob(existing) };
+    if (existing) {
+      if (existing.memberId !== input.memberId || existing.chapterId !== input.chapterId ||
+        existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId) {
+        throw new core.StoryImageError("REQUEST_CONFLICT", "这次请求的章节或参考图已经变化，请重新操作");
+      }
+      return { job: core.publicJob(existing) };
+    }
 
     const draft = core.latestDraftForMember(
       await repo.listDraftRecords(input.familyId, input.memberId),
       input.memberId,
     );
     const source = core.chapterSource(draft, input.chapterId);
+    let referenceUrl = "";
+    if (input.referenceImageId) {
+      if (!referenceAnalyzer || !referenceAnalyzer.configured) {
+        throw new core.StoryImageError("REFERENCE_NOT_CONFIGURED", "参考图服务还没配置好");
+      }
+      const referenceImage = await repo.getImage(input.referenceImageId);
+      if (!referenceImage || referenceImage.familyId !== input.familyId || referenceImage.memberId !== input.memberId ||
+        referenceImage.chapterId !== input.chapterId || referenceImage.purpose !== "illustration" ||
+        referenceImage.deletedAtMs !== undefined || !referenceImage.fileID) {
+        throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "这张参考图已不可用，请重新选择");
+      }
+      if (referenceImage.moderation !== "pass") {
+        throw new core.StoryImageError("REFERENCE_IMAGE_NOT_READY", "这张插图还没通过平台审核，暂时不能作为参考");
+      }
+      referenceUrl = (await storage.tempUrls([referenceImage.fileID], 5 * 60))[referenceImage.fileID] || "";
+      if (!referenceUrl) throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "暂时读不到这张参考图，请稍后再试");
+    }
     const nowMs = now();
     const dayKey = core.chinaDayKey(nowMs);
     const [todayCount, bookCount] = await Promise.all([
@@ -79,6 +103,8 @@ function createStoryImageHandlers(deps) {
         characterContextLength: source.characterContext.length,
       },
       referencePhotoCount: 0,
+      referenceImageCount: input.referenceImageId ? 1 : 0,
+      ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
       status: "submitted",
       dayKey,
       createdAtMs: nowMs,
@@ -88,18 +114,25 @@ function createStoryImageHandlers(deps) {
 
     let scene;
     try {
-      scene = await extractScene(source);
+      const [extracted, extractedReference] = await Promise.all([
+        extractScene(source),
+        referenceUrl ? referenceAnalyzer.analyze(referenceUrl) : Promise.resolve(undefined),
+      ]);
+      scene = extracted;
       scene = core.alignSceneFigures(scene, source);
+      const visualReference = core.alignVisualReference(extractedReference, source, scene);
+      const { prompt, width, height } = core.buildImagePrompt(scene, input.purpose, visualReference);
+      const patch = {
+        status: "queued", prompt, scene, width, height, queuedAtMs: now(), updatedAtMs: now(),
+      };
+      await repo.updateJob(jobId, patch);
+      return { job: core.publicJob({ ...job, ...patch }) };
     } catch (error) {
       const patch = { status: "failed", errorCode: (error && error.code) || "SCENE_FAILED", updatedAtMs: now() };
       await repo.updateJob(jobId, patch);
       return { job: core.publicJob({ ...job, ...patch }) };
     }
 
-    const { prompt, width, height } = core.buildImagePrompt(scene, input.purpose);
-    const patch = { status: "queued", prompt, scene, width, height, queuedAtMs: now(), updatedAtMs: now() };
-    await repo.updateJob(jobId, patch);
-    return { job: core.publicJob({ ...job, ...patch }) };
   }
 
   async function requestModeration(imageId, image, openid) {
@@ -141,7 +174,7 @@ function createStoryImageHandlers(deps) {
     } catch (error) {
       const outcome = core.classifyGenerateError(error);
       log.error("storyImages generate", outcome.errorCode, String(error && error.message));
-      const patch = { status: outcome.status, errorCode: outcome.errorCode, updatedAtMs: now() };
+      const patch = { status: outcome.status, errorCode: outcome.errorCode, prompt: "", updatedAtMs: now() };
       await repo.updateJob(job._id, patch);
       return { ...job, ...patch };
     }
@@ -149,9 +182,10 @@ function createStoryImageHandlers(deps) {
     const patch = {
       status: "generated",
       resultUrl: result.resultUrl,
-      revisedPrompt: result.revisedPrompt || "",
+      revisedPrompt: "",
       providerJobId: result.providerJobId || "",
       usageTokens: result.usageTokens || 0,
+      prompt: "",
       generatedAtMs: now(),
       updatedAtMs: now(),
     };
@@ -315,7 +349,7 @@ function createStoryImageHandlers(deps) {
         if (action === "mark-failed") {
           await repo.claimJob(job._id, ["submitted"], { status: "failed", errorCode: "SCENE_INTERRUPTED", updatedAtMs: now() });
         } else if (action === "mark-unknown") {
-          await repo.claimJob(job._id, ["generating"], { status: "unknown", errorCode: "GENERATE_INTERRUPTED", updatedAtMs: now() });
+          await repo.claimJob(job._id, ["generating"], { status: "unknown", errorCode: "GENERATE_INTERRUPTED", prompt: "", updatedAtMs: now() });
         } else if (action === "release") {
           await repo.claimJob(job._id, ["storing"], { status: "generated", updatedAtMs: now() });
         } else {

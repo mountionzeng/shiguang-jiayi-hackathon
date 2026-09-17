@@ -12,7 +12,7 @@ import { isStoryImageReference, storyImageMatchesReference } from "../../service
 
 interface ImageCard {
   imageId: string; url: string; sizeLabel: string; purposeLabel: string;
-  isBackdrop: boolean; inUse: boolean; inText: boolean; moderationLabel: string; qualityLabel: string; qualityFlawed: boolean;
+  isBackdrop: boolean; referenceReady: boolean; inUse: boolean; inText: boolean; moderationLabel: string; qualityLabel: string; qualityFlawed: boolean;
 }
 interface JobRow { jobId: string; message: string; active: boolean; purposeLabel: string }
 interface ChapterGroup {
@@ -25,7 +25,8 @@ const PURPOSE_LABELS: Record<string, string> = { illustration: "插图", backdro
 const card = (image: StoryImage, backdropImageId = "", textImageReferences = new Set<string>()): ImageCard => ({
   imageId: image.imageId, url: image.url, sizeLabel: formatBytes(image.bytes),
   purposeLabel: PURPOSE_LABELS[image.purpose] ?? "配图",
-  isBackdrop: image.purpose === "backdrop", inUse: !!backdropImageId && image.imageId === backdropImageId,
+  isBackdrop: image.purpose === "backdrop", referenceReady: image.purpose === "illustration" && image.moderation === "pass",
+  inUse: !!backdropImageId && image.imageId === backdropImageId,
   inText: Array.from(textImageReferences).some(reference => storyImageMatchesReference(image.imageId, reference)),
   moderationLabel: moderationLabel(image.moderation), qualityLabel: qualityLabel(image), qualityFlawed: image.quality === "flawed",
 });
@@ -142,13 +143,17 @@ Page({
       this.schedulePoll();
     }
   },
-  async generate(event: { currentTarget: { dataset: { id: string; purpose?: string } } }) {
+  async generate(event: { currentTarget: { dataset: { id: string; purpose?: string; reference?: string } } }) {
     const chapterId = event.currentTarget.dataset.id;
+    const referenceImageId = event.currentTarget.dataset.reference;
     const purpose: StoryImagePurpose = event.currentTarget.dataset.purpose === "backdrop" ? "backdrop" : "illustration";
     if (this.data.submitting || this.data.savingBackdrop || !chapterId) return;
-    this.setData({ submitting: chapterId + ":" + purpose, notice: "" });
+    this.setData({ submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"), notice: "" });
     try {
-      const job = await storyImageApi.submitChapterImage({ memberId: this.data.memberId, chapterId, purpose });
+      const job = await storyImageApi.submitChapterImage({
+        memberId: this.data.memberId, chapterId, purpose,
+        ...(referenceImageId ? { referenceImageId } : {}),
+      });
       if (this.unloaded) return;
       this.setData({ notice: job.message });
       await this.refresh();

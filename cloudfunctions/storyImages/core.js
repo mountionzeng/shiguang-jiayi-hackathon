@@ -65,6 +65,7 @@ function requireOwner(openid, familyId) {
 
 const ID_PATTERN = /^[0-9A-Za-z_-]{1,80}$/;
 const REQUEST_ID_PATTERN = /^req-[0-9a-z-]{8,60}$/;
+const STORY_IMAGE_ID_PATTERN = /^family_[0-9A-Za-z_-]{1,120}_img_req-[0-9a-z-]{8,60}$/;
 
 function normalizeSubmitInput(event) {
   const input = event || {};
@@ -73,12 +74,19 @@ function normalizeSubmitInput(event) {
   const chapterId = String(input.chapterId || "").trim();
   const requestId = String(input.requestId || "").trim();
   const purpose = String(input.purpose || "illustration");
+  const referenceImageId = String(input.referenceImageId || "").trim();
   if (!ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_MEMBER", "档案信息不完整");
   if (!ID_PATTERN.test(chapterId)) throw new StoryImageError("INVALID_CHAPTER", "章节信息不完整");
   if (!REQUEST_ID_PATTERN.test(requestId)) throw new StoryImageError("INVALID_REQUEST", "请求编号无效，请重试");
   if (!PURPOSES.includes(purpose)) throw new StoryImageError("INVALID_PURPOSE", "不支持这种配图");
   if (!ENABLED_PURPOSES.includes(purpose)) throw new StoryImageError("PURPOSE_NOT_YET", "这种配图还没开放");
-  return { familyId, memberId, chapterId, requestId, purpose };
+  if (referenceImageId && !STORY_IMAGE_ID_PATTERN.test(referenceImageId)) {
+    throw new StoryImageError("INVALID_REFERENCE_IMAGE", "参考图信息无效，请重新选择");
+  }
+  if (referenceImageId && purpose !== "illustration") {
+    throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图可以参考旧图再画");
+  }
+  return { familyId, memberId, chapterId, requestId, purpose, referenceImageId };
 }
 
 function normalizeMemberInput(event) {
@@ -162,6 +170,8 @@ function bookCharacterContext(draft, chapterId) {
 
 const FEMALE_CUE = /女孩|女人|姑娘|女性|少女|女儿|妻子|母亲|妈妈|奶奶|外婆|姐姐|妹妹|阿姨|女士|女子/;
 const MALE_CUE = /男孩|男人|小伙|男性|少年|儿子|丈夫|父亲|爸爸|爷爷|外公|哥哥|弟弟|叔叔|先生|男子/;
+const FEMALE_WORDS = /女孩|女人|姑娘|女性|少女|女儿|妻子|母亲|妈妈|奶奶|外婆|姐姐|妹妹|阿姨|女士|女子/g;
+const MALE_WORDS = /男孩|男人|小伙|男性|少年|儿子|丈夫|父亲|爸爸|爷爷|外公|哥哥|弟弟|叔叔|先生|男子/g;
 
 function genderEvidence(text) {
   const female = FEMALE_CUE.test(String(text || ""));
@@ -174,15 +184,27 @@ function alignSceneFigures(scene, source) {
   const current = genderEvidence(source && source.text);
   const context = genderEvidence(source && source.characterContext);
   const evidence = current === "unknown" ? (context === "mixed" ? "unknown" : context) : current;
-  const femaleWords = /女孩|女人|姑娘|女性|少女|女儿|妻子|母亲|妈妈|奶奶|外婆|姐姐|妹妹|阿姨|女士|女子/g;
-  const maleWords = /男孩|男人|小伙|男性|少年|儿子|丈夫|父亲|爸爸|爷爷|外公|哥哥|弟弟|叔叔|先生|男子/g;
   const figures = (scene.figures || []).map(figure => {
     if (evidence === "female") return figure.replace(/男孩/g, "女孩").replace(/男人|男子/g, "女人").replace(/男性/g, "女性").replace(/少年/g, "少女").replace(/先生/g, "女士").replace(/儿子|丈夫|父亲|爸爸|爷爷|外公|哥哥|弟弟|叔叔/g, "人物");
     if (evidence === "male") return figure.replace(/女孩/g, "男孩").replace(/女人|女子/g, "男人").replace(/女性/g, "男性").replace(/少女/g, "少年").replace(/女士/g, "先生").replace(/女儿|妻子|母亲|妈妈|奶奶|外婆|姐姐|妹妹|阿姨/g, "人物");
-    if (evidence === "unknown") return figure.replace(femaleWords, "人物").replace(maleWords, "人物");
+    if (evidence === "unknown") return figure.replace(FEMALE_WORDS, "人物").replace(MALE_WORDS, "人物");
     return figure;
   });
   return { ...scene, figures };
+}
+
+/** The chosen picture may itself be wrong; current text still controls people and props. */
+function alignVisualReference(reference, source, scene) {
+  if (!reference) return undefined;
+  let figures = alignSceneFigures({ figures: reference.figures || [] }, source).figures;
+  if (genderEvidence(source && source.text) === "mixed") {
+    figures = figures.map(figure => figure.replace(FEMALE_WORDS, "人物").replace(MALE_WORDS, "人物"));
+  }
+  const currentText = String((source && source.text) || "");
+  const sceneObjects = new Set(Array.isArray(scene && scene.objects) ? scene.objects : []);
+  const objects = (reference.objects || []).filter(referenceObject =>
+    referenceObject.length >= 2 && sceneObjects.has(referenceObject) && currentText.includes(referenceObject));
+  return { ...reference, figures, objects };
 }
 
 function draftReferencesStoryImage(draft, imageId) {
@@ -281,7 +303,7 @@ const STYLES = {
 };
 
 /** Affirmative wording only: image models have no notion of "don't draw". */
-function buildImagePrompt(scene, purpose) {
+function buildImagePrompt(scene, purpose, visualReference) {
   const style = STYLES[purpose];
   if (!style) throw new StoryImageError("PURPOSE_NOT_YET", "这种配图还没开放");
   const parts = [style.lead];
@@ -293,6 +315,14 @@ function buildImagePrompt(scene, purpose) {
   if (style.withFigures && scene.figures.length) parts.push(`人物以远景或局部呈现：${scene.figures.join("、")}。`);
   if (scene.mood) parts.push(`整体氛围${scene.mood}。`);
   if (scene.eraHint) parts.push(`时代感：${scene.eraHint}。`);
+  if (visualReference) {
+    const continuity = [];
+    if (visualReference.style) continuity.push(`画风与材质延续${visualReference.style}`);
+    if (visualReference.palette.length) continuity.push(`主要配色延续${visualReference.palette.join("、")}`);
+    if (style.withFigures && visualReference.figures.length) continuity.push(`人物可见外观延续${visualReference.figures.join("、")}`);
+    if (visualReference.objects.length) continuity.push(`相符的辨识物件延续${visualReference.objects.join("、")}`);
+    if (continuity.length) parts.push(`参考图的视觉连续性：${continuity.join("；")}。`);
+  }
   return { prompt: parts.join(""), width: style.width, height: style.height };
 }
 
@@ -330,6 +360,7 @@ function publicJob(job) {
     chapterId: job.chapterId,
     purpose: job.purpose,
     imageId: job.imageId || "",
+    ...(job.referenceImageId ? { referenceApplied: true, referenceImageId: job.referenceImageId } : {}),
     createdAtMs: job.createdAtMs,
   };
 }
@@ -371,6 +402,7 @@ module.exports = {
   buildImagePrompt,
   bookCharacterContext,
   alignSceneFigures,
+  alignVisualReference,
   chapterSource,
   chinaDayKey,
   classifyGenerateError,
