@@ -5,7 +5,7 @@ page { height: 100%; overflow: hidden; }
 .writing-toolbar { flex: none; display: flex; align-items: center; width: 100%; height: 96rpx; padding: 0 16rpx; border-bottom: 1rpx solid var(--line); overflow: hidden; }
 /* Override WeChat v2 button default width and margins explicitly, not just min-width. */
 .writing-page .tool-button { flex: none; width: auto; max-width: 100%; min-width: 88rpx; height: 88rpx; min-height: 88rpx; margin: 0; padding: 0 12rpx; display: flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 29rpx; color: var(--jade); border-radius: 12rpx; }
-.writing-toolbar > .tool-button { width: 25%; flex: 0 0 25%; min-width: 0; }
+.writing-toolbar > .tool-button { width: 20%; flex: 0 0 20%; min-width: 0; }
 .writing-page .tool-button[disabled] { color: var(--ink-soft); opacity: .55; background: transparent; }
 .save-button { font-weight: 600; }
 .top-tools { flex: none; display: flex; flex-wrap: wrap; padding: 0 20rpx; background: var(--paper-sunk); border-bottom: 1rpx solid var(--line); }
@@ -42,6 +42,7 @@ page { height: 100%; overflow: hidden; }
 @media (max-width: 340px) { .writing-toolbar .tool-button { font-size: 27rpx; padding: 0 4rpx; } .writing-toolbar .action-icon { width: 34rpx; height: 34rpx; margin-right: 6rpx; } }
 
 .preview-editor { width: 100%; min-height: 360rpx; margin-top: 28rpx; line-height: 1.9; padding-bottom: 80rpx; }
+.share-excerpt { margin: 8rpx 0 28rpx; padding: 24rpx; border-left: 6rpx solid var(--jade); border-radius: 8rpx; background: var(--paper-card); font-size: 31rpx; line-height: 1.8; color: var(--ink); }
 
 /* 本章底图：压在正文区下方、上缘渐隐到纸色；键盘打开时隐藏，保证正文可读。 */
 .body-field { position: relative; overflow: hidden; }

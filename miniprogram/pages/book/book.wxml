@@ -2,6 +2,7 @@
   <view class="writing-toolbar">
     <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '目录' : '返回'}}</button>
     <button class="tool-button" bindtap="addPhoto" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}</button>
+    <button class="tool-button" catchtouchstart="openShareSelection" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady || sharingExcerpt}}">发给家人</button>
     <button class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}"><view class="action-icon icon-save" aria-hidden="true"></view>{{saving ? '保存中' : '保存'}}</button>
     <button class="tool-button" bindtap="showMore" disabled="{{saving || generating || pickingPhoto}}"><view class="action-icon icon-more" aria-hidden="true"></view>更多</button>
   </view>
@@ -37,6 +38,7 @@
     <button wx:if="{{panel === 'organize-preview'}}" class="tool-button save-button" bindtap="confirmOrganize" disabled="{{saving}}">确认写入正文</button>
     <button wx:if="{{panel === 'history' && previewVersion}}" class="tool-button save-button" bindtap="restoreVersion" disabled="{{saving}}"><view class="action-icon icon-restore" aria-hidden="true"></view>恢复此版</button>
     <button wx:if="{{panel === 'version'}}" class="tool-button save-button" bindtap="saveVersion" disabled="{{saving}}"><view class="action-icon icon-version" aria-hidden="true"></view>存为版本</button>
+    <button wx:if="{{panel === 'share-excerpt'}}" class="tool-button save-button" bindtap="sendExcerpt" disabled="{{sharingExcerpt}}">{{sharingExcerpt ? '发送中…' : '确认发送'}}</button>
   </view>
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
   <scroll-view class="reading-panel contents-view" scroll-y hidden="{{!draft || panel || view !== 'contents'}}">
@@ -93,6 +95,19 @@
         <view class="panel-title serif">给这一版起个名字</view>
         <input class="version-name" value="{{versionName}}" maxlength="30" bindinput="onVersionName" placeholder="例如：补充了大学经历" />
         <view class="panel-note">不填也可以。旧版会一直保留。</view>
+      </block>
+      <block wx:if="{{panel === 'share-excerpt'}}">
+        <view class="panel-title serif">把这段话发给家人</view>
+        <view class="share-excerpt serif">{{shareText}}</view>
+        <view class="field-label contents-label">选择家人</view>
+        <checkbox-group bindchange="onShareRecipients">
+          <label class="memory-row" wx:for="{{shareRecipients}}" wx:key="id">
+            <checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{sharingExcerpt}}" />
+            <text class="memory-text">{{item.name}}</text>
+            <text class="version-date">{{item.relation}}</text>
+          </label>
+        </checkbox-group>
+        <view class="panel-note">只发送你选中的文字，不会开放整章。对方需要先接受你的微信邀请，之后可在记忆之家看到这段摘录。</view>
       </block>
       <block wx:if="{{panel === 'history'}}">
         <view class="panel-title serif">历史版本</view>

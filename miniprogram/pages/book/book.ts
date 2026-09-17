@@ -1,9 +1,9 @@
 import {
-  BiographyDraft, contributionStoryTitle, isRecordingProfile, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution,
+  accountOwner, BiographyDraft, contributionStoryTitle, createContribution, isActiveMember, isRecordingProfile, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution,
   memoryPool, personalBookSourceFingerprint,
 } from "../../domain/biography";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
-import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel } from "../../services/roomRepository";
+import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel } from "../../services/roomRepository";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import { contentFromDelta, contentToDelta, readLocalPhoto, saveLocalPhoto, validateContent } from "../../services/bookImages";
 import { storyImageApi } from "../../services/storyImageService";
@@ -62,6 +62,8 @@ Page({
     organizeRows: [] as Array<{ id: string; text: string; where: string; checked: boolean }>, organizeTarget: "", canUndo: false,
     // The active chapter's backdrop picture, when it has one and the cloud can serve it.
     backdropUrl: "",
+    shareText: "", shareRecipientIds: [] as string[], sharingExcerpt: false,
+    shareRecipients: [] as Array<{ id: string; name: string; relation: string; checked: boolean }>,
   },
   // Native inputs own their live value/cursor. Do not echo the document on each keystroke.
   titleBuffer: "",
@@ -415,6 +417,99 @@ Page({
       case "down": void this.moveActiveChapter(1); break;
       case "delete-chapter": void this.deleteActiveChapter(); break;
       case "images": this.openImages(); break;
+    }
+  },
+  /** Read the native editor selection before the button press makes it lose focus. */
+  openShareSelection() {
+    if (!this.editorContext || !this.data.editorReady || this.data.saving || this.data.sharingExcerpt) return;
+    this.editorContext.getSelectionText({
+      success: result => {
+        const text = String(result.text ?? "").trim();
+        if (!text) {
+          wx.showToast({ title: "请先在正文里选中一段文字", icon: "none" });
+          return;
+        }
+        if (text.length > 500) {
+          wx.showToast({ title: "一次最多发送 500 字，请少选一些", icon: "none" });
+          return;
+        }
+        void this.prepareExcerptShare(text);
+      },
+      fail: () => wx.showToast({ title: "没有读到选中的文字，请重新选择", icon: "none" }),
+    });
+  },
+  async prepareExcerptShare(text: string) {
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      const author = accountOwner(state.members);
+      if (!author) throw new Error("请先创建自己的记录档案");
+      const recipients = state.members.filter(member => isActiveMember(member) && member.id !== author.id);
+      if (!recipients.length) {
+        wx.showModal({
+          title: "还没有可以发送的家人",
+          content: "先在“家人和朋友”里添加并邀请对方。对方接受邀请后，才能在记忆之家看到选段。",
+          confirmText: "去添加",
+          success: result => { if (result.confirm) wx.navigateTo({ url: "/pages/profiles/profiles?mode=people" }); },
+        });
+        return;
+      }
+      this.setData({
+        panel: "share-excerpt", moreOpen: false, shareText: text, shareRecipientIds: [],
+        shareRecipients: recipients.map(member => ({ id: member.id, name: member.name, relation: member.relation, checked: false })),
+      });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "家人名单加载失败", icon: "none" });
+    }
+  },
+  onShareRecipients(event: { detail: { value: string[] } }) {
+    const selected = new Set(event.detail.value);
+    this.setData({
+      shareRecipientIds: [...selected],
+      shareRecipients: this.data.shareRecipients.map(item => ({ ...item, checked: selected.has(item.id) })),
+    });
+  },
+  async sendExcerpt() {
+    if (this.data.sharingExcerpt) return;
+    if (!this.data.shareRecipientIds.length) {
+      wx.showToast({ title: "请选择要发送给谁", icon: "none" });
+      return;
+    }
+    const names = this.data.shareRecipients.filter(item => this.data.shareRecipientIds.includes(item.id)).map(item => item.name);
+    const confirmed = await this.confirm(
+      `发送给${names.join("、")}？`,
+      `“${this.data.shareText.slice(0, 80)}${this.data.shareText.length > 80 ? "…" : ""}”\n\n对方接受邀请后，可在记忆之家查看。`,
+    );
+    if (!confirmed) return;
+    this.setData({ sharingExcerpt: true });
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      const author = accountOwner(state.members);
+      if (!author) throw new Error("请先创建自己的记录档案");
+      const active = this.chapters.find(chapter => chapter.id === this.activeChapterId);
+      const titleParts = [this.data.editTitle.trim(), active?.title.trim()].filter(Boolean);
+      const excerpt = createContribution({
+        authorMemberId: author.id,
+        authorName: author.name,
+        relation: author.relation,
+        text: this.data.shareText,
+        title: `${titleParts.length ? `《${titleParts.join("·")}》` : "人生之书"}摘录`,
+        relatedMemberIds: this.data.shareRecipientIds,
+        sharedWithMemberIds: this.data.shareRecipientIds,
+        scope: "personal",
+        visibility: "private",
+      });
+      const saved = await appendContributionRemoteFirst(excerpt);
+      const stored = saved.contributions.find(item => item.id === excerpt.id);
+      const delivered = new Set(stored?.sharedWithMemberIds ?? []);
+      if (!this.data.shareRecipientIds.every(id => delivered.has(id))) {
+        this.setData({ panel: "", shareText: "", shareRecipientIds: [], saveNotice: "内容安全检查未通过，选段已仅自己保存，没有发送给家人。" });
+        return;
+      }
+      this.setData({ panel: "", shareText: "", shareRecipientIds: [], saveNotice: `已发送给${names.join("、")}；尚未接受邀请的人会在加入后看到。` });
+    } catch (error) {
+      this.setData({ saveNotice: error instanceof Error ? error.message : "发送失败，请重试" });
+    } finally {
+      this.setData({ sharingExcerpt: false });
     }
   },
   onKeyboardHeight(event: { detail: { height: number } }) {

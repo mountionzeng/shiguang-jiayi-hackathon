@@ -1549,10 +1549,56 @@ test("writing UI uses native fields without an expanding textarea or bottom navi
   assert.match(template, /viewportHeight/);
   assert.doesNotMatch(template, /100vh\s*-/, "do not subtract a keyboard from a shrinking CSS viewport");
   const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");
-  assert.match(styles, /\.writing-toolbar > \.tool-button[^}]*width: 25%/);
+  assert.match(styles, /\.writing-toolbar > \.tool-button[^}]*width: 20%/);
   assert.match(styles, /\.tool-button[^}]*white-space: nowrap/);
   assert.ok(template.indexOf('bindtap="saveEdits"') < template.indexOf('class="writing-fields"'));
   assert.doesNotMatch(template, /<story-switcher|bindtap="editManuscript"/);
+});
+
+test("a selected manuscript excerpt is shared only with the chosen family members", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "林岚的人生之书", paragraphs: ["外公撑着伞在巷口等我。"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  page.editorContext = {
+    getSelectionText: ({ success }: any) => success({ text: "外公撑着伞在巷口等我。" }),
+    setContents: ({ success }: any) => success(),
+  };
+  page.setData({ editorReady: true });
+
+  callPage(page, "openShareSelection");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(page.data.panel, "share-excerpt");
+  assert.equal(page.data.shareText, "外公撑着伞在巷口等我。");
+  callPage(page, "onShareRecipients", { detail: { value: ["member-1"] } });
+  await callPage(page, "sendExcerpt");
+
+  const excerpt = storage.roomState().contributions.find(item => item.title?.includes("摘录"));
+  assert.ok(excerpt);
+  assert.equal(excerpt.text, "外公撑着伞在巷口等我。");
+  assert.deepEqual(excerpt.relatedMemberIds, ["member-1"]);
+  assert.deepEqual(excerpt.sharedWithMemberIds, ["member-1"]);
+  assert.equal(page.data.panel, "");
+  assert.match(String(page.data.saveNotice), /已发送给林秋/);
+});
+
+test("sharing a manuscript excerpt requires an actual selection and a recipient", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "书", paragraphs: ["正文"], sourceCount: 1, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  page.editorContext = { getSelectionText: ({ success }: any) => success({ text: "" }) };
+  page.setData({ editorReady: true });
+  callPage(page, "openShareSelection");
+  assert.equal(last(storage.toasts), "请先在正文里选中一段文字");
+  await callPage(page, "prepareExcerptShare", "正文");
+  await callPage(page, "sendExcerpt");
+  assert.equal(last(storage.toasts), "请选择要发送给谁");
+  assert.equal(storage.roomState().contributions.filter(item => item.title?.includes("摘录")).length, 0);
 });
 
 test("discard restores native field seeds while a failed validation retains the typed draft", async context => {
