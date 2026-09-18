@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "collections": {
+    "audio_operations": {"clientRead": false, "clientWrite": false, "serverOnly": true},
+    "audio_works": {"clientRead": false, "clientWrite": false, "serverOnly": true},
+    "voice_profiles": {"clientRead": false, "clientWrite": false, "serverOnly": true}
+  },
+  "note": "小程序只能调用 storyAudio 云函数查询状态；云函数按当前微信身份重验权限并签发短期媒体地址。"
+}

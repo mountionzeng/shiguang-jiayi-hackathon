@@ -22,23 +22,26 @@ function requestBody(action, event, context, options = {}) {
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
   const appid = String(context && context.APPID || options.appIdFallback || "").trim();
   if (!appid) throw new Error("APPID_NOT_AVAILABLE");
-  if (action !== "issueDesktop" || !event || !event.story || typeof event.story !== "object" || Array.isArray(event.story)) {
+  const story=event?.story,storyAccess=event?.storyAccess;
+  if (action !== "issueDesktop" || Boolean(story)===Boolean(storyAccess) ||
+    (story && (typeof story!=="object"||Array.isArray(story))) || (storyAccess&&(typeof storyAccess!=="object"||Array.isArray(storyAccess)))) {
     throw new Error("invalid_input");
   }
   return {
     subject: subjectFor(appid, openid),
-    story: event.story,
+    ...(story?{story}:{storyAccess}),
   };
 }
-// 接口约定 1.0.0 第 3.5 节：接收方必须校验成功响应的形状，不满足就当作
+// 接口约定 1.1.0 第 3.5 节：接收方必须校验两种互斥的成功响应形状，不满足就当作
 // bridge_unavailable，不得显示为成功（漏挂载点时服务端会返回 200 + 网页 HTML）。
 function issueDesktopResultShapeError(contentType, data) {
   if (!/^application\/json\b/i.test(String(contentType || ""))) return "bridge_unavailable";
   if (!data || typeof data !== "object" || Array.isArray(data)) return "bridge_unavailable";
   if (typeof data.code !== "string" || !/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(data.code)) return "bridge_unavailable";
   if (typeof data.expiresAt !== "string" || !Number.isFinite(Date.parse(data.expiresAt))) return "bridge_unavailable";
-  if (!Number.isSafeInteger(data.storyId) || data.storyId <= 0) return "bridge_unavailable";
-  if (typeof data.imported !== "boolean") return "bridge_unavailable";
+  const snapshot=Number.isSafeInteger(data.storyId)&&data.storyId>0&&typeof data.imported==="boolean";
+  const authority=Number.isSafeInteger(data.storyAccessId)&&data.storyAccessId>0&&data.bound===true;
+  if(snapshot===authority)return "bridge_unavailable";
   return null;
 }
 module.exports = { bridgeUrl, canonicalJson, issueDesktopResultShapeError, requestBody, signature, subjectFor };

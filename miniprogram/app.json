@@ -6,6 +6,7 @@
     "pages/profiles/profiles",
     "pages/archive/archive",
     "pages/stories/stories",
+    "pages/story-migration/story-migration",
     "pages/recall/recall",
     "pages/interview/interview",
     "pages/invite/invite",
@@ -13,6 +14,22 @@
     "pages/review/review",
     "pages/book/book",
     "pages/story-images/story-images"
+  ],
+  "subPackages": [
+    {
+      "root": "packages/story-sharing",
+      "name": "story-sharing",
+      "pages": ["pages/invite/index", "pages/read/index", "pages/receive/index", "pages/card/index"]
+    },
+    {
+      "root": "packages/audio",
+      "name": "audio",
+      "pages": [
+        "pages/create/create",
+        "pages/voices/voices",
+        "pages/player/player"
+      ]
+    }
   ],
   "window": {
     "backgroundColor": "#fbf8f1",

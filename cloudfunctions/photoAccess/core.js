@@ -89,6 +89,8 @@ function canViewSharedPhoto(photo, visibleMemories) {
 
 function publicPhoto(photo, input, requester, visibleMemories) {
   if (!photo || photo.familyId !== input.familyId) return { photoId: input.photoId, status: "not_found" };
+  // Source-bound copied media must use the story-aware authorization route.
+  if (photo.sourcePolicyRequired || photo.sourceIds !== undefined) return { photoId: input.photoId, status: "forbidden" };
   if (photo.deletedAt) return { photoId: input.photoId, status: "deleted" };
   const owner = photo._openid === requester;
   if (input.purpose !== "view" && !owner) return { photoId: input.photoId, status: "not_found" };

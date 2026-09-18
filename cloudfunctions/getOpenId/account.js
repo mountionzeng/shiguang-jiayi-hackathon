@@ -52,9 +52,8 @@ async function linkCurrentAccount(db, context) {
 
   await ensureAccountCollection(db);
 
-  const accountId = accountIdFor(openid);
-  const primaryFamilyId = familyIdFor(openid);
-  const accountRef = db.collection(ACCOUNT_COLLECTION).doc(accountId);
+  const accountDocumentId = accountIdFor(openid);
+  const accountRef = db.collection(ACCOUNT_COLLECTION).doc(accountDocumentId);
   const now = db.serverDate();
   let exists = false;
 
@@ -66,6 +65,9 @@ async function linkCurrentAccount(db, context) {
   } catch (error) {
     if (!isNotFoundError(error)) throw error;
   }
+
+  const accountId=String(existingAccount?.accountId||accountDocumentId);
+  const primaryFamilyId=String(existingAccount?.primaryFamilyId||familyIdFor(openid));
 
   const accountData = {
     accountId,

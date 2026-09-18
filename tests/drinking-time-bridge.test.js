@@ -21,6 +21,9 @@ test("云函数只接受微信故事进入电脑这个方向", () => {
   const context = { APPID: "wx-app", OPENID: "openid-secret" };
   assert.throws(() => core.requestBody("list", {}, context), /invalid_input/);
   assert.throws(() => core.requestBody("issueDesktop", { story: null }, context), /invalid_input/);
+  const storyAccess={grantId:"desktop-grant-"+"a".repeat(64)};
+  assert.deepEqual(core.requestBody("issueDesktop",{storyAccess},context).storyAccess,storyAccess);
+  assert.throws(()=>core.requestBody("issueDesktop",{story:{},storyAccess},context),/invalid_input/);
 });
 
 test("跨端身份不回退到旧账号 AppID", () => {
@@ -42,7 +45,7 @@ test("签名序列化与实际 JSON 请求一样忽略 undefined 字段", () => 
   assert.equal(core.canonicalJson({ a: 1, missing: undefined }), '{"a":1}');
 });
 
-test("接口约定 1.0.0 第 3.5 节：成功响应形状不对就当作 bridge_unavailable", () => {
+test("接口约定 1.1.0 第 3.5 节：成功响应形状不对就当作 bridge_unavailable", () => {
   const ok = { code: "ABC234", expiresAt: "2026-09-14T10:05:00.000Z", storyId: 31, imported: true };
   assert.equal(core.issueDesktopResultShapeError("application/json", ok), null);
   assert.equal(core.issueDesktopResultShapeError("application/json; charset=utf-8", ok), null);
@@ -54,4 +57,7 @@ test("接口约定 1.0.0 第 3.5 节：成功响应形状不对就当作 bridge_
   assert.equal(core.issueDesktopResultShapeError("application/json", { ...ok, storyId: 0 }), "bridge_unavailable");
   assert.equal(core.issueDesktopResultShapeError("application/json", { ...ok, storyId: 1.5 }), "bridge_unavailable");
   assert.equal(core.issueDesktopResultShapeError("application/json", { ...ok, imported: "true" }), "bridge_unavailable");
+  const authority={code:"ABC234",expiresAt:"2026-09-14T10:05:00.000Z",storyAccessId:7,bound:true};
+  assert.equal(core.issueDesktopResultShapeError("application/json",authority),null);
+  assert.equal(core.issueDesktopResultShapeError("application/json",{...authority,storyId:3,imported:true}),"bridge_unavailable");
 });

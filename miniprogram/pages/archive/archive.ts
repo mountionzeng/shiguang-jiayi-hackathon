@@ -14,6 +14,7 @@ import {
 } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
 import { logLoadError } from "../../services/loadErrorLog";
+import { loadCurrentStoryId } from "../../services/storySelection";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -42,7 +43,7 @@ function noteTitle(memory: MemoryContribution): string {
 
 Page({
   data: {
-    placements: [] as Array<{ memberId: string; bookName: string; bookTitle: string; chapter: string; chapterId: string }>,
+    placements: [] as Array<{ storyId?: string; memberId: string; bookName: string; bookTitle: string; chapter: string; chapterId: string }>,
     memberName: "",
     notes: [] as NoteView[],
     noteCount: 0,
@@ -204,7 +205,11 @@ Page({
   },
 
   openPlacement(event: { currentTarget: { dataset: { member: string; chapter: string } } }) {
-    wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(event.currentTarget.dataset.member) + "&chapterId=" + encodeURIComponent(event.currentTarget.dataset.chapter) });
+    const placement = this.data.placements.find(item => item.chapterId === event.currentTarget.dataset.chapter);
+    const bookParam = placement?.storyId
+      ? "storyId=" + encodeURIComponent(placement.storyId)
+      : "memberId=" + encodeURIComponent(event.currentTarget.dataset.member);
+    wx.navigateTo({ url: "/pages/book/book?" + bookParam + "&chapterId=" + encodeURIComponent(event.currentTarget.dataset.chapter) });
   },
   organizeIntoBook() {
     if (this.data.savingEdit) return;
@@ -212,7 +217,10 @@ Page({
     if (original && (this.data.editTitle !== (original.title || "") || this.data.editText !== original.text || this.data.editStory !== contributionStoryTitle(original))) {
       wx.showToast({ title: "请先保存记忆修改，再整理进书", icon: "none" }); return;
     }
-    wx.navigateTo({ url: "/pages/book/book" + (this.data.editingId ? "?memoryIds=" + encodeURIComponent(this.data.editingId) : "?memoryIds=" + this.data.unrecordedItems.map(item => encodeURIComponent(item.id)).join(",")) });
+    const storyId = loadCurrentStoryId();
+    const memoryIds = this.data.editingId ? encodeURIComponent(this.data.editingId) : this.data.unrecordedItems.map(item => encodeURIComponent(item.id)).join(",");
+    const query = [storyId ? "storyId=" + encodeURIComponent(storyId) : "", "memoryIds=" + memoryIds].filter(Boolean).join("&");
+    wx.navigateTo({ url: "/pages/book/book?" + query });
   },
   startRecording() { wx.navigateTo({ url: "/pages/interview/interview?memoryType=note" }); },
 

@@ -126,6 +126,8 @@ export function isActiveMemory(contribution: MemoryContribution): boolean {
 }
 
 export interface BiographyDraft {
+  /** Unknown versions must never be flattened and saved by legacy editors. */
+  provenanceVersion?: 1;
   title: string;
   paragraphs: string[];
   sourceCount: number;
@@ -141,7 +143,9 @@ export interface BiographyDraft {
   chapters?: ManuscriptChapter[];
 }
 
-export type ManuscriptContent = { text: string; photoId?: never } | { photoId: string; text?: never };
+/** Server-assigned provenance. Presence requires the protected editing protocol. */
+export interface ManuscriptBlockProvenance { blockId?: string; sourceIds?: string[] }
+export type ManuscriptContent = ({ text: string; photoId?: never } | { photoId: string; text?: never }) & ManuscriptBlockProvenance;
 
 export interface ManuscriptChapter {
   /** Stable across versions so a rearranged version still refers to the same chapter. */
@@ -207,6 +211,9 @@ export interface PendingChapterRevision {
 }
 
 export interface FamilyRoomState {
+  stories?: Story[];
+  storyMigration?: { version: number; status: "preparing" | "restarting" | "active"; pending: StoryMigrationItem[] };
+  storyOperations?: Record<string, { fingerprint: string; storyId: string }>;
   importedCloudRooms?: string[];
   roomName: string;
   protagonistName: string;
@@ -235,10 +242,17 @@ export interface DeletedStory {
  * 规则来源：docs/2026-09-14-story-records-plan.md，用户 2026-09-14 确认。
  */
 export interface Story {
+  /** Server-owned marker; ownership does not override source distribution restrictions. */
+  sourcePolicyRequired?: boolean;
   id: string;
   familyId: string;
   /** 同一账号内不重名（去掉首尾空格后比较，不含已删除的故事）。 */
   title: string;
+  bookTitle?: string;
+  writingMode?: "objective" | "creative";
+  version?: number;
+  currentRevisionId?: string;
+  imageIds?: string[];
   /** 这个故事的主人公；可以是任何人，也可以没有。 */
   protagonistMemberIds: string[];
   /** 这个故事的素材：属于它的全部记忆，不论写没写进章节。一段记忆可以在多个故事里。 */
@@ -266,6 +280,9 @@ export interface Story {
 
 export interface ManuscriptRevision {
   id: string;
+  storyId?: string;
+  expectedStoryVersion?: number;
+  sourceRevisionId?: string;
   memberId: string;
   kind: "draft" | "version" | "restore";
   label: string;
@@ -273,6 +290,28 @@ export interface ManuscriptRevision {
   sourceFingerprint: string;
   draft: BiographyDraft;
 }
+
+export interface StoryMigrationChapterItem {
+  id: string;
+  kind?: "chapter";
+  sourceRevisionId: string;
+  memberId: string;
+  chapter: ManuscriptChapter;
+  reason: string;
+  resolvedStoryId?: string;
+}
+
+export interface StoryMigrationAssetItem {
+  id: string;
+  kind: "image" | "image-job";
+  reason: string;
+  imageId?: string;
+  jobId?: string;
+  status?: string;
+  resolvedStoryId?: string;
+}
+
+export type StoryMigrationItem = StoryMigrationChapterItem | StoryMigrationAssetItem;
 
 export interface CreateContributionInput {
   authorMemberId: string;

@@ -5,6 +5,7 @@ import { createContribution, personalBookSourceFingerprint } from "../miniprogra
 import { appendCloudContribution as appendContributionRemoteFirst, appendCloudContributions, deleteCloudContribution as deleteContributionRemoteFirst, loadCloudRoomState as loadRoomStateRemoteFirst } from "../miniprogram/services/cloudRoomStorage";
 import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
+import { ensureStoryBooks } from "../miniprogram/services/storyBooks";
 
 // Synthetic wx I/O only: repository, cloud storage and domain code all run unmocked.
 function fixture() {
@@ -71,6 +72,49 @@ test("normal loading restores existing cloud people without overwriting local-on
     f.failures.add("family_members:get");
     await assert.rejects(localRepository.loadRoomStateRemoteFirst(), /permission denied/);
     assert.deepEqual(f.local.get("shiguang-family-room-v5"), localOnly);
+  } finally { f.restore(); }
+});
+
+test("a missing storyBooks function keeps legacy cloud stories readable", async () => {
+  const f = fixture();
+  try {
+    const item = { ...memory(), storyTitle: "仍然在的故事" };
+    await appendContributionRemoteFirst(item);
+    (globalThis as any).wx.cloud.callFunction = async ({ name }: { name: string }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      throw Object.assign(new Error("cloud.callFunction:fail Error: errCode: -501000 FunctionName parameter could not be found"), {
+        errCode: -501000,
+        errMsg: "cloud.callFunction:fail FunctionName parameter could not be found",
+      });
+    };
+
+    const state = await ensureStoryBooks();
+
+    assert.equal(state.contributions.length, 1);
+    assert.equal(state.contributions[0].storyTitle, "仍然在的故事");
+    assert.equal(state.storyMigration, undefined, "read-only fallback must not pretend migration completed");
+  } finally { f.restore(); }
+});
+
+test("a disabled storyBooks migration keeps legacy cloud stories readable", async () => {
+  const f = fixture();
+  try {
+    const item = { ...memory(), storyTitle: "迁移前仍可阅读" };
+    await appendContributionRemoteFirst(item);
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data?: { action?: string } }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name === "storyBooks" && data?.action === "state") return { result: {} };
+      if (name === "storyBooks" && data?.action === "migrate") return {
+        result: { error: "STORY_BOOK_ERROR", code: "MIGRATION_NOT_READY", message: "新版故事库正在准备，请保留现有内容，稍后再试" },
+      };
+      throw new Error("unexpected cloud function");
+    };
+
+    const state = await ensureStoryBooks();
+
+    assert.equal(state.contributions.length, 1);
+    assert.equal(state.contributions[0].storyTitle, "迁移前仍可阅读");
+    assert.equal(state.storyMigration, undefined);
   } finally { f.restore(); }
 });
 

@@ -191,6 +191,7 @@
     wx:for="{{storyOptions}}"
     wx:key="key"
     data-title="{{item.title}}"
+    data-key="{{item.key}}"
     bindtap="chooseStory"
     hover-class="none"
     aria-label="换到{{item.title}}"

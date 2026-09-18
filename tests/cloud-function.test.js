@@ -18,6 +18,43 @@ const {
 } = require("../cloudfunctions/ensureCloudCollections/bootstrap.js");
 const accountTest = require("../cloudfunctions/getOpenId/account.js");
 
+function storyCloudFixture() {
+  const docs = new Map([
+    ["stories:family_fixture-user_story-a", { familyId: "family_fixture-user", id: "story-a", writingMode: "creative", memoryIds: ["memory-a"], currentRevisionId: "revision-a" }],
+    ["biography_drafts:family_fixture-user_revision-a", {
+      familyId: "family_fixture-user",
+      storyId: "story-a",
+      revision: { storyId: "story-a", draft: { chapters: [{ content: [{ text: "A 书旧章节" }] }] } },
+    }],
+  ]);
+  const rows = {
+    memories: [
+      { familyId: "family_fixture-user", frontendContributionId: "memory-a", scope: "personal", authorName: "甲", relation: "本人", text: "A 书记忆" },
+      { familyId: "family_fixture-user", frontendContributionId: "memory-b", scope: "personal", authorName: "乙", relation: "亲友", text: "B 书秘密" },
+    ],
+  };
+  const db = {
+    collection(name) {
+      return {
+        doc(id) { return { get: async () => {
+          const value = docs.get(`${name}:${id}`);
+          if (!value) throw new Error("not found");
+          return { data: value };
+        } }; },
+        where(filter) {
+          let result = (rows[name] || []).filter(row => Object.entries(filter).every(([key, value]) => row[key] === value));
+          const chain = {
+            orderBy() { return chain; }, skip(offset) { result = result.slice(offset); return chain; }, limit(count) { result = result.slice(0, count); return chain; },
+            async get() { return { data: result }; },
+          };
+          return chain;
+        },
+      };
+    },
+  };
+  return { getWXContext: () => ({ OPENID: "fixture-user" }), database: () => db };
+}
+
 test("微信账号绑定使用稳定的非明文账号 ID，并沿用原有家庭数据空间", () => {
   const openid = "o-test_user-123";
   assert.match(accountTest.accountIdFor(openid), /^account_[0-9a-f]{24}$/);
@@ -79,10 +116,10 @@ test("微信账号首次进入时建立账号记录并绑定已有家庭空间",
   );
 });
 
-test("微信账号再次进入只刷新关联状态，不覆盖首次关联时间", async () => {
+test("微信账号再次进入保留稳定账号和家庭映射，只刷新关联状态", async () => {
   const accountId = accountTest.accountIdFor("fixture-user");
   const records = new Map([
-    [`user_accounts:${accountId}`, { accountId, createdAt: "FIRST_LINK" }],
+    [`user_accounts:${accountId}`, { accountId:'account_111111111111111111111111',primaryFamilyId:'family_migrated',createdAt: "FIRST_LINK" }],
   ]);
   const db = {
     serverDate: () => "NEXT_SEEN",
@@ -100,11 +137,13 @@ test("微信账号再次进入只刷新关联状态，不覆盖首次关联时�
     }),
   };
 
-  await accountTest.linkCurrentAccount(db, { OPENID: "fixture-user" });
+  const identity=await accountTest.linkCurrentAccount(db, { OPENID: "fixture-user" });
   const account = records.get(`user_accounts:${accountId}`);
   assert.equal(account.createdAt, "FIRST_LINK");
   assert.equal(account.computeBalanceMicros, 10_000_000);
   assert.equal(account.lastSeenAt, "NEXT_SEEN");
+  assert.equal(identity.accountId,'account_111111111111111111111111');
+  assert.equal(identity.primaryFamilyId,'family_migrated');
 });
 
 test("cloud collection bootstrap creates the text MVP collections in order", async () => {
@@ -193,6 +232,33 @@ test("chapter organizing names one chapter and treats its existing text as data"
   assert.doesNotMatch(chapter, /传记第一章/);
   const older = _test.buildUserMessage({ protagonistName: "林致远" }, memories);
   assert.match(older, /请为林致远整理传记第一章/, "older clients without chapter fields keep the original request");
+});
+
+test("story AI sources are loaded under the authenticated current-book boundary", async () => {
+  const cloud = storyCloudFixture();
+  const context = await chatInterviewTest.loadStoryContext({ storyId: "story-a", storyContext: "伪造的 B 书内容" }, cloud);
+  assert.match(context, /A 书旧章节/);
+  assert.match(context, /A 书记忆/);
+  assert.doesNotMatch(context, /B 书秘密|伪造/);
+
+  const memories = await _test.loadStoryMemories({ storyId: "story-a", memoryIds: ["memory-a"], memories: [{ text: "伪造" }] }, cloud);
+  assert.deepEqual(memories.map(memory => memory.text), ["A 书记忆"]);
+  await assert.rejects(
+    () => _test.loadStoryMemories({ storyId: "story-a", memoryIds: ["memory-b"] }, cloud),
+    /INVALID_STORY_SOURCES/,
+  );
+});
+
+test("story AI refuses source-bound stories and memories before provider input is built",async()=>{
+  const cloud=storyCloudFixture(),db=cloud.database();
+  const story=(await db.collection("stories").doc("family_fixture-user_story-a").get()).data;
+  story.sourcePolicyRequired=true;
+  await assert.rejects(()=>_test.loadStoryMemories({storyId:"story-a",memoryIds:["memory-a"]},cloud),/STORY_PROTOCOL_REQUIRED/);
+  await assert.rejects(()=>chatInterviewTest.loadStoryContext({storyId:"story-a"},cloud),/STORY_PROTOCOL_REQUIRED/);
+  delete story.sourcePolicyRequired;
+  const memory=(await db.collection("memories").where({familyId:"family_fixture-user"}).orderBy("_id","asc").skip(0).limit(100).get()).data[0];
+  memory.sourceIds=[];
+  await assert.rejects(()=>_test.loadStoryMemories({storyId:"story-a",memoryIds:["memory-a"]},cloud),/STORY_PROTOCOL_REQUIRED/);
 });
 
 test("the cloud function rejects generation when model credentials are absent", async () => {

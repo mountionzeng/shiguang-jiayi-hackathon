@@ -482,6 +482,16 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
     .filter(record => record.draftType === "personal" && record.memberId && record.draft &&
       record.sourceFingerprint === personalBookSourceFingerprint(state, record.memberId))
     .map(record => [record.memberId as string, record.draft as BiographyDraft]));
+  try {
+    const response = await wx.cloud.callFunction({name:'storyBooks',data:{action:'state'}});
+    const result = response.result as Partial<FamilyRoomState> & {error?:string;message?:string};
+    if (result?.error) throw new Error(result.message || '故事库加载失败');
+    if (result?.storyMigration) return {...state,stories:result.stories ?? [],storyMigration:result.storyMigration,
+      manuscriptRevisions:[...state.manuscriptRevisions,...(result.manuscriptRevisions ?? [])]};
+  } catch (error) {
+    // Older deployments remain readable, but the new write API never falls back.
+    if (!/FUNCTION_NOT_FOUND|-501000|could not be found|unexpected cloud function:\s*storyBooks/i.test(String((error as Error).message || error))) throw error;
+  }
   return state;
 }
 
@@ -826,6 +836,8 @@ export async function resetCloudCurrentUserRoom(): Promise<FamilyRoomState> {
     await wx.cloud.callFunction({ name: "resetCurrentUserRoom" });
     return loadCloudRoomState();
   } catch (error) {
+    const state = await loadCloudRoomState();
+    if (state.storyMigration) throw new Error('清空没有完成，请重试；已有故事仍保留');
     console.warn("服务端清空当前账号失败，将尝试客户端清空", error);
   }
 

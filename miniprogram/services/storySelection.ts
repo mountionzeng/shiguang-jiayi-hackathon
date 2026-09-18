@@ -1,4 +1,7 @@
 const CURRENT_STORY_KEY = "shiguang-current-story-v1";
+const CURRENT_STORY_ID_KEY = 'shiguang-current-story-id-v1';
+export function loadCurrentStoryId(): string { return wx.getStorageSync<string>(CURRENT_STORY_ID_KEY) || ''; }
+export function saveCurrentStoryId(id:string): void { wx.setStorageSync(CURRENT_STORY_ID_KEY,id); }
 
 /** "" means an ungrouped conversation; undefined means no explicit choice yet. */
 export function loadCurrentStoryTitle(): string | undefined {

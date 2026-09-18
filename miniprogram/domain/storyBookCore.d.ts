@@ -1,0 +1,12 @@
+import { FamilyRoomState, Story, ManuscriptRevision, BiographyDraft, ManuscriptChapter } from './biography';
+export const STORY_ID: RegExp;
+export function stable(value: unknown): string;
+export function hash(value: string): string;
+export function activeStory(state: FamilyRoomState, id: string, includeDeleted?: boolean): Story;
+export function history(state: FamilyRoomState, id: string): ManuscriptRevision[];
+export function current(state: FamilyRoomState, id: string): {draft?: BiographyDraft; revisionId: string; sourceFingerprint: string};
+export function flatten(chapters: ManuscriptChapter[]): Pick<BiographyDraft,'content'|'paragraphs'>;
+export function validateDraft(draft: BiographyDraft, story: Story): void;
+export function fingerprint(state: FamilyRoomState, id: string): string;
+export function apply(state: FamilyRoomState, command: Record<string, unknown>, now?: string): FamilyRoomState;
+export function migrate(state: FamilyRoomState, familyId?: string, now?: string): FamilyRoomState;

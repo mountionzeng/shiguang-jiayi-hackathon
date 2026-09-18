@@ -5,6 +5,10 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
 const COLLECTIONS = {
+  stories: "stories",
+  storyNames: "story_names",
+  storyOperations: "story_operations",
+  storyMigrationItems: "story_migration_items",
   families: "families",
   familyMembers: "family_members",
   sourceRecords: "source_records",
@@ -17,6 +21,11 @@ const COLLECTIONS = {
   familyAccess: "family_access",
   imageJobs: "image_jobs",
   storyImages: "story_images",
+  storyImageLinks: "story_image_links",
+  storyImageJobLinks: "story_image_job_links",
+  audioOperations: "audio_operations",
+  voiceProfiles: "voice_profiles",
+  audioWorks: "audio_works",
   photos: "photos",
   photoCaptionLogs: "photo_caption_logs",
 };
@@ -72,6 +81,23 @@ async function clearCollectionByFamilyId(collectionName, familyId) {
         .map((id) => db.collection(collectionName).doc(id).remove()),
     );
     removed += records.length;
+  }
+}
+
+/** Fence media workers before record/file deletion; late CAS writes then cannot revive a work. */
+async function fenceAudioFamily(familyId) {
+  for(const [collectionName,patchFor] of [
+    [COLLECTIONS.audioOperations,record=>({status:'cancelled',generation:Number(record.generation||0)+1,cancelledAt:db.serverDate()})],
+    [COLLECTIONS.voiceProfiles,record=>({status:'disabled',generation:Number(record.generation||0)+1,disabledAt:db.serverDate()})],
+  ]) {
+    for(let offset=0;;offset+=100){
+      let response;
+      try{response=await db.collection(collectionName).where({familyId}).skip(offset).limit(100).get();}
+      catch(error){if(collectionMissing(error)){response={data:[]};}else throw error;}
+      const records=response.data||[];
+      await Promise.all(records.map(record=>db.collection(collectionName).doc(record._id).update({data:patchFor(record)})));
+      if(records.length<100)break;
+    }
   }
 }
 
@@ -163,6 +189,7 @@ async function main() {
 
   const familyId = currentFamilyId(openid);
   await removeFamilyDoc(familyId);
+  await fenceAudioFamily(familyId);
   const removedImageFiles = await removeStoryImageFiles(familyId);
   const removedPhotoFiles = await removePhotoFiles(familyId);
   const removedCounts = {};

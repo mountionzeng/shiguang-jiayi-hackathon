@@ -38,6 +38,7 @@ import { discardLocalPhotos, saveLocalPhoto } from "../../services/bookImages";
 import { classifyImportFiles, ImportFileLike, readImportTextFile } from "../../services/memoryImport";
 import { CAPTION_EDITED_LABEL, CAPTION_LABEL, storyImageApi } from "../../services/storyImageService";
 import { resumePhotoUploads } from "../../services/photoCloud";
+import { activeStory, linkStoryMemories } from "../../services/storyBooks";
 
 interface MessageView {
   id: string;
@@ -61,6 +62,7 @@ interface MemberOptionView {
 }
 
 interface InterviewLoadOptions {
+  storyId?: string;
   sourceId?: string;
   storyTitle?: string;
   memoryType?: string;
@@ -176,6 +178,7 @@ Page({
     // 「随手记 / 回忆录」沿用原型的说法，在整理时才选，入口仍然只有一个。
     memoryType: "note" as MemoryType,
     storyTitle: "",
+    storyId: "", writingMode: "creative" as "objective" | "creative",
     storyOptions: [] as StoryOptionView[],
     relatedMemberIds: [] as string[],
     relatedOptions: [] as MemberOptionView[],
@@ -218,6 +221,11 @@ Page({
     }
     const question = pickInterviewQuestion(sharedQuestionSeed(), sharedFamilyId ? "family" : "personal");
     const requestedStoryTitle = decodeQueryValue(options.storyTitle);
+    const requestedStoryId = decodeQueryValue(options.storyId);
+    const requestedStory = !sharedFamilyId && requestedStoryId
+      ? (state.stories ?? []).find(story => story.id === requestedStoryId && !story.deletedAt)
+      : undefined;
+    if (requestedStoryId && !requestedStory) throw new Error("这本故事书已不可用");
     const requestedSourceId = decodeQueryValue(options.sourceId);
     const requestedMemoryType: MemoryType | undefined =
       options.memoryType === "memoir"
@@ -233,7 +241,7 @@ Page({
       ))
     ));
     const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
-    const storyTitle = sourceStoryTitle || requestedStoryTitle;
+    const storyTitle = requestedStory?.title || sourceStoryTitle || requestedStoryTitle;
     const sourcePreview = source
       ? `${source.text.slice(0, 72)}${source.text.length > 72 ? "……" : ""}`
       : "";
@@ -261,6 +269,8 @@ Page({
       askedDimensions: requestedQuestion && requestedDimension ? [requestedDimension] : [],
       dateLabel: today(),
       storyTitle,
+      storyId: requestedStory?.id || "",
+      writingMode: requestedStory?.writingMode || "creative",
       storyOptions: storyOptionsFor(
         state.contributions,
         storyTitle,
@@ -381,6 +391,12 @@ Page({
       message: "退出时会尝试保存。为避免网络失败，请先完成保存并确认成功。",
     });
 
+    if (this.data.writingMode === "objective" && this.data.storyId) {
+      this.setData({ asking: false });
+      wx.showToast({ title: "已记下，可以继续补充或完成", icon: "none" });
+      return;
+    }
+
     try {
       const prompt = await generateInterviewPrompt({
         answer,
@@ -389,6 +405,7 @@ Page({
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
+        storyId: this.data.storyId,
         previousAnswers,
         conversation,
       });
@@ -421,6 +438,7 @@ Page({
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
+        useAi: this.data.writingMode === "creative",
       });
       const covered = detectCoveredDimensions(draft.body);
 
@@ -788,7 +806,10 @@ Page({
         createdAt: this.pendingContribution?.createdAt ?? contribution.createdAt,
       };
       if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
-      else await appendContributionRemoteFirst(this.pendingContribution);
+      else {
+        const savedState = await appendContributionRemoteFirst(this.pendingContribution);
+        if (this.data.storyId) await linkStoryMemories(activeStory(savedState, this.data.storyId), [this.pendingContribution.id]);
+      }
 
       this.setData({
         saved: true,

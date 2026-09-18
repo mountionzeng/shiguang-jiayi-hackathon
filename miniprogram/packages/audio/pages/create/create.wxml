@@ -1,0 +1,20 @@
+<view class="audio-page">
+  <view class="hero">
+    <view class="eyebrow">有声故事</view>
+    <view class="hero-title">让这段往事，慢慢说给你听</view>
+    <view class="hero-copy">从已保存的章节制作人声朗读。文字、照片与声音会固定在同一个版本里。</view>
+  </view>
+  <view class="paper-card" wx:if="{{loading}}"><view class="card-title">正在确认服务状态</view><view class="card-copy">不会在确认前提交任何付费任务。</view></view>
+  <view class="paper-card error-card" wx:elif="{{loadError}}"><view class="card-title">暂时无法打开</view><view class="card-copy">{{loadError}}</view><button class="secondary" bindtap="refreshCapabilities">重新确认</button></view>
+  <block wx:else>
+    <view class="paper-card">
+      <view class="card-kicker">声音</view><view class="card-title">用熟悉的声音朗读</view>
+      <view class="card-copy">{{cloneAvailable ? '可以选择自己的声音，或使用已核验的现成声音。' : '自己的声音正在核验中；未开放前不会上传录音。'}}</view>
+      <view class="official-voices" wx:if="{{officialVoices.length}}"><button wx:for="{{officialVoices}}" wx:key="id" class="voice-option" data-id="{{item.id}}" data-label="{{item.label}}" bindtap="chooseOfficial">{{item.label}}</button></view><view class="selected-voice" wx:if="{{selectedVoice}}">已选择：{{selectedVoice.label}}</view><button class="secondary" bindtap="openVoices">{{selectedVoice ? '更换声音' : '选择我的声音'}}</button>
+    </view>
+    <view class="paper-card"><view class="card-kicker">动态故事页</view><view class="card-title">听到哪一句，就看到哪一句</view><view class="card-copy">完成后会按真实播放位置高亮文字；暂停或缓冲时，画面也会停下。</view></view>
+    <view class="paper-card"><view class="card-kicker">视频</view><view class="card-title">{{videoAvailable ? '可输出竖屏视频' : '视频导出仍在核验'}}</view><view class="card-copy">视频与动态页共用同一份文字和时间轴，不会另写一份故事。</view></view>
+    <view class="gate" wx:if="{{unavailable}}">{{unavailable}}</view>
+    <button class="primary" disabled="{{!canCreate || creating}}" bindtap="startCreate">{{creating ? '正在提交…' : canCreate ? '开始制作' : '真实制作暂未开放'}}</button>
+  </block>
+</view>

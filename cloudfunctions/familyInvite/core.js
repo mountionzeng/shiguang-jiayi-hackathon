@@ -98,14 +98,17 @@ function visibleMemoriesForAccess(memories, access) {
   if (access && access.role === "owner") return memories;
   const memberId = String(access && access.memberId || "");
   if (!memberId) return [];
-  return memories.filter(memory => (
-    memory.authorMemberId === memberId ||
-    (
-      memory.scope === "personal" &&
-      Array.isArray(memory.sharedWithMemberIds) &&
-      memory.sharedWithMemberIds.includes(memberId)
-    )
-  ));
+  return memories.filter(memory => {
+    const legacySafe=!memory.sourcePolicyRequired&&memory.sourceIds===undefined&&memory.blockId===undefined&&memory.provenanceVersion===undefined;
+    return legacySafe && (
+      memory.authorMemberId === memberId ||
+      (
+        memory.scope === "personal" &&
+        Array.isArray(memory.sharedWithMemberIds) &&
+        memory.sharedWithMemberIds.includes(memberId)
+      )
+    );
+  });
 }
 
 /**

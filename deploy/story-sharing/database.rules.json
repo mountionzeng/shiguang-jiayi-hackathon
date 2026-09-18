@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "collections": {
+    "story_principals": { "read": false, "write": false },
+    "story_identity_aliases": { "read": false, "write": false },
+    "story_principal_spaces": { "read": false, "write": false },
+    "story_grants": { "read": false, "write": false },
+    "story_source_policies": { "read": false, "write": false },
+    "story_copies": { "read": false, "write": false },
+    "story_excerpt_operations": { "read": false, "write": false },
+    "story_collaboration_operations": { "read": false, "write": false },
+    "story_copy_requests": { "read": false, "write": false },
+    "story_copy_edits": { "read": false, "write": false },
+    "story_returns": { "read": false, "write": false },
+    "story_return_indexes": { "read": false, "write": false },
+    "story_desktop_grants": { "read": false, "write": false },
+    "story_desktop_nonces": { "read": false, "write": false },
+    "story_desktop_operations": { "read": false, "write": false },
+    "story_copy_media": { "read": false, "write": false },
+    "story_copy_assets": { "read": false, "write": false },
+    "story_invitations": { "read": false, "write": false },
+    "story_invite_indexes": { "read": false, "write": false },
+    "story_invite_rates": { "read": false, "write": false },
+    "user_accounts": { "read": false, "write": false }
+  },
+  "note": "部署清单模板，不是可直接整体上传的云平台规则文件。将每个集合的 read/write 规则分别应用并验证；服务端 SDK 使用受控服务身份。既有 families/stories/biography_drafts 规则需单独核验，不能放宽为全员可读。"
+}

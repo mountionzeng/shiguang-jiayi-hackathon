@@ -1,0 +1,9 @@
+{
+  "name": "story-media-worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "engines": {"node": ">=20"},
+  "scripts": {"start": "node index.js", "test": "node --test ../../tests/story-media-queue.test.js ../../tests/story-voice-runner.test.js ../../tests/story-narration.test.js"},
+  "dependencies": {"tencentcloud-sdk-nodejs": "4.1.314"}
+}

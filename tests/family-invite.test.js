@@ -138,6 +138,8 @@ test("被邀请人只看到自己写的或明确分享给自己的个人记忆",
     { id: "shared-b", authorMemberId: "owner", scope: "personal", sharedWithMemberIds: ["friend-b"] },
     { id: "family-confirmed", authorMemberId: "owner", scope: "family", visibility: "family", reviewStatus: "confirmed" },
     { id: "own", authorMemberId: "friend-a", scope: "family", visibility: "family", reviewStatus: "pending" },
+    { id: "protected-shared", authorMemberId: "owner", scope: "personal", sharedWithMemberIds: ["friend-a"], sourceIds: ["source-secret"] },
+    { id: "protected-own", authorMemberId: "friend-a", scope: "family", sourcePolicyRequired: true },
   ];
 
   assert.deepEqual(
@@ -145,7 +147,7 @@ test("被邀请人只看到自己写的或明确分享给自己的个人记忆",
       .map(memory => memory.id),
     ["shared-a", "own"],
   );
-  assert.equal(invite.visibleMemoriesForAccess(memories, { role: "owner", memberId: "owner" }).length, 5);
+  assert.equal(invite.visibleMemoriesForAccess(memories, { role: "owner", memberId: "owner" }).length, 7);
 });
 
 test("提交进主人待确认列表前先过内容安全检测，不通过就不写库", () => {

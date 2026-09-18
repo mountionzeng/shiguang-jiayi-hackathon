@@ -13,6 +13,9 @@ import { currentManuscript, manuscriptHistory } from "./manuscript";
  * 这里只读现有数据，不写库；故事以后有了自己的记录，只需要换掉这里的来源。
  */
 export interface ShelfStory {
+  storyId?: string;
+  writingMode?: "objective" | "creative";
+  bookTitle?: string;
   key: string;
   title: string;
   /** Newest first. */
@@ -27,6 +30,14 @@ export interface ShelfStory {
 export const UNTITLED_MANUSCRIPT = "还没取名的书稿";
 
 export function storyShelf(state: FamilyRoomState): ShelfStory[] {
+  if (state.storyMigration?.status === 'active') return (state.stories ?? []).filter(s=>!s.deletedAt).map(story=>{
+    const current = currentManuscript(state,story.id);
+    const draft = current.draft;
+    const memoryIds = story.memoryIds.filter(id=>state.contributions.some(m=>m.id===id && !m.deletedAt));
+    return {key:story.id,storyId:story.id,title:story.title,bookTitle:story.bookTitle || story.title,writingMode:story.writingMode || 'objective',memoryIds,latestAt:story.updatedAt,
+      excerpt:(draft?.paragraphs[0] || state.contributions.find(m=>memoryIds.includes(m.id))?.text || '').slice(0,64),
+      manuscriptMemberId:story.id,chapterCount:draft?.chapters?.length ?? 0};
+  }).sort((a,b)=>b.latestAt.localeCompare(a.latestAt));
   const byTitle = new Map<string, ShelfStory>();
   memoryPool(state.contributions)
     .slice()

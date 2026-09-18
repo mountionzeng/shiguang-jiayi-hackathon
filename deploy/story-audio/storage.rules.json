@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "paths": {
+    "voice-samples/**": {"clientRead": false, "clientWrite": "only_server_issued_private_upload_path"},
+    "story-audio/**": {"clientRead": false, "clientWrite": false, "serverOnly": true}
+  },
+  "note": "录音样本仅允许已获得独立声音授权后由云函数签发的私有路径上传；作品、人声、混音和视频一律由 worker 写入。"
+}

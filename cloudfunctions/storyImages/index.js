@@ -1,5 +1,5 @@
 const cloud = require("wx-server-sdk");
-const { StoryImageError } = require("./core");
+const { StoryImageError, assertUnrestrictedStory, chapterSource, draftReferencesStoryImage, textHash } = require("./core");
 const { createCaptionHandler } = require("./caption");
 const { createDiagnostics } = require("./diagnostics");
 const { createStoryImageHandlers } = require("./flow");
@@ -19,6 +19,9 @@ const JOBS = "image_jobs";
 const IMAGES = "story_images";
 const CAPTION_LOGS = "photo_caption_logs";
 const DRAFTS = "biography_drafts";
+const STORIES = "stories";
+const IMAGE_LINKS = "story_image_links";
+const JOB_LINKS = "story_image_job_links";
 const ACTIVE_STATUSES = ["submitted", "queued", "generating", "generated", "storing"];
 
 function errorMessage(error) {
@@ -36,7 +39,7 @@ function isMissing(error) {
 let collectionsReady = false;
 async function ensureCollections() {
   if (collectionsReady) return;
-  for (const name of [JOBS, IMAGES, CAPTION_LOGS]) {
+  for (const name of [JOBS, IMAGES, CAPTION_LOGS, IMAGE_LINKS, JOB_LINKS]) {
     try {
       await db.createCollection(name);
     } catch (error) {
@@ -66,32 +69,128 @@ async function loadAll(collectionName, where) {
   }
 }
 
+async function loadLinked(collectionName,links,key) {
+  const rows=await Promise.all(links.map(link=>getDoc(collectionName,link[key])));
+  return rows.filter(Boolean);
+}
+
+function uniqueById(rows) {
+  return [...new Map(rows.map(row=>[row._id,row])).values()];
+}
+
 function withoutId(data) {
   const { _id, ...rest } = data;
   return rest;
 }
 
+async function getTransactionDoc(transaction,collectionName,id) {
+  try { return (await transaction.collection(collectionName).doc(id).get()).data; }
+  catch(error) { if(isMissing(error))return undefined; throw error; }
+}
+
 const repo = {
   getJob: id => getDoc(JOBS, id),
   createJob: (id, data) => db.collection(JOBS).doc(id).set({ data: withoutId(data) }),
+  async createJobForActiveStory(id,data) {
+    return db.runTransaction(async transaction=>{
+      const existing=await getTransactionDoc(transaction,JOBS,id);
+      if(existing)return existing;
+      const story=await getTransactionDoc(transaction,STORIES,`${data.familyId}_${data.storyId}`);
+      if(!story || story.familyId!==data.familyId || story.deletedAt)throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
+      if(story.currentRevisionId!==data.sourceRevisionId)throw new StoryImageError("REVISION_CHANGED","书稿版本已经变化，请重新配图");
+      const record=await getTransactionDoc(transaction,DRAFTS,`${data.familyId}_${data.sourceRevisionId}`);
+      if(record?.familyId!==data.familyId||record.storyId!==data.storyId||record.revision?.id!==data.sourceRevisionId||record.revision.storyId!==data.storyId)
+        throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
+      assertUnrestrictedStory(story,record.revision.draft);
+      await transaction.collection(JOBS).doc(id).set({data:withoutId(data)});
+      return undefined;
+    });
+  },
+  async getActiveStoryDraft(familyId,storyId) {
+    const story=await getDoc(STORIES,`${familyId}_${storyId}`);
+    if(!story||story.familyId!==familyId||story.deletedAt||typeof story.currentRevisionId!=='string')return undefined;
+    const record=await getDoc(DRAFTS,`${familyId}_${story.currentRevisionId}`);
+    if(record?.familyId!==familyId||record.storyId!==storyId||record.revision?.id!==story.currentRevisionId||record.revision.storyId!==storyId)return undefined;
+    return {story,revision:record.revision,draft:record.revision.draft};
+  },
+  async assertStoryImageSource(job) {
+    return db.runTransaction(async transaction=>{
+      const story=await getTransactionDoc(transaction,STORIES,`${job.familyId}_${job.storyId}`);
+      if(!story||story.familyId!==job.familyId||story.deletedAt)throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
+      if(story.currentRevisionId!==job.sourceRevisionId)throw new StoryImageError("REVISION_CHANGED","书稿版本已经变化，请重新配图");
+      const record=await getTransactionDoc(transaction,DRAFTS,`${job.familyId}_${job.sourceRevisionId}`);
+      if(record?.familyId!==job.familyId||record.storyId!==job.storyId||record.revision?.id!==job.sourceRevisionId||record.revision.storyId!==job.storyId)
+        throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
+      assertUnrestrictedStory(story,record.revision.draft);
+      const source=chapterSource(record.revision.draft,job.chapterId);
+      if(textHash(source.text)!==job.source?.textHash)throw new StoryImageError("REVISION_CHANGED","章节内容已经变化，请重新配图");
+    });
+  },
+  async isActiveStory(familyId,storyId) {
+    const story=await getDoc(STORIES,`${familyId}_${storyId}`);
+    return Boolean(story && story.familyId===familyId && !story.deletedAt);
+  },
+  async isImageLinkedToStory(familyId,storyId,imageId) {
+    const rows=await loadAll(IMAGE_LINKS,{familyId,storyId,imageId});return rows.length>0;
+  },
+  async isJobLinkedToStory(familyId,storyId,jobId) {
+    const rows=await loadAll(JOB_LINKS,{familyId,storyId,jobId});return rows.length>0;
+  },
+  async listImageStoryIds(familyId,imageId) {
+    return [...new Set((await loadAll(IMAGE_LINKS,{familyId,imageId})).map(link=>link.storyId).filter(Boolean))];
+  },
   updateJob: (id, patch) => db.collection(JOBS).doc(id).update({ data: patch }),
   async claimJob(id, fromStatuses, patch) {
     const response = await db.collection(JOBS).where({ _id: id, status: _.in(fromStatuses) }).update({ data: patch });
     return Boolean(response && response.stats && response.stats.updated === 1);
   },
-  async countJobs({ familyId, memberId, dayKey, statuses }) {
+  async countJobs({ familyId, memberId, storyId, dayKey, statuses }) {
     const where = { familyId, status: _.in(statuses) };
     if (memberId) where.memberId = memberId;
+    if (storyId) where.storyId = storyId;
     if (dayKey) where.dayKey = dayKey;
     const response = await db.collection(JOBS).where(where).count();
     return response.total;
   },
   listDraftRecords: (familyId, memberId) => loadAll(DRAFTS, { familyId, memberId }),
+  listStoryDraftRecords: (familyId, storyId) => loadAll(DRAFTS, { familyId, storyId, draftType: "story-revision" }),
   createImage: (id, data) => db.collection(IMAGES).doc(id).set({ data }),
   getImage: id => getDoc(IMAGES, id),
   updateImage: (id, patch) => db.collection(IMAGES).doc(id).update({ data: patch }),
+  async softDeleteImage(id,{familyId,storyIds,nowMs}) {
+    return db.runTransaction(async transaction=>{
+      const image=await getTransactionDoc(transaction,IMAGES,id);
+      if(!image || image.familyId!==familyId || image.deletedAtMs!==undefined)return "missing";
+      for(const storyId of storyIds || []) {
+        const story=await getTransactionDoc(transaction,STORIES,`${familyId}_${storyId}`);
+        if(story?.coverImageId===id)return "referenced";
+        if(story?.currentRevisionId) {
+          const record=await getTransactionDoc(transaction,DRAFTS,`${familyId}_${story.currentRevisionId}`);
+          if(draftReferencesStoryImage(record?.revision?.draft,id))return "referenced";
+        }
+      }
+      await transaction.collection(IMAGES).doc(id).update({data:{deletedAtMs:nowMs}});
+      return "deleted";
+    });
+  },
   listImages: (familyId, memberId) => loadAll(IMAGES, { familyId, memberId, deletedAtMs: _.exists(false) }),
   listRecentJobs: (familyId, memberId, sinceMs) => loadAll(JOBS, { familyId, memberId, createdAtMs: _.gte(sinceMs) }),
+  async listStoryImages(familyId, storyId) {
+    const [direct,links]=await Promise.all([
+      loadAll(IMAGES,{familyId,storyId,deletedAtMs:_.exists(false)}),
+      loadAll(IMAGE_LINKS,{familyId,storyId}),
+    ]);
+    const linked=await loadLinked(IMAGES,links,'imageId');
+    return uniqueById([...direct,...linked]).filter(image=>image.familyId===familyId && image.deletedAtMs===undefined);
+  },
+  async listRecentStoryJobs(familyId, storyId, sinceMs) {
+    const [direct,links]=await Promise.all([
+      loadAll(JOBS,{familyId,storyId,createdAtMs:_.gte(sinceMs)}),
+      loadAll(JOB_LINKS,{familyId,storyId}),
+    ]);
+    const linked=await loadLinked(JOBS,links,'jobId');
+    return uniqueById([...direct,...linked]).filter(job=>job.familyId===familyId && Number(job.createdAtMs)>=sinceMs);
+  },
   async findImageByTrace(traceId) {
     const response = await db.collection(IMAGES).where({ moderationTraceId: traceId }).limit(1).get();
     return response.data[0];

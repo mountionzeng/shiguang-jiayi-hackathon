@@ -1,4 +1,52 @@
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+const STORY_ID = /^story-[a-z0-9-]{1,100}$/;
+
+async function loadAll(db, collection, familyId) {
+  const rows = [];
+  for (let offset = 0; ; offset += 100) {
+    const result = await db.collection(collection).where({ familyId }).orderBy("_id", "asc").skip(offset).limit(100).get();
+    rows.push(...result.data);
+    if (result.data.length < 100) return rows;
+  }
+}
+
+function memoryIdOf(memory, familyId) {
+  return memory.frontendContributionId || memory.id || String(memory.sourceRecordId || "").replace(/^src_/, "").replace(`${familyId}_`, "") || String(memory._id || "").replace(`${familyId}_`, "");
+}
+function protocolRequired(value) {
+  if(value?.sourcePolicyRequired||value?.sourceIds!==undefined||value?.blockId!==undefined||value?.provenanceVersion!==undefined)throw new Error("STORY_PROTOCOL_REQUIRED");
+}
+
+/** Resolve selected sources under the authenticated story boundary. */
+async function loadStoryMemories(event, cloud) {
+  const storyId = String(event.storyId || "").trim();
+  if (!STORY_ID.test(storyId)) throw new Error("INVALID_STORY_ID");
+  const openid = String(cloud.getWXContext().OPENID || "");
+  if (!openid) throw new Error("LOGIN_REQUIRED");
+  const familyId = `family_${openid.replace(/[^0-9A-Za-z_-]/g, "_")}`;
+  const db = cloud.database();
+  let story;
+  try { story = (await db.collection("stories").doc(`${familyId}_${storyId}`).get()).data; }
+  catch { throw new Error("STORY_NOT_FOUND"); }
+  if (!story || story.familyId !== familyId || story.deletedAt) throw new Error("STORY_NOT_FOUND");
+  protocolRequired(story);
+  if (story.writingMode !== "creative") throw new Error("STORY_NOT_CREATIVE");
+  const requested = Array.isArray(event.memoryIds) ? [...new Set(event.memoryIds.map(String))] : [];
+  if (!requested.length || requested.length > 20 || requested.some(id => !(story.memoryIds || []).includes(id))) throw new Error("INVALID_STORY_SOURCES");
+  const requestedSet = new Set(requested);
+  const records = await loadAll(db, "memories", familyId);
+  const byId = new Map();
+  records.filter(memory => !memory.deletedAt && memory.scope === "personal").forEach(memory => {
+    const id = memoryIdOf(memory, familyId);
+    if (requestedSet.has(id)) byId.set(id, memory);
+  });
+  if (byId.size !== requested.length) throw new Error("STORY_SOURCE_NOT_FOUND");
+  return requested.map(id => {
+    const memory = byId.get(id);
+    protocolRequired(memory);
+    return { id, authorName: memory.authorName || "讲述者", relation: memory.relation || "亲友", text: memory.text };
+  });
+}
 
 function validateMemories(memories) {
   if (!Array.isArray(memories) || memories.length === 0) {
@@ -88,7 +136,7 @@ function buildUserMessage(event, memories) {
   ].filter(Boolean).join("\n\n");
 }
 
-async function main(event) {
+async function main(event, dependencies = {}) {
   const apiKey = process.env.AI_API_KEY;
   const model = process.env.AI_MODEL;
   const baseUrl = (process.env.AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "");
@@ -97,7 +145,13 @@ async function main(event) {
     throw new Error("AI_NOT_CONFIGURED");
   }
 
-  const memories = validateMemories(event.memories);
+  let sources = event.memories;
+  if (event.storyId) {
+    const cloud = dependencies.cloud || require("wx-server-sdk");
+    if (cloud.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+    sources = await loadStoryMemories(event, cloud);
+  }
+  const memories = validateMemories(sources);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20_000);
@@ -141,5 +195,5 @@ async function main(event) {
 
 module.exports = {
   main,
-  _test: { buildUserMessage, parseChapter, validateMemories },
+  _test: { buildUserMessage, loadStoryMemories, parseChapter, validateMemories },
 };

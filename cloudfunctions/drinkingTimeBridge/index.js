@@ -1,8 +1,18 @@
 const cloud = require("wx-server-sdk");
 const https = require("node:https");
 const crypto = require("node:crypto");
-const { bridgeUrl, issueDesktopResultShapeError, requestBody, signature } = require("./core");
+const { bridgeUrl, issueDesktopResultShapeError, signature } = require("./core");
+const { prepareDesktopBody } = require("./egress");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+
+const db=cloud.database();
+function reader(target){
+  return {async get(table,id){
+    try{return (await target.collection(table).doc(id).get()).data;}
+    catch(error){if(/does not exist|not found|cannot find document/i.test(String(error?.message||error?.errMsg||error)))return undefined;throw error;}
+  },async set(table,id,value){await target.collection(table).doc(id).set({data:value});}};
+}
+const repo={transaction:fn=>db.runTransaction(tx=>fn(reader(tx)))};
 
 const paths = { issueDesktop: "/desktop/pair/issue" };
 function post(baseUrl, path, body, secret) {
@@ -55,7 +65,10 @@ async function main(event = {}) {
   const action = String(event.action || "");
   const path = paths[action];
   if (!path) throw new Error("UNKNOWN_BRIDGE_ACTION");
-  const body = requestBody(action, event, context, { appIdFallback: process.env.WECHAT_APP_ID });
+  const body = await prepareDesktopBody(repo, event, context, {
+    bootstrapAppId: process.env.STORY_IDENTITY_BOOTSTRAP_APP_ID || process.env.WECHAT_APP_ID,
+    authorityEnabled:process.env.STORY_DESKTOP_AUTHORITY_ENABLED==='true',
+  });
   return post(baseUrl, path, body, secret);
 }
 module.exports = { main };

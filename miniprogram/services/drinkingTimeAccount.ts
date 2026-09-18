@@ -33,11 +33,19 @@ export interface DesktopStorySnapshot {
 export interface DesktopTransferResult {
   code: string;
   expiresAt: string;
-  storyId: number;
-  imported: boolean;
+  storyId?: number;
+  imported?: boolean;
+  storyAccessId?:number;
+  bound?:boolean;
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
+  STORY_PROTOCOL_REQUIRED: "这本故事包含来源限制，暂时不能传到电脑",
+  STORY_SAVE_REQUIRED: "请先在小程序保存书稿，再传到电脑",
+  REVISION_CHANGED: "故事已更新，请刷新后重新传到电脑",
+  STORY_FORBIDDEN: "这本故事当前无法传到电脑",
+  IDENTITY_UNLINKED: "账号尚未完成跨端身份关联",
+  MIGRATION_NOT_READY: "故事库正在准备，请稍后重试",
   bridge_not_configured: "电脑连接服务还没有配置好",
   bridge_timeout: "电脑连接服务响应超时，请稍后重试",
   bridge_unavailable: "暂时无法连接电脑端",
@@ -140,14 +148,19 @@ function transferResult(value: unknown): DesktopTransferResult {
   const result = value as Partial<DesktopTransferResult>;
   if (typeof result.code !== "string" || !/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(result.code) ||
     typeof result.expiresAt !== "string" || !Number.isFinite(Date.parse(result.expiresAt)) ||
-    typeof result.storyId !== "number" || !Number.isSafeInteger(result.storyId) || result.storyId <= 0 ||
-    typeof result.imported !== "boolean") {
+    !((typeof result.storyId === "number" && Number.isSafeInteger(result.storyId) && result.storyId > 0 && typeof result.imported === "boolean" && result.storyAccessId===undefined && result.bound===undefined) ||
+      (typeof result.storyAccessId === "number" && Number.isSafeInteger(result.storyAccessId) && result.storyAccessId > 0 && result.bound===true && result.storyId===undefined && result.imported===undefined))) {
     throw new Error("电脑登录码返回异常");
   }
   return result as DesktopTransferResult;
 }
 
 export async function createDesktopStoryCode(state: FamilyRoomState, key: string) {
+  if(state.storyMigration?.status==='active'){
+    const story=state.stories?.find(item=>item.id===key&&!item.deletedAt);
+    if(!story?.currentRevisionId)throw new Error(ERROR_MESSAGES.STORY_SAVE_REQUIRED);
+    return transferResult(await call("issueDesktop",{storyRef:{storyId:story.id,revisionId:story.currentRevisionId,version:story.version}}));
+  }
   return transferResult(await call("issueDesktop", { story: desktopStorySnapshot(state, key) }));
 }
 
