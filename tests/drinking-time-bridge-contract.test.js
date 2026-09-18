@@ -6,7 +6,7 @@ const crypto = require("node:crypto");
 const test = require("node:test");
 const core = require("../cloudfunctions/drinkingTimeBridge/core.js");
 
-const CONTRACT_VERSION = "1.0.0";
+const CONTRACT_VERSION = "1.1.0";
 const SECRET = "contract-vector-secret-public-do-not-deploy";
 const APPID = "wx0000000000000000";
 const OPENID = "o-contract-vector-openid";

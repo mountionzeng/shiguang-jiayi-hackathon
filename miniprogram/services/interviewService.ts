@@ -65,6 +65,7 @@ export interface GenerateInterviewPromptInput {
   memoryType?: MemoryType;
   memberName?: string;
   storyTitle?: string;
+  storyId?: string;
   /** 本轮之前的回答，不含 answer。 */
   previousAnswers?: string[];
   /** 本轮之前小忆问过的话和用户的回答，按顺序排列。 */
@@ -87,6 +88,7 @@ export async function generateInterviewPrompt(
         memoryType: input.memoryType ?? "note",
         memberName: input.memberName,
         storyTitle: input.storyTitle,
+        storyId: input.storyId,
         previousAnswers: input.previousAnswers ?? [],
         conversation: input.conversation ?? [],
       },

@@ -139,7 +139,7 @@ function isJob(value: unknown): value is StoryImageJob {
   return Boolean(job && typeof job.jobId === "string" && typeof job.status === "string" && typeof job.message === "string");
 }
 
-async function submitChapterImage(input: { memberId: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string }): Promise<StoryImageJob> {
+async function submitChapterImage(input: { storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string }): Promise<StoryImageJob> {
   if (!await requestAiConsent()) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图要把这一章的文字发给 AI 服务");
   }
@@ -161,7 +161,7 @@ async function submitChapterImage(input: { memberId: string; chapterId: string; 
     }
   }
   const result = await callStoryImages<{ job?: unknown }>("submit", {
-    memberId: input.memberId,
+    ...(input.storyId ? { storyId: input.storyId } : { memberId: input.memberId || "" }),
     chapterId: input.chapterId,
     requestId: input.requestId ?? newImageRequestId(),
     purpose: input.purpose,
@@ -177,14 +177,16 @@ async function submitChapterImage(input: { memberId: string; chapterId: string; 
   return result.job;
 }
 
-async function checkImageJob(jobId: string): Promise<{ job: StoryImageJob; image?: StoryImage }> {
-  const result = await callStoryImages<{ job?: unknown; image?: StoryImage }>("status", { jobId });
+const bookScope = (bookId?:string) => bookId?.startsWith('story-') ? {storyId:bookId} : (bookId ? {memberId:bookId} : {});
+
+async function checkImageJob(jobId: string,bookId?:string): Promise<{ job: StoryImageJob; image?: StoryImage }> {
+  const result = await callStoryImages<{ job?: unknown; image?: StoryImage }>("status", { jobId,...bookScope(bookId) });
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
   return { job: result.job, image: result.image };
 }
 
-async function listStoryImages(memberId: string): Promise<StoryImageList> {
-  const result = await callStoryImages<Partial<StoryImageList>>("list", { memberId });
+async function listStoryImages(bookId: string): Promise<StoryImageList> {
+  const result = await callStoryImages<Partial<StoryImageList>>("list", bookId.startsWith("story-") ? { storyId: bookId } : { memberId: bookId });
   if (!Array.isArray(result.images) || !Array.isArray(result.pending) || !result.usage || !result.limits) {
     throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
   }
@@ -211,8 +213,8 @@ async function captionPhotos(input: { photoIds: string[]; requestId?: string }):
   };
 }
 
-async function removeStoryImage(imageId: string): Promise<void> {
-  await callStoryImages<{ ok?: boolean }>("remove", { imageId });
+async function removeStoryImage(imageId: string,bookId?:string): Promise<void> {
+  await callStoryImages<{ ok?: boolean }>("remove", { imageId,...bookScope(bookId) });
 }
 
 /** Pages call through this object so page tests can stand in for the cloud. */

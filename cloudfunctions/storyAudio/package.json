@@ -1,0 +1,1 @@
+{"name":"story-audio","version":"0.1.0","private":true,"main":"index.js","engines":{"node":">=18"},"dependencies":{"tencentcloud-sdk-nodejs-tts":"4.1.237","wx-server-sdk":"latest"}}

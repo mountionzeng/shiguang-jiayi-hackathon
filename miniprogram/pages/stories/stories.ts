@@ -1,4 +1,4 @@
-import { accountOwner, contributionStoryTitle, MemoryContribution, memoryPool } from "../../domain/biography";
+import { contributionStoryTitle, MemoryContribution, memoryPool } from "../../domain/biography";
 import {
   deleteStoryRemoteFirst,
   loadRoomStateRemoteFirst,
@@ -7,11 +7,13 @@ import {
   restoreMemoryRemoteFirst,
   restoreStoryRemoteFirst,
   saveCurrentMemberIdLocal,
+  usesCloudStorage,
 } from "../../services/roomRepository";
 import { recentlyDeletedItems } from "../../services/recentlyDeleted";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
-import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
+import { loadCurrentStoryId, loadCurrentStoryTitle, saveCurrentStoryId, saveCurrentStoryTitle } from "../../services/storySelection";
 import { logLoadError } from "../../services/loadErrorLog";
+import { createStoryBook, ensureStoryBooks } from "../../services/storyBooks";
 
 interface StoryRow {
   key: string;
@@ -19,6 +21,9 @@ interface StoryRow {
   label: string;
   excerpt: string;
   memoryCount: number;
+  bookTitle: string;
+  writingMode: "objective" | "creative";
+  chapterCount: number;
   manuscriptMemberId: string;
 }
 
@@ -41,22 +46,21 @@ Page({
     trashOpen: false,
     deletedItems: [] as DeletedItemRow[],
     deletedMemoryCount: 0,
-    selectedKey: "", selectedTitle: "", selectedManuscriptMemberId: "",
-    memories: [] as MemoryContribution[], ungroupedCount: 0, hasManuscript: false, ownerId: "", loadError: "",
+    selectedKey: "", selectedTitle: "", selectedBookTitle: "", selectedWritingMode: "objective" as "objective" | "creative",
+    memories: [] as MemoryContribution[], ungroupedCount: 0, loadError: "",
+    createOpen: false, createTitle: "", createMode: "objective" as "objective" | "creative",
+    createMemories: [] as Array<MemoryContribution & { checked: boolean }>, creating: false, pendingMigrationCount: 0,
   },
+  openCreateOnShow: false,
   /** 从首页书封点进来时，直接停在那个故事上。 */
-  onLoad(options: { key?: string } = {}) {
-    if (!options.key) return;
-    try {
-      this.setData({ selectedKey: decodeURIComponent(options.key) });
-    } catch {
-      // 参数坏了就还是显示全部故事。
-    }
+  onLoad(options: { key?: string; create?: string } = {}) {
+    this.openCreateOnShow = options.create === "1";
+    if (options.key) try { this.setData({ selectedKey: decodeURIComponent(options.key) }); } catch { /* 显示全部故事 */ }
   },
 
-  onShow() { void this.refresh().catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
+  onShow() { void this.refresh().then(() => { if (this.openCreateOnShow) { this.openCreateOnShow = false; this.openCreate(); } }).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
   async refresh() {
-    const state = await loadRoomStateRemoteFirst();
+    const state = usesCloudStorage() ? await ensureStoryBooks() : await loadRoomStateRemoteFirst();
     const pool = memoryPool(state.contributions);
     const byId = new Map(pool.map(memory => [memory.id, memory]));
     const shelf = storyShelf(state);
@@ -64,7 +68,9 @@ Page({
     this.setData({
       stories: shelf.map(story => ({
         key: story.key, title: story.title, label: shelfStoryLabel(story), excerpt: story.excerpt,
-        memoryCount: story.memoryIds.length, manuscriptMemberId: story.manuscriptMemberId ?? "",
+        memoryCount: story.memoryIds.length, bookTitle: story.bookTitle || story.title,
+        writingMode: story.writingMode || "objective", chapterCount: story.chapterCount,
+        manuscriptMemberId: story.manuscriptMemberId ?? "",
       })),
       deletedStories: (state.deletedStories ?? []).map((story) => ({
         key: story.key, title: story.title, deletedLabel: deletedLabel(story.deletedAt),
@@ -77,29 +83,31 @@ Page({
       // 故事在别处被改名或删掉时，回到故事列表。
       selectedKey: selected?.key ?? "",
       selectedTitle: selected?.title ?? "",
-      selectedManuscriptMemberId: selected?.manuscriptMemberId ?? "",
+      selectedBookTitle: selected?.bookTitle ?? "",
+      selectedWritingMode: selected?.writingMode ?? "objective",
       memories: selected ? selected.memoryIds.map(id => byId.get(id)).filter((memory): memory is MemoryContribution => Boolean(memory)) : [],
       ungroupedCount: pool.filter(memory => !contributionStoryTitle(memory)).length,
-      hasManuscript: shelf.some(story => story.manuscriptMemberId),
-      ownerId: accountOwner(state.members)?.id ?? "",
+      pendingMigrationCount: (state.storyMigration?.pending ?? []).filter(item => !item.resolvedStoryId).length,
       loadError: "",
     });
   },
   async openStory(event: { currentTarget: { dataset: { key: string } } }) {
     const row = this.data.stories.find(story => story.key === event.currentTarget.dataset.key);
     if (!row) return;
-    // 只有整理好的章节、还没有记忆的故事，直接打开章节。
-    if (!row.memoryCount && row.manuscriptMemberId) { this.openManuscript(row.manuscriptMemberId); return; }
+    if (row.key.startsWith("manuscript:") && row.manuscriptMemberId) { this.openLegacyManuscript(row.manuscriptMemberId); return; }
     this.setData({ selectedKey: row.key });
     await this.refresh().catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); });
   },
-  /** 书稿页仍按档案读取；打开哪个故事的章节，就先切到它所在的档案。 */
-  openManuscript(memberId: string) {
+  openManuscript(storyId: string) {
+    saveCurrentStoryId(storyId);
+    wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(storyId) });
+  },
+  openLegacyManuscript(memberId: string) {
     saveCurrentMemberIdLocal(memberId);
     wx.navigateTo({ url: "/pages/book/book" });
   },
-  openSelectedManuscript() { this.openManuscript(this.data.selectedManuscriptMemberId); },
-  backToStories() { this.setData({ selectedKey: "", selectedTitle: "", selectedManuscriptMemberId: "", memories: [] }); },
+  openSelectedManuscript() { this.openManuscript(this.data.selectedKey); },
+  backToStories() { this.setData({ selectedKey: "", selectedTitle: "", selectedBookTitle: "", memories: [] }); },
   deleteSelectedStory() {
     const key = this.data.selectedKey;
     const title = this.data.selectedTitle;
@@ -113,6 +121,7 @@ Page({
         if (!result.confirm) { resolve(); return; }
         try {
           await deleteStoryRemoteFirst(key, title);
+          if (loadCurrentStoryId() === key) saveCurrentStoryId("");
           if (loadCurrentStoryTitle() === title) saveCurrentStoryTitle("");
           this.backToStories();
           await this.refresh();
@@ -195,12 +204,47 @@ Page({
   editMemory(event: { currentTarget: { dataset: { id: string } } }) {
     wx.navigateTo({ url: "/pages/archive/archive?id=" + encodeURIComponent(event.currentTarget.dataset.id) });
   },
-  continueStory() { wx.navigateTo({ url: "/pages/interview/interview?memoryType=memoir&storyTitle=" + encodeURIComponent(this.data.selectedTitle) }); },
+  continueStory() {
+    const query = this.data.selectedKey.startsWith("story-")
+      ? "storyId=" + encodeURIComponent(this.data.selectedKey)
+      : "storyTitle=" + encodeURIComponent(this.data.selectedTitle);
+    wx.navigateTo({ url: "/pages/interview/interview?memoryType=memoir&" + query });
+  },
   openMemories() { wx.navigateTo({ url: "/pages/archive/archive" }); },
-  /** 还没有整理过任何章节时，从你自己的档案开始整理。 */
-  openBook() {
-    if (this.data.ownerId) saveCurrentMemberIdLocal(this.data.ownerId);
-    wx.navigateTo({ url: "/pages/book/book" });
+  openMigration() { wx.navigateTo({ url: "/pages/story-migration/story-migration" }); },
+  openCreate() {
+    const pool = this.data.createMemories.length ? this.data.createMemories : [];
+    if (pool.length) { this.setData({ createOpen: true }); return; }
+    void loadRoomStateRemoteFirst().then(state => this.setData({
+      createOpen: true,
+      createMemories: memoryPool(state.contributions).map(memory => ({ ...memory, checked: false })),
+    }));
+  },
+  closeCreate() { if (!this.data.creating) this.setData({ createOpen: false }); },
+  keepCreateOpen() {},
+  onCreateTitle(event: WechatMiniprogram.Input) { this.setData({ createTitle: event.detail.value }); },
+  onCreateMode(event: { detail: { value: "objective" | "creative" } }) { this.setData({ createMode: event.detail.value }); },
+  onCreateMemories(event: { detail: { value: string[] } }) {
+    const selected = new Set(event.detail.value);
+    this.setData({ createMemories: this.data.createMemories.map(memory => ({ ...memory, checked: selected.has(memory.id) })) });
+  },
+  async createBook() {
+    const title = this.data.createTitle.trim();
+    if (!title || this.data.creating) { if (!title) wx.showToast({ title: "请先给故事起个名字", icon: "none" }); return; }
+    this.setData({ creating: true });
+    try {
+      const memoryIds = this.data.createMemories.filter(memory => memory.checked).map(memory => memory.id);
+      const { story } = await createStoryBook({
+        title, writingMode: this.data.createMode,
+        memoryIds,
+      });
+      saveCurrentStoryId(story.id);
+      this.setData({ createOpen: false, createTitle: "", createMode: "objective", createMemories: [] });
+      const organizeQuery = memoryIds.length ? "&memoryIds=" + memoryIds.map(encodeURIComponent).join(",") : "";
+      wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(story.id) + organizeQuery });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "创建失败，请重试", icon: "none" });
+    } finally { this.setData({ creating: false }); }
   },
   onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
   onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },

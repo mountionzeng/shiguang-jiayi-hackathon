@@ -38,13 +38,45 @@ const CHAPTER = {
 function memoryRepo() {
   const jobs = new Map();
   const images = new Map();
+  const stories = new Map();
+  const imageLinks = new Map();
+  const jobLinks = new Map();
   let drafts = [];
   return {
     jobs,
     images,
-    setDrafts(records) { drafts = records; },
+    stories,
+    imageLinks,
+    jobLinks,
+    beforeSoftDelete: undefined,
+    setDrafts(records) {
+      drafts = records;
+      for(const record of records.filter(item=>item.storyId && item.revision)) {
+        const current=stories.get(record.storyId);
+        if(!current || String(record.revision.savedAt).localeCompare(String(current.savedAt || ''))>=0)stories.set(record.storyId,{familyId:record.familyId,id:record.storyId,currentRevisionId:record.revision.id,savedAt:record.revision.savedAt});
+      }
+    },
+    setStory(storyId,patch={}) { stories.set(storyId,{familyId:FAMILY,id:storyId,...stories.get(storyId),...patch}); },
+    linkImage(storyId,imageId) { imageLinks.set(storyId+'|'+imageId,{familyId:FAMILY,storyId,imageId}); },
+    linkJob(storyId,jobId) { jobLinks.set(storyId+'|'+jobId,{familyId:FAMILY,storyId,jobId}); },
+    async isActiveStory(familyId,storyId) { const story=stories.get(storyId);return Boolean(story && story.familyId===familyId && !story.deletedAt); },
+    async isImageLinkedToStory(familyId,storyId,imageId) { return imageLinks.get(storyId+'|'+imageId)?.familyId===familyId; },
+    async isJobLinkedToStory(familyId,storyId,jobId) { return jobLinks.get(storyId+'|'+jobId)?.familyId===familyId; },
+    async listImageStoryIds(familyId,imageId) { return [...imageLinks.values()].filter(link=>link.familyId===familyId && link.imageId===imageId).map(link=>link.storyId); },
     async getJob(id) { const job = jobs.get(id); return job && { ...job }; },
     async createJob(id, data) { jobs.set(id, { ...data, _id: id }); },
+    async createJobForActiveStory(id,data) {
+      const existing=jobs.get(id);
+      if(existing)return {...existing};
+      const story=stories.get(data.storyId);
+      if(!story || story.familyId!==data.familyId || story.deletedAt)throw new core.StoryImageError('STORY_NOT_FOUND','这本故事书已不可用，请返回书架');
+      if(story.currentRevisionId!==data.sourceRevisionId)throw new core.StoryImageError('REVISION_CHANGED','书稿版本已经变化，请重新配图');
+      const record=drafts.find(item=>item.familyId===data.familyId&&item.storyId===data.storyId&&item.revision?.id===data.sourceRevisionId);
+      if(!record)throw new core.StoryImageError('STORY_NOT_FOUND','这本故事书已不可用，请返回书架');
+      core.assertUnrestrictedStory(story,record.revision.draft);
+      jobs.set(id,{...data,_id:id});
+      return undefined;
+    },
     async updateJob(id, patch) {
       if (!jobs.has(id)) throw new Error("document does not exist");
       jobs.set(id, { ...jobs.get(id), ...patch });
@@ -55,17 +87,45 @@ function memoryRepo() {
       jobs.set(id, { ...job, ...patch });
       return true;
     },
-    async countJobs({ familyId, memberId, dayKey, statuses }) {
+    async countJobs({ familyId, memberId, storyId, dayKey, statuses }) {
       return [...jobs.values()].filter(job => job.familyId === familyId &&
-        (!memberId || job.memberId === memberId) && (!dayKey || job.dayKey === dayKey) &&
+        (!memberId || job.memberId === memberId) && (!storyId || job.storyId === storyId) && (!dayKey || job.dayKey === dayKey) &&
         statuses.includes(job.status)).length;
     },
     async listDraftRecords(familyId, memberId) {
       return drafts.filter(record => record.familyId === familyId && record.memberId === memberId);
     },
+    async listStoryDraftRecords(familyId, storyId) {
+      return drafts.filter(record => record.familyId === familyId && record.storyId === storyId);
+    },
+    async getActiveStoryDraft(familyId,storyId){
+      const story=stories.get(storyId);
+      const record=drafts.find(item=>item.familyId===familyId&&item.storyId===storyId&&item.revision?.id===story?.currentRevisionId);
+      return story&&record?{story:{...story},revision:{...record.revision},draft:structuredClone(record.revision.draft)}:undefined;
+    },
+    async assertStoryImageSource(job){
+      const context=await this.getActiveStoryDraft(job.familyId,job.storyId);
+      if(!context)throw new core.StoryImageError('STORY_NOT_FOUND','这本故事书已不可用');
+      if(context.revision.id!==job.sourceRevisionId)throw new core.StoryImageError('REVISION_CHANGED','书稿版本已经变化');
+      core.assertUnrestrictedStory(context.story,context.draft);
+      if(core.textHash(core.chapterSource(context.draft,job.chapterId).text)!==job.source?.textHash)
+        throw new core.StoryImageError('REVISION_CHANGED','章节内容已经变化');
+    },
     async createImage(id, data) { images.set(id, { ...data, _id: id }); },
     async getImage(id) { const image = images.get(id); return image && { ...image }; },
     async updateImage(id, patch) { images.set(id, { ...images.get(id), ...patch }); },
+    async softDeleteImage(id,{familyId,storyIds,nowMs}) {
+      if(this.beforeSoftDelete)await this.beforeSoftDelete();
+      const image=images.get(id);
+      if(!image || image.familyId!==familyId || image.deletedAtMs!==undefined)return 'missing';
+      for(const storyId of storyIds || []) {
+        const story=stories.get(storyId);
+        const current=story?.currentRevisionId ? drafts.find(record=>record.revision?.id===story.currentRevisionId) : undefined;
+        if(story?.coverImageId===id || core.draftReferencesStoryImage(current?.revision?.draft,id))return 'referenced';
+      }
+      images.set(id,{...image,deletedAtMs:nowMs});
+      return 'deleted';
+    },
     async listImages(familyId, memberId) {
       return [...images.values()].filter(image => image.familyId === familyId && image.memberId === memberId &&
         image.deletedAtMs === undefined);
@@ -73,6 +133,12 @@ function memoryRepo() {
     async listRecentJobs(familyId, memberId, sinceMs) {
       return [...jobs.values()].filter(job => job.familyId === familyId && job.memberId === memberId &&
         job.createdAtMs >= sinceMs);
+    },
+    async listStoryImages(familyId, storyId) {
+      return [...images.values()].filter(image => image.familyId === familyId && image.storyId === storyId && image.deletedAtMs === undefined);
+    },
+    async listRecentStoryJobs(familyId, storyId, sinceMs) {
+      return [...jobs.values()].filter(job => job.familyId === familyId && job.storyId === storyId && job.createdAtMs >= sinceMs);
     },
     async findImageByTrace(traceId) { return [...images.values()].find(image => image.moderationTraceId === traceId); },
     async listActiveJobs(limit) {
@@ -249,6 +315,81 @@ test("章节正文取这个档案最新保存的版本，只读文字，不读�
   );
   const personal = [{ familyId: FAMILY, memberId: "owner", draftType: "personal", draft: { chapters: [CHAPTER] } }];
   assert.equal(core.latestDraftForMember(personal, "owner").chapters[0].id, "chapter-1");
+});
+
+test("故事配图只读指定 storyId 的最新版本", async () => {
+  const h = harness();
+  const storyId = "story-book-a";
+  h.repo.setDrafts([{
+    familyId: FAMILY, storyId, draftType: "story-revision",
+    revision: { id: "revision-story-a", storyId, savedAt: "2026-09-17T00:00:00Z", draft: { chapters: [CHAPTER] } },
+  }, {
+    familyId: FAMILY, storyId: "story-book-b", draftType: "story-revision",
+    revision: { id: "revision-story-b", storyId: "story-book-b", savedAt: "2026-09-18T00:00:00Z", draft: { chapters: [{ ...CHAPTER, content: [{ text: "另一本书" }] }] } },
+  }]);
+  const event = { familyId: FAMILY, storyId, chapterId: CHAPTER.id, requestId: "req-story-a-00000001", purpose: "illustration" };
+  const { job } = await h.handlers.submit(ctx, event);
+  assert.equal(job.chapterId, CHAPTER.id);
+  assert.equal(h.repo.jobs.get(`${FAMILY}_${event.requestId}`).storyId, storyId);
+  assert.equal(h.calls.scene[0].text, "那年冬天，奶奶在院子里晒被子。");
+  assert.deepEqual((await h.handlers.list(ctx, { familyId: FAMILY, storyId })).pending.map(item => item.jobId), [`${FAMILY}_${event.requestId}`]);
+  await assert.rejects(h.handlers.status(ctx,{familyId:FAMILY,storyId:"story-book-b",jobId:`${FAMILY}_${event.requestId}`}),error=>error.code==="JOB_NOT_FOUND");
+});
+
+test("故事配图在排队及事务写入前拒绝来源稿",async()=>{
+  for(const marker of ['story','draft']){
+    const h=harness(),storyId="story-book-a";
+    const draft={chapters:[CHAPTER],...(marker==='draft'?{provenanceVersion:1}:{})};
+    h.repo.setDrafts([{familyId:FAMILY,storyId,draftType:"story-revision",revision:{id:"revision-source",storyId,savedAt:"2026-09-18",draft}}]);
+    if(marker==='story')h.repo.setStory(storyId,{sourcePolicyRequired:true});
+    const event={familyId:FAMILY,storyId,chapterId:CHAPTER.id,requestId:"req-source-"+marker+"-0001",purpose:"illustration"};
+    await assert.rejects(h.handlers.submit(ctx,event),error=>error.code==="STORY_PROTOCOL_REQUIRED");
+    assert.equal(h.calls.scene.length,0);
+    assert.equal(h.repo.jobs.size,0);
+  }
+});
+
+test("已经排队的故事在付费出图前重新检查来源状态",async()=>{
+  const h=harness(),storyId="story-book-a";
+  h.repo.setDrafts([{familyId:FAMILY,storyId,draftType:"story-revision",
+    revision:{id:"revision-before-source",storyId,savedAt:"2026-09-18",draft:{chapters:[CHAPTER]}}}]);
+  const event={familyId:FAMILY,storyId,chapterId:CHAPTER.id,requestId:"req-late-source-0001",purpose:"illustration"};
+  const submitted=await h.handlers.submit(ctx,event);
+  assert.equal(submitted.job.status,"queued");
+  h.repo.setStory(storyId,{sourcePolicyRequired:true});
+  const result=await h.handlers.status(ctx,{familyId:FAMILY,storyId,jobId:`${FAMILY}_${event.requestId}`});
+  assert.equal(result.job.status,"failed");
+  assert.equal(h.calls.generate.length,0);
+});
+
+test("迁移图片链接支持本书参考和删除，同时拒绝另一故事操作",async()=>{
+  const h=harness(), storyId="story-book-a", imageId=`${FAMILY}_img_req-linked001`;
+  h.repo.setDrafts([{
+    familyId:FAMILY,storyId,draftType:"story-revision",
+    revision:{id:"revision-story-a",storyId,savedAt:"2026-09-17T00:00:00Z",draft:{chapters:[CHAPTER]}},
+  }]);
+  await h.repo.createImage(imageId,{familyId:FAMILY,memberId:"owner",chapterId:CHAPTER.id,purpose:"illustration",fileID:"cloud://linked",moderation:"pass",createdAtMs:1});
+  h.repo.linkImage(storyId,imageId);
+  const event={familyId:FAMILY,storyId,chapterId:CHAPTER.id,requestId:"req-linked-ref-0001",purpose:"illustration",referenceImageId:imageId};
+  const submitted=await h.handlers.submit(ctx,event);
+  assert.equal(submitted.job.referenceApplied,true);
+  await assert.rejects(h.handlers.remove(ctx,{familyId:FAMILY,storyId:"story-book-b",imageId}),error=>error.code==="IMAGE_NOT_FOUND");
+  await h.handlers.remove(ctx,{familyId:FAMILY,storyId,imageId});
+  assert.ok(h.repo.images.get(imageId).deletedAtMs);
+});
+
+test("已删除故事的旧页面不能再提交付费配图任务", async () => {
+  const h=harness(), storyId="story-book-a";
+  h.repo.setDrafts([{
+    familyId:FAMILY,storyId,draftType:"story-revision",
+    revision:{id:"revision-story-a",storyId,savedAt:"2026-09-17T00:00:00Z",draft:{chapters:[CHAPTER]}},
+  }]);
+  h.repo.setStory(storyId,{deletedAt:"2026-09-17T01:00:00Z"});
+  const event={familyId:FAMILY,storyId,chapterId:CHAPTER.id,requestId:"req-deleted-story-0001",purpose:"illustration"};
+  await assert.rejects(h.handlers.submit(ctx,event),error=>error.code==="STORY_NOT_FOUND");
+  assert.equal(h.repo.jobs.size,0);
+  assert.equal(h.calls.scene.length,0);
+  assert.equal(h.calls.generate.length,0);
 });
 
 test("其他章节只提供人物连续性线索，能认出女孩且不夹带无关情节", () => {
@@ -773,6 +914,23 @@ test("删除插图前以云端最新书稿为准，正文仍引用时拒绝删�
   })]);
   await handlers.remove(ctx, { familyId: FAMILY, imageId });
   assert.deepEqual(calls.remove, ["cloud://used"]);
+});
+
+test("删除插图与保存新版本并发时，以事务内最新书稿为准", async () => {
+  const {handlers,repo,calls}=harness(), storyId="story-book-a";
+  const imageId=`${FAMILY}_img_req-concurrent1`;
+  await repo.createImage(imageId,{familyId:FAMILY,storyId,memberId:"owner",chapterId:"chapter-1",purpose:"illustration",fileID:"cloud://concurrent",bytes:100,moderation:"pass",createdAtMs:1});
+  repo.setDrafts([{
+    familyId:FAMILY,storyId,draftType:"story-revision",
+    revision:{id:"revision-before",storyId,savedAt:"2026-09-17T00:00:00Z",draft:{chapters:[{...CHAPTER,content:[{text:"还没引用"}]}]}},
+  }]);
+  repo.beforeSoftDelete=async()=>repo.setDrafts([{
+    familyId:FAMILY,storyId,draftType:"story-revision",
+    revision:{id:"revision-after",storyId,savedAt:"2026-09-17T00:01:00Z",draft:{chapters:[{...CHAPTER,content:[{text:"正文"},{photoId:"photo-ai-req-concurrent1"}]}]}},
+  }]);
+  await assert.rejects(handlers.remove(ctx,{familyId:FAMILY,storyId,imageId}),error=>error.code==="IMAGE_IN_MANUSCRIPT");
+  assert.equal(repo.images.get(imageId).deletedAtMs,undefined);
+  assert.deepEqual(calls.remove,[]);
 });
 
 test("内容安全检测判为违规的生成图会被隐藏并删除文件，照片结果转发给 photoAccess", async () => {

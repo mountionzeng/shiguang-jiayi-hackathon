@@ -16,6 +16,8 @@
         wx:key="id"
         data-id="{{item.id}}"
         data-title="{{item.storyTitle}}"
+        data-story="{{item.storyId}}"
+        data-choice="{{item.needsStoryChoice}}"
         bindtap="continueMemory"
         hover-class="none"
         aria-label="接着聊{{item.title}}"

@@ -71,6 +71,15 @@ test("本人始终可看自己的照片；AI 只拦 risky，家人必须有引�
   assert.equal(core.publicPhoto({ ...photo, moderation: { ok: true, suggest: "pass" } }, sharedInput, "relative-openid", [{ photoIds: [PHOTO] }]).status, "ok");
 });
 
+test("来源照片不能通过旧本人照片入口获得查看或 AI 链接", () => {
+  for (const marker of [{sourcePolicyRequired:true}, {sourceIds:[]}]) {
+    const photo = {familyId:FAMILY,photoId:PHOTO,_openid:'owner-openid',displayFileID:'cloud://display',smallFileID:'cloud://small',moderation:{ok:true,suggest:'pass'},...marker};
+    for (const purpose of ['view','ai-caption']) {
+      assert.deepEqual(core.publicPhoto(photo,{familyId:FAMILY,photoId:PHOTO,purpose,variant:'display'},'owner-openid',[]),{photoId:PHOTO,status:'forbidden'});
+    }
+  }
+});
+
 test("photoAccess 接线：只返回临时链接、不返回 fileID，图片检测用社交日志场景", () => {
   const source = fs.readFileSync(path.join(__dirname, "../cloudfunctions/photoAccess/index.js"), "utf8");
   assert.match(source, /security\.mediaCheckAsync/);

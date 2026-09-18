@@ -35,6 +35,22 @@ function createStoryImageHandlers(deps) {
     log = console,
   } = deps;
   const qualityEnabled = Boolean(qualityChecker && qualityChecker.configured);
+  const assertSameRequest = (existing,input) => {
+    if (String(existing.storyId || "") !== input.storyId || existing.memberId !== input.memberId || existing.chapterId !== input.chapterId ||
+      existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId) {
+      throw new core.StoryImageError("REQUEST_CONFLICT", "这次请求的章节或参考图已经变化，请重新操作");
+    }
+  };
+  async function assertStorySource(job) {
+    if(!job.storyId)return "";
+    if(typeof repo.assertStoryImageSource!=='function')throw new core.StoryImageError("IMAGE_REPOSITORY_CONFIG_REQUIRED","故事配图服务尚未准备好");
+    try{await repo.assertStoryImageSource(job);return "";}
+    catch(error){
+      if(!["STORY_PROTOCOL_REQUIRED","STORY_NOT_FOUND","REVISION_CHANGED","CHAPTER_NOT_FOUND","CHAPTER_EMPTY"].includes(error?.code))throw error;
+      await repo.updateJob(job._id,{status:"failed",errorCode:error.code,prompt:"",updatedAtMs:now()});
+      return error.code;
+    }
+  }
 
   async function submit(ctx, event) {
     const input = core.normalizeSubmitInput(event);
@@ -45,17 +61,18 @@ function createStoryImageHandlers(deps) {
     const jobId = `${input.familyId}_${input.requestId}`;
     const existing = await repo.getJob(jobId);
     if (existing) {
-      if (existing.memberId !== input.memberId || existing.chapterId !== input.chapterId ||
-        existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId) {
-        throw new core.StoryImageError("REQUEST_CONFLICT", "这次请求的章节或参考图已经变化，请重新操作");
-      }
+      assertSameRequest(existing,input);
       return { job: core.publicJob(existing) };
     }
 
-    const draft = core.latestDraftForMember(
-      await repo.listDraftRecords(input.familyId, input.memberId),
-      input.memberId,
-    );
+    let storyContext;
+    if(input.storyId){
+      if(typeof repo.getActiveStoryDraft!=='function')throw new core.StoryImageError("IMAGE_REPOSITORY_CONFIG_REQUIRED","故事配图服务尚未准备好");
+      storyContext=await repo.getActiveStoryDraft(input.familyId,input.storyId);
+      if(!storyContext)throw new core.StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
+      core.assertUnrestrictedStory(storyContext.story,storyContext.draft);
+    }
+    const draft = input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
     const source = core.chapterSource(draft, input.chapterId);
     let referenceUrl = "";
     if (input.referenceImageId) {
@@ -63,7 +80,9 @@ function createStoryImageHandlers(deps) {
         throw new core.StoryImageError("REFERENCE_NOT_CONFIGURED", "参考图服务还没配置好");
       }
       const referenceImage = await repo.getImage(input.referenceImageId);
-      if (!referenceImage || referenceImage.familyId !== input.familyId || referenceImage.memberId !== input.memberId ||
+      const linkedReference=!referenceImage?.storyId && input.storyId && repo.isImageLinkedToStory
+        ? await repo.isImageLinkedToStory(input.familyId,input.storyId,input.referenceImageId) : false;
+      if (!referenceImage || referenceImage.familyId !== input.familyId || (String(referenceImage.storyId || "") !== input.storyId && !linkedReference) || (!input.storyId && referenceImage.memberId !== input.memberId) ||
         referenceImage.chapterId !== input.chapterId || referenceImage.purpose !== "illustration" ||
         referenceImage.deletedAtMs !== undefined || !referenceImage.fileID) {
         throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "这张参考图已不可用，请重新选择");
@@ -78,7 +97,7 @@ function createStoryImageHandlers(deps) {
     const dayKey = core.chinaDayKey(nowMs);
     const [todayCount, bookCount] = await Promise.all([
       repo.countJobs({ familyId: input.familyId, dayKey, statuses: core.COUNTED_STATUSES }),
-      repo.countJobs({ familyId: input.familyId, memberId: input.memberId, statuses: core.COUNTED_STATUSES }),
+      repo.countJobs({ familyId: input.familyId, ...(input.storyId ? {storyId:input.storyId} : {memberId:input.memberId}), statuses: core.COUNTED_STATUSES }),
     ]);
     const quota = core.quotaDecision({ todayCount, bookCount });
     if (!quota.allowed) throw new core.StoryImageError(quota.code, quota.message);
@@ -90,7 +109,8 @@ function createStoryImageHandlers(deps) {
       requesterOpenId: ctx.openid,
       requestId: input.requestId,
       memberId: input.memberId,
-      storyId: "",
+      storyId: input.storyId,
+      ...(storyContext?{sourceRevisionId:storyContext.revision.id}:{}),
       chapterId: input.chapterId,
       purpose: input.purpose,
       provider: provider.name,
@@ -110,7 +130,15 @@ function createStoryImageHandlers(deps) {
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
     };
-    await repo.createJob(jobId, job);
+    const raced=input.storyId && repo.createJobForActiveStory
+      ? await repo.createJobForActiveStory(jobId,job)
+      : (await repo.createJob(jobId,job),undefined);
+    if(raced) {
+      assertSameRequest(raced,input);
+      return {job:core.publicJob(raced)};
+    }
+    const sourceError=await assertStorySource(job);
+    if(sourceError)return {job:core.publicJob({...job,status:"failed",errorCode:sourceError})};
 
     let scene;
     try {
@@ -168,6 +196,13 @@ function createStoryImageHandlers(deps) {
   async function generate(job) {
     const claimed = await repo.claimJob(job._id, ["queued"], { status: "generating", generatingAtMs: now(), updatedAtMs: now() });
     if (!claimed) return (await repo.getJob(job._id)) || job;
+    try{
+      const sourceError=await assertStorySource({...job,status:"generating"});
+      if(sourceError)return {...job,status:"failed",errorCode:sourceError};
+    }catch(error){
+      await repo.updateJob(job._id,{status:"queued",updatedAtMs:now()});
+      throw error;
+    }
     let result;
     try {
       result = await provider.generate({ prompt: job.prompt, width: job.width, height: job.height });
@@ -213,7 +248,7 @@ function createStoryImageHandlers(deps) {
     }
 
     const imageId = `${job.familyId}_img_${job.requestId}`;
-    const cloudPath = `story-images/${job.familyId}/${job.memberId}/${job.requestId}.${core.extensionFor(image.contentType)}`;
+    const cloudPath = `story-images/${job.familyId}/${job.storyId || job.memberId}/${job.requestId}.${core.extensionFor(image.contentType)}`;
     let fileID;
     try {
       fileID = await storage.upload(cloudPath, image.buffer);
@@ -268,9 +303,16 @@ function createStoryImageHandlers(deps) {
   async function loadOwnedJob(ctx, event) {
     const familyId = String((event && event.familyId) || "").trim();
     core.requireOwner(ctx.openid, familyId);
+    const storyId=String((event && event.storyId) || '').trim(), memberId=String((event && event.memberId) || '').trim();
     const jobId = String((event && event.jobId) || "");
     const job = jobId.startsWith(`${familyId}_`) ? await repo.getJob(jobId) : undefined;
     if (!job || job.familyId !== familyId) throw new core.StoryImageError("JOB_NOT_FOUND", "没找到这次配图");
+    if(job.storyId) {
+      if(storyId!==job.storyId)throw new core.StoryImageError("JOB_NOT_FOUND", "没找到这次配图");
+    } else if(storyId) {
+      if(!repo.isJobLinkedToStory || !await repo.isJobLinkedToStory(familyId,storyId,jobId))throw new core.StoryImageError("JOB_NOT_FOUND", "没找到这次配图");
+    } else if(memberId && memberId!==job.memberId)throw new core.StoryImageError("JOB_NOT_FOUND", "没找到这次配图");
+    if(storyId && repo.isActiveStory && !await repo.isActiveStory(familyId,storyId))throw new core.StoryImageError("STORY_NOT_FOUND", "这本故事书已不可用，请返回书架");
     return job;
   }
 
@@ -287,10 +329,11 @@ function createStoryImageHandlers(deps) {
   async function list(ctx, event) {
     const familyId = String((event && event.familyId) || "").trim();
     core.requireOwner(ctx.openid, familyId);
-    const memberId = core.normalizeMemberInput(event);
+    const storyId = String((event && event.storyId) || "").trim();
+    const memberId = storyId ? "" : core.normalizeMemberInput(event);
     const [images, jobs] = await Promise.all([
-      repo.listImages(familyId, memberId),
-      repo.listRecentJobs(familyId, memberId, now() - RECENT_JOB_WINDOW_MS),
+      storyId ? repo.listStoryImages(familyId, core.normalizeStoryInput(event)) : repo.listImages(familyId, memberId),
+      storyId ? repo.listRecentStoryJobs(familyId, storyId, now() - RECENT_JOB_WINDOW_MS) : repo.listRecentJobs(familyId, memberId, now() - RECENT_JOB_WINDOW_MS),
     ]);
     const visible = images.filter(image => image.deletedAtMs === undefined && image.moderation !== "risky");
     const urls = await storage.tempUrls(visible.map(image => image.fileID));
@@ -315,15 +358,29 @@ function createStoryImageHandlers(deps) {
     if (!image || image.familyId !== familyId || image.deletedAtMs !== undefined) {
       throw new core.StoryImageError("IMAGE_NOT_FOUND", "没找到这张图");
     }
-    const latestDraft = core.latestDraftForMember(
-      await repo.listDraftRecords(familyId, image.memberId),
-      image.memberId,
-    );
-    if (core.draftReferencesStoryImage(latestDraft, imageId)) {
-      throw new core.StoryImageError("IMAGE_IN_MANUSCRIPT", "这张插图正在正文里使用，请先从书稿移除并保存");
+    const requestedStoryId=String((event && event.storyId) || '').trim(), requestedMemberId=String((event && event.memberId) || '').trim();
+    const linkedStoryIds=repo.listImageStoryIds ? await repo.listImageStoryIds(familyId,imageId) : [];
+    if(image.storyId) {
+      if(requestedStoryId!==image.storyId)throw new core.StoryImageError("IMAGE_NOT_FOUND", "没找到这张图");
+    } else if(requestedStoryId) {
+      if(!linkedStoryIds.includes(requestedStoryId))throw new core.StoryImageError("IMAGE_NOT_FOUND", "没找到这张图");
+    } else if(requestedMemberId && requestedMemberId!==image.memberId)throw new core.StoryImageError("IMAGE_NOT_FOUND", "没找到这张图");
+    const records = image.storyId
+      ? await repo.listStoryDraftRecords(familyId, image.storyId)
+      : await repo.listDraftRecords(familyId, image.memberId);
+    const referencedByHistory = records.some(record => core.draftReferencesStoryImage(
+      record && record.revision ? record.revision.draft : record && record.draft,
+      imageId,
+    ));
+    if (referencedByHistory) {
+      throw new core.StoryImageError("IMAGE_IN_MANUSCRIPT", "这张插图仍被正文或历史版本使用，不能删除");
     }
     const nowMs = now();
-    await repo.updateImage(imageId, { deletedAtMs: nowMs });
+    if(repo.softDeleteImage) {
+      const outcome=await repo.softDeleteImage(imageId,{familyId,storyIds:[...new Set([String(image.storyId || ''),...linkedStoryIds].filter(Boolean))],nowMs});
+      if(outcome==='missing')throw new core.StoryImageError("IMAGE_NOT_FOUND", "没找到这张图");
+      if(outcome==='referenced')throw new core.StoryImageError("IMAGE_IN_MANUSCRIPT", "这张插图仍被正文、封面或历史版本使用，不能删除");
+    } else await repo.updateImage(imageId, { deletedAtMs: nowMs });
     try {
       await storage.remove([image.fileID]);
     } catch (error) {

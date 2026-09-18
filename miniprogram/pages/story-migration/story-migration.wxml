@@ -1,0 +1,32 @@
+<view class="migration-page">
+  <view class="migration-title serif">待确认的旧章节</view>
+  <view class="migration-intro">这些章节没有足够证据自动归入某一本书。请预览后选择去向；在你确认前，它们不会被删除或隐藏。</view>
+  <view class="migration-notice" wx:if="{{notice}}">{{notice}}</view>
+  <view class="migration-empty" wx:if="{{!pending.length && !pendingAssets.length}}">没有待确认的章节或配图。</view>
+  <view class="migration-card" wx:for="{{pending}}" wx:key="id">
+    <view class="migration-chapter serif">{{item.chapter.title || '未命名章节'}}</view>
+    <view class="migration-reason">{{item.reason}}</view>
+    <view class="migration-preview">{{item.chapter.content[0].text || '含图片或暂无文字'}}</view>
+    <view class="migration-label">放入哪本书</view>
+    <button class="migration-story" wx:for="{{stories}}" wx:for-item="story" wx:key="id" data-pending="{{item.id}}" data-story="{{story.id}}" bindtap="assign" disabled="{{resolving}}">
+      《{{story.bookTitle || story.title}}》 · {{story.writingMode === 'creative' ? 'AI 共创' : '客观记录'}}
+    </button>
+    <view class="migration-new">
+      <input class="migration-new-title" data-pending="{{item.id}}" value="{{newTitles[item.id] || ''}}" bindinput="onNewTitle" maxlength="40" placeholder="或填写一本新故事的名称" disabled="{{resolving}}" />
+      <button class="migration-story migration-create" data-pending="{{item.id}}" bindtap="createNew" loading="{{resolving === item.id}}" disabled="{{resolving}}">新建客观记录故事并放入</button>
+    </view>
+  </view>
+  <view class="migration-card" wx:for="{{pendingAssets}}" wx:for-item="asset" wx:key="id">
+    <view class="migration-chapter serif">{{asset.kind === 'image' ? '待确认的旧配图' : '待确认的旧配图任务'}}</view>
+    <view class="migration-reason">{{asset.reason}}</view>
+    <view class="migration-preview">{{asset.imageId || asset.jobId}}{{asset.status ? ' · ' + asset.status : ''}}</view>
+    <view class="migration-reason">资源保持原样，不会自动重新出图或扣费。请选择它属于哪本书。</view>
+    <button class="migration-story" wx:for="{{stories}}" wx:for-item="story" wx:key="id" data-pending="{{asset.id}}" data-story="{{story.id}}" bindtap="assignAsset" disabled="{{resolving}}">
+      《{{story.bookTitle || story.title}}》 · {{story.writingMode === 'creative' ? 'AI 共创' : '客观记录'}}
+    </button>
+    <view class="migration-new">
+      <input class="migration-new-title" data-pending="{{asset.id}}" value="{{newTitles[asset.id] || ''}}" bindinput="onNewTitle" maxlength="40" placeholder="或填写一本新故事的名称" disabled="{{resolving}}" />
+      <button class="migration-story migration-create" data-pending="{{asset.id}}" bindtap="createNewAsset" loading="{{resolving === asset.id}}" disabled="{{resolving}}">新建客观记录故事并放入</button>
+    </view>
+  </view>
+</view>

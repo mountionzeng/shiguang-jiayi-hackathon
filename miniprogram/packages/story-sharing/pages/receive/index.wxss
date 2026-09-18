@@ -1,0 +1,2 @@
+@import "../../shared.wxss";
+.target-picker{margin:24rpx 0;padding:26rpx;border:1rpx solid var(--line);border-radius:14rpx;background:#fffdf8;color:var(--ink);font-size:28rpx}

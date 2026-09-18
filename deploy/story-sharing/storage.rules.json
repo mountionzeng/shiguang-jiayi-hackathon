@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "pathPrefix": "story-sharing/",
+  "rule": { "read": false, "write": false },
+  "note": "新增共享素材前缀私有规则模板；U4 内部复制适配器使用 story-sharing/copies/，尚未接入公开入口或执行云端写入。按实际平台规则格式转换并证明客户端读写均拒绝，不能作为全桶规则覆盖旧照片上传。真实 TTL、复制与清理仍须验收。"
+}

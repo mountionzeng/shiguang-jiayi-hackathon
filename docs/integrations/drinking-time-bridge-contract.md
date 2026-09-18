@@ -2,9 +2,9 @@
 
 | 项 | 值 |
 |---|---|
-| 约定版本 | **1.0.0** |
-| 状态 | 草案，待用户确认 |
-| 日期 | 2026-09-15 |
+| 约定版本 | **1.5.0** |
+| 状态 | 本地实现，默认关闭，待双端真实验收 |
+| 日期 | 2026-09-18 |
 | 权威版本 | Drinking Time 仓库 `docs/integrations/shiguang-bridge-contract.md` |
 | 副本 | 拾光家忆仓库 `docs/integrations/drinking-time-bridge-contract.md`（必须与权威版本同版本号） |
 | 实现基线 | Drinking Time `9f7f9f4`（桥接口），拾光家忆 `d83f1ed`（云函数 `drinkingTimeBridge`） |
@@ -66,6 +66,7 @@
 | 服务端 | `OTP_DIGEST_SECRET`（可选 `OTP_DIGEST_SECRET_VERSION`） | 登录码摘要密钥；没配置时桥接口会返回 `not_configured` |
 | 云函数 | `DRINKING_TIME_BRIDGE_BASE_URL` | 见上表 |
 | 云函数 | `DRINKING_TIME_BRIDGE_SECRET` | 与 `SHIGUANG_BRIDGE_SECRET` 相同 |
+| 云函数 | `STORY_DESKTOP_AUTHORITY_ENABLED` | 仅等于 `true` 时使用 1.1 权威故事绑定；默认关闭继续使用 1.0 快照 |
 
 线上服务端由 PM2 托管，改 `.env` 后必须带上环境变量重新加载才会生效。
 
@@ -114,7 +115,7 @@ signature = lowercase_hex( HMAC_SHA256( key = 共享密钥(UTF-8),
 3. 对象：去掉值为 `undefined` 的键，其余键按 JavaScript 字符串比较（UTF-16 码元序）升序排列，输出 `{` + `JSON.stringify(键):canonicalJson(值)` 用 `,` 连接 + `}`。
 4. 任何位置都不留空白。
 
-**传输与验签**：实际发出的正文是普通的 `JSON.stringify(正文)`，键顺序不限。服务端**先把正文解析成对象，再对解析结果做 canonicalJson 后验签**（已核实，见 `server/_core/shiguangDesktopBridge.ts` 的 `hasValidSignature`）。因此发送方不要在正文里放 JSON 往返后会变样的值，例如 `undefined`、`NaN`、超过 2^53 的数字；本约定的字段全是字符串和数组，没有这个问题。
+**传输与验签**：实际发出的正文是普通的 `JSON.stringify(正文)`，键顺序不限。服务端**先把正文解析成对象，再对解析结果做 canonicalJson 后验签**（已核实，两个桥现共用 `server/_core/shiguangBridgeSignature.ts` 的 `hasValidBridgeSignature`，线上协议不变）。因此发送方不要在正文里放 JSON 往返后会变样的值，例如 `undefined`、`NaN`、超过 2^53 的数字；本约定的字段全是字符串和数组，没有这个问题。
 
 签名比较使用恒定时间比较。
 
@@ -126,6 +127,26 @@ signature = lowercase_hex( HMAC_SHA256( key = 共享密钥(UTF-8),
   "story": { /* 故事快照，见第 5 节 */ }
 }
 ```
+
+1.1 也允许以下正文；`story` 与 `storyAccess` 必须且只能出现一个：
+
+```jsonc
+{
+  "subject": "shiguang:<64 位小写十六进制>",
+  "storyAccess": {
+    "grantId": "desktop-grant-<64 位小写十六进制>",
+    "familyId": "family_<稳定空间编号>",
+    "storyId": "story-<稳定故事编号>",
+    "revisionId": "revision-<当前修订编号>",
+    "version": 7,
+    "title": "那年的夏天"
+  }
+}
+```
+
+- `storyAccess` 由拾光服务端从微信上下文、稳定主体和当前故事读取后签发；小程序不能提交 userId、正文或自报来源。
+- `grantId` 只是受信服务调用中的授权编号，不是浏览器令牌；浏览器不可读取。电脑端后续访问还必须使用服务端 HMAC 回到拾光权威库逐请求鉴权。
+- 电脑端按 `userId + familyId + storyId` 更新同一绑定，不创建电脑 Story，也不把题名或修订当作所有权证据。`grantId` 全局只能绑定一次，不能换账号或换故事。
 
 - `subject` 必须匹配 `^shiguang:[0-9a-f]{64}$`，推导方式见第 6 节。
 - 顶层其他字段目前被服务端忽略，但会参与签名。
@@ -145,6 +166,19 @@ signature = lowercase_hex( HMAC_SHA256( key = 共享密钥(UTF-8),
 }
 ```
 
+1.1 权威绑定成功响应改为以下互斥形状，登录码语义不变：
+
+```json
+{
+  "code": "ABC234",
+  "expiresAt": "2026-09-14T10:05:00.000Z",
+  "storyAccessId": 42,
+  "bound": true
+}
+```
+
+接收方必须只接受一种成功形状；同时出现快照字段与权威绑定字段时按 `bridge_unavailable` 拒绝。
+
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `code` | 字符串 | 6 位一次性电脑登录码，字母表 `23456789ABCDEFGHJKMNPQRSTUVWXYZ`，见第 7 节 |
@@ -157,6 +191,108 @@ signature = lowercase_hex( HMAC_SHA256( key = 共享密钥(UTF-8),
 - 响应小于 1KB，远低于云函数 64KB 的读取上限。
 - 超时：云函数代码里的 12 秒是 HTTPS 请求的**空闲**超时，不是总时长。真正的上限是微信云函数自己的**执行超时**（在云开发控制台或函数的 `config.json` 里设置），**必须 ≥ 15 秒**。【缺口】拾光家忆仓库里的 `drinkingTimeBridge` 目前没有 `config.json`，线上设置待用户在控制台核对。如果云函数先被平台终止，小程序看到的是笼统失败，而不是 `bridge_timeout`。
 - 无论哪种超时，服务端都可能其实已经处理成功：故事已导入、登录码已签发，只是用户没看到。**重试是安全的**：得到 `imported: false` 和一个新登录码；签发新码的同时，之前那个没看到的码立即作废（见 7.1）。
+
+### 3.6 权威故事只读接口（1.2）
+
+电脑端登录后只能由 Drinking Time 服务端请求拾光权威库；浏览器、小程序页面都不能取得共享密钥或 `grantId`。接口为 `POST /v1/story/read`，仅接受 HTTPS，签名串和 3.2 节完全相同，只把路径换为 `/v1/story/read`：
+
+```json
+{ "grantId": "desktop-grant-<64 位小写十六进制>" }
+```
+
+拾光端在每次读取时重新检查授权未过期、稳定主体有效、主体仍拥有该家庭空间、故事未删除，并读取故事的**当前修订**。扫码时的 `revisionId/version` 只是绑定记录，不会把电脑端固定在旧版本。成功返回：
+
+```jsonc
+{
+  "story": {
+    "familyId": "family_owner",
+    "storyId": "story-summer",
+    "revisionId": "revision-current",
+    "version": 8,
+    "title": "那年的夏天",
+    "updatedAt": "2026-09-18T06:00:00.000Z",
+    "provenanceVersion": 1,
+    "chapters": [{
+      "id": "chapter-one",
+      "title": "第一章",
+      "content": [{
+        "text": "正文",
+        "blockId": "block-<64 位小写十六进制>",
+        "sourceIds": []
+      }]
+    }]
+  }
+}
+```
+
+- 每个内容块必须且只能有 `text` 或不透明的 `photoId`；不得返回永久照片 URL、OpenID、云存储凭据或服务密钥。
+- 来源稿必须原样保留 `blockId`、`sourceIds` 和 `provenanceVersion`。旧的自有稿可在响应中确定性补齐空来源字段，但读取本身不得写回书稿。
+- 未知来源协议、来源查看权撤销、账号/空间/授权撤销或故事删除都立即失败；电脑端不得回退到旧导入快照。
+- 时间戳仍允许前后 300 秒。拾光端用 12 个循环分钟槽持久记录 nonce 摘要，每槽最多 500 个，因此跨实例防重放且记录总量有固定上限；相同签名请求只能使用一次。
+- `STORY_DESKTOP_ACCESS_ENABLED` 与 `SHIGUANG_STORY_AUTHORITY_ENABLED` 默认关闭。双端地址、同一共享密钥、数据库集合和真实 HTTPS 路由配置完成前不得开启。
+- 响应正文上限 600,000 字节；当前故事文档自身上限 512,000 字节。非 JSON、越界字段、额外字段、来源协议不匹配或 family/story 与绑定不一致都按无效响应关闭处理。
+
+只读接口错误为 JSON：验签或重放返回 `401`，分钟槽超限返回 `429`，授权/主体/故事失效返回 `404`，文档协议错误返回 `422`。电脑路由对登录用户只暴露“故事不可用”或“暂时无法读取”，不泄露其他账号的题名、内部授权编号或具体撤销原因。
+
+### 3.7 权威故事区块写入接口（1.3）
+
+电脑服务使用同一服务凭据调用 `POST /v1/story/write`。浏览器只提交电脑端内部 `accessId`、当前读取到的 `revisionId/version`、稳定请求号及受限区块操作；电脑服务按当前登录 `userId + accessId` 取出隐藏的 `grantId` 后签名。请求正文：
+
+```jsonc
+{
+  "grantId": "desktop-grant-<64 位小写十六进制>",
+  "revisionId": "revision-current",
+  "expectedVersion": 8,
+  "requestId": "desktop-request-1",
+  "edits": [
+    { "action": "edit", "blockId": "block-<64 位小写十六进制>", "text": "修改后的正文" },
+    { "action": "merge", "blockIds": ["block-...", "block-..."], "text": "合并后的正文" },
+    { "action": "appendOwn", "chapterId": "chapter-one", "text": "我自己的补充" }
+  ]
+}
+```
+
+- 客户端不能提交 `userId`、family/story、`sourceIds`、`provenanceVersion`、照片地址或整本替换稿。`edit` 保留目标来源；`merge` 取所有目标来源并集；`appendOwn` 创建空来源的本人新增块。照片、章节顺序和未涉及区块保持不变。
+- `revisionId + expectedVersion` 必须同时等于权威库当前值。提交前在同一事务内再次检查授权、主体、家庭、故事、当前修订和来源查看权；冲突返回 `409 version_conflict`，不创建修订或回执。
+- 成功生成新的不可变 `revision-desktop-*` 修订，故事版本加一并进入来源协议保护。旧修订不修改，旧有损写入口不能去掉新修订的来源字段。
+- `requestId` 为 8–100 位字母、数字或连字符。同一授权与请求号保存持久操作回执：完全相同的重试返回原结果和 `replayed: true`；同号不同正文返回冲突。签名请求本身每次重试仍须使用新的时间戳和 nonce。
+- 一次最多 128 个操作，修改文字总量最多 20,000 个 UTF-16 码元，请求正文最多 600,000 字节。空操作、无实际变化、未知区块、跨章合并、伪造来源或未知来源协议均拒绝。
+
+成功响应严格为：
+
+```json
+{
+  "result": {
+    "ok": true,
+    "storyId": "story-summer",
+    "revisionId": "revision-desktop-0123456789abcdef0123456789abcdef",
+    "version": 9,
+    "replayed": false
+  }
+}
+```
+
+电脑端必须核对回执 `storyId` 与绑定一致。授权失效返回 `404`，版本/请求号冲突返回 `409`，验签/重放返回 `401`，其他协议错误返回 `422`；任何失败都不得回退到电脑快照写入或显示为保存成功。
+
+### 3.8 权威故事照片短期读取接口（1.4）
+
+电脑服务使用同一服务凭据调用 `POST /v1/story/media`。浏览器只提交电脑端内部 `accessId` 与当前已读取文档里的修订、章节和不透明照片编号；电脑服务按当前登录 `userId + accessId` 取隐藏 `grantId` 后签名：
+
+```json
+{
+  "grantId": "desktop-grant-<64 位小写十六进制>",
+  "revisionId": "revision-current",
+  "chapterId": "chapter-one",
+  "photoId": "photo-kept"
+}
+```
+
+- 拾光端先声明并持久消费 nonce，再重新检查授权、主体、家庭空间、故事当前修订和来源查看权。`revisionId` 必须仍是当前修订，照片必须仍存在于指定章节；不能用旧页面坐标读取新版本、其他章节或同家庭其他照片。
+- 只允许审核通过且属于原上传者的原照片，或具有独立 active 绑定及可查看来源许可的已复制照片。AI 图、底图、删除/审核失败/来源异常素材和客户端伪造文件路径全部拒绝。
+- 云存储签发发生在事务外，因此释放地址前必须再次执行同一描述检查；签发期间授权、修订、照片或来源变化时丢弃地址并失败关闭。
+- 成功只返回照片编号、HTTPS 临时地址和固定 `expiresInSeconds: 300`，不返回 `fileID`、永久地址、OpenID、来源凭据或共享密钥。电脑端严格校验 HTTPS、无用户名密码、照片编号一致及 300 秒时效。
+- 网页图片使用 `referrerPolicy=no-referrer`。生产环境还需把真实腾讯云临时地址的**精确 HTTPS origin** 加入现有 `CSP_MEDIA_ORIGINS`；禁止使用通配符。未完成真实域名、TTL 和过期后不可读验证前不得开启灰度。
+- 授权/照片/版本失效返回 `404` 或 `409`，验签/重放返回 `401`，分钟槽超限返回 `429`，其他协议错误返回 `422`。失败不返回旧快照图片或本地缓存地址，文字编辑可继续但照片显示明确占位。
 
 ## 4. 错误
 
@@ -448,6 +584,16 @@ canonicalJson(正文)，单行，没有末尾换行：
 ```
 
 2026-09-15 已核对：Drinking Time `server/_core/shiguangDesktopBridge.ts` 和拾光家忆 `cloudfunctions/drinkingTimeBridge/core.js` 对这组输入算出的 subject、canonicalJson、signature 完全一致，服务端快照校验通过。
+
+## 1.5 授权故事卡片（默认关闭）
+
+- 新增 HMAC `POST /v1/story/card`，使用与权威读写相同的时间戳、路径签名和持久 nonce 防重放。
+- 请求只接受服务端绑定的 `grantId`、`operation`；`source` 返回可选择的章节和最多 180 字预览。`preview` / `export` 还需当前 `revisionId`、`chapterId`、`blockIds`（1–12 个）及 `photoIds`（0–4 个）。不接受正文或客户端身份字段。
+- `preview` 返回 `{card:{descriptor}}`；描述包含确定性 `id`、协议 `version:1`、故事与修订坐标、标题、署名、选中文字和不透明照片编号。文字总长最多 1200 字符，每张照片占用 100 字符预算。
+- `export` 必须携带预览的 `descriptorId`，返回 `{card:{descriptor,media}}`；媒体仅为选中照片的 HTTPS 临时 URL，`requestedMaxAgeSeconds:300`。拒绝带用户名/密码的 URL、未知字段、错章节、错版本和不匹配图片。
+- 权威端复用小程序卡片生成器，每阶段重查当前绑定、阅读及发布许可、来源链 `view/publish/export`，执行内容审核，并在签发照片后重新核验。浏览器保存前再次请求导出；窗口关闭、选择改变或故事切换时清空旧预览。
+- 开关为权威端 `STORY_DESKTOP_ACCESS_ENABLED`、`STORY_SHARE_CARD_ENABLED` 和电脑端 `SHIGUANG_STORY_AUTHORITY_ENABLED`；密钥仅在服务端。云函数需 `security.msgSecCheck` 权限。
+- 本地测试与构建通过不代表部署完成。腾讯云账号/私有规则、HTTPS 路由、照片 CORS/TTL、两账号与真机验收仍是开放门槛。合法导出的图片无法远程追回。
 
 ## 变更记录
 

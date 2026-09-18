@@ -4,9 +4,35 @@ import test from "node:test";
 import { FamilyRoomState } from "../miniprogram/domain/biography";
 import {
   desktopStoryOptions,
+  createDesktopStoryCode,
   desktopStorySnapshot,
   drinkingTimeAccountTest,
 } from "../miniprogram/services/drinkingTimeAccount";
+
+test("新版传电脑只发送故事版本引用，不发送本地正文，失败不降级", async () => {
+  const room=state();
+  room.storyMigration={version:1,status:"active",pending:[]};
+  room.stories=[{id:"story-a",familyId:"family_owner",title:"云端故事",bookTitle:"云端故事",writingMode:"objective",version:2,currentRevisionId:"revision-a",memoryIds:[],protagonistMemberIds:[],createdAt:"2026-09-18T00:00:00Z",updatedAt:"2026-09-18T00:00:00Z"}];
+  const globals=globalThis as unknown as {wx: typeof wx};
+  const previous=globals.wx;
+  const calls: unknown[]=[];
+  let fail=false;
+  globals.wx={cloud:{async callFunction(input: unknown){
+    calls.push(input);
+    if(fail)throw new Error("STORY_PROTOCOL_REQUIRED");
+    return {result:{code:"ABC234",expiresAt:"2026-09-18T00:05:00Z",storyId:1,imported:true}};
+  }}} as unknown as typeof wx;
+  try{
+    await createDesktopStoryCode(room,"story-a");
+    assert.deepEqual(calls[0],{name:"drinkingTimeBridge",data:{action:"issueDesktop",storyRef:{storyId:"story-a",revisionId:"revision-a",version:2}}});
+    fail=true;
+    await assert.rejects(createDesktopStoryCode(room,"story-a"),/来源限制/);
+    assert.equal(calls.length,2);
+    room.stories[0].currentRevisionId="";
+    await assert.rejects(createDesktopStoryCode(room,"story-a"),/先.*保存/);
+    assert.equal(calls.length,2);
+  }finally{globals.wx=previous;}
+});
 
 const state = (): FamilyRoomState => ({
   roomName: "我的拾光房间",
@@ -58,9 +84,11 @@ test("电脑码响应必须完整且符合无歧义字母表", () => {
   const result = drinkingTimeAccountTest.transferResult({ code: "ABC234", expiresAt: "2026-09-14T10:05:00.000Z", storyId: 3, imported: true });
   assert.equal(result.storyId, 3);
   assert.throws(() => drinkingTimeAccountTest.transferResult({ code: "000000", expiresAt: "bad" }), /返回异常/);
+  const authority=drinkingTimeAccountTest.transferResult({code:"ABC234",expiresAt:"2026-09-14T10:05:00.000Z",storyAccessId:8,bound:true});
+  assert.equal(authority.storyAccessId,8);
 });
 
-test("接口约定 1.0.0 第 3.5 节：storyId 必须是正整数", () => {
+test("接口约定 1.1.0 第 3.5 节：storyId 必须是正整数", () => {
   const base = { code: "ABC234", expiresAt: "2026-09-14T10:05:00.000Z", imported: true };
   assert.throws(() => drinkingTimeAccountTest.transferResult({ ...base, storyId: 0 }), /返回异常/);
   assert.throws(() => drinkingTimeAccountTest.transferResult({ ...base, storyId: -1 }), /返回异常/);

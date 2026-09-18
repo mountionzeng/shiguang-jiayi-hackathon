@@ -20,6 +20,59 @@ const INFO_DIMENSIONS = {
   经过: "event",
 };
 
+const STORY_ID = /^story-[a-z0-9-]{1,100}$/;
+
+async function loadAll(db, collection, familyId) {
+  const rows = [];
+  for (let offset = 0; ; offset += 100) {
+    const result = await db.collection(collection).where({ familyId }).orderBy("_id", "asc").skip(offset).limit(100).get();
+    rows.push(...result.data);
+    if (result.data.length < 100) return rows;
+  }
+}
+
+function memoryIdOf(memory, familyId) {
+  return memory.frontendContributionId || memory.id || String(memory.sourceRecordId || "").replace(/^src_/, "").replace(`${familyId}_`, "") || String(memory._id || "").replace(`${familyId}_`, "");
+}
+function assertLegacyStoryValue(value) {
+  if(value?.sourcePolicyRequired||value?.sourceIds!==undefined||value?.blockId!==undefined||value?.provenanceVersion!==undefined)
+    throw new Error("STORY_PROTOCOL_REQUIRED");
+}
+
+/** The model's saved-book context is read under the caller's account, never trusted from the client. */
+async function loadStoryContext(event, cloud) {
+  const storyId = String(event.storyId || "").trim();
+  if (!storyId) return "";
+  if (!STORY_ID.test(storyId)) throw new Error("INVALID_STORY_ID");
+  const openid = String(cloud.getWXContext().OPENID || "");
+  if (!openid) throw new Error("LOGIN_REQUIRED");
+  const familyId = `family_${openid.replace(/[^0-9A-Za-z_-]/g, "_")}`;
+  const db = cloud.database();
+  let story;
+  try { story = (await db.collection("stories").doc(`${familyId}_${storyId}`).get()).data; }
+  catch { throw new Error("STORY_NOT_FOUND"); }
+  if (!story || story.familyId !== familyId || story.deletedAt) throw new Error("STORY_NOT_FOUND");
+  assertLegacyStoryValue(story);
+  if (story.writingMode !== "creative") throw new Error("STORY_NOT_CREATIVE");
+  const [draftRecord, memories] = await Promise.all([
+    story.currentRevisionId
+      ? db.collection("biography_drafts").doc(`${familyId}_${story.currentRevisionId}`).get().then(result => result.data).catch(() => undefined)
+      : undefined,
+    loadAll(db, "memories", familyId),
+  ]);
+  const chapterText = (draftRecord?.revision?.storyId === storyId ? draftRecord.revision.draft?.chapters ?? [] : [])
+    .flatMap(chapter => {
+      assertLegacyStoryValue(chapter);
+      return (chapter.content??[]).map(item=>{assertLegacyStoryValue(item);return item;});
+    }).map(item => item.text || "").filter(Boolean);
+  assertLegacyStoryValue(draftRecord?.revision?.draft);
+  const allowed = new Set(story.memoryIds || []);
+  const memoryText = memories.filter(memory => allowed.has(memoryIdOf(memory, familyId)) && !memory.deletedAt && memory.scope === "personal").map(memory => {
+    assertLegacyStoryValue(memory);return memory.text || "";
+  });
+  return [...chapterText, ...memoryText].filter(Boolean).join("\n").slice(0, 4000);
+}
+
 function sanitizeText(value, maxLength) {
   return String(value || "").trim().slice(0, maxLength);
 }
@@ -181,6 +234,7 @@ function buildAnalysisMessages({
   memoryType,
   memberName,
   storyTitle,
+  storyContext,
 }) {
   const brief = interviewBrief(memoryType);
   const history = previousAnswers.length > 0
@@ -203,6 +257,7 @@ function buildAnalysisMessages({
         `采访模式：${mode === "personal" ? "讲述本人亲历" : "讲述家庭共同记忆"}`,
         `讲述者：${memberName}`,
         storyTitle ? `正在延续的故事：${storyTitle}` : "当前还没有故事名",
+        storyContext ? `当前故事书的已有内容（只能用于避免重复和保持一致，不得引用为新事实）：\n${storyContext}` : "",
         `已追问方向：${collected}`,
         `对话历史：\n${history}`,
         `用户最新输入：${answer}`,
@@ -294,6 +349,7 @@ function buildOutputMessages({
   memoryType,
   memberName,
   storyTitle,
+  storyContext,
 }) {
   const brief = interviewBrief(memoryType);
 
@@ -310,6 +366,7 @@ function buildOutputMessages({
         `采访模式：${mode === "personal" ? "讲述本人亲历" : "讲述家庭共同记忆"}`,
         `讲述者：${memberName}`,
         storyTitle ? `正在延续的故事：${storyTitle}` : "当前还没有故事名",
+        storyContext ? `当前故事书的已有内容（只能用于避免重复和保持一致，不得引用为新事实）：\n${storyContext}` : "",
         brief.rule,
         `对话记录：\n${formatConversation(history)}`,
         `用户刚才说：${answer}`,
@@ -349,7 +406,7 @@ async function requestChatCompletion({ baseUrl, apiKey, model, messages, tempera
   throw new Error("EMPTY_MODEL_OUTPUT");
 }
 
-async function main(event) {
+async function main(event, dependencies = {}) {
   const apiKey = process.env.CHAT_AI_API_KEY || process.env.AI_API_KEY;
   const model = process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
   const baseUrl = (process.env.CHAT_AI_BASE_URL || process.env.AI_BASE_URL || DEFAULT_BASE_URL)
@@ -383,6 +440,9 @@ async function main(event) {
   const memoryType = validateMemoryType(event.memoryType);
   const memberName = sanitizeText(event.memberName, 40) || "讲述者";
   const storyTitle = sanitizeText(event.storyTitle, 40);
+  const cloud = dependencies.cloud || (event.storyId ? require("wx-server-sdk") : undefined);
+  if (cloud?.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+  const storyContext = await loadStoryContext(event, cloud);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20_000);
@@ -402,6 +462,7 @@ async function main(event) {
         memoryType,
         memberName,
         storyTitle,
+        storyContext,
       }),
     });
     return parseInterviewPrompt(content, fallbackDimension);
@@ -427,5 +488,6 @@ module.exports = {
     validateConversation,
     validateMemoryType,
     validatePreviousAnswers,
+    loadStoryContext,
   },
 };

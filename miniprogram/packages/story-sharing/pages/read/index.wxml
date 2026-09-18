@@ -1,0 +1,23 @@
+<view class="sharing-page">
+  <view class="eyebrow">拾光家忆 · 获准阅读的原稿</view>
+  <view class="heading serif">{{title || '亲友的故事'}}</view>
+  <view class="intro">这里显示主人当前保存的版本，不是你的个人副本。图片和保存副本尚未开放；只有主人明确授权时才能编辑。</view>
+  <view class="notice" wx:if="{{notice}}">{{notice}}</view>
+  <view class="intro" wx:if="{{loading}}">正在核对权限并读取章节…</view>
+  <view class="reading-chapter" wx:for="{{chapters}}" wx:key="id" wx:for-item="chapter">
+    <block wx:if="{{editChapterId === chapter.id}}">
+      <input class="edit-title serif" maxlength="40" value="{{editTitle}}" bindinput="editTitle" aria-label="章节标题"/>
+      <textarea class="edit-block serif" wx:for="{{editBlocks}}" wx:key="index" wx:for-item="block" data-index="{{block.index}}" value="{{block.text}}" bindinput="editBlock" auto-height maxlength="-1" aria-label="章节正文"/>
+      <view class="actions"><button class="secondary" disabled="{{busy}}" bindtap="cancelEdit">稍后再写</button><button class="primary" disabled="{{busy}}" loading="{{busy}}" bindtap="saveEdit">保存修改</button></view>
+    </block>
+    <block wx:else>
+      <view class="section-title serif">{{chapter.title || '未命名章节'}}</view>
+      <text class="paragraph serif" wx:for="{{chapter.content}}" wx:key="index" wx:for-item="paragraph">{{paragraph.text}}</text>
+      <button wx:if="{{canEdit}}" class="secondary" data-id="{{chapter.id}}" bindtap="beginEdit" disabled="{{busy || loading || editChapterId}}">编辑这一章</button>
+    </block>
+  </view>
+  <button wx:if="{{canCopy}}" class="primary" bindtap="receiveCopy" disabled="{{busy || loading || editChapterId}}">放进我的故事里</button>
+  <button wx:if="{{canInvite}}" class="primary" bindtap="createInvitation" disabled="{{busy || loading}}" loading="{{busy}}">申请再邀请一位亲友</button>
+  <button wx:if="{{shareReady}}" class="primary" open-type="share">发送新的阅读邀请</button>
+  <button class="secondary refresh" bindtap="refresh" disabled="{{loading || busy}}">重新核对并刷新</button>
+</view>

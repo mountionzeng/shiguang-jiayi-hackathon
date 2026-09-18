@@ -57,6 +57,7 @@ export interface ChapterRequest {
   memoryIds: string[];
   chapterTitle?: string;
   existingText?: string;
+  storyId?: string;
 }
 
 export async function generateBiographyWithStatus(
@@ -92,6 +93,7 @@ export async function generateBiographyWithStatus(
             relation: memory.authorMemberId === member.id ? "本人" : memory.relation || "亲友",
             text: memory.text,
           })),
+          ...(chapter?.storyId ? { storyId: chapter.storyId, memoryIds: chapter.memoryIds } : {}),
           ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),
         },
       });

@@ -1,0 +1,23 @@
+<view class="sharing-page">
+  <view class="eyebrow">拾光家忆 · 留下这段记忆</view>
+  <view class="heading serif">放进我的故事里</view>
+  <view class="intro">保存的是此刻获准章节的独立副本。以后原稿撤销阅读或被删除，你已经合法保存的内容仍会留下；来源和传播限制不会消失。</view>
+  <view class="notice" wx:if="{{notice}}">{{notice}}</view>
+  <view class="intro" wx:if="{{loading}}">正在核对章节与接收权限…</view>
+  <block wx:if="{{available}}">
+    <view class="section-title serif">{{title}}</view>
+    <view class="caption">选择要留下的章节</view>
+    <checkbox-group bindchange="chooseChapters">
+      <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{busy}}" color="#4f7f6b"/><text>{{item.title || '未命名章节'}}</text></label>
+    </checkbox-group>
+    <view class="section-title serif">放在哪里</view>
+    <radio-group bindchange="chooseMode">
+      <label class="permission"><text>新建一本自己的故事</text><radio value="new" checked="{{mode === 'new'}}" disabled="{{busy}}"/></label>
+      <label class="permission" wx:if="{{targets.length}}"><text>加入已有故事</text><radio value="append" checked="{{mode === 'append'}}" disabled="{{busy}}"/></label>
+    </radio-group>
+    <input wx:if="{{mode === 'new'}}" class="name-input" maxlength="40" value="{{copyTitle}}" bindinput="enterTitle" disabled="{{busy}}" placeholder="自己的故事名称"/>
+    <picker wx:else mode="selector" range="{{targets}}" range-key="title" value="{{targetIndex}}" bindchange="chooseTarget" disabled="{{busy}}"><view class="target-picker">{{selectedTargetTitle || '选择已有故事'}} ›</view></picker>
+    <view class="caption">收到的原文会保留来源；你以后新写的经历会作为自己的内容单独记录。</view>
+    <button class="primary" bindtap="receive" loading="{{busy}}" disabled="{{busy || loading}}">确认放进我的故事</button>
+  </block>
+</view>

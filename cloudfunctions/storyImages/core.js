@@ -71,11 +71,12 @@ function normalizeSubmitInput(event) {
   const input = event || {};
   const familyId = String(input.familyId || "").trim();
   const memberId = String(input.memberId || "").trim();
+  const storyId = String(input.storyId || "").trim();
   const chapterId = String(input.chapterId || "").trim();
   const requestId = String(input.requestId || "").trim();
   const purpose = String(input.purpose || "illustration");
   const referenceImageId = String(input.referenceImageId || "").trim();
-  if (!ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_MEMBER", "档案信息不完整");
+  if (!ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
   if (!ID_PATTERN.test(chapterId)) throw new StoryImageError("INVALID_CHAPTER", "章节信息不完整");
   if (!REQUEST_ID_PATTERN.test(requestId)) throw new StoryImageError("INVALID_REQUEST", "请求编号无效，请重试");
   if (!PURPOSES.includes(purpose)) throw new StoryImageError("INVALID_PURPOSE", "不支持这种配图");
@@ -86,13 +87,19 @@ function normalizeSubmitInput(event) {
   if (referenceImageId && purpose !== "illustration") {
     throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图可以参考旧图再画");
   }
-  return { familyId, memberId, chapterId, requestId, purpose, referenceImageId };
+  return { familyId, memberId, storyId, chapterId, requestId, purpose, referenceImageId };
 }
 
 function normalizeMemberInput(event) {
   const memberId = String((event && event.memberId) || "").trim();
   if (!ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_MEMBER", "档案信息不完整");
   return memberId;
+}
+
+function normalizeStoryInput(event) {
+  const storyId = String((event && event.storyId) || "").trim();
+  if (!ID_PATTERN.test(storyId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
+  return storyId;
 }
 
 /** Same order as the client's manuscriptHistory: newest savedAt, then id. */
@@ -106,6 +113,24 @@ function latestDraftForMember(records, memberId) {
   if (revisions.length) return revisions[0].draft;
   const personal = list.find(record => record && record.draftType === "personal" && record.memberId === memberId && record.draft);
   return personal ? personal.draft : undefined;
+}
+
+function latestDraftForStory(records, storyId) {
+  const list = Array.isArray(records) ? records : [];
+  const revisions = list
+    .filter(record => record && record.draftType === "story-revision" && record.storyId === storyId &&
+      record.revision && record.revision.storyId === storyId && record.revision.draft)
+    .map(record => record.revision)
+    .sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)) || String(b.id).localeCompare(String(a.id)));
+  return revisions[0] && revisions[0].draft;
+}
+
+function assertUnrestrictedStory(story,draft) {
+  const marked=item=>item&&typeof item==='object'&&
+    (item.sourcePolicyRequired||['sourceIds','blockId','provenanceVersion'].some(key=>Object.prototype.hasOwnProperty.call(item,key)));
+  if(marked(story)||marked(draft)||(draft?.content||[]).some(marked)||
+    (draft?.chapters||[]).some(chapter=>marked(chapter)||(chapter.content||[]).some(marked)))
+    throw new StoryImageError("STORY_PROTOCOL_REQUIRED","这份故事包含来源限制，暂不支持生成配图");
 }
 
 /** The chapter's own words from the saved book. Photos are local references and never read. */
@@ -211,8 +236,9 @@ function draftReferencesStoryImage(draft, imageId) {
   const match = String(imageId || "").match(/_img_(req-[0-9a-z-]{8,60})$/);
   const referenceId = match ? `photo-ai-${match[1]}` : "";
   const chapters = draft && Array.isArray(draft.chapters) ? draft.chapters : [];
-  return chapters.some(chapter => Array.isArray(chapter && chapter.content) &&
-    chapter.content.some(item => item && (item.storyImageId === imageId || (referenceId && item.photoId === referenceId))));
+  return chapters.some(chapter => chapter && (chapter.backdropImageId === imageId ||
+    (Array.isArray(chapter.content) && chapter.content.some(item => item &&
+      (item.storyImageId === imageId || (referenceId && item.photoId === referenceId))))));
 }
 
 function textHash(text) {
@@ -389,6 +415,7 @@ function extensionFor(contentType) {
 }
 
 module.exports = {
+  assertUnrestrictedStory,
   ACTIVE_STATUSES,
   BOOK_LIMIT,
   COUNTED_STATUSES,
@@ -411,7 +438,9 @@ module.exports = {
   draftReferencesStoryImage,
   familyIdFor,
   latestDraftForMember,
+  latestDraftForStory,
   normalizeMemberInput,
+  normalizeStoryInput,
   normalizeSubmitInput,
   parseSceneJson,
   publicImage,

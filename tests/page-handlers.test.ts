@@ -8,6 +8,7 @@ import {
 } from "../miniprogram/domain/biography";
 import { makeRevision } from "../miniprogram/services/manuscript";
 import { storyImageApi } from "../miniprogram/services/storyImageService";
+import { storySharing } from "../miniprogram/services/storySharing";
 import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
 const ROOM_KEY = "shiguang-family-room-v5";
@@ -112,6 +113,7 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
       showToast: ({ title }: { title: string }) => toasts.push(title),
       showModal: ({ success }: { success?: (result: { confirm: boolean; cancel: boolean }) => void }) =>
         success?.({ confirm: true, cancel: false }),
+      showActionSheet: ({ success }: { success?: (result: { tapIndex: number }) => void }) => success?.({ tapIndex: 0 }),
       navigateBack: () => {
         backCount += 1;
       },
@@ -706,18 +708,7 @@ test("switching the story on home changes what it asks next, and a new story ope
   );
 
   callPage(page, "startNewStory");
-  assert.equal(last(storage.toasts), "先给故事起个名字");
-  (globalThis as unknown as { wx: Record<string, unknown> }).wx.showModal = ({ success }: {
-    success: (result: { confirm: boolean; cancel: boolean; content: string }) => void;
-  }) => success({ confirm: true, cancel: false, content: " 我的大学四年 " });
-  callPage(page, "startNewStory");
-  assert.equal(last(storage.navigations), `/pages/interview/interview?storyTitle=${encodeURIComponent("我的大学四年")}`);
-
-  await callPage(page, "refresh");
-  assert.equal(page.data.currentStoryTitle, "我的大学四年");
-  assert.deepEqual(titles(), ["我的大学四年", "外公接我放学"], "a story with no memories yet can still be picked");
-  assert.equal((page.data.storyOptions as Array<{ label: string }>)[0].label, "还没开始聊");
-  assert.equal(page.data.hasRecommendedQuestion, false);
+  assert.equal(last(storage.navigations), "/pages/stories/stories?create=1");
 
   await callPage(page, "chooseStory", { currentTarget: { dataset: { title: "外公接我放学" } } });
   assert.equal(page.data.recommendedSourceId, "demo-personal-rain");
@@ -1031,6 +1022,27 @@ test("人生之书 lists every story; a book-only story opens its chapters for t
   assert.equal(storage.roomState().manuscriptRevisions?.length, 1, "opening the list writes nothing");
 });
 
+test("人生之书 creates an empty book or opens selected memories in the new book organizer", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("stories"));
+  page.setData({
+    createTitle: "雨天的新讲法",
+    createMode: "creative",
+    createMemories: [{ ...createInitialRoomState().contributions[0], checked: true }],
+  });
+
+  await callPage(page, "createBook");
+  const created = storage.roomState().stories?.find(story => story.title === "雨天的新讲法");
+  assert.ok(created);
+  assert.equal(created.writingMode, "creative");
+  assert.deepEqual(created.memoryIds, ["demo-personal-rain"]);
+  const url = String(last(storage.navigations));
+  const query = new URLSearchParams(url.split("?")[1]);
+  assert.equal(query.get("storyId"), created.id);
+  assert.equal(query.get("memoryIds"), "demo-personal-rain");
+});
+
 test("chat always saves under the account owner, whichever book was open last", async (context) => {
   const storage = installWxMock(createInitialRoomState(), "member-1");
   context.after(storage.restore);
@@ -1051,6 +1063,24 @@ test("chat always saves under the account owner, whichever book was open last", 
   assert.equal(storage.currentMemberId(), "member-1", "chatting switches nothing else");
 });
 
+test("objective story interview records answers without calling any AI function", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  let aiCalls = 0;
+  (wx as any).cloud = { callFunction: async () => { aiCalls += 1; throw new Error("AI must not run"); } };
+  const page = instantiate(await pageDefinition("interview"));
+  page.setData({ inputText: "只记录这句事实。", writingMode: "objective", storyId: "story-a", answers: [], messages: [] });
+
+  await callPage(page, "send");
+  assert.equal(aiCalls, 0);
+  assert.deepEqual(page.data.answers, ["只记录这句事实。"]);
+  assert.equal(page.data.asking, false);
+  assert.ok(!(page.data.messages as Array<{ kind: string }>).some(message => message.kind === "followup"));
+});
+
 test("全部回忆 lists every memory and continues the chat from the one you pick", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -1069,6 +1099,36 @@ test("全部回忆 lists every memory and continues the chat from the one you pi
   assert.equal(query.get("storyTitle"), "外公接我放学");
   assert.equal(query.get("memoryType"), "memoir");
   assert.equal(storage.roomState().contributions.length, createInitialRoomState().contributions.length, "picking one changes nothing");
+});
+
+test("全部回忆 uses the current or unique story id and never guesses between several books", async (context) => {
+  const state = createInitialRoomState();
+  state.storyMigration = { version: 1, status: "active", pending: [] };
+  state.stories = [
+    { id: "story-rain-a", familyId: "local", title: "雨天 A", bookTitle: "雨天 A", writingMode: "objective", memoryIds: ["demo-personal-rain"], protagonistMemberIds: [], createdAt: "2026-09-17T00:00:00.000Z", updatedAt: "2026-09-17T00:00:00.000Z", version: 0, currentRevisionId: "" },
+    { id: "story-rain-b", familyId: "local", title: "雨天 B", bookTitle: "雨天 B", writingMode: "creative", memoryIds: ["demo-personal-rain"], protagonistMemberIds: [], createdAt: "2026-09-17T00:00:00.000Z", updatedAt: "2026-09-17T00:00:00.000Z", version: 0, currentRevisionId: "" },
+  ];
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("recall"));
+
+  await callPage(page, "refresh");
+  let item = (page.data.items as Array<{ id: string; storyId: string; needsStoryChoice: boolean }>).find(row => row.id === "demo-personal-rain")!;
+  assert.equal(item.needsStoryChoice, true);
+  callPage(page, "continueMemory", { currentTarget: { dataset: { id: item.id, title: "外公接我放学", story: "", choice: true } } });
+  let query = new URLSearchParams(String(last(storage.navigations)).split("?")[1]);
+  assert.equal(query.get("storyId"), "story-rain-a");
+  assert.equal(query.get("sourceId"), "demo-personal-rain");
+
+  wx.setStorageSync("shiguang-current-story-id-v1", "story-rain-b");
+  await callPage(page, "refresh");
+  item = (page.data.items as Array<{ id: string; storyId: string; needsStoryChoice: boolean }>).find(row => row.id === "demo-personal-rain")!;
+  assert.equal(item.storyId, "story-rain-b");
+  assert.equal(item.needsStoryChoice, false);
+  callPage(page, "continueMemory", { currentTarget: { dataset: { id: item.id, title: "外公接我放学", story: item.storyId, choice: false } } });
+  query = new URLSearchParams(String(last(storage.navigations)).split("?")[1]);
+  assert.equal(query.get("storyId"), "story-rain-b");
+  assert.equal(query.get("sourceId"), "demo-personal-rain");
 });
 
 test("the memory archive lists quick notes from the shared memory pool", async (context) => {
@@ -1582,6 +1642,34 @@ test("a selected manuscript excerpt is shared only with the chosen family member
   assert.deepEqual(excerpt.sharedWithMemberIds, ["member-1"]);
   assert.equal(page.data.panel, "");
   assert.match(String(page.data.saveNotice), /已发送给林秋/);
+});
+
+test("a migrated story sends only its saved revision reference through the trusted excerpt service",async context=>{
+  const state=createInitialRoomState();
+  const chapter={id:"chapter-a",title:"巷口",memoryIds:[],content:[{text:"外公撑着伞在巷口等我。"}]};
+  state.storyMigration={version:1,status:"active",pending:[]};
+  state.stories=[{id:"story-a",familyId:"family_owner",title:"旧城",bookTitle:"旧城",writingMode:"objective",version:2,
+    currentRevisionId:"revision-a",protagonistMemberIds:[],memoryIds:[],createdAt:"2026-09-18T00:00:00Z",updatedAt:"2026-09-18T00:00:00Z"}];
+  state.manuscriptRevisions=[{id:"revision-a",storyId:"story-a",memberId:"owner",kind:"version",label:"保存",savedAt:"2026-09-18T00:00:00Z",
+    sourceFingerprint:"",draft:{title:"旧城",chapters:[chapter],content:[{text:"第一章　巷口\n\n"},{text:chapter.content[0].text},{text:"\n"}],
+      paragraphs:["第一章　巷口","外公撑着伞在巷口等我。"],sourceCount:0,generatedAt:"2026-09-18T00:00:00Z",generationMode:"local-demo"}}];
+  const storage=installWxMock(state);context.after(storage.restore);
+  const original=storySharing.shareExcerpt,calls:any[]=[];
+  storySharing.shareExcerpt=async input=>{calls.push(input);return {ok:true,contributionId:"excerpt-one",recipientMemberIds:input.recipientMemberIds};};
+  context.after(()=>{storySharing.shareExcerpt=original;});
+  const page=instantiate(await pageDefinition("book"));
+  page.requestedStoryKey="story-a";page.activeChapterId="chapter-a";page.data.view="chapter";
+  await callPage(page,"refresh");
+  await callPage(page,"prepareExcerptShare","外公撑着伞在巷口等我。");
+  callPage(page,"onShareRecipients",{detail:{value:["member-1"]}});
+  await callPage(page,"sendExcerpt");
+  assert.equal(calls.length,1);
+  assert.deepEqual({...calls[0],requestId:"stable"},{
+    storyId:"story-a",revisionId:"revision-a",expectedVersion:2,chapterId:"chapter-a",text:"外公撑着伞在巷口等我。",
+    recipientMemberIds:["member-1"],requestId:"stable",
+  });
+  assert.equal(storage.roomState().contributions.some(item=>item.title?.includes("摘录")),false);
+  assert.match(String(page.data.saveNotice),/已发送给林秋/);
 });
 
 test("sharing a manuscript excerpt requires an actual selection and a recipient", async context => {

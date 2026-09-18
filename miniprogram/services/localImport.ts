@@ -4,6 +4,7 @@ import { loadRoomState, saveRoomState, saveCurrentMemberId } from "./roomStorage
 
 /** Explicit one-way import: namespace all identities and never overwrite local edits. */
 export function mergeLegacyCloud(local: FamilyRoomState, remote: FamilyRoomState, source: string): FamilyRoomState {
+  if (remote.storyMigration || remote.stories?.length) throw new Error('新版故事书暂不支持旧版导入，请在云端书架查看；本机内容没有改动');
   if (local.importedCloudRooms?.includes(source)) return local;
   const prefix = source + ":";
   const id = (value: string) => prefix + value;

@@ -99,6 +99,7 @@ export interface OrganizeMemoryInput {
   memoryType: MemoryType;
   memberName?: string;
   storyTitle?: string;
+  useAi?: boolean;
 }
 
 export async function organizeMemory(
@@ -106,6 +107,7 @@ export async function organizeMemory(
 ): Promise<OrganizedMemoryDraft> {
   const transcript = input.transcript.map((item) => item.trim()).filter(Boolean);
   const fallback = localOrganizedDraft(transcript, input.memoryType);
+  if (input.useAi === false) return fallback;
   if (!canUseCloudAi()) return fallback;
   if (!await requestAiConsent()) return fallback;
 

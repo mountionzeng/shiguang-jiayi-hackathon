@@ -2,6 +2,7 @@ import { FamilyRoomState, ManuscriptChapter } from "../domain/biography";
 import { CHAPTER_BACKDROP_ID, chaptersOf, copyChapter, draftWithChapters } from "./chapters";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "./manuscript";
 import { loadRoomStateRemoteFirst } from "./roomRepository";
+import { activeStory } from "./storyBooks";
 
 /** Sets (or, with an empty id, clears) one chapter's backdrop; text, name and every other chapter stay as they are. */
 export function withChapterBackdrop(chapters: ManuscriptChapter[], chapterId: string, imageId: string): ManuscriptChapter[] {
@@ -20,16 +21,23 @@ export function withChapterBackdrop(chapters: ManuscriptChapter[], chapterId: st
  * Saves the choice as a new version, so restoring an older version also restores its backdrop.
  * Choosing the backdrop a chapter already has saves nothing.
  */
-export async function saveChapterBackdrop(input: { memberId: string; chapterId: string; imageId: string }): Promise<FamilyRoomState> {
+export async function saveChapterBackdrop(input: { storyId?: string; memberId?: string; chapterId: string; imageId: string }): Promise<FamilyRoomState> {
   const state = await loadRoomStateRemoteFirst();
-  const current = currentManuscript(state, input.memberId);
+  const bookId = input.storyId || input.memberId || "";
+  const current = currentManuscript(state, bookId);
   if (!current.draft) throw new Error("这本书还没有保存过，先保存书稿再选底图");
   const chapters = chaptersOf(current.draft, current.sourceFingerprint);
   const chapter = chapters.find(item => item.id === input.chapterId);
   if (!chapter) throw new Error("没找到这一章，请重新打开书稿");
   if ((chapter.backdropImageId ?? "") === input.imageId) return state;
   const next = withChapterBackdrop(chapters, input.chapterId, input.imageId);
-  const revision = makeRevision(input.memberId, draftWithChapters(current.draft, next), current.sourceFingerprint,
+  const revision = makeRevision(input.memberId || "", draftWithChapters(current.draft, next), current.sourceFingerprint,
     "draft", input.imageId ? "设置本章底图" : "不用本章底图");
+  if (input.storyId) {
+    const story = activeStory(state, input.storyId);
+    revision.storyId = story.id;
+    revision.expectedStoryVersion = story.version;
+    revision.sourceRevisionId = current.revisionId || undefined;
+  }
   return saveManuscriptRevision(revision, current.revisionId);
 }

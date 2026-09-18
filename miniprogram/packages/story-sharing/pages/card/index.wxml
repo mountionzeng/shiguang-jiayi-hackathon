@@ -1,0 +1,20 @@
+<view class="sharing-page card-page">
+  <view class="eyebrow">公开故事卡</view>
+  <view class="heading serif">{{title || '选择一段故事'}}</view>
+  <view class="intro">卡片是公开图片。这里只能选择已获公开发布许可的文字和照片，不会带上邀请链接或其他章节。</view>
+  <view class="notice" wx:if="{{notice}}">{{notice}}</view>
+  <radio-group bindchange="chooseChapter" wx:if="{{chapters.length}}">
+    <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><radio value="{{item.id}}" checked="{{chapterId === item.id}}" /><text class="serif">{{item.title || '未命名章节'}}</text></label>
+  </radio-group>
+  <checkbox-group bindchange="chooseBlocks" wx:for="{{chapters}}" wx:key="id" wx:if="{{item.id === chapterId}}">
+    <label class="card-choice {{block.publishable ? '' : 'card-choice-disabled'}}" wx:for="{{item.blocks}}" wx:for-item="block" wx:key="blockId">
+      <checkbox value="{{block.blockId}}" checked="{{block.checked}}" disabled="{{!block.publishable || busy}}" />
+      <view class="card-choice-copy"><text wx:if="{{block.kind === 'text'}}">{{block.preview}}</text><text wx:else>照片</text><text wx:if="{{!block.publishable}}" class="caption">没有公开发布许可</text></view>
+    </label>
+  </checkbox-group>
+  <button class="primary" bindtap="preview" disabled="{{!canPreview || busy}}">{{busy ? '正在生成…' : '预览故事卡'}}</button>
+  <image wx:if="{{previewPath}}" class="card-preview" src="{{previewPath}}" mode="widthFix"></image>
+  <button wx:if="{{previewPath}}" class="secondary" bindtap="save" disabled="{{busy}}">重新核对并保存到相册</button>
+  <view class="caption">保存图片不代表已经发布；发布前请再次确认文字和照片适合公开。</view>
+  <canvas class="story-card-canvas" canvas-id="storyCard"></canvas>
+</view>

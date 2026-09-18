@@ -1,0 +1,134 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const {createHandlers} = require('../cloudfunctions/storyBooks/flow');
+const core = require('../cloudfunctions/storyBooks/core');
+const {writableDocument} = require('../cloudfunctions/storyBooks/repository');
+function fixture({ migrationStatus = 'active' } = {}) {
+  const tables = new Map(); let chain = Promise.resolve();
+  const key = (t,id)=>t+':'+id;
+  const io = {
+    get: async(t,id)=>structuredClone(tables.get(key(t,id))),
+    set: async(t,id,v)=>{tables.set(key(t,id),structuredClone(v));},
+    remove: async(t,id)=>{tables.delete(key(t,id));},
+  };
+  tables.set('families:family_test',migrationStatus ? {storyBooks:{status:migrationStatus,version:1}} : {});
+  const repo = {...io,all:async(t,f)=>[...tables].filter(([k,v])=>k.startsWith(t+':') && v.familyId===f).map(([k,v])=>structuredClone({_id:k.slice(t.length+1),...v})),
+    transaction:fn=>{const result=chain.then(async()=>{const before=new Map(tables);try{return await fn(io);}catch(e){tables.clear();for(const [k,v] of before)tables.set(k,v);throw e;}});chain=result.catch(()=>{});return result;}};
+  return {handlers:createHandlers(repo,{migrationReady:true}),tables,repo};
+}
+test('cloud writes never send the database-owned _id field back to document.set',()=>{
+  const source={_id:'family_test',roomName:'测试',storyBooks:{status:'preparing'}};
+  assert.deepEqual(writableDocument(source),{roomName:'测试',storyBooks:{status:'preparing'}});
+  assert.equal(source._id,'family_test','normalization does not mutate the loaded document');
+});
+test('cloud transactions reject same-book concurrent saves and allow independent books',async()=>{
+  const {handlers:h}=fixture(), ctx={familyId:'family_test'};
+  const create=id=>h.command(ctx,{action:'create',storyId:id,title:id,writingMode:'objective',memoryIds:[],requestId:'create-'+id});
+  await create('story-a');await create('story-b');
+  const op=(id,req)=>h.command(ctx,{action:'update',storyId:id,expectedVersion:1,patch:{bookTitle:req},requestId:req});
+  const same=await Promise.allSettled([op('story-a','request-1111'),op('story-a','request-2222')]);
+  assert.equal(same.filter(r=>r.status==='fulfilled').length,1);
+  await op('story-b','request-3333');
+  assert.equal((await h.state(ctx)).stories.length,2);
+});
+test('migration allowlist keeps non-canary families inactive',async()=>{
+  const tables=new Map([['families:family_test',{}]]), key=(table,id)=>table+':'+id;
+  const io={get:async(table,id)=>structuredClone(tables.get(key(table,id))),set:async(table,id,value)=>tables.set(key(table,id),structuredClone(value)),remove:async(table,id)=>tables.delete(key(table,id))};
+  const repo={...io,all:async()=>[],transaction:fn=>fn(io)};
+  const handlers=createHandlers(repo,{migrationReady:true,migrationFamilyIds:['family_canary']});
+  await assert.rejects(handlers.migrate({familyId:'family_test'}),/尚未进入/);
+  assert.equal(tables.get('families:family_test').storyBooks,undefined);
+});
+test('lost acknowledgement retry is idempotent and foreign stories are inaccessible',async()=>{
+  const {handlers:h}=fixture(), ctx={familyId:'family_test'};
+  const input={action:'create',storyId:'story-a',title:'A',writingMode:'objective',memoryIds:[],requestId:'create-story-a'};
+  await h.command(ctx,input);await h.command(ctx,input);
+  assert.equal((await h.state(ctx)).stories.length,1);
+  await assert.rejects(h.command({familyId:'family_other'},{action:'update',storyId:'story-a',expectedVersion:1,patch:{title:'偷改'},requestId:'request-9999'}));
+});
+test('production-shaped memory records keep their frontend contribution ids',async()=>{
+  const {handlers:h,tables}=fixture(), ctx={familyId:'family_test'};
+  tables.set('memories:family_test_memory-a',{familyId:'family_test',frontendContributionId:'memory-a',scope:'personal',text:'一段记忆'});
+  await h.command(ctx,{action:'create',storyId:'story-a',title:'A',writingMode:'objective',memoryIds:['memory-a'],requestId:'create-story-a'});
+  assert.deepEqual((await h.state(ctx)).stories[0].memoryIds,['memory-a']);
+});
+
+test('migration resumes across batches and activates only after every planned row is written',async()=>{
+  const {handlers:h,tables}=fixture({migrationStatus:null}), ctx={familyId:'family_test'};
+  for(let index=0;index<41;index++) {
+    const id='memory-'+String(index).padStart(2,'0');
+    tables.set('memories:family_test_'+id,{familyId:'family_test',frontendContributionId:id,scope:'personal',storyTitle:'故事 '+index,text:'记忆 '+index});
+  }
+
+  const first=await h.migrate(ctx);
+  assert.deepEqual(first,{status:'preparing',processed:80,total:82});
+  assert.equal(tables.get('families:family_test').storyBooks.status,'preparing');
+
+  const second=await h.migrate(ctx);
+  assert.deepEqual(second,{status:'active',processed:82,total:82});
+  assert.equal(tables.get('families:family_test').storyBooks.status,'active');
+  assert.equal((await h.state(ctx)).stories.length,41);
+});
+
+test('migration restarts from fresh legacy source when data changes between batches',async()=>{
+  const {handlers:h,tables}=fixture({migrationStatus:null}), ctx={familyId:'family_test'};
+  for(let index=0;index<41;index++) {
+    const id='memory-'+String(index).padStart(2,'0');
+    tables.set('memories:family_test_'+id,{familyId:'family_test',frontendContributionId:id,scope:'personal',storyTitle:'故事 '+index,text:'记忆 '+index});
+  }
+  const first=await h.migrate(ctx);
+  assert.equal(first.status,'preparing');
+
+  tables.set('memories:family_test_memory-new',{familyId:'family_test',frontendContributionId:'memory-new',scope:'personal',storyTitle:'后来新增的故事',text:'迁移期间新增'});
+  const restart=await h.migrate(ctx);
+  assert.equal(restart.status,'restarting');
+  assert.equal((await h.state(ctx)).stories.length,0,'partially prepared stories stay hidden');
+
+  let result=restart;
+  for(let attempt=0;attempt<5 && result.status!=='active';attempt++) result=await h.migrate(ctx);
+  assert.equal(result.status,'active');
+  assert.equal((await h.state(ctx)).stories.length,42);
+});
+
+test('revision save revalidates image availability inside its transaction',async()=>{
+  const {handlers:h,tables,repo}=fixture(), ctx={familyId:'family_test'};
+  await h.command(ctx,{action:'create',storyId:'story-a',title:'A',writingMode:'objective',memoryIds:[],requestId:'create-story-a'});
+  const imageId='family_test_img_req-aaaaaaaa';
+  tables.set('story_images:'+imageId,{familyId:'family_test',storyId:'story-a',deletedAtMs:undefined});
+  const chapter={id:'chapter-a',title:'图文',memoryIds:[],content:[{text:'正文'},{photoId:'photo-ai-req-aaaaaaaa'}]};
+  const revision={id:'revision-save-image',storyId:'story-a',memberId:'owner',kind:'version',label:'保存',savedAt:'',sourceFingerprint:'',draft:{title:'A',chapters:[chapter],...core.flatten([chapter]),sourceCount:0,generatedAt:'',generationMode:'local-demo'}};
+  const transaction=repo.transaction;
+  repo.transaction=fn=>{
+    repo.transaction=transaction;
+    tables.set('story_images:'+imageId,{...tables.get('story_images:'+imageId),deletedAtMs:1});
+    return transaction(fn);
+  };
+  await assert.rejects(h.command(ctx,{action:'save',storyId:'story-a',expectedVersion:1,expectedRevisionId:'',revision,requestId:revision.id}),/不可用/);
+  assert.equal((await h.state(ctx)).manuscriptRevisions.length,0);
+});
+
+test('migration links legacy images and in-flight jobs to the uniquely owning story and exposes unassigned assets',async()=>{
+  const {handlers:h,tables}=fixture({migrationStatus:null}), ctx={familyId:'family_test'};
+  tables.set('memories:family_test_memory-a',{familyId:'family_test',frontendContributionId:'memory-a',authorMemberId:'owner',scope:'personal',storyTitle:'旧故事',text:'旧记忆'});
+  const chapter={id:'chapter-old',title:'旧章',memoryIds:['memory-a'],content:[{text:'正文'},{photoId:'photo-ai-req-abcdefgh'}]};
+  tables.set('biography_drafts:family_test_legacy-revision',{familyId:'family_test',draftType:'manuscript-revision',revision:{id:'legacy-revision',memberId:'owner',kind:'version',label:'旧稿',savedAt:'2026-09-17',sourceFingerprint:'',draft:{title:'旧书',chapters:[chapter],...core.flatten([chapter]),sourceCount:1,generatedAt:'2026-09-17',generationMode:'local-demo'}}});
+  const imageId='family_test_img_req-abcdefgh';
+  tables.set('story_images:'+imageId,{familyId:'family_test',memberId:'owner',chapterId:'chapter-old',fileID:'cloud://used'});
+  tables.set('story_images:family_test_img_req-unowned1',{familyId:'family_test',memberId:'owner',chapterId:'chapter-missing',fileID:'cloud://unowned'});
+  tables.set('image_jobs:family_test_req-job-old',{familyId:'family_test',memberId:'owner',chapterId:'chapter-old',status:'unknown'});
+
+  let result=await h.migrate(ctx);
+  while(result.status!=='active')result=await h.migrate(ctx);
+  const story=(await h.state(ctx)).stories[0];
+  const imageLinks=[...tables].filter(([key])=>key.startsWith('story_image_links:')).map(([,value])=>value);
+  const jobLinks=[...tables].filter(([key])=>key.startsWith('story_image_job_links:')).map(([,value])=>value);
+  const pending=[...tables].filter(([key])=>key.startsWith('story_migration_items:')).map(([,value])=>value.item);
+  assert.ok(imageLinks.some(link=>link.storyId===story.id && link.imageId===imageId));
+  assert.ok(jobLinks.some(link=>link.storyId===story.id && link.jobId==='family_test_req-job-old'));
+  const unassigned=pending.find(item=>item.kind==='image' && item.imageId==='family_test_img_req-unowned1');
+  assert.ok(unassigned);
+  await h.command(ctx,{action:'resolveAsset',storyId:story.id,expectedVersion:story.version,pendingId:unassigned.id,requestId:'resolve-unowned-image'});
+  const resolved=[...tables].find(([key])=>key.startsWith('story_migration_items:') && tables.get(key).item.id===unassigned.id)?.[1].item;
+  assert.equal(resolved.resolvedStoryId,story.id);
+  assert.ok([...tables].some(([key,value])=>key.startsWith('story_image_links:') && value.storyId===story.id && value.imageId==='family_test_img_req-unowned1'));
+});

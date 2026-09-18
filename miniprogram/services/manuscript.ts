@@ -3,8 +3,10 @@ import { loadRoomStateRemoteFirst, usesCloudStorage } from "./roomRepository";
 import { saveCloudManuscriptRevision } from "./cloudRoomStorage";
 import { saveRoomState } from "./roomStorage";
 import { chapterLabel, chaptersOf, copyChapter, validateManuscriptDraft } from "./chapters";
+import { currentStoryManuscript, storyManuscriptHistory, saveStoryRevision } from './storyBooks';
 
 export interface MemoryPlacement {
+  storyId?: string;
   memberId: string;
   bookName: string;
   bookTitle: string;
@@ -18,6 +20,15 @@ export interface MemoryPlacement {
  */
 export function memoryPlacements(state: FamilyRoomState): Map<string, MemoryPlacement[]> {
   const placements = new Map<string, MemoryPlacement[]>();
+  if (state.storyMigration?.status === 'active') {
+    for (const story of (state.stories ?? []).filter(s=>!s.deletedAt)) {
+      const current = currentStoryManuscript(state,story.id);
+      (current.draft?.chapters ?? []).forEach((chapter,index)=>chapter.memoryIds.forEach(memoryId=>{
+        placements.set(memoryId,[...(placements.get(memoryId) ?? []),{storyId:story.id,memberId:'',bookName:story.title,bookTitle:story.bookTitle || story.title,chapterId:chapter.id,chapter:chapterLabel(index+1)}]);
+      }));
+    }
+    return placements;
+  }
   for (const member of state.members.filter(isRecordingProfile)) {
     const current = currentManuscript(state, member.id);
     if (!current.draft) continue;
@@ -52,13 +63,15 @@ function revisionContent(revision: ManuscriptRevision) {
 }
 
 export function manuscriptHistory(state: FamilyRoomState, memberId: string) {
-  return (state.manuscriptRevisions ?? []).filter(item => item.memberId === memberId)
+  if (memberId.startsWith('story-')) return storyManuscriptHistory(state,memberId);
+  return (state.manuscriptRevisions ?? []).filter(item => !item.storyId && item.memberId === memberId)
     .slice().sort((a, b) => b.savedAt.localeCompare(a.savedAt) || b.id.localeCompare(a.id));
 }
 
 export function currentManuscript(state: FamilyRoomState, memberId: string): {
   draft?: BiographyDraft; sourceFingerprint: string; revisionId: string;
 } {
+  if (memberId.startsWith('story-')) return currentStoryManuscript(state,memberId);
   const latest = manuscriptHistory(state, memberId)[0];
   if (latest) return { draft: latest.draft, sourceFingerprint: latest.sourceFingerprint, revisionId: latest.id.startsWith("legacy-") ? "" : latest.id };
   return {
@@ -82,7 +95,9 @@ export function makeRevision(memberId: string, draft: BiographyDraft, sourceFing
 }
 
 export async function saveManuscriptRevision(revision: ManuscriptRevision, expectedRevisionId: string) {
+  if (revision.storyId) return saveStoryRevision(revision,expectedRevisionId);
   const state = await loadRoomStateRemoteFirst();
+  if (state.storyMigration?.status === 'active') throw new Error('请从书架选择故事后保存');
   if (!state.members.some(member => member.id === revision.memberId && isRecordingProfile(member))) throw new Error("请先选择记录档案");
   validateManuscriptDraft(revision.draft);
   const existing = state.manuscriptRevisions?.find(item => item.id === revision.id);

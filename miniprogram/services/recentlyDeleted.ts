@@ -14,7 +14,9 @@ export interface RecentlyDeletedItem {
 }
 
 export function recentlyDeletedItems(state: FamilyRoomState): RecentlyDeletedItem[] {
-  const stories: RecentlyDeletedItem[] = (state.deletedStories ?? []).map((story) => ({
+  const stories: RecentlyDeletedItem[] = (state.storyMigration?.status === 'active'
+    ? (state.stories ?? []).filter(s=>s.deletedAt).map(s=>({key:s.id,title:s.title,deletedAt:s.deletedAt!}))
+    : state.deletedStories ?? []).map((story) => ({
     type: "story",
     id: story.key,
     title: story.title,

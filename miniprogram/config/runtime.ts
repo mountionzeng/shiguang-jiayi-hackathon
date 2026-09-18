@@ -2,9 +2,7 @@
 // different mini-program account, add its AppID/environment pair here first.
 // Unknown AppIDs deliberately do not fall back to the old environment: that
 // prevents a new account from writing into the previous account's cloud data.
-const CLOUD_ENV_BY_APP_ID: Record<string, string> = {
-  wx6be512f0fe129b62: "cloud1-d0g8c8yg0513a6068",
-};
+const CLOUD_ENV_BY_APP_ID = require("./wechat-accounts.js") as Record<string, string>;
 
 export function cloudEnvForAppId(appId: string): string | undefined {
   return CLOUD_ENV_BY_APP_ID[String(appId || "").trim()];

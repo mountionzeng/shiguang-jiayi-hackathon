@@ -21,7 +21,7 @@ import {
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import { bookmarkDateParts } from "../../services/memoryDates";
-import { loadCurrentStoryTitle, saveCurrentStoryTitle } from "../../services/storySelection";
+import { loadCurrentStoryId, loadCurrentStoryTitle, saveCurrentStoryId, saveCurrentStoryTitle } from "../../services/storySelection";
 import { logLoadError } from "../../services/loadErrorLog";
 
 interface RecentStoryView {
@@ -59,7 +59,6 @@ const RECOMMENDATION_DIMENSIONS: InterviewDimension[] = [
   "feeling",
 ];
 
-const MAX_STORY_TITLE_LENGTH = 20;
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -208,6 +207,7 @@ Page({
     coverTitle: "",
     coverSubtitle: "",
     storyKey: "",
+    storyId: "",
     storyMemoryCount: 0,
     storyChapterCount: 0,
     storyPeopleCount: 0,
@@ -246,14 +246,16 @@ Page({
       return !title || !deletedStoryTitles.has(title);
     });
     const stored = loadCurrentStoryTitle();
+    const storedId = loadCurrentStoryId();
     const latest = latestContribution(visiblePool);
-    const currentStoryTitle = stored === "" || (stored && !deletedStoryTitles.has(stored))
+    const storedStory = currentState.storyMigration?.status === "active" ? shelf.find(story => story.key === storedId) : undefined;
+    const currentStoryTitle = storedStory?.title ?? (stored === "" || (stored && !deletedStoryTitles.has(stored))
       ? stored
-      : (latest ? contributionStoryTitle(latest) : "");
+      : (latest ? contributionStoryTitle(latest) : ""));
     // 「先随便聊聊」只接着还没放进故事的片段问，免得标题写着随便聊，问的却是别的故事。
-    const inCurrentStory = pool.filter(
-      (memory) => contributionStoryTitle(memory) === currentStoryTitle,
-    );
+    const inCurrentStory = storedStory
+      ? pool.filter(memory => storedStory.memoryIds.includes(memory.id))
+      : pool.filter((memory) => contributionStoryTitle(memory) === currentStoryTitle);
     const recommendedQuestion = recommendedQuestionFor(
       latestContribution(inCurrentStory),
       this.recommendationOffset,
@@ -281,6 +283,7 @@ Page({
           : "还没开始聊")
         : (inCurrentStory.length ? "还没放进故事的记忆" : "先说一句，聊完再放进故事"),
       storyKey: currentStory?.key ?? "",
+      storyId: currentStory?.storyId ?? "",
       storyMemoryCount: inCurrentStory.length,
       storyChapterCount: currentStory?.chapterCount ?? 0,
       storyPeopleCount: storyPeople.size,
@@ -322,9 +325,10 @@ Page({
   },
 
   async chooseStory(event: {
-    currentTarget: { dataset: { title: string } };
+    currentTarget: { dataset: { title: string; key?: string } };
   }) {
     saveCurrentStoryTitle(event.currentTarget.dataset.title || "");
+    if (event.currentTarget.dataset.key?.startsWith("story-")) saveCurrentStoryId(event.currentTarget.dataset.key);
     this.recommendationOffset = 0;
     this.setData({ storyChooserOpen: false });
     await this.refresh();
@@ -332,42 +336,25 @@ Page({
 
   async chooseNoStory() {
     saveCurrentStoryTitle("");
+    saveCurrentStoryId("");
     this.recommendationOffset = 0;
     this.setData({ storyChooserOpen: false });
     await this.refresh();
   },
 
   startNewStory() {
-    wx.showModal({
-      title: "开一个新故事",
-      editable: true,
-      placeholderText: "起个名字，比如：我的大学四年",
-      confirmText: "开始聊",
-      success: (result) => {
-        if (!result.confirm) return;
-        const title = (result.content ?? "").trim().replace(/\s+/g, " ");
-        if (!title) {
-          wx.showToast({ title: "先给故事起个名字", icon: "none" });
-          return;
-        }
-        if (title.length > MAX_STORY_TITLE_LENGTH) {
-          wx.showToast({ title: `故事名最多 ${MAX_STORY_TITLE_LENGTH} 个字`, icon: "none" });
-          return;
-        }
-        saveCurrentStoryTitle(title);
-        this.setData({ storyChooserOpen: false });
-        wx.navigateTo({ url: `/pages/interview/interview?storyTitle=${encodeURIComponent(title)}` });
-      },
-    });
+    this.setData({ storyChooserOpen: false });
+    wx.navigateTo({ url: "/pages/stories/stories?create=1" });
   },
 
   /** 当前故事还没有可以追问的记忆时，直接开始聊它。 */
   startCurrentStory() {
     const title = this.data.currentStoryTitle;
+    const storyParam = this.data.storyId ? `storyId=${encodeURIComponent(this.data.storyId)}` : `storyTitle=${encodeURIComponent(title)}`;
     wx.navigateTo({
       // 把首页这道每日一问带过去，聊天页第一句就问它。
       url: title
-        ? `/pages/interview/interview?storyTitle=${encodeURIComponent(title)}&question=${encodeURIComponent(this.data.dailyQuestion)}`
+        ? `/pages/interview/interview?${storyParam}&question=${encodeURIComponent(this.data.dailyQuestion)}`
         : `/pages/interview/interview?memoryType=memoir&question=${encodeURIComponent(this.data.dailyQuestion)}`,
     });
   },
@@ -398,6 +385,11 @@ Page({
 
   /** 这个故事整理好的章节；还没整理过就先打开这个故事。 */
   openStoryChapters() {
+    if (this.data.storyId) {
+      saveCurrentStoryId(this.data.storyId);
+      wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(this.data.storyId) });
+      return;
+    }
     const memberId = this.data.storyManuscriptMemberId;
     if (!memberId) {
       wx.navigateTo({ url: this.storyUrl() });

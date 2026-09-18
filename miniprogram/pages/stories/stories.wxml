@@ -3,11 +3,11 @@
   <view class="story-content">
     <view class="archive-eyebrow">{{selectedKey ? '人生之书 · 一个故事' : '人生之书'}}</view>
     <view class="archive-title serif">{{selectedTitle || '你所有的故事'}}</view>
-    <view class="archive-intro">{{selectedKey ? '这个故事里的记忆都在这里，原话不会被改动。' : '每个故事就是一本书。点开可以接着讲，也可以整理成章节。'}}</view>
+    <view class="archive-intro">{{selectedKey ? '《' + selectedBookTitle + '》 · ' + (selectedWritingMode === 'creative' ? 'AI 共创' : '客观记录') : '每个故事就是一本独立的书。'}}</view>
     <view wx:if="{{loadError}}" class="archive-empty">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
     <block wx:elif="{{selectedKey}}">
       <view class="story-actions">
-        <button wx:if="{{selectedManuscriptMemberId}}" class="story-action story-action-primary" bindtap="openSelectedManuscript">
+        <button class="story-action story-action-primary" bindtap="openSelectedManuscript">
           <view class="action-icon icon-memories icon-on-dark" aria-hidden="true"></view>
           <view class="story-action-copy"><text>打开整理好的章节</text><text class="story-action-note">翻开目录，继续读写</text></view>
           <text class="story-action-arrow" aria-hidden="true">›</text>
@@ -34,7 +34,7 @@
       <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>点一本书打开</text></view>
       <view class="bookshelf">
         <view class="shelf-books">
-          <button class="story-book spine spine-tone-{{index % 4}} spine-h-{{index % 3}} {{!item.manuscriptMemberId ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
+          <button class="story-book spine spine-tone-{{index % 4}} spine-h-{{index % 3}} {{!item.chapterCount ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
             <view class="spine-body">
               <image class="spine-art" src="/assets/illustrations/story-book-spine.png" mode="scaleToFill" aria-hidden="true"></image>
               <view class="spine-tint" aria-hidden="true"></view>
@@ -42,9 +42,9 @@
               <text class="spine-no" aria-hidden="true">{{index + 1 < 10 ? '0' : ''}}{{index + 1}}</text>
             </view>
           </button>
-          <navigator class="story-book spine spine-new" url="/pages/index/index" hover-class="spine-pressed" aria-label="新的故事，去首页选择换一个故事聊">
+          <button class="story-book spine spine-new" bindtap="openCreate" hover-class="spine-pressed" aria-label="创建新故事书">
             <view class="spine-body"><text class="spine-new-plus" aria-hidden="true">＋</text><text class="spine-title spine-new-title">新的故事</text></view>
-          </navigator>
+          </button>
         </view>
       </view>
       <button class="memory-organize" bindtap="openMemories" hover-class="memory-organize-pressed" aria-label="整理记忆，{{ungroupedCount}} 段还没放进故事">
@@ -55,9 +55,36 @@
         </view>
         <text class="memory-organize-arrow" aria-hidden="true">›</text>
       </button>
-      <button wx:if="{{!hasManuscript}}" class="btn btn-jade" bindtap="openBook">把记忆整理成章节</button>
+      <button class="btn btn-jade" bindtap="openCreate">创建一本故事书</button>
+      <button wx:if="{{pendingMigrationCount}}" class="memory-organize" bindtap="openMigration">
+        <view class="memory-organize-copy"><text class="memory-organize-title serif">待确认的旧内容</text><text class="memory-organize-note">{{pendingMigrationCount}} 项需要确认去向</text></view>
+        <text class="memory-organize-arrow">›</text>
+      </button>
       <button class="trash-entry" bindtap="openTrash" hover-class="none">最近删除{{deletedItems.length ? ' · ' + deletedItems.length : ''}}</button>
     </block>
+  </view>
+</view>
+
+<view class="trash-mask" wx:if="{{createOpen}}" bindtap="closeCreate"></view>
+<view class="trash-sheet" wx:if="{{createOpen}}" bindtap="closeCreate" role="dialog" aria-label="创建故事书">
+  <view class="trash-panel create-panel" catchtap="keepCreateOpen">
+    <view class="trash-heading serif">创建故事书</view>
+    <input class="create-title" value="{{createTitle}}" bindinput="onCreateTitle" maxlength="40" placeholder="故事名称（默认也是书名）" disabled="{{creating}}" />
+    <radio-group class="create-modes" bindchange="onCreateMode">
+      <label><radio value="objective" checked="{{createMode === 'objective'}}" />客观记录</label>
+      <label><radio value="creative" checked="{{createMode === 'creative'}}" />AI 共创</label>
+    </radio-group>
+    <view class="trash-note">可以空白开始，也可选记忆作为这本书的素材。</view>
+    <scroll-view class="create-memory-list" scroll-y>
+      <checkbox-group bindchange="onCreateMemories">
+        <label class="create-memory" wx:for="{{createMemories}}" wx:key="id">
+          <checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{creating}}" />
+          <text>{{item.title || item.text}}</text>
+        </label>
+      </checkbox-group>
+    </scroll-view>
+    <button class="btn btn-jade" bindtap="createBook" loading="{{creating}}" disabled="{{creating}}">创建并打开</button>
+    <button class="trash-close" bindtap="closeCreate" disabled="{{creating}}">取消</button>
   </view>
 </view>
 

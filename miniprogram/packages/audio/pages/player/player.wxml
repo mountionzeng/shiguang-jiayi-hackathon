@@ -1,0 +1,13 @@
+<view class="player-page" style="font-size: {{textScale * 100}}%;">
+  <view class="player-top"><view class="book-title">{{title}}</view><view class="notice">{{notice}}</view></view>
+  <scroll-view class="story-scroll" scroll-y scroll-into-view="{{activeLineId}}" scroll-with-animation>
+    <view class="story-lines {{staticMode ? 'static-lines' : ''}}">
+      <text wx:for="{{lines}}" wx:key="cueIndex" id="story-line-{{index}}" class="story-line {{item.active ? 'active' : ''}}" data-index="{{item.cueIndex}}" bindtap="seekLine">{{item.text}}</text>
+    </view>
+  </scroll-view>
+  <view class="player-dock">
+    <view class="progress"><view class="progress-fill" style="width: {{progress}}%;"></view></view>
+    <view class="time-row"><text>{{positionLabel}}</text><text>{{durationLabel}}</text></view>
+    <view class="controls"><button class="text-control" data-delta="-0.08" bindtap="changeTextSize">A−</button><button class="play-control" disabled="{{!ready}}" bindtap="togglePlayback">{{waiting ? '缓冲中' : playing ? '暂停' : '播放'}}</button><button class="text-control" data-delta="0.08" bindtap="changeTextSize">A+</button></view><button wx:if="{{videoUrl}}" class="save-video" disabled="{{savingVideo}}" bindtap="saveVideo">{{savingVideo ? '保存中…' : '保存视频到相册'}}</button>
+  </view>
+</view>
