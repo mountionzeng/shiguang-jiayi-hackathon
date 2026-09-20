@@ -35,6 +35,7 @@ function freshAccount() {
     cloud: {
       callFunction: async ({ name }: { name: string }) => {
         if (name === "getOpenId") return { result: { openid: "fresh-reviewer", accountLinked: true } };
+        if (name === "storyBooks") throw Object.assign(new Error("cloud.callFunction:fail FUNCTION_NOT_FOUND"), { errCode: -501000 });
         throw new Error(`unexpected cloud function ${name}`);
       },
       database: () => ({

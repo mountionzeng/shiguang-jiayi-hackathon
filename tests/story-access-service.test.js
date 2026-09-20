@@ -45,6 +45,30 @@ test('owner identity is revalidated inside commit transaction and on operation r
   await assert.rejects(service(context, create), { code: 'STORY_FORBIDDEN' });
 });
 
+test('member actions ignore spoofed family input and fail closed when owner identity is revoked', async () => {
+  const { repo, tables, account } = fixture(); account('owner'); account('reader');
+  const service = createStoryService(repo, options);
+  await service(context, { action: 'capabilities' });
+  await service({ APPID: 'wx-original', OPENID: 'reader' }, { action: 'capabilities' });
+
+  await service(context, { action: 'memberAdd', memberId: 'friend', name: '朋友', relation: '朋友', kind: 'recording-profile', familyId: 'family_reader', principalId: 'pretend-reader' });
+  assert.equal(tables.get('family_members:family_owner_friend').name, '朋友');
+  assert.equal(tables.has('family_members:family_reader_friend'), false);
+
+  const originalTransaction = repo.transaction;
+  let calls = 0;
+  repo.transaction = fn => {
+    calls++;
+    if (calls === 2) tables.get(`story_identity_aliases:${aliasIdFor('wx-original', 'owner')}`).status = 'revoked';
+    return originalTransaction(fn);
+  };
+  await assert.rejects(service(context, { action: 'memberUpdate', memberId: 'friend', name: '不应保存', relation: '陌生人', familyId: 'family_reader' }), { code: 'STORY_FORBIDDEN' });
+  assert.deepEqual(
+    { name: tables.get('family_members:family_owner_friend').name, relation: tables.get('family_members:family_owner_friend').relation },
+    { name: '朋友', relation: '朋友' },
+  );
+});
+
 test('access cannot be enabled before rule verification and allowlist defaults to no shared reads', async () => {
   const { repo, tables, account } = fixture(); account('owner');
   await assert.rejects(createStoryService(repo, { ...options, rulesReady: false })(context, create), { code: 'STORY_ACCESS_NOT_READY' });
@@ -93,7 +117,8 @@ test('sharedRead service enforces chapter grants, both canaries and immediate re
 
 test('shareExcerpt dispatch uses the resolved owner and server revision',async()=>{
   const {repo,tables,account}=fixture();const owner=account('owner');
-  const service=createStoryService(repo,{...options,excerptSharingEnabled:true,approveExcerpt:async text=>text==='保存的正文'});
+  const approvedOpenids=[];
+  const service=createStoryService(repo,{...options,excerptSharingEnabled:true,approveExcerpt:async(text,openid)=>{approvedOpenids.push(openid);return text==='保存的正文';}});
   await service(context,{action:'capabilities'});
   tables.set('family_members:family_owner_owner',{familyId:'family_owner',id:'owner',memberId:'owner',name:'岱',relation:'自己',role:'owner'});
   tables.set('family_members:family_owner_member-1',{familyId:'family_owner',id:'member-1',memberId:'member-1',name:'林秋',relation:'家人',role:'contributor'});
@@ -102,9 +127,10 @@ test('shareExcerpt dispatch uses the resolved owner and server revision',async()
   const core=require('../cloudfunctions/storyBooks/core');
   tables.set('biography_drafts:family_owner_revision-a',{familyId:'family_owner',storyId:'story-a',revision:{id:'revision-a',storyId:'story-a',draft:{title:'故事',chapters:[chapter],...core.flatten([chapter])}}});
   const event={action:'shareExcerpt',storyId:'story-a',revisionId:'revision-a',expectedVersion:1,chapterId:'chapter-a',
-    text:'保存的正文',recipientMemberIds:['member-1'],requestId:'excerpt-service-1',familyId:'family_reader'};
+    text:'保存的正文',recipientMemberIds:['member-1'],requestId:'excerpt-service-1',familyId:'family_reader',openid:'client-forged'};
   const result=await service(context,event);
   assert.equal(result.ok,true);
+  assert.deepEqual(approvedOpenids,['owner']);
   assert.equal(tables.get('memories:family_owner_'+result.contributionId).familyId,owner.familyId);
   assert.equal(tables.has('memories:family_reader_'+result.contributionId),false);
   await assert.rejects(createStoryService(repo,{...options,excerptSharingEnabled:false})(context,event),{code:'STORY_ACCESS_DISABLED'});

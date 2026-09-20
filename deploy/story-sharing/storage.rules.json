@@ -2,5 +2,19 @@
   "version": 1,
   "pathPrefix": "story-sharing/",
   "rule": { "read": false, "write": false },
-  "note": "新增共享素材前缀私有规则模板；U4 内部复制适配器使用 story-sharing/copies/，尚未接入公开入口或执行云端写入。按实际平台规则格式转换并证明客户端读写均拒绝，不能作为全桶规则覆盖旧照片上传。真实 TTL、复制与清理仍须验收。"
+  "freeTierCanaryFallback": {
+    "platformPreset": "creator-only",
+    "effectiveRule": {
+      "read": "resource.openid == auth.openid",
+      "write": "resource.openid == auth.openid"
+    },
+    "requiredServerControls": [
+      "cloud-function-created-object",
+      "random-128-bit-attempt-path",
+      "server-only-asset-record",
+      "authorization-recheck-before-temporary-url",
+      "five-minute-maximum-requested-url-ttl"
+    ]
+  },
+  "note": "付费套餐可把 story-sharing/ 前缀直接设为客户端不可读写。免费环境不支持自定义前缀规则时，仅允许受控单家庭灰度使用 creator-only 全桶预设：真实副本必须由云函数写入不可预测路径，并经私有资产记录、当前授权复核后签发最多 300 秒的临时 URL。客户端自行上传到相同前缀的文件没有私有资产记录，不能进入读取或导出链路。现有照片规则不得放宽。跨身份素材复制、清理和真实 TTL 仍须真机验收。"
 }

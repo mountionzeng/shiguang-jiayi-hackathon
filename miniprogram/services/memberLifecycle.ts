@@ -10,6 +10,8 @@ export type MemberKind = NonNullable<FamilyMember["kind"]>;
 export interface MemberChange {
   member: FamilyMember;
   contributions: MemoryContribution[];
+  /** Family prose may contain the denormalized author name or relation. */
+  invalidateDraft?: boolean;
 }
 
 function findMember(state: FamilyRoomState, memberId: string): FamilyMember {
@@ -79,11 +81,41 @@ export function planRestore(state: FamilyRoomState, memberId: string): MemberCha
   return { member: restored, contributions: [] };
 }
 
+/** Change only a member's display identity; stable IDs and access references stay intact. */
+export function planUpdateMember(
+  state: FamilyRoomState,
+  memberId: string,
+  name: string,
+  relation: string,
+): MemberChange | undefined {
+  const member = findMember(state, memberId);
+  if (member.deletedAt) throw new Error("这个人在「最近删除」里，请先恢复");
+  const trimmedName = name.trim();
+  const trimmedRelation = relation.trim() || "家人";
+  if (!trimmedName) throw new Error("请填写名字");
+  if (trimmedName.length > 12) throw new Error("名字不能超过 12 个字");
+  if (trimmedRelation.length > 12) throw new Error("关系不能超过 12 个字");
+  const sameName = state.members.find((item) => item.id !== memberId && item.name === trimmedName);
+  if (sameName) {
+    throw new Error(sameName.deletedAt ? "这个名字在「最近删除」里，可以先恢复或换一个名字" : "名单里已经有这个名字");
+  }
+  if (member.name === trimmedName && member.relation === trimmedRelation) return undefined;
+  const contributions = state.contributions
+    .filter((item) => item.authorMemberId === memberId)
+    .map((item) => ({ ...item, authorName: trimmedName, relation: trimmedRelation }));
+  return {
+    member: { ...member, name: trimmedName, relation: trimmedRelation, avatarText: trimmedName.slice(0, 1) },
+    contributions,
+    invalidateDraft: contributions.length > 0,
+  };
+}
+
 export function applyMemberChange(state: FamilyRoomState, change: MemberChange): FamilyRoomState {
   const changed = new Map(change.contributions.map((item) => [item.id, item]));
   return {
     ...state,
     members: state.members.map((item) => item.id === change.member.id ? change.member : item),
     contributions: state.contributions.map((item) => changed.get(item.id) ?? item),
+    ...(change.invalidateDraft ? { draft: undefined } : {}),
   };
 }

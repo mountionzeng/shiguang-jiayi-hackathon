@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const core = require('../cloudfunctions/storyBooks/core');
 const { fixture } = require('./helpers/story-access-fixture');
 const { resolveStoryIdentity } = require('../cloudfunctions/storyBooks/identity');
@@ -7,6 +9,7 @@ const { grantIdFor } = require('../cloudfunctions/storyBooks/access');
 const { materializeOwnedDraft } = require('../cloudfunctions/storyBooks/provenance');
 const { listShareCardSource, previewShareCard, exportShareCard } = require('../cloudfunctions/storyBooks/exports');
 const { createStoryService } = require('../cloudfunctions/storyBooks/service');
+const { createTextModerator } = require('../cloudfunctions/storyBooks/moderation');
 
 const sourceId = suffix => `source-${suffix.repeat(64)}`;
 
@@ -58,6 +61,40 @@ test('preview rebuilds selected text from the current revision and rejects forge
   assert.equal(JSON.stringify(result).includes('url'), false);
   await assert.rejects(previewShareCard(f.repo, f.owner, { ...input, blockIds: ['block-' + 'f'.repeat(64)] }, { approve: async () => true }), { code: 'STORY_SHARE_SELECTION_INVALID' });
   await assert.rejects(previewShareCard(f.repo, f.owner, { ...input, blockIds: [], photoIds: [] }, { approve: async () => true }), { code: 'INVALID_INPUT' });
+});
+
+test('share-card moderation receives only the verified WeChat identity, never a client-supplied openid', async () => {
+  const f = await setup(), block = f.draft.chapters[1].content[0], seen = [];
+  const service = createStoryService(f.repo, {
+    accessEnabled: true, rulesReady: true, bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner'], shareCardEnabled: true,
+    approveShareCard: async (_text, openid) => { seen.push(openid); return true; },
+  });
+  const context = { APPID: 'wx-original', OPENID: 'owner' };
+  const input = { action: 'shareCardPreview', familyId: 'family_owner', storyId: 'story-summer', revisionId: 'revision-current', chapterId: 'chapter-two',
+    blockIds: [block.blockId], photoIds: [], openid: 'client-forged' };
+  await service(context, input);
+  assert.deepEqual(seen, ['owner']);
+});
+
+test('direct story moderation is bounded, fail-closed and uses the verified active openid', async () => {
+  const calls=[];const moderate=createTextModerator({msgSecCheck:async input=>{calls.push(input);return {result:{suggest:'pass'}};}});
+  assert.equal(await moderate('院子里的夏天','owner-openid','公开故事卡片'),true);
+  assert.deepEqual(calls,[{content:'院子里的夏天',version:2,scene:4,openid:'owner-openid',title:'公开故事卡片'}]);
+  assert.equal(await moderate('正文','bad openid','题名'),false);
+  assert.equal(await createTextModerator({msgSecCheck:async()=>{throw new Error('unavailable');}})('正文','owner-openid','题名'),false);
+});
+
+test('direct story moderation checks every 2,500-code-point chunk and fails closed on a later chunk', async () => {
+  const calls=[];
+  const moderate=createTextModerator({msgSecCheck:async input=>{calls.push(input);return {result:{suggest:calls.length===1?'pass':'risky'}};}});
+  assert.equal(await moderate('安'.repeat(2500)+'拒'.repeat(20),'owner-openid','亲友编辑故事'),false);
+  assert.deepEqual(calls.map(call=>call.content.length),[2500,20]);
+  assert.equal(calls.every(call=>call.openid==='owner-openid'&&call.title==='亲友编辑故事'),true);
+});
+
+test('storyBooks deployment grants only the content moderation OpenAPI permission', () => {
+  const config = JSON.parse(fs.readFileSync(path.join(__dirname, '../cloudfunctions/storyBooks/config.json'), 'utf8'));
+  assert.deepEqual(config.permissions.openapi, ['security.msgSecCheck']);
 });
 
 test('forward permission without publish cannot preview or export a social card', async () => {

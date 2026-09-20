@@ -8,9 +8,9 @@ const core = require('../cloudfunctions/storyBooks/core');
 
 async function setup() {
   const f = fixture(); f.account('owner'); f.account('editor');
-  let approvals = 0;
+  let approvals = 0; const approvedOpenids=[];
   const options = {accessEnabled:true,rulesReady:true,invitationsEnabled:true,sharedEditEnabled:true,bootstrapAppId:'wx-original',
-    sharedReadFamilyIds:['family_owner','family_editor'],approveSharedEdit:async()=>{approvals++;return true;}};
+    sharedReadFamilyIds:['family_owner','family_editor'],approveSharedEdit:async(_text,openid)=>{approvals++;approvedOpenids.push(openid);return true;}};
   const service=createStoryService(f.repo,options),call=(who,action,input={})=>service({APPID:'wx-original',OPENID:who},{action,...input});
   await call('owner','create',{storyId:'story-a',title:'故事',writingMode:'objective',memoryIds:[],requestId:'create-story-a'});
   await call('editor','capabilities');
@@ -28,7 +28,7 @@ async function setup() {
     status:'active',version:1,scope:{type:'chapters',chapterIds:['chapter-three']},permissions:{read:true,edit:true}});
   const input={familyId:'family_owner',storyId:'story-a',chapterId:'chapter-three',revisionId:'revision-a',expectedVersion:1,
     requestId:'collab-request-1',title:'第三章（合写）',textBlocks:[{index:0,text:'新的开头'},{index:2,text:'新的结尾'}]};
-  return {...f,call,service,options,principal,grantId,input,approvals:()=>approvals};
+  return {...f,call,service,options,principal,grantId,input,approvals:()=>approvals,approvedOpenids};
 }
 
 test('authorized editor changes only the granted chapter and the server preserves media and provenance',async()=>{
@@ -36,8 +36,9 @@ test('authorized editor changes only the granted chapter and the server preserve
   const before=await f.call('editor','sharedRead',{familyId:'family_owner',storyId:'story-a'});
   assert.equal(before.capabilities.sharedEdit,true);
   assert.deepEqual(before.chapters[0].textBlocks,[{index:0,text:'开头'},{index:2,text:'结尾'}]);
-  const result=await f.call('editor','sharedEdit',f.input);
+  const result=await f.call('editor','sharedEdit',{...f.input,openid:'client-forged'});
   assert.equal(result.version,2);
+  assert.deepEqual(f.approvedOpenids,['editor']);
   const saved=f.tables.get(`biography_drafts:family_owner_${result.revisionId}`).revision;
   assert.equal(saved.editedByPrincipalId,f.principal('editor'));
   assert.deepEqual(saved.editedChapterIds,['chapter-three']);

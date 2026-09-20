@@ -24,6 +24,7 @@ import {
   planClassify,
   planDelete,
   planRestore,
+  planUpdateMember,
 } from "./memberLifecycle";
 import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
@@ -100,6 +101,7 @@ function serverDate() {
 }
 
 let cachedOpenId: string | undefined;
+let cachedFamilyId: string | undefined;
 
 function sanitizeDocumentPart(value: string): string {
   return value.replace(/[^0-9A-Za-z_-]/g, "_");
@@ -108,14 +110,20 @@ function sanitizeDocumentPart(value: string): string {
 async function loadOpenId(): Promise<string> {
   if (cachedOpenId) return cachedOpenId;
   const response = await wx.cloud.callFunction({ name: "getOpenId" });
-  const openid = String((response.result as { openid?: unknown } | undefined)?.openid ?? "").trim();
+  const result = response.result as { openid?: unknown; account?: { primaryFamilyId?: unknown } } | undefined;
+  const openid = String(result?.openid ?? "").trim();
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
   cachedOpenId = openid;
+  const linkedFamilyId = String(result?.account?.primaryFamilyId ?? "").trim();
+  cachedFamilyId = /^family_[0-9A-Za-z_-]{1,120}$/.test(linkedFamilyId)
+    ? linkedFamilyId
+    : `family_${sanitizeDocumentPart(openid)}`;
   return cachedOpenId;
 }
 
 export async function currentFamilyId(): Promise<string> {
-  return `family_${sanitizeDocumentPart(await loadOpenId())}`;
+  const openid = await loadOpenId();
+  return cachedFamilyId ?? `family_${sanitizeDocumentPart(openid)}`;
 }
 
 function familyMemberDocId(familyId: string, memberId: string): string {
@@ -384,8 +392,112 @@ async function seedInitialState(familyId: string): Promise<FamilyRoomState> {
   return initial;
 }
 
+type StoryServiceRoomState = Partial<FamilyRoomState> & {
+  error?: string;
+  code?: string;
+  message?: string;
+  roomStateVersion?: number;
+  draftSourceFingerprint?: string;
+  personalDraftSourceFingerprints?: Record<string, string>;
+};
+
+function storyServiceError(result: StoryServiceRoomState): Error & { code?: string } {
+  const error = new Error(result.message || "故事库加载失败") as Error & { code?: string };
+  if (result.code) error.code = result.code;
+  return error;
+}
+
+function missingStoryService(error: unknown): boolean {
+  return /FUNCTION_NOT_FOUND|-501000|could not be found|unexpected cloud function:\s*storyBooks/i.test(
+    String((error as { message?: unknown; errMsg?: unknown } | undefined)?.message ??
+      (error as { errMsg?: unknown } | undefined)?.errMsg ?? error),
+  );
+}
+
+async function loadStoryServiceRoomState(): Promise<StoryServiceRoomState> {
+  const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state" } });
+  const result = (response.result ?? {}) as StoryServiceRoomState;
+  if (result.error) throw storyServiceError(result);
+  return result;
+}
+
+function unsupportedStoryMemberAction(error: unknown): boolean {
+  const detail = error as { code?: unknown; message?: unknown; errMsg?: unknown } | undefined;
+  return missingStoryService(error) || /不支持的故事操作/i.test(
+    [detail?.code, detail?.message, detail?.errMsg, error].map(String).join(" "),
+  );
+}
+
+async function callStoryMemberAction(
+  action: "memberAdd" | "memberUpdate",
+  data: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    const response = await wx.cloud.callFunction({ name: "storyBooks", data: { ...data, action } });
+    const result = (response.result ?? {}) as StoryServiceRoomState & { ok?: boolean };
+    if (result.ok === true) return true;
+    if (result.error) {
+      const error = storyServiceError(result);
+      if (unsupportedStoryMemberAction(error)) return false;
+      throw error;
+    }
+    throw new Error("人物服务返回无效响应，请稍后重试");
+  } catch (error) {
+    if (unsupportedStoryMemberAction(error)) return false;
+    throw error;
+  }
+}
+
+function isCompleteStoryServiceRoomState(result: StoryServiceRoomState): boolean {
+  return result.roomStateVersion === 1 &&
+    typeof result.roomName === "string" &&
+    typeof result.protagonistName === "string" &&
+    Array.isArray(result.members) &&
+    Array.isArray(result.contributions) &&
+    Array.isArray(result.manuscriptRevisions) &&
+    Array.isArray(result.deletedStories) &&
+    Array.isArray(result.stories) &&
+    !!result.personalDrafts && typeof result.personalDrafts === "object" && !Array.isArray(result.personalDrafts) &&
+    !!result.personalDraftSourceFingerprints && typeof result.personalDraftSourceFingerprints === "object" && !Array.isArray(result.personalDraftSourceFingerprints);
+}
+
+function normalizeStoryServiceRoomState(result: StoryServiceRoomState): FamilyRoomState {
+  const state: FamilyRoomState = {
+    ...createEmptyRoomState(),
+    roomName: String(result.roomName || "我的拾光房间"),
+    protagonistName: String(result.protagonistName || ""),
+    members: Array.isArray(result.members) ? result.members : [],
+    contributions: Array.isArray(result.contributions) ? result.contributions : [],
+    draft: result.draft,
+    personalDrafts: result.personalDrafts ?? {},
+    // Versioned service drafts carry source fingerprints. If one no longer
+    // matches, it must stay hidden instead of resurfacing through the
+    // unversioned legacy fallback.
+    legacyPersonalDrafts: {},
+    manuscriptRevisions: Array.isArray(result.manuscriptRevisions) ? result.manuscriptRevisions : [],
+    deletedStories: Array.isArray(result.deletedStories) ? result.deletedStories : [],
+    stories: Array.isArray(result.stories) ? result.stories : [],
+    ...(result.storyMigration ? { storyMigration: result.storyMigration } : {}),
+  };
+  state.draft = result.draftSourceFingerprint === biographySourceFingerprint(state) ? result.draft : undefined;
+  const sourceFingerprints = result.personalDraftSourceFingerprints ?? {};
+  state.personalDrafts = Object.fromEntries(Object.entries(result.personalDrafts ?? {}).filter(([memberId]) =>
+    sourceFingerprints[memberId] === personalBookSourceFingerprint(state, memberId)));
+  return state;
+}
+
 export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
+  let storyServiceState: StoryServiceRoomState | undefined;
+  try {
+    storyServiceState = await loadStoryServiceRoomState();
+    if (storyServiceState.roomStateVersion === 1) {
+      if (!isCompleteStoryServiceRoomState(storyServiceState)) throw new Error("故事服务返回不完整，请稍后重试");
+      return normalizeStoryServiceRoomState(storyServiceState);
+    }
+  } catch (error) {
+    if (!missingStoryService(error) && (error as { code?: string } | undefined)?.code !== "STORY_NOT_FOUND") throw error;
+  }
   let family: CloudFamily | undefined;
   try {
     const response = await collection(CLOUD_COLLECTIONS.families).doc(familyId).get();
@@ -483,14 +595,12 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
       record.sourceFingerprint === personalBookSourceFingerprint(state, record.memberId))
     .map(record => [record.memberId as string, record.draft as BiographyDraft]));
   try {
-    const response = await wx.cloud.callFunction({name:'storyBooks',data:{action:'state'}});
-    const result = response.result as Partial<FamilyRoomState> & {error?:string;message?:string};
-    if (result?.error) throw new Error(result.message || '故事库加载失败');
+    const result = storyServiceState ?? await loadStoryServiceRoomState();
     if (result?.storyMigration) return {...state,stories:result.stories ?? [],storyMigration:result.storyMigration,
       manuscriptRevisions:[...state.manuscriptRevisions,...(result.manuscriptRevisions ?? [])]};
   } catch (error) {
     // Older deployments remain readable, but the new write API never falls back.
-    if (!/FUNCTION_NOT_FOUND|-501000|could not be found|unexpected cloud function:\s*storyBooks/i.test(String((error as Error).message || error))) throw error;
+    if (!missingStoryService(error)) throw error;
   }
   return state;
 }
@@ -583,11 +693,13 @@ export async function addCloudFamilyMember(
     role: firstProfile ? "owner" : "contributor",
     ...(kind ? { kind } : {}),
   };
+  if (await callStoryMemberAction("memberAdd", {
+    memberId: member.id,
+    name: member.name,
+    relation: member.relation,
+    kind: member.kind ?? "recording-profile",
+  })) return loadCloudRoomState();
   await saveMembers(familyId, [member]);
-  await saveFamilyShell(familyId, {
-    ...state,
-    members: [...state.members, member],
-  });
   return {
     ...state,
     members: [...state.members, member],
@@ -771,9 +883,16 @@ async function changeCloudMember(
   const change = plan(state);
   if (!change) return state;
   // References first: if they fail, the member stays visible and a retry repeats the same writes.
-  await Promise.all(change.contributions.map((contribution) => saveContribution(familyId, contribution)));
+  await saveContributionsInBatches(familyId, change.contributions);
   await saveMembers(familyId, [change.member]);
   return applyMemberChange(state, change);
+}
+
+async function saveContributionsInBatches(familyId: string, contributions: MemoryContribution[]): Promise<void> {
+  const batchSize = 10;
+  for (let offset = 0; offset < contributions.length; offset += batchSize) {
+    await Promise.all(contributions.slice(offset, offset + batchSize).map((contribution) => saveContribution(familyId, contribution)));
+  }
 }
 
 export async function classifyCloudMember(memberId: string, kind: MemberKind): Promise<FamilyRoomState> {
@@ -786,6 +905,17 @@ export async function deleteCloudMember(memberId: string, now = new Date()): Pro
 
 export async function restoreCloudMember(memberId: string): Promise<FamilyRoomState> {
   return changeCloudMember((state) => planRestore(state, memberId));
+}
+
+export async function updateCloudMember(memberId: string, name: string, relation: string): Promise<FamilyRoomState> {
+  const familyId = await currentFamilyId();
+  const state = await loadCloudRoomState();
+  const change = planUpdateMember(state, memberId, name, relation);
+  if (!change) return state;
+  if (await callStoryMemberAction("memberUpdate", { memberId, name, relation })) return loadCloudRoomState();
+  await saveContributionsInBatches(familyId, change.contributions);
+  await saveMembers(familyId, [change.member]);
+  return applyMemberChange(state, change);
 }
 
 async function saveDeletedStories(familyId: string, deletedStories: DeletedStory[]): Promise<void> {

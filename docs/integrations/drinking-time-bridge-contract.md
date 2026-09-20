@@ -2,12 +2,14 @@
 
 | 项 | 值 |
 |---|---|
-| 约定版本 | **1.5.0** |
+| 约定版本 | **1.5.1** |
 | 状态 | 本地实现，默认关闭，待双端真实验收 |
-| 日期 | 2026-09-18 |
+| 日期 | 2026-09-19 |
 | 权威版本 | Drinking Time 仓库 `docs/integrations/shiguang-bridge-contract.md` |
 | 副本 | 拾光家忆仓库 `docs/integrations/drinking-time-bridge-contract.md`（必须与权威版本同版本号） |
 | 实现基线 | Drinking Time `9f7f9f4`（桥接口），拾光家忆 `d83f1ed`（云函数 `drinkingTimeBridge`） |
+
+电脑端权威故事的启用、数据库验证与回滚顺序见 [shiguang-story-authority-rollout.md](./shiguang-story-authority-rollout.md)。必须先完成该清单，不能仅凭前端可见或云函数已部署开启生产者。
 
 本约定只描述两端之间**传输的数据和可观察的行为**，不包含 Drinking Time 内部的表结构、故事内容结构、提示词或素材，可以原样放进拾光家忆仓库作为副本。
 
@@ -599,4 +601,5 @@ canonicalJson(正文)，单行，没有末尾换行：
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| 1.5.1 | 2026-09-19 | 电脑配对 nonce 改为 MySQL 原子领取，跨进程和重启后仍拒绝五分钟窗口内重放；`storyAccess` 只有在电脑权威地址、密钥和开关完整配置后才可落库。补充迁移先行、生产者最后开启和反向关闭的发布/回滚清单。 |
 | 1.0.0 | 2026-09-15 | 首版草案：如实记录 Drinking Time `9f7f9f4` 与拾光家忆 `d83f1ed` 的现有行为、已知缺口、待决定事项 D1 和提案 P1–P10；并入小程序端两轮核对：服务地址与挂载点、漏挂载点返回 200 首页及成功响应校验、标题与修订号的关系、`sourceKey` 跳变缺口、数组 `undefined`、云函数执行超时、云函数本地体积检查、小程序端实际上限 |

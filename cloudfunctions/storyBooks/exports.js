@@ -120,7 +120,7 @@ async function buildDescriptor(repo, ctx, raw) {
 
 async function previewShareCard(repo, ctx, input, { approve } = {}) {
   const first = await buildDescriptor(repo, ctx, input);
-  if (typeof approve !== 'function' || await approve([first.descriptor.title, first.descriptor.chapterTitle, ...first.descriptor.paragraphs].join('\n')) !== true) {
+  if (typeof approve !== 'function' || await approve([first.descriptor.title, first.descriptor.chapterTitle, ...first.descriptor.paragraphs].join('\n'),ctx.verifiedOpenid) !== true) {
     fail('CONTENT_REJECTED', '卡片内容没有通过内容安全检查，请修改后重试');
   }
   const second = await buildDescriptor(repo, ctx, input);

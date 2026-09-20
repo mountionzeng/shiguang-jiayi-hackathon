@@ -20,6 +20,7 @@ import {
   planClassify,
   planDelete,
   planRestore,
+  planUpdateMember,
 } from "./memberLifecycle";
 import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
@@ -347,6 +348,15 @@ export function deleteMember(memberId: string, state = loadRoomState(), now = ne
 
 export function restoreMember(memberId: string, state = loadRoomState()): FamilyRoomState {
   return saveMemberChange(state, planRestore(state, memberId));
+}
+
+export function updateMember(
+  memberId: string,
+  name: string,
+  relation: string,
+  state = loadRoomState(),
+): FamilyRoomState {
+  return saveMemberChange(state, planUpdateMember(state, memberId, name, relation));
 }
 
 export function resetCurrentRoom(): FamilyRoomState {

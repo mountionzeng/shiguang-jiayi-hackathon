@@ -70,7 +70,7 @@ async function editAuthorizedChapter(repo, ctx, rawInput, { now = () => new Date
   };
   const preflight = await repo.transaction(authorized);
   if (preflight.receipt) return preflight.receipt.result;
-  if (await approve([input.title, ...input.textBlocks.map(block => block.text)].join('\n')) !== true) {
+  if (await approve([input.title, ...input.textBlocks.map(block => block.text)].join('\n'),ctx.verifiedOpenid) !== true) {
     fail('CONTENT_REJECTED', '内容安全检查未通过，修改仍保留在本机');
   }
   return repo.transaction(async tx => {

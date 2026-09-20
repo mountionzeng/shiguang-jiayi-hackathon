@@ -19,7 +19,12 @@ test('every identity/grant collection is bootstrapped and has client-deny rules'
     assert.deepEqual(rules.collections[name], { read: false, write: false });
   }
   assert.deepEqual(rules.collections.user_accounts, { read: false, write: false }, 'identity bootstrap input must be server-only too');
-  assert.deepEqual(json('deploy/story-sharing/storage.rules.json').rule, { read: false, write: false });
+  const storage = json('deploy/story-sharing/storage.rules.json');
+  assert.deepEqual(storage.rule, { read: false, write: false });
+  assert.equal(storage.freeTierCanaryFallback.platformPreset, 'creator-only');
+  for (const control of ['cloud-function-created-object','random-128-bit-attempt-path','server-only-asset-record','authorization-recheck-before-temporary-url','five-minute-maximum-requested-url-ttl']) {
+    assert.ok(storage.freeTierCanaryFallback.requiredServerControls.includes(control), control);
+  }
 });
 
 test('release manifest records gated switches and applicable rule files, not secrets', () => {

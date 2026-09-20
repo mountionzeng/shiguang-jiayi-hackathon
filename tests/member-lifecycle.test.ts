@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  biographySourceFingerprint,
   createContribution,
   FamilyRoomState,
   isPerson,
   isRecordingProfile,
   memoryPool,
   needsClassification,
+  personalBookSourceFingerprint,
 } from "../miniprogram/domain/biography";
 import {
   addFamilyMember,
@@ -19,13 +21,16 @@ import {
   restoreMember,
   saveCurrentMemberId,
   saveRoomState,
+  updateMember,
 } from "../miniprogram/services/roomStorage";
 import {
+  addCloudFamilyMember,
   appendCloudContribution,
   classifyCloudMember,
   deleteCloudMember,
   loadCloudRoomState,
   restoreCloudMember,
+  updateCloudMember,
 } from "../miniprogram/services/cloudRoomStorage";
 import { currentManuscript, makeRevision } from "../miniprogram/services/manuscript";
 import { createDemoRoomStateForTests } from "./fixtures";
@@ -109,6 +114,32 @@ test("the active profile cannot be deleted and nothing is written", () => {
     const before = structuredClone(loadRoomState());
     assert.throws(() => deleteMember("member-1"), /这是你自己，不能删除/);
     assert.deepEqual(loadRoomState(), before);
+  } finally { restore(); }
+});
+
+test("editing a member preserves its stable id and updates denormalized memory attribution", () => {
+  const restore = installLocal(stateWithBook());
+  try {
+    const before = loadRoomState();
+    const beforeFingerprint = personalBookSourceFingerprint(before, "member-1");
+    const next = updateMember("member-1", " 林小秋 ", " 妈妈 ");
+    const member = next.members.find((item) => item.id === "member-1")!;
+    const memory = next.contributions.find((item) => item.id === "told-by-qiu")!;
+    assert.deepEqual({ id: member.id, name: member.name, relation: member.relation, role: member.role, kind: member.kind }, {
+      id: "member-1", name: "林小秋", relation: "妈妈", role: "contributor", kind: "recording-profile",
+    });
+    assert.deepEqual({ id: memory.id, text: memory.text, authorName: memory.authorName, relation: memory.relation }, {
+      id: "told-by-qiu", text: "林秋讲的一段虚构记忆。", authorName: "林小秋", relation: "妈妈",
+    });
+    assert.equal(next.draft, undefined, "family prose with the old attribution is invalidated");
+    assert.notEqual(
+      personalBookSourceFingerprint(next, "member-1"),
+      beforeFingerprint,
+      "a personal draft generated with the old narrator name becomes stale",
+    );
+    assert.throws(() => updateMember("member-1", "周明", "朋友"), /已经有这个名字/);
+    assert.throws(() => updateMember("member-1", "", "朋友"), /请填写名字/);
+    assert.deepEqual(before.manuscriptRevisions, next.manuscriptRevisions, "saved book versions stay untouched");
   } finally { restore(); }
 });
 
@@ -222,5 +253,102 @@ test("cloud classification changes only the kind of a legacy record", async () =
     await classifyCloudMember("legacy", "person");
     const { updatedAt: _updatedAt, ...after } = cloud.records("family_members").get(`${FAMILY}_legacy`);
     assert.deepEqual(after, { ...before, id: "legacy", kind: "person" });
+  } finally { cloud.restore(); }
+});
+
+test("creating the first cloud book uses the server action and never overwrites the family record", async () => {
+  const cloud = installCloud();
+  try {
+    const familyBefore = structuredClone(cloud.records("families").get(FAMILY));
+    cloud.failures.add("families:set");
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name !== "storyBooks") throw new Error(`unexpected cloud function ${name}`);
+      if (data?.action === "state") {
+        const members = [...cloud.records("family_members").values()].map((member) => ({ ...member, id: member.memberId }));
+        return { result: { roomStateVersion: 1, roomName: "测试房间", protagonistName: "", members, contributions: [], stories: [],
+          manuscriptRevisions: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {} } };
+      }
+      if (data?.action === "memberAdd") {
+        cloud.records("family_members").set(`${FAMILY}_${data.memberId}`, {
+          familyId: FAMILY, memberId: data.memberId, name: data.name, relation: data.relation,
+          role: "owner", avatarText: String(data.name).slice(0, 1), kind: data.kind,
+        });
+        return { result: { ok: true } };
+      }
+      throw new Error(`unexpected story action ${String(data?.action)}`);
+    };
+
+    const state = await addCloudFamilyMember("测试者", "", "recording-profile");
+
+    assert.deepEqual(state.members.map((member) => [member.id, member.name, member.relation]), [["owner", "测试者", "自己"]]);
+    assert.deepEqual(cloud.records("families").get(FAMILY), familyBefore);
+  } finally { cloud.restore(); }
+});
+
+test("versioned story state and member actions fail closed on malformed service responses", async () => {
+  const cloud = installCloud();
+  try {
+    cloud.seed("owner", "测试者", "recording-profile");
+    cloud.seed("friend", "旧名字", "person");
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name === "storyBooks" && data?.action === "state") return { result: { roomStateVersion: 1 } };
+      throw new Error(`unexpected cloud function ${name}`);
+    };
+    await assert.rejects(loadCloudRoomState(), /故事服务返回不完整/);
+
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name === "storyBooks" && data?.action === "state") return { result: {} };
+      if (name === "storyBooks" && data?.action === "memberUpdate") return { result: {} };
+      throw new Error(`unexpected cloud function ${name}`);
+    };
+    await assert.rejects(updateCloudMember("friend", "新名字", "老朋友"), /无效响应/);
+    assert.equal(cloud.records("family_members").get(`${FAMILY}_friend`).name, "旧名字");
+  } finally { cloud.restore(); }
+});
+
+test("cloud member editing writes attribution before the member and survives reload", async () => {
+  const cloud = installCloud();
+  try {
+    cloud.seed("owner", "测试者", "recording-profile");
+    cloud.seed("friend", "旧名字", "person");
+    await appendCloudContribution(createContribution({
+      id: "memory-by-friend", authorMemberId: "friend", authorName: "旧名字", relation: "自己",
+      text: "一段不会被改写的虚构记忆。", scope: "personal", visibility: "private",
+    }));
+    const memoryBefore = cloud.records("memories").get(`${FAMILY}_memory-by-friend`);
+    cloud.records("memories").set(`${FAMILY}_memory-by-friend`, {
+      ...memoryBefore, scope: "family", visibility: "family", reviewStatus: "confirmed",
+    });
+    const beforeRename = await loadCloudRoomState();
+    cloud.records("biography_drafts").set(`${FAMILY}_family`, {
+      familyId: FAMILY,
+      draftType: "family",
+      draft: { title: "旧署名书稿", paragraphs: ["不应继续展示"] },
+      sourceFingerprint: biographySourceFingerprint(beforeRename),
+    });
+    cloud.failures.add("family_members:set");
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name === "storyBooks" && data?.action === "state") return { result: {} };
+      if (name === "storyBooks" && data?.action === "memberUpdate") {
+        const member = cloud.records("family_members").get(`${FAMILY}_friend`);
+        cloud.records("family_members").set(`${FAMILY}_friend`, { ...member, name: data.name, relation: data.relation, avatarText: "新" });
+        const memory = cloud.records("memories").get(`${FAMILY}_memory-by-friend`);
+        cloud.records("memories").set(`${FAMILY}_memory-by-friend`, { ...memory, authorName: data.name, relation: data.relation });
+        return { result: { ok: true } };
+      }
+      throw new Error(`unexpected cloud function ${name}`);
+    };
+    const state = await updateCloudMember("friend", "新名字", "老朋友");
+    assert.equal(state.members.find((member) => member.id === "friend")?.name, "新名字");
+    assert.equal(state.draft, undefined, "a draft generated with the old attribution is hidden after rename");
+    const reloaded = await loadCloudRoomState();
+    assert.deepEqual(
+      reloaded.contributions.map((memory) => [memory.id, memory.authorName, memory.relation, memory.text]),
+      [["memory-by-friend", "新名字", "老朋友", "一段不会被改写的虚构记忆。"]],
+    );
   } finally { cloud.restore(); }
 });
