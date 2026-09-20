@@ -39,6 +39,39 @@ test('migration allowlist keeps non-canary families inactive',async()=>{
   await assert.rejects(handlers.migrate({familyId:'family_test'}),/尚未进入/);
   assert.equal(tables.get('families:family_test').storyBooks,undefined);
 });
+test('a completed single-batch migration recovers metadata erased by a legacy client',async()=>{
+  const tables=new Map(), key=(table,id)=>table+':'+id;
+  const io={get:async(table,id)=>structuredClone(tables.get(key(table,id))),set:async(table,id,value)=>tables.set(key(table,id),structuredClone(value)),remove:async(table,id)=>tables.delete(key(table,id))};
+  const repo={...io,all:async(table,familyId)=>[...tables].filter(([entryKey,value])=>entryKey.startsWith(table+':')&&value.familyId===familyId).map(([entryKey,value])=>structuredClone({_id:entryKey.slice(table.length+1),...value})),transaction:fn=>fn(io)};
+  const ctx={familyId:'family_test'};
+  const source={contributions:[],deletedStories:[],legacyPersonalDrafts:{},personalDrafts:{},manuscriptRevisions:[],legacyImages:[],legacyImageJobs:[]};
+  const digest=core.hash(core.stable(source));
+  tables.set('families:family_test',{roomName:'仍在的房间'});
+  tables.set('stories:family_test_story-recovered',{familyId:'family_test',id:'story-recovered',title:'找回的故事',bookTitle:'找回的故事',writingMode:'objective',version:1,currentRevisionId:'',memoryIds:[],imageIds:[],protagonistMemberIds:[],createdAt:'2026-09-19',updatedAt:'2026-09-19',migrationSourceDigest:digest,migrationDocumentId:'family_test_story-recovered'});
+  tables.set('story_names:family_test_name',{familyId:'family_test',storyId:'story-recovered',title:'找回的故事',migrationSourceDigest:digest,migrationDocumentId:'family_test_name'});
+  tables.set('memories:family_test_later-memory',{familyId:'family_test',frontendContributionId:'later-memory',scope:'personal',storyTitle:'后来新增',text:'迁移激活后才新增的内容'});
+  const handlers=createHandlers(repo,{migrationReady:false});
+
+  assert.deepEqual(await handlers.migrate(ctx),{status:'active',recovered:2});
+  assert.equal(tables.get('families:family_test').storyBooks.status,'active');
+  assert.equal((await handlers.state(ctx)).stories[0].title,'找回的故事');
+});
+test('missing migrated revision records do not hide the shelf and can be rebuilt from pending chapters',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('stories:family_test_story-a',{familyId:'family_test',id:'story-a',title:'保留下来的故事',bookTitle:'保留下来的故事',writingMode:'objective',version:1,currentRevisionId:'revision-missing',memoryIds:[],imageIds:[],protagonistMemberIds:[],createdAt:'2026-09-19',updatedAt:'2026-09-19'});
+  tables.set('story_migration_items:family_test_pending-a',{familyId:'family_test',item:{id:'pending-a',sourceRevisionId:'legacy-revision',memberId:'owner',chapter:{id:'legacy-chapter',title:'旧章节',memoryIds:[],content:[{text:'仍然完整的旧正文'}]},reason:'没有明确来源记忆'}});
+
+  const visible=await h.state(ctx);
+  assert.equal(visible.stories[0].currentRevisionId,'');
+  const revision={id:'revision-recovered',storyId:'story-a',memberId:'owner',kind:'version',label:'恢复旧章节',savedAt:'',sourceFingerprint:'',draft:{title:'',paragraphs:[],sourceCount:0,generatedAt:'',generationMode:'local-demo'}};
+  await h.command(ctx,{action:'resolve',storyId:'story-a',expectedVersion:1,expectedRevisionId:'',pendingId:'pending-a',revision,requestId:revision.id});
+
+  const story=tables.get('stories:family_test_story-a');
+  const saved=tables.get('biography_drafts:family_test_revision-recovered');
+  assert.equal(story.currentRevisionId,'revision-recovered');
+  assert.equal(story.orphanedRevisionId,'revision-missing');
+  assert.equal(saved.revision.draft.chapters[0].content[0].text,'仍然完整的旧正文');
+});
 test('lost acknowledgement retry is idempotent and foreign stories are inaccessible',async()=>{
   const {handlers:h}=fixture(), ctx={familyId:'family_test'};
   const input={action:'create',storyId:'story-a',title:'A',writingMode:'objective',memoryIds:[],requestId:'create-story-a'};
@@ -51,6 +84,76 @@ test('production-shaped memory records keep their frontend contribution ids',asy
   tables.set('memories:family_test_memory-a',{familyId:'family_test',frontendContributionId:'memory-a',scope:'personal',text:'一段记忆'});
   await h.command(ctx,{action:'create',storyId:'story-a',title:'A',writingMode:'objective',memoryIds:['memory-a'],requestId:'create-story-a'});
   assert.deepEqual((await h.state(ctx)).stories[0].memoryIds,['memory-a']);
+});
+
+test('authenticated state returns the complete owner room without database metadata',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('families:family_test',{roomName:'服务端房间',protagonistName:'测试者',deletedStories:[],storyBooks:{status:'active',version:1}});
+  tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',name:'测试者',relation:'自己',role:'owner',avatarText:'测'});
+  tables.set('memories:family_test_memory-a',{familyId:'family_test',frontendContributionId:'memory-a',authorMemberId:'owner',authorName:'测试者',relation:'自己',scope:'personal',visibility:'private',reviewStatus:'approved',text:'一段记忆',createdAt:'2026-09-19'});
+  tables.set('biography_drafts:family_test_personal',{familyId:'family_test',draftType:'personal',memberId:'owner',draft:{title:'旧稿'}});
+
+  const state=await h.state(ctx);
+
+  assert.equal(state.roomStateVersion,1);
+  assert.equal(state.roomName,'服务端房间');
+  assert.deepEqual(state.members,[{id:'owner',name:'测试者',relation:'自己',role:'owner',avatarText:'测'}]);
+  assert.equal(state.contributions[0].id,'memory-a');
+  assert.equal(state.contributions[0]._id,undefined);
+  assert.equal(state.contributions[0].familyId,undefined);
+  assert.equal(state.personalDrafts.owner.title,'旧稿');
+  assert.equal(state.legacyPersonalDrafts,undefined,'versioned state does not duplicate personal drafts');
+});
+
+test('owner member actions add and edit people without client database permissions',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('families:family_test',{roomName:'服务端房间',storyBooks:{status:'active',version:1}});
+  tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',name:'测试者',relation:'自己',role:'owner',avatarText:'测',kind:'recording-profile'});
+
+  await h.memberAdd(ctx,{memberId:'member-friend',name:' 老朋友 ',relation:'朋友',kind:'person'});
+  tables.set('memories:family_test_memory-a',{familyId:'family_test',frontendContributionId:'memory-a',authorMemberId:'member-friend',authorName:'老朋友',relation:'朋友',scope:'personal',text:'原文保持不变'});
+  tables.set('source_records:src_family_test_memory-a',{familyId:'family_test',frontendContributionId:'memory-a',contributorMemberId:'member-friend',contributorName:'老朋友',relation:'朋友',rawText:'原文保持不变'});
+
+  await h.memberUpdate(ctx,{memberId:'member-friend',name:'新名字',relation:'多年好友'});
+
+  const member=tables.get('family_members:family_test_member-friend');
+  assert.deepEqual({memberId:member.memberId,name:member.name,relation:member.relation,kind:member.kind,avatarText:member.avatarText},
+    {memberId:'member-friend',name:'新名字',relation:'多年好友',kind:'person',avatarText:'新'});
+  assert.equal(tables.get('memories:family_test_memory-a').text,'原文保持不变');
+  assert.equal(tables.get('source_records:src_family_test_memory-a').rawText,'原文保持不变');
+  tables.set('memories:family_test_memory-late',{familyId:'family_test',frontendContributionId:'memory-late',authorMemberId:'member-friend',authorName:'老朋友',relation:'朋友',text:'并发写入的旧署名'});
+  const late=(await h.state(ctx)).contributions.find(item=>item.id==='memory-late');
+  assert.deepEqual({id:late.id,authorName:late.authorName,relation:late.relation,text:late.text},
+    {id:'memory-late',authorName:'新名字',relation:'多年好友',text:'并发写入的旧署名'});
+  await h.command(ctx,{action:'create',storyId:'story-member-name',title:'署名测试',writingMode:'creative',memoryIds:['memory-a'],requestId:'create-member-name'});
+  const ai=await h.aiContext(ctx,{storyId:'story-member-name',memoryIds:['memory-a']});
+  assert.deepEqual({authorName:ai.memories[0].authorName,relation:ai.memories[0].relation},
+    {authorName:'新名字',relation:'多年好友'});
+  await assert.rejects(h.memberUpdate(ctx,{memberId:'member-friend',name:'测试者',relation:'朋友'}),{code:'MEMBER_CONFLICT'});
+});
+
+test('legacy id-only members can be edited and are backfilled with memberId',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('family_members:family_test_legacy',{familyId:'family_test',id:'legacy',name:'旧名字',relation:'朋友',role:'contributor',avatarText:'旧',kind:'person'});
+
+  await h.memberUpdate(ctx,{memberId:'legacy',name:'新名字',relation:'老朋友'});
+
+  const member=tables.get('family_members:family_test_legacy');
+  assert.deepEqual({id:member.id,memberId:member.memberId,name:member.name,relation:member.relation},
+    {id:'legacy',memberId:'legacy',name:'新名字',relation:'老朋友'});
+});
+
+test('concurrent member additions cannot claim the same name',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',name:'测试者',relation:'自己',role:'owner',avatarText:'测',kind:'recording-profile'});
+
+  const results=await Promise.allSettled([
+    h.memberAdd(ctx,{memberId:'friend-a',name:'同名亲友',relation:'朋友',kind:'person'}),
+    h.memberAdd(ctx,{memberId:'friend-b',name:'同名亲友',relation:'朋友',kind:'person'}),
+  ]);
+
+  assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
+  assert.equal([...tables.values()].filter(row=>row?.familyId==='family_test' && row?.name==='同名亲友').length,1);
 });
 
 test('migration resumes across batches and activates only after every planned row is written',async()=>{

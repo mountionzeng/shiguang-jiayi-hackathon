@@ -751,10 +751,13 @@ export function personalBookSourceFingerprint(
   state: FamilyRoomState,
   memberId: string,
 ): string {
-  // Every book draws from the shared pool. With one profile this equals the old
-  // own-stories fingerprint, so existing books are not flagged as changed.
+  const member = state.members.find((item) => item.id === memberId);
+  // Every book draws from the shared memory pool.
   return JSON.stringify({
     memberId,
+    // The generated introduction names the narrator. A rename therefore makes
+    // an existing generated draft stale even when its memories are unchanged.
+    memberName: member?.name ?? "",
     sources: memoryPool(state.contributions)
       .map((memory) => ({
         id: memory.id,

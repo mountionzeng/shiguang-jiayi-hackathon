@@ -150,6 +150,20 @@ test("被邀请人只看到自己写的或明确分享给自己的个人记忆",
   assert.equal(invite.visibleMemoriesForAccess(memories, { role: "owner", memberId: "owner" }).length, 7);
 });
 
+test("共享房间按稳定人物标识显示最新署名", () => {
+  const storedMemory = { authorMemberId: "friend-a", authorName: "旧名字", relation: "旧关系" };
+  const renamedMember = { memberId: "friend-a", name: "新名字", relation: "老朋友" };
+
+  assert.deepEqual(invite.currentMemoryAttribution(storedMemory, renamedMember), {
+    authorName: "新名字",
+    relation: "老朋友",
+  });
+  assert.deepEqual(invite.currentMemoryAttribution(storedMemory), {
+    authorName: "旧名字",
+    relation: "旧关系",
+  });
+});
+
 test("提交进主人待确认列表前先过内容安全检测，不通过就不写库", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../cloudfunctions/familyInvite/index.js"),

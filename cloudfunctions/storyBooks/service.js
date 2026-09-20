@@ -22,7 +22,7 @@ function createStoryService(repo, options = {}) {
     if (!context || typeof context.OPENID !== 'string' || !/^[0-9A-Za-z_-]{1,128}$/.test(context.OPENID)) throw identityError('AUTH_REQUIRED');
     if (accessEnabled && options.rulesReady !== true) throw accessError('STORY_ACCESS_NOT_READY');
     const ctx = accessEnabled
-      ? await resolveStoryIdentity(repo, context, { bootstrapAppId: options.bootstrapAppId })
+      ? {...await resolveStoryIdentity(repo, context, { bootstrapAppId: options.bootstrapAppId }),verifiedOpenid:context.OPENID}
       : { familyId: `family_${context.OPENID}` };
     const action = String(event?.action || '');
     if (action === 'capabilities') {
@@ -120,6 +120,8 @@ function createStoryService(repo, options = {}) {
     if (action === 'state') result = await handlers.state(ctx);
     else if (action === 'migrate') result = await handlers.migrate(ctx);
     else if (action === 'context') result = await handlers.aiContext(ctx, event);
+    else if (action === 'memberAdd') result = await handlers.memberAdd(ctx, event);
+    else if (action === 'memberUpdate') result = await handlers.memberUpdate(ctx, event);
     else result = await handlers.command(ctx, event);
     // Reads and already-acknowledged operations can return without a write
     // transaction. Do not release data if identity was revoked during the read.

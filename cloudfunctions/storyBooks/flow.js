@@ -2,7 +2,115 @@ const core = require('./core');
 const { assertLegacyWritable, protocolError } = require('./provenance');
 const docId = (familyId,id) => familyId+'_'+id;
 const MIGRATION_BATCH_SIZE=80;
+const memberForClient = member => ({
+  id:member.memberId || member.id,
+  name:member.name,
+  relation:member.relation,
+  avatarText:member.avatarText,
+  role:member.role,
+  ...(member.kind ? {kind:member.kind} : {}),
+  ...(typeof member.deletedAt==='string' && member.deletedAt ? {deletedAt:member.deletedAt} : {}),
+});
+const contributionId = memory => memory.frontendContributionId || memory.id || memory.sourceRecordId?.replace(/^src_/,'')?.replace(memory.familyId+'_','') || memory._id?.replace(memory.familyId+'_','');
+const contributionForClient = (memory,member) => ({
+  id:contributionId(memory),
+  authorMemberId:memory.authorMemberId,
+  authorName:member?.name || memory.authorName,
+  relation:member?.relation || memory.relation,
+  text:memory.text,
+  title:memory.title,
+  summary:memory.summary,
+  emotions:memory.emotions,
+  people:memory.people,
+  places:memory.places,
+  organizationMode:memory.organizationMode,
+  memoryType:memory.memoryType,
+  storyTitle:memory.storyTitle,
+  relatedMemberIds:memory.relatedMemberIds,
+  scope:memory.scope,
+  sharedWithMemberIds:memory.sharedWithMemberIds,
+  visibility:memory.visibility,
+  reviewStatus:memory.reviewStatus,
+  createdAt:memory.createdAt,
+  segments:memory.segments,
+  deletedAt:memory.deletedAt,
+  photoIds:memory.photoIds,
+});
 function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null, now = ()=>new Date().toISOString()} = {}) {
+  const memberError = (code,message) => { throw Object.assign(new Error(message),{code}); };
+  const memberId = value => {
+    const id=String(value || '').trim();
+    if(!/^[0-9A-Za-z_-]{1,128}$/.test(id))memberError('MEMBER_INVALID','人物编号无效');
+    return id;
+  };
+  const memberText = (value,label,{required=false}={}) => {
+    const text=String(value || '').trim();
+    if(required && !text)memberError('MEMBER_INVALID',`请填写${label}`);
+    if(text.length>12)memberError('MEMBER_INVALID',`${label}不能超过 12 个字`);
+    return text;
+  };
+  const storedMemberId = member => member?.memberId || member?.id;
+  const memberNameClaimKey = name => core.hash(name);
+  const claimMemberName = (family,name,id) => {
+    const claims={...(family.memberNameClaims || {})},key=memberNameClaimKey(name),claim=claims[key];
+    if(claim && (claim.name!==name || claim.memberId!==id))memberError('MEMBER_CONFLICT','名单里已经有这个名字');
+    claims[key]={name,memberId:id};
+    return claims;
+  };
+  const releaseMemberName = (claims,name,id) => {
+    const key=memberNameClaimKey(name),claim=claims[key];
+    if(claim?.name===name && claim.memberId===id)delete claims[key];
+  };
+  async function memberAdd(ctx,event) {
+    const family=await repo.get('families',ctx.familyId);
+    if(!family)throw new Error('没有找到你的记录空间');
+    const members=await repo.all('family_members',ctx.familyId),id=memberId(event.memberId);
+    const name=memberText(event.name,'名字',{required:true}),relation=memberText(event.relation,'关系') || '家人';
+    const kind=event.kind;
+    if(!['person','recording-profile'].includes(kind))memberError('MEMBER_INVALID','人物类型无效');
+    const duplicate=members.find(member=>storedMemberId(member)!==id && member.name===name);
+    if(duplicate)memberError('MEMBER_CONFLICT',duplicate.deletedAt ? '这个名字在「最近删除」里，可以直接恢复' : '名单里已经有这个名字');
+    const first=members.length===0;
+    if(kind==='person' && !members.some(member=>!member.deletedAt && member.kind!=='person'))memberError('MEMBER_REQUIRES_PROFILE','请先新建一本书，再加人');
+    const record={familyId:ctx.familyId,memberId:id,name,relation:first && !String(event.relation || '').trim() ? '自己' : relation,
+      avatarText:name.slice(0,1),role:first ? 'owner' : 'contributor',kind};
+    await repo.transaction(async tx=>{
+      const latestFamily=await tx.get('families',ctx.familyId);
+      if(!latestFamily)throw new Error('没有找到你的记录空间');
+      const existing=await tx.get('family_members',docId(ctx.familyId,id));
+      if(existing) {
+        if(existing.familyId===record.familyId && storedMemberId(existing)===record.memberId && existing.name===record.name && existing.relation===record.relation && existing.kind===record.kind)return;
+        memberError('MEMBER_CONFLICT','人物编号已被使用，请重试');
+      }
+      const claims=claimMemberName(latestFamily,name,id);
+      await tx.set('families',ctx.familyId,{...latestFamily,memberNameClaims:claims});
+      await tx.set('family_members',docId(ctx.familyId,id),record);
+    });
+    return {ok:true,memberId:id};
+  }
+  async function memberUpdate(ctx,event) {
+    const id=memberId(event.memberId),name=memberText(event.name,'名字',{required:true}),relation=memberText(event.relation,'关系') || '家人';
+    const [family,members]=await Promise.all([
+      repo.get('families',ctx.familyId),repo.all('family_members',ctx.familyId),
+    ]);
+    if(!family)throw new Error('没有找到你的记录空间');
+    const member=members.find(item=>storedMemberId(item)===id);
+    if(!member)memberError('MEMBER_NOT_FOUND','没有找到这个人，请刷新后重试');
+    if(member.deletedAt)memberError('MEMBER_DELETED','这个人在「最近删除」里，请先恢复');
+    const duplicate=members.find(item=>storedMemberId(item)!==id && item.name===name);
+    if(duplicate)memberError('MEMBER_CONFLICT',duplicate.deletedAt ? '这个名字在「最近删除」里，可以先恢复或换一个名字' : '名单里已经有这个名字');
+    if(member.name===name && member.relation===relation)return {ok:true,memberId:id};
+    await repo.transaction(async tx=>{
+      const latestFamily=await tx.get('families',ctx.familyId);
+      const stored=await tx.get('family_members',docId(ctx.familyId,id));
+      if(!latestFamily || !stored || stored.familyId!==ctx.familyId || storedMemberId(stored)!==id || stored.deletedAt)memberError('MEMBER_CONFLICT','人物资料已变化，请刷新后重试');
+      const claims=claimMemberName(latestFamily,name,id);
+      if(stored.name!==name)releaseMemberName(claims,stored.name,id);
+      await tx.set('families',ctx.familyId,{...latestFamily,memberNameClaims:claims});
+      await tx.set('family_members',docId(ctx.familyId,id),{...stored,memberId:id,name,relation,avatarText:name.slice(0,1)});
+    });
+    return {ok:true,memberId:id};
+  }
   async function assertLegacyTransaction(tx, familyId, story) {
     if (!story) return;
     assertLegacyWritable(story);
@@ -11,6 +119,14 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       if (!record || record.familyId!==familyId || record.storyId!==story.id || record.revision?.id!==story.currentRevisionId || record.revision.storyId!==story.id) throw protocolError();
       assertLegacyWritable(story,record.revision.draft);
     }
+  }
+  async function repairMissingRevision(tx,familyId,story) {
+    if(!story?.currentRevisionId)return story;
+    const record=await tx.get('biography_drafts',docId(familyId,story.currentRevisionId));
+    if(record?.familyId===familyId && record.storyId===story.id && record.revision?.id===story.currentRevisionId && record.revision.storyId===story.id)return story;
+    const repaired={...story,orphanedRevisionId:story.currentRevisionId,currentRevisionId:''};
+    await tx.set('stories',docId(familyId,story.id),repaired);
+    return repaired;
   }
   const migrationTables=['stories','story_names','biography_drafts','story_migration_items','story_image_links','story_image_job_links'];
   const legacySource = source => ({
@@ -23,27 +139,73 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     legacyImageJobs:[...(source.legacyImageJobs || [])].filter(job=>!job.storyId).sort((a,b)=>String(a._id).localeCompare(String(b._id))),
   });
   const sourceDigest = source => core.hash(core.stable(legacySource(source)));
-  async function load(ctx,{includeMemories=true,includeMigrationSources=false}={}) {
+  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false}={}) {
     const family = await repo.get('families',ctx.familyId);
     if (!family) throw new Error('没有找到你的记录空间');
-    const [stories,drafts,pending,memories,legacyImages,legacyImageJobs] = await Promise.all([
+    const [stories,drafts,pending,memories,members,legacyImages,legacyImageJobs] = await Promise.all([
       repo.all('stories',ctx.familyId),repo.all('biography_drafts',ctx.familyId),repo.all('story_migration_items',ctx.familyId),
       includeMemories ? repo.all('memories',ctx.familyId) : [],
+      includeMembers || includeMemories ? repo.all('family_members',ctx.familyId) : [],
       includeMigrationSources ? repo.all('story_images',ctx.familyId) : [],
       includeMigrationSources ? repo.all('image_jobs',ctx.familyId) : [],
     ]);
-    const contributions=memories.map(m=>({...m,id:m.frontendContributionId || m.id || m.sourceRecordId?.replace(/^src_/,'')?.replace(ctx.familyId+'_','') || m._id?.replace(ctx.familyId+'_','')}));
-    const visibleStories=stories.map(({_id,migrationSourceDigest,migrationDocumentId,...story})=>story);
-    const state={roomName:family.roomName || '',protagonistName:'',members:[],contributions,stories:visibleStories,deletedStories:family.deletedStories || [],
+    const membersById=new Map(members.map(member=>[storedMemberId(member),member]));
+    const contributions=memories.map(memory=>{
+      const member=membersById.get(memory.authorMemberId);
+      return {...memory,id:contributionId(memory),...(member ? {authorName:member.name,relation:member.relation} : {})};
+    });
+    const revisionIds=new Set(drafts.filter(d=>d.revision?.id).map(d=>d.revision.id));
+    const visibleStories=stories.map(({_id,migrationSourceDigest,migrationDocumentId,...story})=>
+      story.currentRevisionId && !revisionIds.has(story.currentRevisionId)
+        ? {...story,orphanedRevisionId:story.currentRevisionId,currentRevisionId:''}
+        : story);
+    const state={roomName:family.roomName || '',protagonistName:family.protagonistName || '',members:members.map(memberForClient),contributions,stories:visibleStories,deletedStories:family.deletedStories || [],
+      draft:drafts.find(d=>d.draftType==='family')?.draft,
+      draftSourceFingerprint:drafts.find(d=>d.draftType==='family')?.sourceFingerprint || '',
+      personalDrafts:Object.fromEntries(drafts.filter(d=>d.draftType==='personal' && d.memberId && d.draft).map(d=>[d.memberId,d.draft])),
+      personalDraftSourceFingerprints:Object.fromEntries(drafts.filter(d=>d.draftType==='personal' && d.memberId).map(d=>[d.memberId,d.sourceFingerprint || ''])),
       manuscriptRevisions:drafts.filter(d=>d.revision).map(d=>d.revision),
       legacyPersonalDrafts:Object.fromEntries(drafts.filter(d=>d.draftType==='personal' && d.memberId && d.draft).map(d=>[d.memberId,d.draft])),legacyImages,legacyImageJobs};
     if (family.storyBooks) state.storyMigration={...family.storyBooks,pending:pending.map(p=>p.item)};
     return state;
   }
   async function state(ctx) {
-    const loaded=await load(ctx,{includeMemories:false});
-    if (loaded.storyMigration?.status!=='active') return {storyMigration:loaded.storyMigration,stories:[]};
-    return {storyMigration:loaded.storyMigration,stories:loaded.stories,manuscriptRevisions:loaded.manuscriptRevisions.filter(r=>r.storyId)};
+    const loaded=await load(ctx,{includeMemories:true,includeMembers:true});
+    const membersById=new Map(loaded.members.map(member=>[member.id,member]));
+    return {
+      roomStateVersion:1,
+      roomName:loaded.roomName,
+      protagonistName:loaded.protagonistName,
+      members:loaded.members,
+      contributions:loaded.contributions.map(memory=>contributionForClient(memory,membersById.get(memory.authorMemberId))),
+      draft:loaded.draft,
+      draftSourceFingerprint:loaded.draftSourceFingerprint,
+      personalDrafts:loaded.personalDrafts,
+      personalDraftSourceFingerprints:loaded.personalDraftSourceFingerprints,
+      deletedStories:loaded.deletedStories,
+      storyMigration:loaded.storyMigration,
+      stories:loaded.storyMigration?.status==='active' ? loaded.stories : [],
+      manuscriptRevisions:loaded.manuscriptRevisions,
+    };
+  }
+  async function recoverCompletedMigration(ctx) {
+    const family=await repo.get('families',ctx.familyId);
+    if(!family || family.storyBooks)return null;
+    const staged=(await Promise.all(migrationTables.map(table=>repo.all(table,ctx.familyId)))).flat()
+      .filter(row=>row.migrationSourceDigest && row.migrationDocumentId);
+    // Every non-final batch contains exactly MIGRATION_BATCH_SIZE staged rows.
+    // A non-multiple therefore proves the final batch committed before an old
+    // client later replaced the narrow family shell and erased only metadata.
+    if(!staged.length || staged.length % MIGRATION_BATCH_SIZE===0)return null;
+    const digests=new Set(staged.map(row=>row.migrationSourceDigest));
+    if(digests.size!==1 || staged.some(row=>row._id!==row.migrationDocumentId))return null;
+    const digest=[...digests][0];
+    return repo.transaction(async tx=>{
+      const latest=await tx.get('families',ctx.familyId);
+      if(latest?.storyBooks)return latest.storyBooks.status==='active' ? {status:'active'} : null;
+      await tx.set('families',ctx.familyId,{...latest,storyBooks:{version:1,status:'active',cursor:staged.length,total:staged.length,sourceDigest:digest,recoveredAt:now()}});
+      return {status:'active',recovered:staged.length};
+    });
   }
   async function command(ctx,event) {
     const input={...event,familyId:ctx.familyId}, previous=await load(ctx);
@@ -67,8 +229,9 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
           return {ok:true,storyId:retry.storyId};
         }
         const storyId=String(input.storyId || ''), storyDocId=docId(ctx.familyId,storyId);
-        const story=await tx.get('stories',storyDocId);
+        let story=await tx.get('stories',storyDocId);
         if(!story || story.deletedAt)throw new Error('这本故事书已不可用，请返回书架');
+        story=await repairMissingRevision(tx,ctx.familyId,story);
         await assertLegacyTransaction(tx,ctx.familyId,story);
         if(story.version!==input.expectedVersion)throw new Error('故事已有更新，请刷新后重试');
         const pendingId=docId(ctx.familyId,String(input.pendingId || '')), pending=await tx.get('story_migration_items',pendingId);
@@ -106,7 +269,8 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         if(retry.fingerprint!==core.stable(input))throw new Error('请求编号冲突');
         return {ok:true,storyId:retry.storyId};
       }
-      const stored=await tx.get('stories',docId(ctx.familyId,story.id));
+      let stored=await tx.get('stories',docId(ctx.familyId,story.id));
+      stored=await repairMissingRevision(tx,ctx.familyId,stored);
       if (guardsContent) await assertLegacyTransaction(tx,ctx.familyId,stored);
       if((before && (!stored || stored.version!==before.version)) || (!before && stored))throw new Error('故事已有更新，请刷新后重试');
       for(const id of imageRefs) {
@@ -134,6 +298,8 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     });
   }
   async function migrate(ctx) {
+    const recovered=await recoverCompletedMigration(ctx);
+    if(recovered)return recovered;
     if(!migrationReady)throw new Error('新版故事库正在准备，请保留现有内容，稍后再试');
     if(Array.isArray(migrationFamilyIds) && !migrationFamilyIds.includes(ctx.familyId))throw new Error('这个账号尚未进入故事书迁移测试范围');
     let family=await repo.get('families',ctx.familyId);
@@ -224,6 +390,6 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     if(!Array.isArray(requested) || requested.some(id=>!story.memoryIds.includes(id)))throw new Error('不能引用其他故事的记忆');
     return {story,draft:core.current(loaded,story.id).draft,memories:loaded.contributions.filter(m=>requested.includes(m.id) && !m.deletedAt && m.scope==='personal'),fingerprint:core.fingerprint(loaded,story.id)};
   }
-  return {state,command,migrate,aiContext};
+  return {state,command,migrate,aiContext,memberAdd,memberUpdate};
 }
 module.exports={createHandlers};

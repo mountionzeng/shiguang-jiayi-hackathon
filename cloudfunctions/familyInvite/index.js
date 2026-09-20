@@ -3,6 +3,7 @@ const {
   accountIdFor,
   assertInvitationUsable,
   avatarTextFor,
+  currentMemoryAttribution,
   expiresAtFrom,
   inviteToken,
   normalizeContributionInput,
@@ -264,6 +265,7 @@ async function loadRoom(event, accountId) {
   const memories = visibleMemoriesForAccess(allMemories, access);
   const visibleMembers = visibleMembersForAccess(members, access, family.ownerAccountId);
   const visibleMemberIds = new Set(visibleMembers.map(member => member.memberId));
+  const membersById = new Map(members.map(member => [member.memberId || member.id, member]));
 
   return {
     familyId,
@@ -283,8 +285,7 @@ async function loadRoom(event, accountId) {
       contributions: memories.map(memory => ({
         id: memory.frontendContributionId || memory._id,
         authorMemberId: memory.authorMemberId,
-        authorName: memory.authorName,
-        relation: memory.relation,
+        ...currentMemoryAttribution(memory, membersById.get(memory.authorMemberId)),
         text: memory.text,
         title: memory.title,
         summary: memory.summary,

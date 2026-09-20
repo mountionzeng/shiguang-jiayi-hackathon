@@ -11,6 +11,7 @@ import {
   resetCurrentUserRoomRemoteFirst,
   restoreMemberRemoteFirst,
   saveCurrentMemberIdLocal,
+  updateMemberRemoteFirst,
 } from "../../services/roomRepository";
 import { deleteMemberWithConfirm } from "../../services/memberActions";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -61,10 +62,16 @@ Page({
     nameInput: "",
     relationInput: "",
     adding: false,
+    editMemberId: "",
+    editNameInput: "",
+    editRelationInput: "",
+    savingEdit: false,
     loadError: "",
   },
 
   requestedNewBook: false,
+  refreshGeneration: 0,
+  pageActive: true,
 
   onLoad(options: { mode?: string } = {}) {
     this.requestedNewBook = options.mode === "new-book";
@@ -72,10 +79,20 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch((error) => { logLoadError("profiles", error); this.setData({ loadError: "名单暂时没加载出来，请重试。" }); });
+    this.pageActive = true;
+    const generation = ++this.refreshGeneration;
+    void this.refresh(undefined, generation).catch((error) => {
+      if (!this.pageActive || generation !== this.refreshGeneration) return;
+      logLoadError("profiles", error);
+      this.setData({ loadError: "名单暂时没加载出来，请重试。" });
+    });
   },
 
-  async refresh(state?: FamilyRoomState) {
+  onHide() { this.pageActive = false; this.refreshGeneration += 1; },
+  onUnload() { this.pageActive = false; this.refreshGeneration += 1; },
+
+  async refresh(state?: FamilyRoomState, generation?: number) {
+    const requestedGeneration = generation ?? ++this.refreshGeneration;
     const currentState = state ?? await loadRoomStateRemoteFirst();
     const current = await loadCurrentMemberRemoteFirst(currentState);
     // People belong to a book; with no book yet, start one first.
@@ -83,6 +100,7 @@ Page({
     if (view === "new-book" && typeof wx.setNavigationBarTitle === "function") {
       wx.setNavigationBarTitle({ title: "新建一本书" });
     }
+    if (!this.pageActive || requestedGeneration !== this.refreshGeneration) return;
     this.setData({
       view,
       people: currentState.members.filter(member => isActiveMember(member) && !isSelf(member)).map(member => ({
@@ -104,9 +122,40 @@ Page({
 
   onNameInput(event: WechatMiniprogram.Input) { this.setData({ nameInput: event.detail.value }); },
   onRelationInput(event: WechatMiniprogram.Input) { this.setData({ relationInput: event.detail.value }); },
+  onEditNameInput(event: WechatMiniprogram.Input) { this.setData({ editNameInput: event.detail.value }); },
+  onEditRelationInput(event: WechatMiniprogram.Input) { this.setData({ editRelationInput: event.detail.value }); },
+
+  startEdit(event: IdEvent) {
+    const person = this.data.people.find((item) => item.id === event.currentTarget.dataset.id);
+    if (!person || this.data.savingEdit || this.data.adding || this.data.busyId) return;
+    this.setData({ editMemberId: person.id, editNameInput: person.name, editRelationInput: person.relation });
+  },
+
+  cancelEdit() {
+    if (this.data.savingEdit) return;
+    this.setData({ editMemberId: "", editNameInput: "", editRelationInput: "" });
+  },
+
+  async saveEdit() {
+    if (!this.data.editMemberId || this.data.savingEdit || this.data.adding || this.data.busyId) return;
+    this.setData({ savingEdit: true });
+    try {
+      const state = await updateMemberRemoteFirst(
+        this.data.editMemberId,
+        this.data.editNameInput,
+        this.data.editRelationInput,
+      );
+      if (!this.pageActive) return;
+      this.setData({ editMemberId: "", editNameInput: "", editRelationInput: "" });
+      wx.showToast({ title: "人物已更新", icon: "success" });
+      await this.refresh(state);
+    } catch (error) {
+      if (this.pageActive) wx.showToast({ title: error instanceof Error ? error.message : "没有保存成功，请重试", icon: "none" });
+    } finally { if (this.pageActive) this.setData({ savingEdit: false }); }
+  },
 
   async addPerson() {
-    if (this.data.adding) return;
+    if (this.data.adding || this.data.savingEdit || this.data.busyId) return;
     const name = this.data.nameInput.trim();
     const relation = this.data.relationInput.trim();
     if (!name) { wx.showToast({ title: "请写下名字", icon: "none" }); return; }
@@ -114,12 +163,13 @@ Page({
     this.setData({ adding: true });
     try {
       const state = await addFamilyMemberRemoteFirst(name, relation, "person");
+      if (!this.pageActive) return;
       wx.showToast({ title: `${name} 已加进来`, icon: "none" });
       this.setData({ nameInput: "", relationInput: "" });
       await this.refresh(state);
     } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : "没有加成功，请重试", icon: "none" });
-    } finally { this.setData({ adding: false }); }
+      if (this.pageActive) wx.showToast({ title: error instanceof Error ? error.message : "没有加成功，请重试", icon: "none" });
+    } finally { if (this.pageActive) this.setData({ adding: false }); }
   },
 
   async createBook() {
@@ -140,7 +190,7 @@ Page({
   },
 
   async removeMember(event: IdEvent) {
-    if (this.data.busyId) return;
+    if (this.data.busyId || this.data.adding || this.data.savingEdit) return;
     const { id } = event.currentTarget.dataset;
     try {
       const state = await loadRoomStateRemoteFirst();
@@ -155,7 +205,7 @@ Page({
   },
 
   async restoreMember(event: IdEvent) {
-    if (this.data.busyId) return;
+    if (this.data.busyId || this.data.adding || this.data.savingEdit) return;
     const { id } = event.currentTarget.dataset;
     this.setData({ busyId: id });
     try {
