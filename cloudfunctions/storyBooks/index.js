@@ -45,20 +45,7 @@ const dispatch=createStoryService(repo,{
   bootstrapAppId:process.env.STORY_IDENTITY_BOOTSTRAP_APP_ID,
   sharedReadFamilyIds:String(process.env.STORY_ACCESS_CANARY_FAMILY_IDS || '').split(',').map(value=>value.trim()).filter(Boolean),
 });
-function errorCode(error) {
-  if(['STORY_PROTOCOL_REQUIRED','CONTENT_REJECTED','STORY_EXCERPT_MISMATCH','STORY_SHARE_SELECTION_INVALID','STORY_SHARE_LIMIT','VERSION_CONFLICT','INVALID_INPUT','DUPLICATE_TITLE',
-    'STORY_COPY_MEDIA_PENDING','STORY_COPY_STORAGE_ERROR','STORY_COPY_BUSY','STORY_COPY_LIMIT','STORY_RETURN_EMPTY','STORY_RETURN_LIMIT'].includes(error?.code))return error.code;
-  if(['AUTH_REQUIRED','IDENTITY_UNLINKED','STORY_FORBIDDEN','STORY_ACCESS_DISABLED','STORY_ACCESS_NOT_READY','STORY_INVITE_LIMIT'].includes(error?.code))return error.code;
-  const message=String(error?.message || error || '');
-  if(/重新登录|记录空间|创建记录档案/.test(message))return 'AUTH_REQUIRED';
-  if(/迁移|故事库.*准备/.test(message))return 'MIGRATION_NOT_READY';
-  if(/已有更新|重新加载|请求编号冲突|已处理/.test(message))return 'VERSION_CONFLICT';
-  if(/同名故事/.test(message))return 'DUPLICATE_TITLE';
-  if(/其他故事|不能引用|跨/.test(message))return 'CROSS_STORY_REFERENCE';
-  if(/不可用|没找到|不存在/.test(message))return 'STORY_NOT_FOUND';
-  if(/无效|不能为空|不支持|请选择/.test(message))return 'INVALID_INPUT';
-  return 'STORY_BOOK_ERROR';
-}
+const {errorCode}=require('./errors');
 exports.main=async event=>{
   try{
     return await dispatch(cloud.getWXContext(),event);

@@ -132,3 +132,32 @@ test('migration links legacy images and in-flight jobs to the uniquely owning st
   assert.equal(resolved.resolvedStoryId,story.id);
   assert.ok([...tables].some(([key,value])=>key.startsWith('story_image_links:') && value.storyId===story.id && value.imageId==='family_test_img_req-unowned1'));
 });
+
+const {errorCode} = require('../cloudfunctions/storyBooks/errors');
+
+test('业务错误在抛出处自带错误码，不靠消息文字匹配',()=>{
+  assert.throws(
+    ()=>core.activeStory({stories:[{id:'story-a',title:'测试',deletedAt:'2026-01-01T00:00:00.000Z'}]},'story-a'),
+    error=>error.code==='STORY_NOT_FOUND',
+  );
+  assert.equal(errorCode(Object.assign(new Error('这本故事书已不可用，请返回书架'),{code:'STORY_NOT_FOUND'})),'STORY_NOT_FOUND');
+});
+
+/*
+ * 回归：内部故障不能再被当成「这本故事书不见了」。
+ * 原实现用 /不可用|没找到|不存在/ 兜底，任何带这些字的报错都会被归成 STORY_NOT_FOUND，
+ * 真实故障因此被掩盖，排查会走偏。
+ */
+test('意料之外的内部错误归为 STORY_BOOK_ERROR，不再误判成 STORY_NOT_FOUND',()=>{
+  assert.equal(errorCode(new Error('数据库连接不可用')),'STORY_BOOK_ERROR');
+  assert.equal(errorCode(new Error('集合 story_images 不存在')),'STORY_BOOK_ERROR');
+  assert.equal(errorCode(new Error('临时密钥没找到')),'STORY_BOOK_ERROR');
+});
+
+test('其余错误码映射保持不变',()=>{
+  assert.equal(errorCode(new Error('没有找到你的记录空间')),'AUTH_REQUIRED');
+  assert.equal(errorCode(new Error('已有更新，请重新加载')),'VERSION_CONFLICT');
+  assert.equal(errorCode(new Error('已有同名故事，请换一个名称')),'DUPLICATE_TITLE');
+  assert.equal(errorCode(Object.assign(new Error('无权访问'),{code:'STORY_FORBIDDEN'})),'STORY_FORBIDDEN');
+  assert.equal(errorCode(new Error('未知故障')),'STORY_BOOK_ERROR');
+});

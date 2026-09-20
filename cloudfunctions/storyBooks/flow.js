@@ -68,20 +68,20 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         }
         const storyId=String(input.storyId || ''), storyDocId=docId(ctx.familyId,storyId);
         const story=await tx.get('stories',storyDocId);
-        if(!story || story.deletedAt)throw new Error('这本故事书已不可用，请返回书架');
+        if(!story || story.deletedAt)throw Object.assign(new Error('这本故事书已不可用，请返回书架'),{code:'STORY_NOT_FOUND'});
         await assertLegacyTransaction(tx,ctx.familyId,story);
         if(story.version!==input.expectedVersion)throw new Error('故事已有更新，请刷新后重试');
         const pendingId=docId(ctx.familyId,String(input.pendingId || '')), pending=await tx.get('story_migration_items',pendingId);
         if(!pending || pending.item.resolvedStoryId || !['image','image-job'].includes(pending.item.kind))throw new Error('此迁移资源已处理，请刷新');
         if(pending.item.kind==='image') {
           const image=await tx.get('story_images',pending.item.imageId);
-          if(!image || image.familyId!==ctx.familyId || image.deletedAtMs!==undefined)throw new Error('这张旧图已不可用');
+          if(!image || image.familyId!==ctx.familyId || image.deletedAtMs!==undefined)throw Object.assign(new Error('这张旧图已不可用'),{code:'STORY_NOT_FOUND'});
           const linkId=docId(ctx.familyId,core.hash(storyId+'|'+pending.item.imageId));
           await tx.set('story_image_links',linkId,{familyId:ctx.familyId,storyId,imageId:pending.item.imageId});
           story.imageIds=[...new Set([...(story.imageIds || []),pending.item.imageId])];
         } else {
           const job=await tx.get('image_jobs',pending.item.jobId);
-          if(!job || job.familyId!==ctx.familyId)throw new Error('这项旧配图任务已不可用');
+          if(!job || job.familyId!==ctx.familyId)throw Object.assign(new Error('这项旧配图任务已不可用'),{code:'STORY_NOT_FOUND'});
           const linkId=docId(ctx.familyId,core.hash(storyId+'|'+pending.item.jobId));
           await tx.set('story_image_job_links',linkId,{familyId:ctx.familyId,storyId,jobId:pending.item.jobId});
         }
@@ -112,7 +112,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       for(const id of imageRefs) {
         const image=await tx.get('story_images',id);
         const link=await tx.get('story_image_links',docId(ctx.familyId,core.hash(story.id+'|'+id)));
-        if(!image || image.familyId!==ctx.familyId || (image.storyId!==story.id && !(story.imageIds || []).includes(id) && link?.storyId!==story.id) || image.deletedAtMs!==undefined)throw new Error('书稿引用了不可用或其他故事的插图');
+        if(!image || image.familyId!==ctx.familyId || (image.storyId!==story.id && !(story.imageIds || []).includes(id) && link?.storyId!==story.id) || image.deletedAtMs!==undefined)throw Object.assign(new Error('书稿引用了不可用或其他故事的插图'),{code:'STORY_NOT_FOUND'});
       }
       if(imageRefs.size)story.imageIds=[...new Set([...(story.imageIds || []),...imageRefs])];
       const nameId=docId(ctx.familyId,core.hash(story.title)),name=await tx.get('story_names',nameId);
