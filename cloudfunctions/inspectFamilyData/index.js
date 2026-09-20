@@ -30,6 +30,16 @@ function sanitizeDocumentPart(value) {
   return String(value).replace(/[^0-9A-Za-z_-]/g, "_");
 }
 
+/*
+ * 这是诊断工具，返回全环境各集合的文档总数、demo 家庭与 legacy room 内容。
+ * 原先没有任何调用方限制，任何登录用户都能调出来。用户自己那部分本就由
+ * 调用方 openid 推导、只回给本人，不受影响；全环境信息则收进白名单。
+ * 白名单放在云函数环境变量 INSPECT_ALLOWED_OPENIDS（逗号分隔），不写进代码。
+ */
+const INSPECT_ALLOWLIST = String(process.env.INSPECT_ALLOWED_OPENIDS || "")
+  .split(",").map(value => value.trim()).filter(Boolean);
+const canInspectEnvironment = openid => INSPECT_ALLOWLIST.includes(openid);
+
 function currentFamilyId(openid) {
   return `family_${sanitizeDocumentPart(openid)}`;
 }
@@ -228,23 +238,25 @@ async function main() {
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
 
   const userFamilyId = currentFamilyId(openid);
+  const environmentAllowed = canInspectEnvironment(openid);
   const [currentUser, currentUserMetadata, stagedMigration, storyIdentity, demoFamily, legacyRoom, environmentTotals] = await Promise.all([
     inspectFamilyId(userFamilyId),
     familyMetadata(userFamilyId),
     inspectStagedMigration(userFamilyId),
     inspectIdentity(context, userFamilyId),
-    inspectFamilyId(DEMO_FAMILY_ID),
-    inspectLegacyRoom(),
-    Promise.all(Object.entries(COLLECTIONS).map(async ([key, collectionName]) => [
+    environmentAllowed ? inspectFamilyId(DEMO_FAMILY_ID) : undefined,
+    environmentAllowed ? inspectLegacyRoom() : undefined,
+    environmentAllowed ? Promise.all(Object.entries(COLLECTIONS).map(async ([key, collectionName]) => [
       key,
       await countAll(collectionName),
-    ])).then(entries => Object.fromEntries(entries)),
+    ])).then(entries => Object.fromEntries(entries)) : undefined,
   ]);
 
   return {
     ok: true,
     userFamilyId,
     demoFamilyId: DEMO_FAMILY_ID,
+    environmentAllowed,
     currentUser,
     currentUserMetadata,
     stagedMigration,

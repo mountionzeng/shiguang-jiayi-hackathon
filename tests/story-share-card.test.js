@@ -80,8 +80,11 @@ test('direct story moderation is bounded, fail-closed and uses the verified acti
   const calls=[];const moderate=createTextModerator({msgSecCheck:async input=>{calls.push(input);return {result:{suggest:'pass'}};}});
   assert.equal(await moderate('院子里的夏天','owner-openid','公开故事卡片'),true);
   assert.deepEqual(calls,[{content:'院子里的夏天',version:2,scene:4,openid:'owner-openid',title:'公开故事卡片'}]);
-  assert.equal(await moderate('正文','bad openid','题名'),false);
-  assert.equal(await createTextModerator({msgSecCheck:async()=>{throw new Error('unavailable');}})('正文','owner-openid','题名'),false);
+  // 故障不再伪装成「内容违规」：改为抛 MODERATION_UNAVAILABLE。
+  // 依然 fail-closed——抛错时内容同样发不出去，只是不再把系统的错说成用户的错。
+  await assert.rejects(()=>moderate('正文','bad openid','题名'),error=>error.code==='MODERATION_UNAVAILABLE');
+  await assert.rejects(()=>createTextModerator({msgSecCheck:async()=>{throw new Error('unavailable');}})('正文','owner-openid','题名'),
+    error=>error.code==='MODERATION_UNAVAILABLE');
 });
 
 test('direct story moderation checks every 2,500-code-point chunk and fails closed on a later chunk', async () => {

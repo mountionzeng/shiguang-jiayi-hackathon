@@ -51,9 +51,22 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
   };
   const storedMemberId = member => member?.memberId || member?.id;
   const memberNameClaimKey = name => core.hash(name);
-  const claimMemberName = (family,name,id) => {
+  /*
+   * 名字占用（memberNameClaims）只在改名这一条路径上释放，删除人物时从不释放。
+   * 今天不出事，仅仅因为人物只有软删除、记录还在名单里，前置检查会先给出
+   * 「这个名字在「最近删除」里」这类提示。一旦有谁加了硬删除，遗留的占用就会
+   * 把这个名字永久挡住，而且报错指向一个用户根本看不见的人。
+   * 因此这里不信任占用本身：只有占用方确实还在名单里（含「最近删除」）才算冲突，
+   * 否则视为陈旧占用，直接接管。
+   */
+  const claimMemberName = async (tx,familyId,family,name,id) => {
     const claims={...(family.memberNameClaims || {})},key=memberNameClaimKey(name),claim=claims[key];
-    if(claim && (claim.name!==name || claim.memberId!==id))memberError('MEMBER_CONFLICT','名单里已经有这个名字');
+    if(claim && (claim.name!==name || claim.memberId!==id)) {
+      // 必须在事务内实读占用方：用事务外的名单快照判断会漏掉同一瞬间刚写入的人物，
+      // 两个并发的同名新增会双双认为对方的占用是陈旧的，从而都写成功。
+      const holder=await tx.get('family_members',docId(familyId,claim.memberId));
+      if(holder)memberError('MEMBER_CONFLICT','名单里已经有这个名字');
+    }
     claims[key]={name,memberId:id};
     return claims;
   };
@@ -82,7 +95,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         if(existing.familyId===record.familyId && storedMemberId(existing)===record.memberId && existing.name===record.name && existing.relation===record.relation && existing.kind===record.kind)return;
         memberError('MEMBER_CONFLICT','人物编号已被使用，请重试');
       }
-      const claims=claimMemberName(latestFamily,name,id);
+      const claims=await claimMemberName(tx,ctx.familyId,latestFamily,name,id);
       await tx.set('families',ctx.familyId,{...latestFamily,memberNameClaims:claims});
       await tx.set('family_members',docId(ctx.familyId,id),record);
     });
@@ -104,7 +117,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       const latestFamily=await tx.get('families',ctx.familyId);
       const stored=await tx.get('family_members',docId(ctx.familyId,id));
       if(!latestFamily || !stored || stored.familyId!==ctx.familyId || storedMemberId(stored)!==id || stored.deletedAt)memberError('MEMBER_CONFLICT','人物资料已变化，请刷新后重试');
-      const claims=claimMemberName(latestFamily,name,id);
+      const claims=await claimMemberName(tx,ctx.familyId,latestFamily,name,id);
       if(stored.name!==name)releaseMemberName(claims,stored.name,id);
       await tx.set('families',ctx.familyId,{...latestFamily,memberNameClaims:claims});
       await tx.set('family_members',docId(ctx.familyId,id),{...stored,memberId:id,name,relation,avatarText:name.slice(0,1)});

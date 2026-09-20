@@ -264,3 +264,33 @@ test('其余错误码映射保持不变',()=>{
   assert.equal(errorCode(Object.assign(new Error('无权访问'),{code:'STORY_FORBIDDEN'})),'STORY_FORBIDDEN');
   assert.equal(errorCode(new Error('未知故障')),'STORY_BOOK_ERROR');
 });
+
+
+/*
+ * 回归：名字占用只在改名时释放，删除人物时从不释放。
+ * 今天没咬人只因为人物仅有软删除、记录还留在名单里；一旦人物记录真的不在了，
+ * 遗留的占用会把这个名字永久挡住，报错还指向一个用户看不见的人。
+ */
+test('人物记录已不在名单里时，遗留的名字占用不再把名字挡死',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('families:family_test',{roomName:'服务端房间',storyBooks:{status:'active',version:1},
+    memberNameClaims:{[core.hash('小敏')]:{name:'小敏',memberId:'ghost-1'}}});
+  tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',name:'测试者',relation:'自己',role:'owner',avatarText:'测',kind:'recording-profile'});
+
+  await h.memberAdd(ctx,{memberId:'member-min',name:'小敏',relation:'朋友',kind:'person'});
+
+  assert.equal(tables.get('family_members:family_test_member-min').name,'小敏');
+  assert.deepEqual(tables.get('families:family_test').memberNameClaims[core.hash('小敏')],
+    {name:'小敏',memberId:'member-min'},'陈旧占用应被新人物接管');
+});
+
+test('占用方确实还在名单里时，同名依然被拒',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('families:family_test',{roomName:'服务端房间',storyBooks:{status:'active',version:1},
+    memberNameClaims:{[core.hash('小敏')]:{name:'小敏',memberId:'member-held'}}});
+  tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',name:'测试者',relation:'自己',role:'owner',avatarText:'测',kind:'recording-profile'});
+  tables.set('family_members:family_test_member-held',{familyId:'family_test',memberId:'member-held',name:'小敏',relation:'朋友',kind:'person'});
+
+  await assert.rejects(()=>h.memberAdd(ctx,{memberId:'member-new',name:'小敏',relation:'朋友',kind:'person'}),
+    error=>error.code==='MEMBER_CONFLICT');
+});
