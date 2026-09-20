@@ -5,10 +5,18 @@ const {createCopyStorage}=require('./copyStorage');
 const {createTextModerator}=require('./moderation');
 cloud.init({env:cloud.DYNAMIC_CURRENT_ENV});
 const db=cloud.database();
+const ensuredCollections=new Set();
 const moderate=createTextModerator(cloud.openapi.security);
 const repo={...createDocumentAdapter(db),
   async all(table,familyId){const rows=[];for(let offset=0;;offset+=100){const result=await db.collection(table).where({familyId}).orderBy('_id','asc').skip(offset).limit(100).get();rows.push(...result.data);if(result.data.length<100)return rows;}},
   async transaction(fn){return db.runTransaction(async transaction=>fn(createDocumentAdapter(transaction)));},
+  // 惰性建集合：快照集合不该依赖 bootstrap token 才能存在，否则第一次写快照就会失败。
+  // createCollection 已存在时会报错，忽略即可；每个冷启动最多尝试一次。
+  async ensureCollection(name){
+    if(ensuredCollections.has(name))return;
+    try{await db.createCollection(name);}catch(error){/* 已存在，正是我们要的状态 */}
+    ensuredCollections.add(name);
+  },
 };
 const migrationFamilyIds=String(process.env.STORY_BOOKS_MIGRATION_FAMILY_IDS || '').split(',').map(value=>value.trim()).filter(Boolean);
 const dispatch=createStoryService(repo,{

@@ -294,3 +294,36 @@ test('占用方确实还在名单里时，同名依然被拒',async()=>{
   await assert.rejects(()=>h.memberAdd(ctx,{memberId:'member-new',name:'小敏',relation:'朋友',kind:'person'}),
     error=>error.code==='MEMBER_CONFLICT');
 });
+
+/*
+ * 家庭文档是整份重写的，一次误写会把房间名、主人公、迁移元信息一起盖掉。
+ * 2026-09 真实房间被清空后才发现官方回档只回数据库、不回存储桶、还有窗口期，
+ * 所以写入前必须自己留底。
+ */
+test('改人物之前先给家庭文档留底，且快照躲得过按 familyId 的清扫',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('families:family_test',{roomName:'原来的房间名',protagonistName:'岱',storyBooks:{status:'active',version:1}});
+  tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',name:'测试者',relation:'自己',role:'owner',avatarText:'测',kind:'recording-profile'});
+
+  await h.memberAdd(ctx,{memberId:'member-min',name:'小敏',relation:'朋友',kind:'person'});
+
+  const snapshots=[...tables].filter(([key])=>key.startsWith('family_snapshots:')).map(([,value])=>value);
+  assert.equal(snapshots.length,1,'人物写入前应当留下一份快照');
+  assert.equal(snapshots[0].document.roomName,'原来的房间名','快照里应当是写入前的原样');
+  assert.equal(snapshots[0].document.protagonistName,'岱');
+  assert.equal(snapshots[0].snapshotOfFamilyId,'family_test');
+  assert.equal(snapshots[0].familyId,undefined,
+    '快照绝不能带 familyId 字段，否则会被任何按 familyId 的清扫一并删掉，失去意义');
+});
+
+test('每次人物写入都追加一份快照，只增不删',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('families:family_test',{roomName:'房间',storyBooks:{status:'active',version:1}});
+  tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',name:'测试者',relation:'自己',role:'owner',avatarText:'测',kind:'recording-profile'});
+
+  await h.memberAdd(ctx,{memberId:'member-min',name:'小敏',relation:'朋友',kind:'person'});
+  await h.memberUpdate(ctx,{memberId:'member-min',name:'小敏改名',relation:'老朋友'});
+
+  const snapshots=[...tables].filter(([key])=>key.startsWith('family_snapshots:'));
+  assert.equal(snapshots.length,2,'新增与改名各留一份');
+});

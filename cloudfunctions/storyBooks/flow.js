@@ -50,6 +50,25 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     return text;
   };
   const storedMemberId = member => member?.memberId || member?.id;
+  /*
+   * 写入前快照。
+   *
+   * 家庭文档是整份重写的（tx.set 覆盖全文档），一次误写就会把房间名、主人公、
+   * 迁移元信息一起盖掉。2026-09 真实房间被 resetCurrentUserRoom 清空后才发现，
+   * 云开发的数据库回档只回数据库不回存储桶、只有有限窗口，而且直接回档会连同
+   * 期间的抢救成果一起抹掉——不能把它当唯一退路。所以这里自己留底。
+   *
+   * 刻意不写 familyId 字段，改用 snapshotOfFamilyId：
+   * 任何按 where({familyId}) 清扫的代码都扫不到快照，
+   * 快照因此能在它所防范的那次清空里幸存下来。只增不删。
+   */
+  const SNAPSHOT_TABLE='family_snapshots';
+  const snapshotFamily = async (tx,familyId,previous,reason) => {
+    if(!previous)return;
+    const {_id,...document}=previous;
+    const id=familyId+'__snap_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    await tx.set(SNAPSHOT_TABLE,id,{snapshotOfFamilyId:familyId,reason,capturedAt:new Date().toISOString(),document});
+  };
   const memberNameClaimKey = name => core.hash(name);
   /*
    * 名字占用（memberNameClaims）只在改名这一条路径上释放，删除人物时从不释放。
@@ -87,6 +106,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     if(kind==='person' && !members.some(member=>!member.deletedAt && member.kind!=='person'))memberError('MEMBER_REQUIRES_PROFILE','请先新建一本书，再加人');
     const record={familyId:ctx.familyId,memberId:id,name,relation:first && !String(event.relation || '').trim() ? '自己' : relation,
       avatarText:name.slice(0,1),role:first ? 'owner' : 'contributor',kind};
+    await repo.ensureCollection?.(SNAPSHOT_TABLE);
     await repo.transaction(async tx=>{
       const latestFamily=await tx.get('families',ctx.familyId);
       if(!latestFamily)throw new Error('没有找到你的记录空间');
@@ -96,6 +116,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         memberError('MEMBER_CONFLICT','人物编号已被使用，请重试');
       }
       const claims=await claimMemberName(tx,ctx.familyId,latestFamily,name,id);
+      await snapshotFamily(tx,ctx.familyId,latestFamily,'memberWrite');
       await tx.set('families',ctx.familyId,{...latestFamily,memberNameClaims:claims});
       await tx.set('family_members',docId(ctx.familyId,id),record);
     });
@@ -113,12 +134,14 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     const duplicate=members.find(item=>storedMemberId(item)!==id && item.name===name);
     if(duplicate)memberError('MEMBER_CONFLICT',duplicate.deletedAt ? '这个名字在「最近删除」里，可以先恢复或换一个名字' : '名单里已经有这个名字');
     if(member.name===name && member.relation===relation)return {ok:true,memberId:id};
+    await repo.ensureCollection?.(SNAPSHOT_TABLE);
     await repo.transaction(async tx=>{
       const latestFamily=await tx.get('families',ctx.familyId);
       const stored=await tx.get('family_members',docId(ctx.familyId,id));
       if(!latestFamily || !stored || stored.familyId!==ctx.familyId || storedMemberId(stored)!==id || stored.deletedAt)memberError('MEMBER_CONFLICT','人物资料已变化，请刷新后重试');
       const claims=await claimMemberName(tx,ctx.familyId,latestFamily,name,id);
       if(stored.name!==name)releaseMemberName(claims,stored.name,id);
+      await snapshotFamily(tx,ctx.familyId,latestFamily,'memberWrite');
       await tx.set('families',ctx.familyId,{...latestFamily,memberNameClaims:claims});
       await tx.set('family_members',docId(ctx.familyId,id),{...stored,memberId:id,name,relation,avatarText:name.slice(0,1)});
     });
@@ -216,6 +239,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     return repo.transaction(async tx=>{
       const latest=await tx.get('families',ctx.familyId);
       if(latest?.storyBooks)return latest.storyBooks.status==='active' ? {status:'active'} : null;
+      await snapshotFamily(tx,ctx.familyId,latest,'migrationComplete');
       await tx.set('families',ctx.familyId,{...latest,storyBooks:{version:1,status:'active',cursor:staged.length,total:staged.length,sourceDigest:digest,recoveredAt:now()}});
       return {status:'active',recovered:staged.length};
     });
