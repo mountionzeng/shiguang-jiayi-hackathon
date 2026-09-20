@@ -182,12 +182,54 @@ async function saveEmptyRoom(familyId) {
   });
 }
 
-async function main() {
+const CONFIRM_TEXT = "RESET_MY_ROOM";
+
+/*
+ * 2026-09-20 加锁。
+ *
+ * 这个函数会删除家庭文档、按 familyId 清空所有集合，并且 cloud.deleteFile
+ * 真删云存储里的照片与配图文件。文件删掉就找不回来了——云开发的数据库回档
+ * 只回数据库，不回存储桶。
+ *
+ * 它原先没有任何护栏：任何登录用户调一次，自己的全部内容立刻消失。
+ * 线上那个真实房间正是被它清空过一次：saveEmptyRoom 写回的
+ * roomName「我的拾光房间」与空的 protagonistName，与现场观测到的值完全一致。
+ * 讽刺的是，同一个仓库里只删 demo 数据的 deleteDemoFamilyOnce 反而早就有确认口令。
+ *
+ * 现在的规矩：
+ *   - 默认只预演，报告「会删掉什么」，一个字节都不动；
+ *   - 真执行必须同时满足三件事：确认口令、指名道姓写出要清空的 familyId、
+ *     以及在云控制台显式打开环境变量 ALLOW_ROOM_RESET=yes；
+ *   - PROTECTED_FAMILY_IDS 里的房间一律拒绝，连开关打开也不行。
+ */
+async function main(event = {}) {
   const context = cloud.getWXContext();
   const openid = String(context.OPENID || "").trim();
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
 
   const familyId = currentFamilyId(openid);
+  const protectedIds = String(process.env.PROTECTED_FAMILY_IDS || "")
+    .split(",").map(value => value.trim()).filter(Boolean);
+
+  if (protectedIds.includes(familyId)) {
+    throw Object.assign(new Error("这个房间在保护名单里，拒绝重置"), { code: "ROOM_PROTECTED" });
+  }
+
+  if (event.confirm !== CONFIRM_TEXT || event.confirmFamilyId !== familyId) {
+    const wouldRemove = await inspectFamilyId(familyId);
+    return {
+      ok: true,
+      dryRun: true,
+      familyId,
+      wouldRemove,
+      note: `只做了预演，没有删除任何东西。真要执行，需要 confirm="${CONFIRM_TEXT}"、confirmFamilyId="${familyId}"，并且云函数环境变量 ALLOW_ROOM_RESET=yes。`,
+    };
+  }
+
+  if (String(process.env.ALLOW_ROOM_RESET || "") !== "yes") {
+    throw Object.assign(new Error("房间重置开关未打开（ALLOW_ROOM_RESET）"), { code: "ROOM_RESET_DISABLED" });
+  }
+
   await removeFamilyDoc(familyId);
   await fenceAudioFamily(familyId);
   const removedImageFiles = await removeStoryImageFiles(familyId);
