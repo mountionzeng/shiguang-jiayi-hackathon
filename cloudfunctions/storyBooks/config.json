@@ -1,1 +1,1 @@
-{"permissions":{"openapi":[]}}
+{"permissions":{"openapi":["security.msgSecCheck"]}}

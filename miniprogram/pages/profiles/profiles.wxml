@@ -15,7 +15,7 @@
     <view class="profile-create">
       <input class="profile-input" value="{{nameInput}}" bindinput="onNameInput" maxlength="12" placeholder="这本书写的是谁" placeholder-class="profile-input-placeholder" />
       <input class="profile-input" value="{{relationInput}}" bindinput="onRelationInput" maxlength="12" placeholder="ta 是你的谁？写你自己就留空" placeholder-class="profile-input-placeholder" />
-      <button class="profile-create-button" bindtap="createBook" disabled="{{adding}}" hover-class="none">创建并切换到这本书</button>
+      <button class="profile-create-button" bindtap="createBook" disabled="{{adding || savingEdit || !!busyId}}" hover-class="none">创建并切换到这本书</button>
     </view>
   </block>
 
@@ -29,7 +29,7 @@
     <view class="people-add">
       <input class="profile-input" value="{{nameInput}}" bindinput="onNameInput" maxlength="12" placeholder="名字" placeholder-class="profile-input-placeholder" />
       <input class="profile-input" value="{{relationInput}}" bindinput="onRelationInput" maxlength="12" placeholder="关系，如妈妈" placeholder-class="profile-input-placeholder" />
-      <button class="people-add-button" bindtap="addPerson" disabled="{{adding}}" hover-class="none">加进来</button>
+      <button class="people-add-button" bindtap="addPerson" disabled="{{adding || savingEdit || !!busyId}}" hover-class="none">加进来</button>
     </view>
 
     <view class="profile-list">
@@ -46,18 +46,33 @@
           <text class="profile-avatar-letter">{{item.avatarText}}</text>
         </view>
         <view class="profile-copy">
-          <view class="profile-name serif">{{item.name}}<text class="person-relation">　{{item.relation}}</text></view>
-          <view class="person-permission">{{item.permission}}</view>
+          <block wx:if="{{editMemberId === item.id}}">
+            <input class="person-edit-input" value="{{editNameInput}}" bindinput="onEditNameInput" maxlength="12" placeholder="名字" />
+            <input class="person-edit-input" value="{{editRelationInput}}" bindinput="onEditRelationInput" maxlength="12" placeholder="关系，如妈妈" />
+          </block>
+          <block wx:else>
+            <view class="profile-name serif">{{item.name}}<text class="person-relation">　{{item.relation}}</text></view>
+            <view class="person-permission">{{item.permission}}</view>
+          </block>
         </view>
-        <button
-          wx:if="{{item.canDelete}}"
-          class="profile-delete"
-          data-id="{{item.id}}"
-          bindtap="removeMember"
-          disabled="{{!!busyId}}"
-          hover-class="none"
-          aria-label="删除{{item.name}}"
-        >删除</button>
+        <view class="person-actions">
+          <block wx:if="{{editMemberId === item.id}}">
+            <button class="profile-edit profile-edit-save" bindtap="saveEdit" disabled="{{savingEdit}}" hover-class="none">保存</button>
+            <button class="profile-edit" bindtap="cancelEdit" disabled="{{savingEdit}}" hover-class="none">取消</button>
+          </block>
+          <block wx:else>
+            <button class="profile-edit" data-id="{{item.id}}" bindtap="startEdit" disabled="{{!!busyId || savingEdit}}" hover-class="none" aria-label="编辑{{item.name}}">编辑</button>
+            <button
+              wx:if="{{item.canDelete}}"
+              class="profile-delete"
+              data-id="{{item.id}}"
+              bindtap="removeMember"
+              disabled="{{!!busyId || savingEdit}}"
+              hover-class="none"
+              aria-label="删除{{item.name}}"
+            >删除</button>
+          </block>
+        </view>
       </view>
       <view class="profile-empty" wx:if="{{!people.length}}">还没有拉人进来。在上面写下名字就能加。</view>
     </view>

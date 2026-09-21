@@ -31,7 +31,7 @@ async function shareExcerpt(repo,ctx,raw,{approve,now=()=>new Date().toISOString
     return prior.result;
   });
   if(replay)return replay;
-  if(typeof approve!=='function'||await approve(input.text)!==true)fail('CONTENT_REJECTED','这段内容没有通过内容安全检测，请修改后重试');
+  if(typeof approve!=='function'||await approve(input.text,ctx.verifiedOpenid)!==true)fail('CONTENT_REJECTED','这段内容没有通过内容安全检测，请修改后重试');
   return repo.transaction(async tx=>{
     await assertSpaceOwner(tx,ctx);
     const family=await tx.get('families',ctx.familyId);

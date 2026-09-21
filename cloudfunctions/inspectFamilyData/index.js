@@ -1,4 +1,5 @@
 const cloud = require("wx-server-sdk");
+const crypto = require("node:crypto");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -18,6 +19,11 @@ const COLLECTIONS = {
   storyImages: "story_images",
   photos: "photos",
   photoCaptionLogs: "photo_caption_logs",
+  stories: "stories",
+  storyNames: "story_names",
+  storyMigrationItems: "story_migration_items",
+  storyImageLinks: "story_image_links",
+  storyImageJobLinks: "story_image_job_links",
 };
 
 function sanitizeDocumentPart(value) {
@@ -64,6 +70,103 @@ async function familyDocExists(familyId) {
   }
 }
 
+async function familyMetadata(familyId) {
+  try {
+    const response = await db.collection(COLLECTIONS.families).doc(familyId).get();
+    const family = response.data || {};
+    return {
+      exists: true,
+      storyBooksStatus: family.storyBooks && family.storyBooks.status || null,
+      storyBooksCursor: family.storyBooks && family.storyBooks.cursor || 0,
+      storyBooksTotal: family.storyBooks && family.storyBooks.total || 0,
+      hasOwnerAccountId: Boolean(family.ownerAccountId),
+    };
+  } catch (error) {
+    const message = String(error && error.errMsg ? error.errMsg : error);
+    if (collectionMissing(error) || message.includes("does not exist") || message.includes("document.get:fail")) {
+      return { exists: false };
+    }
+    throw error;
+  }
+}
+
+async function getDocument(collectionName, documentId) {
+  try {
+    return (await db.collection(collectionName).doc(documentId).get()).data;
+  } catch (error) {
+    const message = String(error && error.errMsg ? error.errMsg : error);
+    if (collectionMissing(error) || message.includes("does not exist") || message.includes("document.get:fail")) return undefined;
+    throw error;
+  }
+}
+
+async function inspectIdentity(context, userFamilyId) {
+  const appId = String(context.APPID || "");
+  const openid = String(context.OPENID || "");
+  const hash = value => crypto.createHash("sha256").update(value).digest("hex");
+  const accountId = `account_${hash(openid).slice(0, 24)}`;
+  const aliasId = hash(JSON.stringify([appId, openid]));
+  const [account, alias] = await Promise.all([
+    getDocument("user_accounts", accountId),
+    getDocument("story_identity_aliases", aliasId),
+  ]);
+  const principal = alias && alias.principalId
+    ? await getDocument("story_principals", alias.principalId)
+    : undefined;
+  const identityFamilyId = principal && principal.familyId;
+  return {
+    accountExists: Boolean(account),
+    aliasExists: Boolean(alias),
+    principalExists: Boolean(principal),
+    accountFamilyMatchesComputed: Boolean(account && account.primaryFamilyId === userFamilyId),
+    storyFamilyMatchesAccount: Boolean(account && identityFamilyId && identityFamilyId === account.primaryFamilyId),
+    storyFamilyMatchesComputed: Boolean(identityFamilyId && identityFamilyId === userFamilyId),
+    storyFamily: identityFamilyId ? await inspectFamilyId(identityFamilyId) : null,
+    storyFamilyMetadata: identityFamilyId ? await familyMetadata(identityFamilyId) : null,
+  };
+}
+
+async function inspectStagedMigration(familyId) {
+  const tables = ["stories", "story_names", "biography_drafts", "story_migration_items", "story_image_links", "story_image_job_links"];
+  const rows = [];
+  for (const table of tables) {
+    let offset = 0;
+    while (true) {
+      const response = await db.collection(table).where({ familyId }).skip(offset).limit(100).get();
+      rows.push(...response.data.filter(row => row.migrationSourceDigest && row.migrationDocumentId));
+      if (response.data.length < 100) break;
+      offset += 100;
+    }
+  }
+  const stories = await db.collection("stories").where({ familyId }).limit(100).get();
+  const pending = await db.collection("story_migration_items").where({ familyId }).limit(100).get();
+  const pendingKinds = {};
+  pending.data.forEach(row => {
+    const kind = String(row.item && row.item.kind || "unknown");
+    pendingKinds[kind] = (pendingKinds[kind] || 0) + 1;
+  });
+  return {
+    count: rows.length,
+    digestCount: new Set(rows.map(row => row.migrationSourceDigest)).size,
+    documentIdsMatch: rows.every(row => row._id === row.migrationDocumentId),
+    isFinalBatchShape: rows.length > 0 && rows.length % 80 !== 0,
+    stories: {
+      total: stories.data.length,
+      active: stories.data.filter(row => !row.deletedAt).length,
+      withRevision: stories.data.filter(row => row.currentRevisionId).length,
+      linkedMemories: stories.data.reduce((sum, row) => sum + (Array.isArray(row.memoryIds) ? row.memoryIds.length : 0), 0),
+    },
+    pending: {
+      total: pending.data.length,
+      resolved: pending.data.filter(row => row.item && row.item.resolvedStoryId).length,
+      kinds: pendingKinds,
+      chapters: pending.data.filter(row => row.item && row.item.chapter).length,
+      chaptersWithText: pending.data.filter(row => row.item && row.item.chapter &&
+        Array.isArray(row.item.chapter.content) && row.item.chapter.content.some(block => String(block && block.text || "").trim())).length,
+    },
+  };
+}
+
 async function inspectFamilyId(familyId) {
   const counts = {
     families: await familyDocExists(familyId),
@@ -80,15 +183,62 @@ async function inspectFamilyId(familyId) {
   return counts;
 }
 
+async function countAll(collectionName) {
+  try {
+    const response = await db.collection(collectionName).count();
+    return response.total || 0;
+  } catch (error) {
+    if (collectionMissing(error)) return 0;
+    throw error;
+  }
+}
+
+async function inspectLegacyRoom() {
+  try {
+    const response = await db.collection("family_rooms").doc("demo-room").get();
+    const state = (response.data && response.data.state) || {};
+    return {
+      exists: true,
+      members: Array.isArray(state.members) ? state.members.length : 0,
+      memories: Array.isArray(state.contributions) ? state.contributions.length : 0,
+      hasDraft: Boolean(state.draft),
+      personalDrafts: state.personalDrafts && typeof state.personalDrafts === "object"
+        ? Object.keys(state.personalDrafts).length
+        : 0,
+      manuscriptRevisions: Array.isArray(state.manuscriptRevisions)
+        ? state.manuscriptRevisions.length
+        : 0,
+    };
+  } catch (error) {
+    const message = String(error && error.errMsg ? error.errMsg : error);
+    if (
+      collectionMissing(error) ||
+      message.includes("does not exist") ||
+      message.includes("document.get:fail")
+    ) {
+      return { exists: false };
+    }
+    throw error;
+  }
+}
+
 async function main() {
   const context = cloud.getWXContext();
   const openid = String(context.OPENID || "").trim();
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
 
   const userFamilyId = currentFamilyId(openid);
-  const [currentUser, demoFamily] = await Promise.all([
+  const [currentUser, currentUserMetadata, stagedMigration, storyIdentity, demoFamily, legacyRoom, environmentTotals] = await Promise.all([
     inspectFamilyId(userFamilyId),
+    familyMetadata(userFamilyId),
+    inspectStagedMigration(userFamilyId),
+    inspectIdentity(context, userFamilyId),
     inspectFamilyId(DEMO_FAMILY_ID),
+    inspectLegacyRoom(),
+    Promise.all(Object.entries(COLLECTIONS).map(async ([key, collectionName]) => [
+      key,
+      await countAll(collectionName),
+    ])).then(entries => Object.fromEntries(entries)),
   ]);
 
   return {
@@ -96,7 +246,12 @@ async function main() {
     userFamilyId,
     demoFamilyId: DEMO_FAMILY_ID,
     currentUser,
+    currentUserMetadata,
+    stagedMigration,
+    storyIdentity,
     demoFamily,
+    legacyRoom,
+    environmentTotals,
   };
 }
 

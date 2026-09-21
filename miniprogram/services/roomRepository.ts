@@ -16,6 +16,7 @@ import {
   deleteCloudStory,
   deleteCloudMember,
   restoreCloudMember,
+  updateCloudMember,
   restoreCloudStory,
   softDeleteCloudMemory,
   restoreCloudMemory,
@@ -34,6 +35,7 @@ import {
   deleteStory,
   deleteMember,
   restoreMember,
+  updateMember,
   restoreStory,
   softDeleteMemory,
   restoreMemory,
@@ -236,6 +238,15 @@ export async function deleteMemberRemoteFirst(memberId: string): Promise<FamilyR
 export async function restoreMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) return await restoreCloudMember(memberId);
   return restoreMember(memberId);
+}
+
+export async function updateMemberRemoteFirst(
+  memberId: string,
+  name: string,
+  relation: string,
+): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await updateCloudMember(memberId, name, relation);
+  return updateMember(memberId, name, relation);
 }
 
 export async function resetCurrentUserRoomRemoteFirst(): Promise<FamilyRoomState> {

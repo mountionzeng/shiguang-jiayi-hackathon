@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createContribution, personalBookSourceFingerprint } from "../miniprogram/domain/biography";
 // Cloud storage remains the default; exercise both cloud boundaries and public repositories.
-import { appendCloudContribution as appendContributionRemoteFirst, appendCloudContributions, deleteCloudContribution as deleteContributionRemoteFirst, loadCloudRoomState as loadRoomStateRemoteFirst } from "../miniprogram/services/cloudRoomStorage";
+import { addCloudFamilyMember, appendCloudContribution as appendContributionRemoteFirst, appendCloudContributions, deleteCloudContribution as deleteContributionRemoteFirst, loadCloudRoomState as loadRoomStateRemoteFirst } from "../miniprogram/services/cloudRoomStorage";
 import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
 import { ensureStoryBooks } from "../miniprogram/services/storyBooks";
@@ -48,6 +48,13 @@ function fixture() {
             doc: (id: string) => ({
               get: async () => { check("get"); return { data: records(name).get(id) }; },
               set: async ({ data }: any) => { check("set"); records(name).set(id, structuredClone(data)); check("ack"); },
+              update: async ({ data }: any) => {
+                check("update");
+                const current = records(name).get(id);
+                if (!current) throw new Error(`document ${id} does not exist`);
+                records(name).set(id, { ...structuredClone(current), ...structuredClone(data) });
+                check("ack");
+              },
               remove: async () => { check("remove"); records(name).delete(id); return { stats: { removed: 1 } }; },
             }),
           };
@@ -118,6 +125,28 @@ test("a disabled storyBooks migration keeps legacy cloud stories readable", asyn
   } finally { f.restore(); }
 });
 
+test("legacy family shell writes preserve activated story metadata", async () => {
+  const f = fixture();
+  try {
+    f.records("families").set("family_fixture-user", {
+      roomName: "测试房间",
+      ownerAccountId: "account_fixture",
+      storyBooks: { version: 1, status: "active", cursor: 6, total: 6 },
+    });
+    (globalThis as any).wx.cloud.callFunction = async ({ name }: { name: string }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name === "storyBooks") throw Object.assign(new Error("FunctionName parameter could not be found"), { errCode: -501000 });
+      throw new Error("unexpected cloud function");
+    };
+
+    await addCloudFamilyMember("旧客户端新增人物", "朋友", "person");
+
+    const family = f.records("families").get("family_fixture-user");
+    assert.equal(family.ownerAccountId, "account_fixture");
+    assert.deepEqual(family.storyBooks, { version: 1, status: "active", cursor: 6, total: 6 });
+  } finally { f.restore(); }
+});
+
 test("successful primary save and delete survive draft cleanup denial; retries are idempotent", async () => {
   const f = fixture();
   try {
@@ -179,6 +208,45 @@ test("write/read permission failure is not converted to an empty local family", 
     f.failures.add("families:get");
     await assert.rejects(loadRoomStateRemoteFirst(), /permission denied/);
     assert.equal(f.local.size, 0);
+  } finally { f.restore(); }
+});
+
+test("authenticated story service restores an existing room when direct family reads are denied", async () => {
+  const f = fixture();
+  try {
+    f.failures.add("families:get");
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data?: { action?: string } }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name === "storyBooks" && data?.action === "state") return {
+        result: {
+          roomStateVersion: 1,
+          roomName: "服务端房间",
+          protagonistName: "测试者",
+          members: [{ id: "owner", name: "测试者", relation: "自己", role: "owner", avatarText: "测" }],
+          contributions: [{ ...memory(), id: "memory-from-service", storyTitle: "仍然在的故事" }],
+          stories: [{ id: "story-service", familyId: "family_fixture-user", title: "仍然在的故事", bookTitle: "仍然在的故事", writingMode: "objective", memoryIds: ["memory-from-service"], version: 1 }],
+          manuscriptRevisions: [],
+          deletedStories: [],
+          personalDrafts: { owner: { title: "旧名字草稿" } },
+          personalDraftSourceFingerprints: { owner: "outdated-fingerprint" },
+          legacyPersonalDrafts: { owner: { title: "旧名字草稿" } },
+          storyMigration: { version: 1, status: "active", cursor: 1, total: 1, pending: [] },
+        },
+      };
+      throw new Error("unexpected cloud function");
+    };
+
+    const state = await loadRoomStateRemoteFirst();
+
+    assert.equal(state.roomName, "服务端房间");
+    assert.equal(state.members[0]?.name, "测试者");
+    assert.equal(state.contributions[0]?.id, "memory-from-service");
+    assert.equal(state.stories?.[0]?.id, "story-service");
+    assert.equal(
+      currentManuscript(state, "owner").draft,
+      undefined,
+      "a rejected versioned personal draft must not reappear through legacy fallback",
+    );
   } finally { f.restore(); }
 });
 

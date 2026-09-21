@@ -126,11 +126,19 @@ function visibleMembersForAccess(members, access, ownerAccountId = "") {
   ));
 }
 
+function currentMemoryAttribution(memory, member) {
+  return {
+    authorName: member && member.name || memory.authorName,
+    relation: member && member.relation || memory.relation,
+  };
+}
+
 module.exports = {
   INVITE_TTL_MS,
   accountIdFor,
   assertInvitationUsable,
   avatarTextFor,
+  currentMemoryAttribution,
   expiresAtFrom,
   inviteToken,
   normalizeContributionInput,

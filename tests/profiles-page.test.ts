@@ -91,6 +91,46 @@ test("the people page lists everyone except the author, labels access, and adds 
   assert.equal(home.data.coverTitle, "外公接我放学", "the cover shows the story of the newest memory");
 });
 
+test("a person can be renamed without changing identity, permissions, or authored memories", async (context) => {
+  const state = createDemoRoomStateForTests();
+  state.members = state.members.map((member) => member.id === "member-1" ? { ...member, kind: "person" as const } : member);
+  const before = state.contributions.find((memory) => memory.authorMemberId === "member-1")!;
+  const env = install(state);
+  context.after(env.restore);
+  const people = await loadPage("profiles", {});
+  await call(people, "refresh");
+
+  call(people, "startEdit", tap("member-1"));
+  people.setData({ editNameInput: "林小秋", editRelationInput: "妈妈" });
+  await call(people, "saveEdit");
+
+  const member = env.room().members.find((item) => item.id === "member-1")!;
+  assert.deepEqual({ id: member.id, name: member.name, relation: member.relation, kind: member.kind }, {
+    id: "member-1", name: "林小秋", relation: "妈妈", kind: "person",
+  });
+  const memory = env.room().contributions.find((item) => item.id === before.id)!;
+  assert.deepEqual({ id: memory.id, text: memory.text, authorName: memory.authorName, relation: memory.relation }, {
+    id: before.id, text: before.text, authorName: "林小秋", relation: "妈妈",
+  });
+  assert.equal(people.data.editMemberId, "");
+  assert.equal((people.data.people as Array<{ id: string; name: string }>).find((item) => item.id === "member-1")?.name, "林小秋");
+});
+
+test("only the newest people-page refresh can render its snapshot", async (context) => {
+  const state = createDemoRoomStateForTests();
+  const env = install(state);
+  context.after(env.restore);
+  const people = await loadPage("profiles", {});
+  const older = structuredClone(state);
+  const newer = structuredClone(state);
+  older.members = older.members.map((member) => member.id === "member-1" ? { ...member, name: "旧名字" } : member);
+  newer.members = newer.members.map((member) => member.id === "member-1" ? { ...member, name: "新名字" } : member);
+
+  await Promise.all([call(people, "refresh", older), call(people, "refresh", newer)]);
+
+  assert.equal((people.data.people as Array<{ id: string; name: string }>).find((item) => item.id === "member-1")?.name, "新名字");
+});
+
 test("a new book starts from its own view, and an account without any book is sent there", async (context) => {
   const env = install(createEmptyRoomState(), "");
   context.after(env.restore);
