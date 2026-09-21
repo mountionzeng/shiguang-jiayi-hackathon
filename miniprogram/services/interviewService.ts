@@ -39,7 +39,7 @@ function isCloudInterviewResult(value: unknown): value is InterviewPrompt {
 function canUseCloudAi(): boolean {
   if (!CLOUD_AI_ENABLED || !wx.cloud || typeof getApp !== "function") return false;
   const app = getApp<ShiguangAppOptions>();
-  return Boolean(app.globalData.cloudReady);
+  return Boolean(app.globalData.cloudReady && app.globalData.aiReady);
 }
 
 function localFallbackPrompt(

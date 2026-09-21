@@ -8,7 +8,9 @@
     "test": "tsx --test tests/*.test.ts tests/*.test.js",
     "test:kimi": "node scripts/test-kimi-connection.mjs",
     "check": "npm run typecheck && npm test",
-    "configure:wechat": "node scripts/configure-wechat-account.mjs"
+    "configure:wechat": "node scripts/configure-wechat-account.mjs",
+    "deploy:wechat": "node scripts/wechat-cloud-deploy.mjs --execute",
+    "deploy:wechat:preview": "node scripts/wechat-cloud-deploy.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

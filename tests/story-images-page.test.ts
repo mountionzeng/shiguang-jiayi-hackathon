@@ -78,8 +78,8 @@ function installWx(overrides: Record<string, unknown> = {}, state?: FamilyRoomSt
   return {
     navigations,
     previews,
-    setApp(cloudReady: boolean) {
-      Object.defineProperty(globalThis, "getApp", { configurable: true, writable: true, value: () => ({ globalData: { cloudReady } }) });
+    setApp(cloudReady: boolean, aiReady = cloudReady) {
+      Object.defineProperty(globalThis, "getApp", { configurable: true, writable: true, value: () => ({ globalData: { cloudReady, aiReady } }) });
     },
     restore() {
       if (previousWx) Object.defineProperty(globalThis, "wx", previousWx);
@@ -376,10 +376,21 @@ test("云函数的明确错误、没部署和超时分别给出能看懂的提�
 });
 
 test("云开发没连上时直接说明，不去调用云函数", async context => {
-  const env = installWx({ cloud: { callFunction: async () => { throw new Error("should not be called"); } } });
+  let cloudCalls = 0;
+  const env = installWx({ cloud: { callFunction: async () => { cloudCalls += 1; throw new Error("should not be called"); } } });
   env.setApp(false);
   context.after(env.restore);
   await assert.rejects(storyImageApi.listStoryImages("owner"), (error: unknown) => error instanceof StoryImageServiceError && error.code === "CLOUD_NOT_READY");
+  assert.equal(cloudCalls, 0);
+});
+
+test("云数据库已连接但 AI 尚未发布时不调用配图云函数", async context => {
+  let cloudCalls = 0;
+  const env = installWx({ cloud: { callFunction: async () => { cloudCalls += 1; throw new Error("should not be called"); } } });
+  env.setApp(true, false);
+  context.after(env.restore);
+  await assert.rejects(storyImageApi.listStoryImages("owner"), (error: unknown) => error instanceof StoryImageServiceError && error.code === "CLOUD_NOT_READY");
+  assert.equal(cloudCalls, 0);
 });
 
 // ---------- 页面 ----------

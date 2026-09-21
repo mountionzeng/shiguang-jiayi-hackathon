@@ -100,7 +100,7 @@ export function qualityLabel(image: Pick<StoryImage, "quality" | "qualityIssues"
 function cloudReady(): boolean {
   if (!CLOUD_AI_ENABLED) return false;
   const app = getApp<ShiguangAppOptions>();
-  return Boolean(app && app.globalData && app.globalData.cloudReady && wx.cloud);
+  return Boolean(app && app.globalData && app.globalData.cloudReady && app.globalData.aiReady && wx.cloud);
 }
 
 function callFailure(error: unknown): StoryImageServiceError {

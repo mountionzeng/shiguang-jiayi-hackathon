@@ -44,7 +44,7 @@ function ownerOf(state: ReturnType<typeof stateWithConfirmedMemory>) {
 test("cloud disabled uses a transparent local draft", async (context) => {
   let cloudCallCount = 0;
   const restoreGetApp = installGlobal("getApp", () => ({
-    globalData: { cloudReady: false },
+    globalData: { cloudReady: false, aiReady: false },
   }));
   const restoreWx = installGlobal("wx", {
     cloud: {
@@ -70,7 +70,7 @@ test("cloud disabled uses a transparent local draft", async (context) => {
 test("cloud generation receives only the current user's personal stories", async (context) => {
   let requestData: unknown;
   const restoreGetApp = installGlobal("getApp", () => ({
-    globalData: { cloudReady: true },
+    globalData: { cloudReady: true, aiReady: true },
   }));
   const restoreWx = installGlobal("wx", {
     cloud: {
@@ -115,7 +115,7 @@ test("cloud generation receives only the current user's personal stories", async
 test("cloud failure falls back instead of breaking chapter generation", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({
-    globalData: { cloudReady: true },
+    globalData: { cloudReady: true, aiReady: true },
   }));
   const restoreWx = installGlobal("wx", {
     cloud: {
@@ -139,7 +139,7 @@ test("cloud failure falls back instead of breaking chapter generation", async (c
 
 test("a local fallback reports why the online AI was not used", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
-  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true } }));
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: true } }));
   const errors = [
     [{ errMsg: "cloud.callFunction:fail -504002 functions execute fail. Error: AI_NOT_CONFIGURED" }, "ai-not-configured"],
     [{ errMsg: "cloud.callFunction:fail -504003 Invoking task timed out after 3 seconds" }, "timeout"],
@@ -171,7 +171,7 @@ test("chapter organizing sends the chosen memories from the shared pool with the
   const { generateBiographyWithStatus } = await import("../miniprogram/services/biographyService");
   let requestData: any;
   let cloudReady = true;
-  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady } }));
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady, aiReady: cloudReady } }));
   const restoreWx = installGlobal("wx", {
     cloud: {
       callFunction: async (request: { data: unknown }) => {
@@ -205,7 +205,7 @@ test("chapter organizing sends the chosen memories from the shared pool with the
 test("malformed cloud output also falls back to the local draft", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({
-    globalData: { cloudReady: true },
+    globalData: { cloudReady: true, aiReady: true },
   }));
   const restoreWx = installGlobal("wx", {
     cloud: {

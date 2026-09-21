@@ -95,7 +95,7 @@
   <scroll-view class="capture-recall" scroll-y wx:if="{{memoirOpen}}">
     <view class="capture-memory-stack">
       <button
-        class="capture-memory"
+        class="capture-memory {{index % 2 === 1 ? 'capture-memory-even' : ''}} {{index % 3 === 2 ? 'capture-memory-third' : ''}}"
         wx:for="{{recent}}"
         wx:key="id"
         data-id="{{item.id}}"
@@ -116,7 +116,7 @@
           <view class="capture-memory-excerpt">{{item.excerpt}}</view>
           <view class="capture-memory-meta">{{item.storyLabel}}</view>
         </view>
-        <view class="capture-memory-next">接着聊 <text aria-hidden="true">›</text></view>
+        <view class="capture-memory-next">接着聊 <text class="capture-memory-next-arrow" aria-hidden="true">›</text></view>
       </button>
 
       <view class="capture-empty" wx:if="{{recentLoaded && !recent.length}}">还没有回忆，先随手记一段吧。</view>
@@ -129,8 +129,8 @@
         hover-class="capture-all-pressed"
         aria-label="从全部回忆里挑一段"
       >
-        <view class="capture-all-icon" aria-hidden="true"><view></view><view></view></view>
-        <view class="capture-all-copy"><text>全部回忆</text><text>从所有回忆里挑一段</text></view>
+        <view class="capture-all-icon" aria-hidden="true"><view class="capture-all-icon-sheet capture-all-icon-sheet-back"></view><view class="capture-all-icon-sheet capture-all-icon-sheet-front"></view></view>
+        <view class="capture-all-copy"><text class="capture-all-title">全部回忆</text><text class="capture-all-description">从所有回忆里挑一段</text></view>
         <text class="capture-all-arrow" aria-hidden="true">›</text>
       </button>
     </view>

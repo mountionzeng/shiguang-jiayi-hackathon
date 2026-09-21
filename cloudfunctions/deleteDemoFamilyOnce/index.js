@@ -1,10 +1,10 @@
 const cloud = require("wx-server-sdk");
+const { authorizeDangerousDelete } = require("./authorization");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db = cloud.database();
 const DEMO_FAMILY_ID = "demo-family";
-const CONFIRM_TEXT = "DELETE_DEMO_FAMILY";
 
 const COLLECTIONS = {
   families: "families",
@@ -107,9 +107,7 @@ async function removePhotoFiles(familyId) {
 }
 
 async function main(event = {}) {
-  if (event.confirm !== CONFIRM_TEXT) {
-    throw new Error(`CONFIRM_REQUIRED:${CONFIRM_TEXT}`);
-  }
+  authorizeDangerousDelete(event, process.env.DELETE_DEMO_FAMILY_TOKEN);
 
   const removedCounts = {
     families: await removeFamilyDoc(),

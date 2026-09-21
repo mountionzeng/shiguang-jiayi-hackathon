@@ -24,6 +24,7 @@ const CORE_COLLECTIONS = [
   "story_invite_rates",
   "story_migration_items",
   "families",
+  "family_snapshots",
   "family_members",
   "source_records",
   "memories",

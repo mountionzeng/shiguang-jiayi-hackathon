@@ -72,13 +72,14 @@ API key 应只放在云函数环境变量中，不能写入小程序代码或提
 
 ## 当前云开发配置
 
-- 小程序 AppID：`wx6be512f0fe129b62`
-- 云开发环境 ID：`cloud1-d0g8c8yg0513a6068`
-- 云 AI 开关：`miniprogram/config/runtime.ts` 中的 `CLOUD_AI_ENABLED`
+- 企业小程序 AppID：`wx86ae3e9d507ce52d`
+- 云开发环境 ID：`cloud1-d5ghzk30ve609f544`（企业小程序独立的免费开发环境）
+- 云 AI 功能开关：`miniprogram/config/runtime.ts` 中的 `CLOUD_AI_ENABLED`
+- 云 AI 发布闸门：`miniprogram/config/runtime.ts` 中的 `CLOUD_AI_RELEASE_READY`
 - FastAPI 后端开关：`miniprogram/config/runtime.ts` 中的 `BACKEND_API_ENABLED`
 - FastAPI 本地地址：`http://127.0.0.1:8000/api/v1`
 
-当前 `CLOUD_AI_ENABLED = true`。如果云函数未部署或环境变量未配置，页面仍会自动退回本地演示整理，但真机上会多等一次云函数失败返回。
+当前 `CLOUD_AI_ENABLED = true`、`CLOUD_AI_RELEASE_READY = false`。新企业环境的文本、图片和音频函数尚未全部完成配置，因此页面会直接使用本地可编辑兜底，不会先调用一个不存在或未授权的云函数。只有当目标函数、密钥、产品 entitlement/IAM、配额、计费方式、内容安全路由均已核验，并完成一次带稳定请求 ID 的受控真实请求后，才能把发布闸门改为 `true`。
 
 ## 已加入的前端适配层
 
