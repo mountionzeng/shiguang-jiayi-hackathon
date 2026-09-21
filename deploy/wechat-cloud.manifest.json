@@ -9,9 +9,18 @@
     "storyBooks": {
       "timeoutSeconds": 20,
       "environmentVariables": [
-        "STORY_BOOKS_MIGRATION_READY", "STORY_BOOKS_MIGRATION_FAMILY_IDS",
-        "STORY_ACCESS_ENABLED", "STORY_ACCESS_RULES_READY",
-        "STORY_IDENTITY_BOOTSTRAP_APP_ID", "STORY_ACCESS_CANARY_FAMILY_IDS", "STORY_INVITATIONS_ENABLED", "STORY_SHARED_MEDIA_ENABLED", "STORY_EXCERPT_SHARING_ENABLED", "STORY_SHARED_EDIT_ENABLED", "STORY_COPY_RECEIVE_ENABLED", "STORY_SHARE_CARD_ENABLED"
+        "STORY_BOOKS_MIGRATION_READY",
+        "STORY_BOOKS_MIGRATION_FAMILY_IDS",
+        "STORY_ACCESS_ENABLED",
+        "STORY_ACCESS_RULES_READY",
+        "STORY_IDENTITY_BOOTSTRAP_APP_ID",
+        "STORY_ACCESS_CANARY_FAMILY_IDS",
+        "STORY_INVITATIONS_ENABLED",
+        "STORY_SHARED_MEDIA_ENABLED",
+        "STORY_EXCERPT_SHARING_ENABLED",
+        "STORY_SHARED_EDIT_ENABLED",
+        "STORY_COPY_RECEIVE_ENABLED",
+        "STORY_SHARE_CARD_ENABLED"
       ],
       "databaseRulesFile": "deploy/story-sharing/database.rules.json",
       "storageRulesFile": "deploy/story-sharing/storage.rules.json"
@@ -34,12 +43,18 @@
         "STORY_AUDIO_TENCENT_SECRET_KEY",
         "STORY_AUDIO_TENCENT_REGION"
       ],
-      "timerTriggers": ["sweepAudioOperations: every 2 minutes"]
+      "timerTriggers": [
+        "sweepAudioOperations: every 2 minutes"
+      ]
     },
     "photoAccess": {
       "timeoutSeconds": 10,
-      "environmentVariables": ["PHOTO_ACCESS_INTERNAL_TOKEN"],
-      "timerTriggers": ["retryPhotoModeration: every 10 minutes"]
+      "environmentVariables": [
+        "PHOTO_ACCESS_INTERNAL_TOKEN"
+      ],
+      "timerTriggers": [
+        "retryPhotoModeration: every 10 minutes"
+      ]
     },
     "storyImages": {
       "timeoutSeconds": 60,
@@ -51,8 +66,12 @@
         "STORY_IMAGES_DIAGNOSE_TOKEN",
         "TOKENHUB_API_KEY"
       ],
-      "timerTriggers": ["sweepImageJobs: every minute"],
-      "messageRoutes": ["wxa_media_check"]
+      "timerTriggers": [
+        "sweepImageJobs: every minute"
+      ],
+      "messageRoutes": [
+        "wxa_media_check"
+      ]
     },
     "contentSecurityCheck": {
       "timeoutSeconds": 10,
@@ -81,6 +100,22 @@
     }
   },
   "collections": {
+    "audio_operations": [
+      "family_created_id: familyId, createdAt, _id",
+      "requester_created_id: requesterOpenid, createdAt, _id",
+      "status_next_run_id: status, nextRunAt, _id",
+      "family_story_revision: familyId, storyId, revisionId"
+    ],
+    "audio_works": [
+      "family_created_id: familyId, createdAt, _id",
+      "family_story_revision: familyId, storyId, revisionId"
+    ],
+    "biography_drafts": [
+      "family_story_type_id: familyId, storyId, draftType, _id"
+    ],
+    "family_snapshots": [
+      "family_captured: snapshotOfFamilyId, capturedAt"
+    ],
     "image_jobs": [
       "family_member_created_id: familyId, memberId, createdAtMs, _id",
       "family_story_created_id: familyId, storyId, createdAtMs, _id",
@@ -95,21 +130,46 @@
       "moderation_trace_id: moderation.traceId",
       "moderation_deleted: deletedAt, moderation.ok"
     ],
+    "stories": [
+      "family_updated_id: familyId, updatedAt, _id",
+      "family_deleted_updated: familyId, deletedAt, updatedAt"
+    ],
+    "story_collaboration_operations": [],
+    "story_copies": [],
+    "story_copy_assets": [],
+    "story_copy_edits": [],
+    "story_copy_media": [],
+    "story_copy_requests": [],
+    "story_desktop_grants": [],
+    "story_desktop_nonces": [],
+    "story_desktop_operations": [],
+    "story_excerpt_operations": [],
+    "story_grants": [
+      "principal_status_story: principalId, status, storyId",
+      "family_story_status: familyId, storyId, status"
+    ],
+    "story_identity_aliases": [
+      "principal_status: principalId, status"
+    ],
+    "story_image_job_links": [
+      "family_story_job: familyId, storyId, jobId"
+    ],
+    "story_image_links": [
+      "family_story_image: familyId, storyId, imageId"
+    ],
     "story_images": [
       "family_member_deleted_id: familyId, memberId, deletedAtMs, _id",
       "family_story_deleted_id: familyId, storyId, deletedAtMs, _id",
       "moderation_trace_id: moderationTraceId",
       "quality_deleted_created: quality, deletedAtMs, createdAtMs"
     ],
-    "story_image_links": [
-      "family_story_image: familyId, storyId, imageId"
+    "story_invitations": [
+      "family_story_status: familyId, storyId, status"
     ],
-    "story_image_job_links": [
-      "family_story_job: familyId, storyId, jobId"
-    ],
-    "stories": [
-      "family_updated_id: familyId, updatedAt, _id",
-      "family_deleted_updated: familyId, deletedAt, updatedAt"
+    "story_invite_indexes": [],
+    "story_invite_rates": [],
+    "story_migration_items": [
+      "family_resolved_id: familyId, resolvedStoryId, _id"
     ],
     "story_names": [
       "family_title: familyId, title"
@@ -117,54 +177,18 @@
     "story_operations": [
       "family_story: familyId, storyId"
     ],
-    "story_principals": [
-      "family_status: familyId, status"
-    ],
-    "story_identity_aliases": [
-      "principal_status: principalId, status"
-    ],
     "story_principal_spaces": [
       "principal_status: principalId, status"
     ],
-    "story_grants": [
-      "principal_status_story: principalId, status, storyId",
-      "family_story_status: familyId, storyId, status"
+    "story_principals": [
+      "family_status: familyId, status"
     ],
-    "story_invitations": ["family_story_status: familyId, storyId, status"],
-    "story_invite_indexes": [],
-    "story_invite_rates": [],
-    "story_source_policies": [],
-    "story_copies": [],
-    "story_excerpt_operations": [],
-    "story_collaboration_operations": [],
-    "story_copy_requests": [],
-    "story_copy_edits": [],
-    "story_returns": [],
     "story_return_indexes": [],
-    "story_desktop_grants": [],
-    "story_desktop_nonces": [],
-    "story_desktop_operations": [],
-    "story_copy_media": [],
-    "story_copy_assets": [],
-    "audio_operations": [
-      "family_created_id: familyId, createdAt, _id",
-      "requester_created_id: requesterOpenid, createdAt, _id",
-      "status_next_run_id: status, nextRunAt, _id",
-      "family_story_revision: familyId, storyId, revisionId"
-    ],
+    "story_returns": [],
+    "story_source_policies": [],
     "voice_profiles": [
       "family_owner_status: familyId, ownerOpenid, status",
       "family_updated_id: familyId, updatedAt, _id"
-    ],
-    "audio_works": [
-      "family_created_id: familyId, createdAt, _id",
-      "family_story_revision: familyId, storyId, revisionId"
-    ],
-    "story_migration_items": [
-      "family_resolved_id: familyId, resolvedStoryId, _id"
-    ],
-    "biography_drafts": [
-      "family_story_type_id: familyId, storyId, draftType, _id"
     ]
   },
   "secretPolicy": "This manifest records names only. Never commit secret values."
