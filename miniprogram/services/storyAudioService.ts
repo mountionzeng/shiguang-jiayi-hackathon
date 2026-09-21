@@ -1,3 +1,5 @@
+import type { ShiguangAppOptions } from "../app";
+
 export interface AudioCapability { enabled: boolean; reason?: string }
 export interface StoryAudioCapabilities {
   apiVersion: number;
@@ -32,7 +34,14 @@ export class StoryAudioServiceError extends Error {
   constructor(readonly code:string,message:string){super(message);this.name='StoryAudioServiceError';}
 }
 
+function assertAudioReady():void {
+  if(!wx.cloud||typeof getApp!=="function")throw new StoryAudioServiceError('STORY_AUDIO_NOT_READY','有声故事尚未开放');
+  const app=getApp<ShiguangAppOptions>();
+  if(!app?.globalData?.cloudReady||!app.globalData.aiReady)throw new StoryAudioServiceError('STORY_AUDIO_NOT_READY','有声故事尚未开放');
+}
+
 async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> {
+  assertAudioReady();
   const response=await wx.cloud.callFunction({name:'storyAudio',data:{...data,action}});
   const result=response.result as ({error?:string;code?:string;message?:string}&T)|undefined;
   if(!result||result.error)throw new StoryAudioServiceError(result?.code || 'STORY_AUDIO_ERROR',result?.message || '声音服务暂不可用，请稍后重试');
@@ -57,12 +66,14 @@ export const storyAudioApi={
 };
 
 export async function uploadVoiceSample(cloudPath:string,filePath:string):Promise<string>{
+  assertAudioReady();
   const result=await wx.cloud.uploadFile({cloudPath,filePath});
   if(!result.fileID)throw new StoryAudioServiceError('UPLOAD_FAILED','录音没有上传成功，请重试');
   return result.fileID;
 }
 export async function deleteUploadedVoiceSample(fileID:string):Promise<void>{
   if(!fileID.startsWith('cloud://'))return;
+  assertAudioReady();
   await wx.cloud.deleteFile({fileList:[fileID]});
 }
 

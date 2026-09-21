@@ -5,8 +5,17 @@
     "miniprogram/config/wechat-accounts.json",
     "miniprogram/config/wechat-accounts.js"
   ],
+  "deploymentClasses": {
+    "base": "Deploy for the normal production application.",
+    "configured": "Deploy only after the listed secrets, feature flags, routes, or triggers are configured.",
+    "bootstrapOnce": "Operator-only bootstrap function; deploy temporarily, run once, verify, then remove.",
+    "diagnosticOnly": "Operator diagnostic; do not leave deployed in the production environment.",
+    "dangerousMaintenance": "Destructive maintenance function; never deploy by default."
+  },
   "cloudFunctions": {
     "storyBooks": {
+      "deploymentClass": "base",
+      "defaultDeploy": true,
       "timeoutSeconds": 20,
       "environmentVariables": [
         "STORY_BOOKS_MIGRATION_READY", "STORY_BOOKS_MIGRATION_FAMILY_IDS",
@@ -17,6 +26,9 @@
       "storageRulesFile": "deploy/story-sharing/storage.rules.json"
     },
     "storyAudio": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Configure provider credentials and capability flags", "Confirm product entitlement, IAM access, quota, and billing mode", "Run one controlled request with a stable request ID", "Install the configured timer trigger"],
       "timeoutSeconds": 20,
       "environmentVariables": [
         "STORY_AUDIO_PRICING_VERSION",
@@ -32,16 +44,30 @@
         "STORY_AUDIO_OFFICIAL_VOICES",
         "STORY_AUDIO_TENCENT_SECRET_ID",
         "STORY_AUDIO_TENCENT_SECRET_KEY",
-        "STORY_AUDIO_TENCENT_REGION"
+        "STORY_AUDIO_TENCENT_SESSION_TOKEN",
+        "STORY_AUDIO_TENCENT_REGION",
+        "TENCENTCLOUD_SECRET_ID",
+        "TENCENTCLOUD_SECRETID",
+        "TENCENTCLOUD_SECRET_KEY",
+        "TENCENTCLOUD_SECRETKEY",
+        "TENCENTCLOUD_SESSION_TOKEN",
+        "TENCENTCLOUD_SESSIONTOKEN",
+        "TENCENTCLOUD_REGION"
       ],
       "timerTriggers": ["sweepAudioOperations: every 2 minutes"]
     },
     "photoAccess": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Set PHOTO_ACCESS_INTERNAL_TOKEN to the same secret used by storyImages", "Install the configured timer trigger"],
       "timeoutSeconds": 10,
       "environmentVariables": ["PHOTO_ACCESS_INTERNAL_TOKEN"],
       "timerTriggers": ["retryPhotoModeration: every 10 minutes"]
     },
     "storyImages": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Configure image, text, and vision provider credentials", "Confirm product entitlement, IAM access, quota, and billing mode", "Run one controlled request with a stable request ID", "Set the shared PHOTO_ACCESS_INTERNAL_TOKEN", "Install the configured timer trigger and message route"],
       "timeoutSeconds": 60,
       "environmentVariables": [
         "AI_API_KEY",
@@ -49,20 +75,32 @@
         "AI_MODEL",
         "PHOTO_ACCESS_INTERNAL_TOKEN",
         "STORY_IMAGES_DIAGNOSE_TOKEN",
-        "TOKENHUB_API_KEY"
+        "TOKENHUB_API_KEY",
+        "TOKENHUB_BASE_URL",
+        "VISION_API_KEY",
+        "VISION_BASE_URL",
+        "VISION_MODEL"
       ],
       "timerTriggers": ["sweepImageJobs: every minute"],
       "messageRoutes": ["wxa_media_check"]
     },
     "contentSecurityCheck": {
+      "deploymentClass": "base",
+      "defaultDeploy": true,
       "timeoutSeconds": 10,
       "environmentVariables": []
     },
     "familyInvite": {
+      "deploymentClass": "base",
+      "defaultDeploy": true,
       "timeoutSeconds": 10,
       "environmentVariables": []
     },
     "drinkingTimeBridge": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Configure the bridge URL and secret", "Set WECHAT_APP_ID to the new Mini Program AppID before enabling desktop authority"],
+      "timeoutSeconds": 20,
       "environmentVariables": [
         "DRINKING_TIME_BRIDGE_BASE_URL",
         "DRINKING_TIME_BRIDGE_SECRET",
@@ -72,12 +110,71 @@
       ]
     },
     "storyDesktopAccess": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Configure STORY_DESKTOP_AUTHORITY_SECRET", "Explicitly enable STORY_DESKTOP_ACCESS_ENABLED after authority setup"],
       "timeoutSeconds": 20,
       "environmentVariables": [
         "STORY_DESKTOP_ACCESS_ENABLED",
         "STORY_DESKTOP_AUTHORITY_SECRET",
         "STORY_SHARE_CARD_ENABLED"
       ]
+    },
+    "getOpenId": {
+      "deploymentClass": "base",
+      "defaultDeploy": true,
+      "timeoutSeconds": 10,
+      "environmentVariables": []
+    },
+    "resetCurrentUserRoom": {
+      "deploymentClass": "base",
+      "defaultDeploy": true,
+      "timeoutSeconds": 20,
+      "environmentVariables": [],
+      "notes": "Production self-service account reset. It deletes only the caller's room and is not an operator maintenance function."
+    },
+    "chatInterview": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Configure CHAT_AI_* or fallback AI_* provider settings", "Confirm provider entitlement, quota, and billing mode", "Verify one controlled request before enabling CLOUD_AI_RELEASE_READY"],
+      "timeoutSeconds": 60,
+      "environmentVariables": ["CHAT_AI_API_KEY", "CHAT_AI_BASE_URL", "CHAT_AI_MODEL", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL"]
+    },
+    "generateBiography": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Configure AI_API_KEY, AI_BASE_URL, and AI_MODEL", "Confirm provider entitlement, quota, and billing mode", "Verify one controlled request before enabling CLOUD_AI_RELEASE_READY"],
+      "timeoutSeconds": 60,
+      "environmentVariables": ["AI_API_KEY", "AI_BASE_URL", "AI_MODEL"]
+    },
+    "organizeMemory": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Configure ORGANIZE_AI_*, CHAT_AI_*, or fallback AI_* provider settings", "Confirm provider entitlement, quota, and billing mode", "Verify one controlled request before enabling CLOUD_AI_RELEASE_READY"],
+      "timeoutSeconds": 60,
+      "environmentVariables": ["ORGANIZE_AI_API_KEY", "ORGANIZE_AI_BASE_URL", "ORGANIZE_AI_MODEL", "CHAT_AI_API_KEY", "CHAT_AI_BASE_URL", "CHAT_AI_MODEL", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL"]
+    },
+    "ensureCloudCollections": {
+      "deploymentClass": "bootstrapOnce",
+      "defaultDeploy": false,
+      "activationRequirements": ["Set a temporary COLLECTION_BOOTSTRAP_TOKEN", "Remove the function and token after collections are verified"],
+      "timeoutSeconds": 60,
+      "environmentVariables": ["COLLECTION_BOOTSTRAP_TOKEN"]
+    },
+    "inspectFamilyData": {
+      "deploymentClass": "diagnosticOnly",
+      "defaultDeploy": false,
+      "timeoutSeconds": 20,
+      "environmentVariables": [],
+      "notes": "Deploy temporarily only while investigating data, then remove."
+    },
+    "deleteDemoFamilyOnce": {
+      "deploymentClass": "dangerousMaintenance",
+      "defaultDeploy": false,
+      "activationRequirements": ["Set a temporary DELETE_DEMO_FAMILY_TOKEN of at least 24 characters", "Use the separate manual workflow and remove the function and token immediately afterward"],
+      "timeoutSeconds": 60,
+      "environmentVariables": ["DELETE_DEMO_FAMILY_TOKEN"],
+      "notes": "Destructively deletes the demo family. Excluded from normal deployment even though its source directory is retained."
     }
   },
   "collections": {
@@ -165,6 +262,23 @@
     ],
     "biography_drafts": [
       "family_story_type_id: familyId, storyId, draftType, _id"
+    ],
+    "families": [],
+    "family_members": [
+      "account_id: accountId",
+      "family_id: familyId, _id"
+    ],
+    "source_records": [
+      "family_id: familyId, _id"
+    ],
+    "memories": [
+      "family_id: familyId, _id"
+    ],
+    "generated_artifacts": [],
+    "user_accounts": [],
+    "family_invitations": [],
+    "family_access": [
+      "account_id: accountId"
     ]
   },
   "secretPolicy": "This manifest records names only. Never commit secret values."

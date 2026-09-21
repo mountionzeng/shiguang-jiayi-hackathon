@@ -351,12 +351,12 @@
   justify-content: flex-start;
   padding: 58rpx 8rpx 0;
   /* 封面文字与 .book-cover-leaf 同层翻转，透视始终贴合书页。 */
-  font-family: "ShiguangBookType", "Songti SC", STSong, serif;
+  font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
   pointer-events: none;
 }
 
 .book-cover-copy .typewriter {
-  font-family: "ShiguangBookType", "Songti SC", STSong, serif;
+  font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
 }
 
 .book-kicker {
@@ -444,7 +444,7 @@
 
 .book-stat-num {
   color: var(--jade);
-  font-family: "ShiguangBookType", "Songti SC", STSong, serif;
+  font-family: "Courier New", FangSong, STFangsong, "Songti SC", serif;
   font-size: 32rpx;
   font-weight: 600;
 }

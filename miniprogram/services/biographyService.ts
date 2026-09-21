@@ -79,7 +79,7 @@ export async function generateBiographyWithStatus(
   const app = getApp<ShiguangAppOptions>();
   let fallbackReason: BiographyFallbackReason;
   if (!CLOUD_AI_ENABLED) fallbackReason = "cloud-disabled";
-  else if (!app.globalData.cloudReady || !wx.cloud) fallbackReason = "cloud-not-ready";
+  else if (!app.globalData.cloudReady || !app.globalData.aiReady || !wx.cloud) fallbackReason = "cloud-not-ready";
   else if (!await requestAiConsent()) fallbackReason = "consent-declined";
   else {
     try {

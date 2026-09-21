@@ -29,7 +29,7 @@ function silenceExpectedWarnings(): () => void {
 test("organizeMemory uses the cloud function when available", async (context) => {
   let requestData: unknown;
   const restoreGetApp = installGlobal("getApp", () => ({
-    globalData: { cloudReady: true },
+    globalData: { cloudReady: true, aiReady: true },
   }));
   const restoreWx = installGlobal("wx", {
     cloud: {
@@ -73,7 +73,7 @@ test("organizeMemory uses the cloud function when available", async (context) =>
 test("organizeMemory falls back to editable original text", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({
-    globalData: { cloudReady: true },
+    globalData: { cloudReady: true, aiReady: true },
   }));
   const restoreWx = installGlobal("wx", {
     cloud: {
@@ -96,4 +96,15 @@ test("organizeMemory falls back to editable original text", async (context) => {
   assert.equal(draft.generationMode, "local-demo");
   assert.equal(draft.memoryType, "memoir");
   assert.equal(draft.body, "第一句。 第二句。");
+});
+
+test("organizeMemory stays local until AI release readiness is enabled", async (context) => {
+  let cloudCalls = 0;
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: false } }));
+  const restoreWx = installGlobal("wx", { cloud: { callFunction: async () => { cloudCalls += 1; } } });
+  context.after(() => { restoreWx(); restoreGetApp(); });
+
+  const draft = await organizeMemory({ transcript: ["暂时只在本地整理。"], memoryType: "note" });
+  assert.equal(draft.generationMode, "local-demo");
+  assert.equal(cloudCalls, 0);
 });

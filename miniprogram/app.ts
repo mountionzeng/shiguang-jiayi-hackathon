@@ -1,5 +1,6 @@
 import {
   CLOUD_AI_ENABLED,
+  CLOUD_AI_RELEASE_READY,
   CLOUD_DATABASE_ENABLED,
   cloudEnvForAppId,
 } from "./config/runtime";
@@ -9,15 +10,19 @@ import { beginPhotoUploadSession, resumePhotoUploads } from "./services/photoClo
 export interface ShiguangAppOptions {
   globalData: {
     cloudReady: boolean;
+    aiReady: boolean;
   };
 }
 
 App<ShiguangAppOptions>({
   globalData: {
     cloudReady: false,
+    aiReady: false,
   },
 
   onLaunch() {
+    this.globalData.cloudReady = false;
+    this.globalData.aiReady = false;
     clearAiConsent();
     beginPhotoUploadSession();
     if (!CLOUD_DATABASE_ENABLED && !CLOUD_AI_ENABLED) {
@@ -39,6 +44,7 @@ App<ShiguangAppOptions>({
       }
       wx.cloud.init({ env: cloudEnvId, traceUser: false });
       this.globalData.cloudReady = true;
+      this.globalData.aiReady = CLOUD_AI_ENABLED && CLOUD_AI_RELEASE_READY;
       void resumePhotoUploads();
       wx.onNetworkStatusChange(result => { if (result.isConnected) void resumePhotoUploads(); });
     } catch (error) {
