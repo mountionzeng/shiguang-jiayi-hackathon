@@ -87,13 +87,10 @@ export async function generateBiographyWithStatus(
         name: "generateBiography",
         data: {
           protagonistName: member.name,
-          memories: personal.map((memory) => ({
-            id: memory.id,
-            authorName: memory.authorName,
-            relation: memory.authorMemberId === member.id ? "本人" : memory.relation || "亲友",
-            text: memory.text,
-          })),
-          ...(chapter?.storyId ? { storyId: chapter.storyId, memoryIds: chapter.memoryIds } : {}),
+          // The server reloads these sources under the authenticated family.
+          // Never let a client-supplied memory body become model input.
+          memoryIds: personal.map((memory) => memory.id),
+          ...(chapter?.storyId ? { storyId: chapter.storyId } : {}),
           ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),
         },
       });

@@ -1838,3 +1838,16 @@ test("memory entry preselects its source and preview edits become the saved chap
   assert.equal((page.data.draft as any).chapters[0].content[0].text, "我确认的正文。\n");
   assert.equal(storage.roomState().contributions[0].text, createInitialRoomState().contributions[0].text);
 });
+
+test("editing only an AI organize-preview title updates the disclosure immediately", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  page.setData({ previewAiLabel: "文字 AI 生成", previewTitle: "AI 原标题" });
+  callPage(page, "onPreviewTitle", { detail: { value: "我改过的标题" } });
+  assert.equal(page.data.previewAiLabel, "文字 AI 生成 · 已由你修改");
+
+  page.setData({ previewAiLabel: "", previewTitle: "普通标题" });
+  callPage(page, "onPreviewTitle", { detail: { value: "普通标题改过了" } });
+  assert.equal(page.data.previewAiLabel, "", "non-AI previews are never mislabeled");
+});

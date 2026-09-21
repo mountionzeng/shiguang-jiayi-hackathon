@@ -106,10 +106,11 @@ test("cloud generation receives only the current user's personal stories", async
   }));
 
   const draft = await generateBiography(state, ownerOf(state));
-  const memories = (requestData as { memories: Array<{ id: string }> }).memories;
+  const memoryIds = (requestData as { memoryIds: string[] }).memoryIds;
 
   assert.equal(draft.generationMode, "cloud-ai");
-  assert.deepEqual(memories.map((memory) => memory.id), ["demo-personal-rain"]);
+  assert.deepEqual(memoryIds, ["demo-personal-rain"]);
+  assert.equal("memories" in (requestData as object), false, "raw memory text stays server-side");
 });
 
 test("cloud failure falls back instead of breaking chapter generation", async (context) => {
@@ -188,9 +189,10 @@ test("chapter organizing sends the chosen memories from the shared pool with the
 
   const cloud = await generateBiographyWithStatus(state, ownerOf(state), request);
   assert.equal(cloud.draft.generationMode, "cloud-ai");
-  // Every profile shares one memory pool; another narrator keeps their own relation.
-  assert.deepEqual(requestData.memories.map((memory: { id: string; relation: string }) => [memory.id, memory.relation]),
-    [["second-personal", "本人"], ["someone-else", "女儿"]]);
+  // Every profile shares one memory pool; the server reloads the selected IDs
+  // and never trusts raw memory bodies supplied by the client.
+  assert.deepEqual(requestData.memoryIds, ["second-personal", "someone-else"]);
+  assert.equal("memories" in requestData, false);
   assert.equal(requestData.chapterTitle, "雨天");
   assert.equal(requestData.existingText, "已有正文");
 

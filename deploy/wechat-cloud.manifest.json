@@ -136,23 +136,23 @@
     "chatInterview": {
       "deploymentClass": "configured",
       "defaultDeploy": false,
-      "activationRequirements": ["Configure CHAT_AI_* or fallback AI_* provider settings", "Confirm provider entitlement, quota, and billing mode", "Verify one controlled request before enabling CLOUD_AI_RELEASE_READY"],
+      "activationRequirements": ["Configure CHAT_AI_* or fallback AI_* provider settings", "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation", "Confirm provider entitlement, quota, and billing mode", "Verify input/output moderation and one controlled request before enabling both release gates"],
       "timeoutSeconds": 60,
-      "environmentVariables": ["CHAT_AI_API_KEY", "CHAT_AI_BASE_URL", "CHAT_AI_MODEL", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL"]
+      "environmentVariables": ["CHAT_AI_API_KEY", "CHAT_AI_BASE_URL", "CHAT_AI_MODEL", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL", "WECHAT_APP_ID", "AI_SERVER_RELEASE_READY", "AI_DAILY_REQUEST_LIMIT", "AI_MIN_INTERVAL_MS", "AI_DIAGNOSE_TOKEN"]
     },
     "generateBiography": {
       "deploymentClass": "configured",
       "defaultDeploy": false,
-      "activationRequirements": ["Configure AI_API_KEY, AI_BASE_URL, and AI_MODEL", "Confirm provider entitlement, quota, and billing mode", "Verify one controlled request before enabling CLOUD_AI_RELEASE_READY"],
+      "activationRequirements": ["Configure AI_API_KEY, AI_BASE_URL, and AI_MODEL", "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation", "Confirm provider entitlement, quota, and billing mode", "Verify input/output moderation and one controlled request before enabling both release gates"],
       "timeoutSeconds": 60,
-      "environmentVariables": ["AI_API_KEY", "AI_BASE_URL", "AI_MODEL"]
+      "environmentVariables": ["AI_API_KEY", "AI_BASE_URL", "AI_MODEL", "WECHAT_APP_ID", "AI_SERVER_RELEASE_READY", "AI_DAILY_REQUEST_LIMIT", "AI_MIN_INTERVAL_MS"]
     },
     "organizeMemory": {
       "deploymentClass": "configured",
       "defaultDeploy": false,
-      "activationRequirements": ["Configure ORGANIZE_AI_*, CHAT_AI_*, or fallback AI_* provider settings", "Confirm provider entitlement, quota, and billing mode", "Verify one controlled request before enabling CLOUD_AI_RELEASE_READY"],
+      "activationRequirements": ["Configure ORGANIZE_AI_*, CHAT_AI_*, or fallback AI_* provider settings", "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation", "Confirm provider entitlement, quota, and billing mode", "Verify input/output moderation and one controlled request before enabling both release gates"],
       "timeoutSeconds": 60,
-      "environmentVariables": ["ORGANIZE_AI_API_KEY", "ORGANIZE_AI_BASE_URL", "ORGANIZE_AI_MODEL", "CHAT_AI_API_KEY", "CHAT_AI_BASE_URL", "CHAT_AI_MODEL", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL"]
+      "environmentVariables": ["ORGANIZE_AI_API_KEY", "ORGANIZE_AI_BASE_URL", "ORGANIZE_AI_MODEL", "CHAT_AI_API_KEY", "CHAT_AI_BASE_URL", "CHAT_AI_MODEL", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL", "WECHAT_APP_ID", "AI_SERVER_RELEASE_READY", "AI_DAILY_REQUEST_LIMIT", "AI_MIN_INTERVAL_MS"]
     },
     "ensureCloudCollections": {
       "deploymentClass": "bootstrapOnce",

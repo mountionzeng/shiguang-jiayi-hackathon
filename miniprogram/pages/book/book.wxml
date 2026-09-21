@@ -96,6 +96,7 @@
       <!-- The fade and keyboard can hide the watermark inside the picture, so the page labels it too. -->
       <view wx:if="{{backdropUrl}}" class="backdrop-ai-label">图片 AI 生成</view>
       <view class="field-label">正文</view>
+      <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
       <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{false}}" show-img-resize="{{false}}"></editor>
     </view>
   </view>
@@ -167,6 +168,7 @@
       <block wx:if="{{panel === 'organize-preview'}}">
         <view class="panel-title serif">确认这一章的正文</view>
         <view class="panel-note">可以修改标题和文字；确认写入前，已保存的书稿不会改变。</view>
+        <view wx:if="{{previewAiLabel}}" class="chapter-ai-label">{{previewAiLabel}}</view>
         <input class="version-name" value="{{previewTitle}}" bindinput="onPreviewTitle" maxlength="40" disabled="{{saving}}" placeholder="章节标题" />
         <textarea class="preview-editor" value="{{previewText}}" bindinput="onPreviewText" maxlength="20000" auto-height disabled="{{saving}}" />
       </block>

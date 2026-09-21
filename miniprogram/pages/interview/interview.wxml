@@ -219,6 +219,7 @@
         <view class="draft-summary" wx:if="{{draftSummary}}">
           {{draftSummary}}
         </view>
+        <view class="import-ai-label" wx:if="{{draftAiLabel}}">{{draftAiLabel}}</view>
 
         <view class="draft-tags" wx:if="{{draftEmotions.length || draftPeople.length || draftPlaces.length}}">
           <text class="draft-tag draft-tag-emotion" wx:for="{{draftEmotions}}" wx:key="*this" wx:for-item="tag">情绪 {{tag}}</text>
