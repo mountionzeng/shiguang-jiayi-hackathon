@@ -1,5 +1,6 @@
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
+const { defaultFetch } = require("./httpFetch.js");
 const MEMORY_TYPES = ["note", "memoir"];
 const {
   aiError,
@@ -150,7 +151,7 @@ async function main(event, dependencies = {}) {
   const timeoutId = setTimeout(() => controller.abort(), 28_000);
   let response;
   try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
+    response = await defaultFetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
