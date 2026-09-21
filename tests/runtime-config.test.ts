@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CLOUD_AI_RELEASE_READY, cloudEnvForAppId } from "../miniprogram/config/runtime";
+import { CLOUD_AI_RELEASE_READY, CLOUD_IMAGE_AI_RELEASE_READY, cloudEnvForAppId } from "../miniprogram/config/runtime";
 
 test("云环境只按已登记的 AppID 解析", () => {
   assert.equal(cloudEnvForAppId("wx6be512f0fe129b62"), "cloud1-d0g8c8yg0513a6068");
@@ -9,13 +9,14 @@ test("云环境只按已登记的 AppID 解析", () => {
   assert.equal(cloudEnvForAppId(""), undefined);
 });
 
-test("企业预览版的 AI 发布闸门默认关闭", () => {
+test("企业预览版只开放已验收的图片 AI", () => {
   assert.equal(CLOUD_AI_RELEASE_READY, false);
+  assert.equal(CLOUD_IMAGE_AI_RELEASE_READY, true);
 });
 
 test("小程序启动时未知 AppID 不初始化云环境，已登记 AppID 才初始化", async () => {
   type AppDefinition = {
-    globalData: { cloudReady: boolean; aiReady: boolean };
+    globalData: { cloudReady: boolean; aiReady: boolean; imageAiReady: boolean };
     onLaunch(): void;
   };
   let definition: AppDefinition | undefined;
@@ -35,17 +36,18 @@ test("小程序启动时未知 AppID 不初始化云环境，已登记 AppID 才
     await import("../miniprogram/app");
     assert.ok(definition);
 
-    const pendingApp = { globalData: { cloudReady: false, aiReady: false } };
+    const pendingApp = { globalData: { cloudReady: false, aiReady: false, imageAiReady: false } };
     definition.onLaunch.call(pendingApp);
     assert.deepEqual(cloudInitCalls, []);
     assert.equal(pendingApp.globalData.cloudReady, false);
 
     appId = "wx86ae3e9d507ce52d";
-    const configuredApp = { globalData: { cloudReady: false, aiReady: false } };
+    const configuredApp = { globalData: { cloudReady: false, aiReady: false, imageAiReady: false } };
     definition.onLaunch.call(configuredApp);
     assert.deepEqual(cloudInitCalls, [{ env: "cloud1-d5ghzk30ve609f544", traceUser: false }]);
     assert.equal(configuredApp.globalData.cloudReady, true);
     assert.equal(configuredApp.globalData.aiReady, false);
+    assert.equal(configuredApp.globalData.imageAiReady, true);
   } finally {
     (globalThis as typeof globalThis & { App?: unknown }).App = priorApp;
     (globalThis as typeof globalThis & { wx?: unknown }).wx = priorWx;

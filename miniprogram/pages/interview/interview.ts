@@ -39,6 +39,7 @@ import { classifyImportFiles, ImportFileLike, readImportTextFile } from "../../s
 import { CAPTION_EDITED_LABEL, CAPTION_LABEL, storyImageApi } from "../../services/storyImageService";
 import { resumePhotoUploads } from "../../services/photoCloud";
 import { activeStory, linkStoryMemories } from "../../services/storyBooks";
+import { CLOUD_AI_RELEASE_READY } from "../../config/runtime";
 
 interface MessageView {
   id: string;
@@ -201,6 +202,7 @@ Page({
     importAiOriginal: "",
     importAiLabel: "",
     importAiLoading: false,
+    importCaptionAiReady: CLOUD_AI_RELEASE_READY,
   },
 
   messageSeq: 0,

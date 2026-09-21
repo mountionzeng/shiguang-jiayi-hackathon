@@ -78,8 +78,8 @@ function installWx(overrides: Record<string, unknown> = {}, state?: FamilyRoomSt
   return {
     navigations,
     previews,
-    setApp(cloudReady: boolean, aiReady = cloudReady) {
-      Object.defineProperty(globalThis, "getApp", { configurable: true, writable: true, value: () => ({ globalData: { cloudReady, aiReady } }) });
+    setApp(cloudReady: boolean, imageAiReady = cloudReady, aiReady = cloudReady) {
+      Object.defineProperty(globalThis, "getApp", { configurable: true, writable: true, value: () => ({ globalData: { cloudReady, aiReady, imageAiReady } }) });
     },
     restore() {
       if (previousWx) Object.defineProperty(globalThis, "wx", previousWx);
@@ -183,6 +183,48 @@ test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节�
     referenceImageId: "family_o-owner_img_req-aaaaaaaa",
     action: "submit", familyId: "family_o-owner",
   });
+});
+
+test("图片专用发布闸门开放时可以真实走提交路径，同时文字 AI 仍保持关闭", async context => {
+  clearAiConsent();
+  clearPhotoAiConsent();
+  const calls: Array<{ name: string; data?: Record<string, unknown> }> = [];
+  const env = installWx({
+    cloud: {
+      callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+        calls.push({ name, data });
+        if (name === "getOpenId") return { result: { openid: "o-owner" } };
+        assert.equal(name, "storyImages");
+        assert.equal(data?.action, "submit");
+        return { result: { job: {
+          jobId: "family_o-owner_req-gate",
+          status: "queued",
+          message: "正在画",
+          chapterId: "chapter-a",
+          purpose: "illustration",
+          imageId: "",
+          createdAtMs: 1,
+        } } };
+      },
+    },
+  });
+  env.setApp(true, true, false);
+  context.after(() => { env.restore(); clearAiConsent(); clearPhotoAiConsent(); });
+
+  const job = await storyImageApi.submitChapterImage({
+    memberId: "owner",
+    chapterId: "chapter-a",
+    purpose: "illustration",
+    requestId: "req-image-gate-0001",
+  });
+  assert.equal(job.status, "queued");
+  assert.ok(calls.some(({ name, data }) => name === "storyImages" && data?.action === "submit"));
+
+  await assert.rejects(
+    storyImageApi.captionPhotos({ photoIds: ["photo-a"], requestId: "req-caption-gate-01" }),
+    (error: unknown) => error instanceof StoryImageServiceError && error.code === "TEXT_AI_NOT_READY",
+  );
+  assert.equal(calls.some(({ data }) => data?.action === "caption"), false, "文字 AI 闸门关闭时不能调用云函数");
 });
 
 test("旧版云函数静默忽略参考图时，新客户端明确报错而不假装已经参考", async context => {
@@ -358,6 +400,50 @@ test("看图写一句话单独征得照片授权，同一次打开不重复询�
   ]);
 });
 
+test("文字 AI 已开放但图片 AI 未发布时仍可调用看图写文字", async context => {
+  clearPhotoAiConsent();
+  const calls: Array<{ name: string; data: Record<string, unknown> }> = [];
+  const env = installWx({
+    cloud: {
+      callFunction: async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
+        calls.push({ name, data });
+        if (name === "getOpenId") return { result: { openid: "o-owner" } };
+        assert.equal(name, "storyImages");
+        assert.equal(data.action, "caption");
+        return { result: { status: "ok", caption: "院子里晒着被子", message: "", aiGenerated: true } };
+      },
+    },
+  });
+  env.setApp(true, false, true);
+  context.after(() => { env.restore(); clearPhotoAiConsent(); });
+
+  const result = await storyImageApi.captionPhotos({ photoIds: ["photo-a"], requestId: "req-caption-text1" });
+
+  assert.equal(result.caption, "院子里晒着被子");
+  assert.ok(calls.some(({ name, data }) => name === "storyImages" && data.action === "caption"));
+});
+
+test("图片 AI 开放但文字 AI 关闭时，看图写文字不会询问授权或调用云函数", async context => {
+  clearPhotoAiConsent();
+  let modalCount = 0;
+  const calls: unknown[] = [];
+  const env = installWx({
+    showModal: () => { modalCount += 1; },
+    cloud: { callFunction: async (options: unknown) => { calls.push(options); return { result: {} }; } },
+  });
+  env.setApp(true, true, false);
+  context.after(() => { env.restore(); clearPhotoAiConsent(); });
+
+  await assert.rejects(
+    storyImageApi.captionPhotos({ photoIds: ["photo-a"] }),
+    (error: unknown) => error instanceof StoryImageServiceError
+      && error.code === "TEXT_AI_NOT_READY"
+      && /自己写一句/.test(error.message),
+  );
+  assert.equal(modalCount, 0);
+  assert.deepEqual(calls, []);
+});
+
 test("云函数的明确错误、没部署和超时分别给出能看懂的提示", async context => {
   const env = installWx();
   env.setApp(true);
@@ -384,13 +470,28 @@ test("云开发没连上时直接说明，不去调用云函数", async context 
   assert.equal(cloudCalls, 0);
 });
 
-test("云数据库已连接但 AI 尚未发布时不调用配图云函数", async context => {
+test("云数据库已连接但图片 AI 尚未发布时不调用配图云函数", async context => {
   let cloudCalls = 0;
   const env = installWx({ cloud: { callFunction: async () => { cloudCalls += 1; throw new Error("should not be called"); } } });
   env.setApp(true, false);
   context.after(env.restore);
   await assert.rejects(storyImageApi.listStoryImages("owner"), (error: unknown) => error instanceof StoryImageServiceError && error.code === "CLOUD_NOT_READY");
   assert.equal(cloudCalls, 0);
+});
+
+test("文字音频 AI 关闭但图片 AI 已发布时仍可调用配图云函数", async context => {
+  const calls: Array<{ name: string; data?: Record<string, unknown> }> = [];
+  const env = installWx({ cloud: { callFunction: async (options: { name: string; data?: Record<string, unknown> }) => {
+    calls.push(options);
+    if (options.name === "getOpenId") return { result: { openid: "o-owner" } };
+    return { result: { images: [], pending: [], usage: { count: 0, bytes: 0 }, limits: { daily: 10, book: 30 } } };
+  } } });
+  env.setApp(true, true, false);
+  context.after(env.restore);
+
+  const result = await storyImageApi.listStoryImages("owner");
+  assert.deepEqual(result.images, []);
+  assert.equal(calls.some(item => item.name === "storyImages" && item.data?.action === "list"), true);
 });
 
 // ---------- 页面 ----------

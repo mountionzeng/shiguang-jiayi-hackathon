@@ -14,5 +14,9 @@ export const CLOUD_AI_ENABLED = true;
 // functions, credentials, entitlements, quotas, billing, and safety routes
 // have all been verified. This is a release gate, not an account identifier.
 export const CLOUD_AI_RELEASE_READY = false;
+// Image generation has its own release gate so it can be enabled after its
+// provider, billing, moderation, and metadata path have been verified without
+// also exposing text or audio AI.
+export const CLOUD_IMAGE_AI_RELEASE_READY = true;
 export const BACKEND_API_ENABLED = false;
 export const BACKEND_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
