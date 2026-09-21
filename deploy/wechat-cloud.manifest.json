@@ -67,12 +67,13 @@
     "storyImages": {
       "deploymentClass": "configured",
       "defaultDeploy": false,
-      "activationRequirements": ["Configure image, text, and vision provider credentials", "Confirm product entitlement, IAM access, quota, and billing mode", "Run one controlled request with a stable request ID", "Set the shared PHOTO_ACCESS_INTERNAL_TOKEN", "Install the configured timer trigger and message route"],
+      "activationRequirements": ["Configure image, text, and vision provider credentials", "Set AIGC_CONTENT_PRODUCER to the mini-program operator name or traceable platform code", "Verify a live provider result is PNG or JPEG; WebP remains fail-closed and retryable until a patched decoder is available", "Confirm product entitlement, IAM access, quota, and billing mode", "Run one controlled request with a stable request ID", "Set the shared PHOTO_ACCESS_INTERNAL_TOKEN", "Install the configured timer trigger and message route"],
       "timeoutSeconds": 60,
       "environmentVariables": [
         "AI_API_KEY",
         "AI_BASE_URL",
         "AI_MODEL",
+        "AIGC_CONTENT_PRODUCER",
         "PHOTO_ACCESS_INTERNAL_TOKEN",
         "STORY_IMAGES_DIAGNOSE_TOKEN",
         "TOKENHUB_API_KEY",

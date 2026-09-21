@@ -35,6 +35,20 @@ const CHAPTER = {
   content: [{ text: "那年冬天，" }, { photoId: "photo-abc" }, { text: "奶奶在院子里晒被子。" }],
 };
 
+function aigcMetadataFake(calls) {
+  return {
+    configured: true,
+    produceIdFor(sourceId) { return `aigc-${sourceId.length}`; },
+    write(buffer, contentType, produceId) {
+      calls.aigc.push({ buffer: Buffer.from(buffer), contentType, produceId });
+      return { buffer: Buffer.concat([buffer, Buffer.from("-with-aigc")]), contentType, produceId };
+    },
+    writeForSource(buffer, contentType, sourceId) {
+      return this.write(buffer, contentType, this.produceIdFor(sourceId));
+    },
+  };
+}
+
 function memoryRepo() {
   const jobs = new Map();
   const images = new Map();
@@ -154,7 +168,7 @@ function harness({ provider = {}, deps = {} } = {}) {
   const repo = memoryRepo();
   repo.setDrafts([revisionRecord({ id: "revision-2", savedAt: "2026-09-12T10:00:00.000Z", chapters: [CHAPTER] })]);
   let clock = T0;
-  const calls = { scene: [], reference: [], tempUrls: [], generate: [], download: [], upload: [], remove: [], moderation: [] };
+  const calls = { scene: [], reference: [], tempUrls: [], generate: [], download: [], aigc: [], upload: [], uploadBuffers: [], remove: [], moderation: [] };
   const handlers = createStoryImageHandlers({
     repo,
     provider: {
@@ -179,8 +193,13 @@ function harness({ provider = {}, deps = {} } = {}) {
         return { style: "轻柔水彩", palette: ["暖白", "浅蓝"], figures: ["短发女孩，浅蓝外套"], objects: ["红围巾"] };
       },
     },
+    aigcMetadata: aigcMetadataFake(calls),
     storage: {
-      async upload(cloudPath) { calls.upload.push(cloudPath); return `cloud://env/${cloudPath}`; },
+      async upload(cloudPath, buffer) {
+        calls.upload.push(cloudPath);
+        calls.uploadBuffers.push(Buffer.from(buffer));
+        return `cloud://env/${cloudPath}`;
+      },
       async tempUrls(fileIDs, maxAge) {
         calls.tempUrls.push({ fileIDs, maxAge });
         return Object.fromEntries(fileIDs.map(id => [id, `https://tmp.example/${encodeURIComponent(id)}`]));
@@ -247,7 +266,7 @@ test("两种配图尺寸都在 TokenHub 允许的范围内", () => {
   }
 });
 
-test("结果图链接失效时标记为过期，其他下载错误可以稍后重试", async () => {
+test("结果图链接失效时标记为过期，并按文件魔数识别格式而不信响应头", async () => {
   await assert.rejects(
     tokenhub.downloadResult("https://x/1.png", { fetchImpl: async () => ({ ok: false, status: 403 }) }),
     error => error.expired === true,
@@ -259,12 +278,31 @@ test("结果图链接失效时标记为过期，其他下载错误可以稍后�
   const image = await tokenhub.downloadResult("https://x/1.png", {
     fetchImpl: async () => ({
       ok: true, status: 200,
-      headers: { get: () => "image/jpeg; charset=binary" },
-      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      headers: { get: () => "image/png" },
+      arrayBuffer: async () => new Uint8Array([0xff, 0xd8, 0xff, 0xd9]).buffer,
     }),
   });
   assert.equal(image.contentType, "image/jpeg");
-  assert.equal(image.buffer.length, 3);
+  assert.equal(image.buffer.length, 4);
+  let downloadOptions;
+  const webp = await tokenhub.downloadResult("https://x/2", {
+    fetchImpl: async (_url, options) => {
+      downloadOptions = options;
+      return ({
+      ok: true, status: 200,
+      headers: { get: () => "application/octet-stream" },
+      arrayBuffer: async () => Buffer.from("RIFF\u0004\u0000\u0000\u0000WEBP", "binary"),
+      });
+    },
+  });
+  assert.equal(webp.contentType, "image/webp");
+  assert.equal(downloadOptions.headers.Accept, "image/png,image/jpeg");
+  await assert.rejects(
+    tokenhub.downloadResult("https://x/3", {
+      fetchImpl: async () => ({ ok: true, status: 200, headers: { get: () => "image/png" }, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }),
+    }),
+    /RESULT_IMAGE_TYPE_UNSUPPORTED/,
+  );
 });
 
 test("出图失败的结局：审核拦截、明确拒绝不占名额；超时、服务端错误算不确定", () => {
@@ -672,6 +710,13 @@ test("没配置出图密钥时不留记录、不占名额", async () => {
   assert.equal(repo.jobs.size, 0);
 });
 
+test("没配置文件级 AIGC 隐式标识时不出图、不留记录", async () => {
+  const { handlers, repo, calls } = harness({ deps: { aigcMetadata: { configured: false } } });
+  await assert.rejects(handlers.submit(ctx, submitEvent()), error => error.code === "AIGC_METADATA_NOT_CONFIGURED");
+  assert.equal(repo.jobs.size, 0);
+  assert.equal(calls.generate.length, 0);
+});
+
 test("别人的记忆之家不能提交", async () => {
   const { handlers, repo } = harness();
   await assert.rejects(handlers.submit({ openid: "o-guest" }, submitEvent()), error => error.code === "NOT_FAMILY_OWNER");
@@ -709,7 +754,11 @@ test("页面查进度时才出图：画好先记下链接，再转存云存储�
   assert.equal(calls.generate.length, 1);
   assert.deepEqual(calls.generate[0], { prompt: queuedPrompt, width: 1024, height: 768 });
   assert.deepEqual(calls.download, ["https://result.example/1.png"]);
+  assert.equal(calls.aigc.length, 1);
+  assert.equal(calls.aigc[0].contentType, "image/png");
+  assert.match(calls.aigc[0].produceId, /^aigc-/);
   assert.deepEqual(calls.upload, ["story-images/family_o-owner/owner/req-20260913-abcd1234.png"]);
+  assert.equal(calls.uploadBuffers[0].toString(), "png-bytes-with-aigc");
   assert.equal(result.job.status, "stored");
   assert.equal(result.image.chapterId, "chapter-1");
   assert.equal(result.image.aiGenerated, true);
@@ -721,8 +770,78 @@ test("页面查进度时才出图：画好先记下链接，再转存云存储�
   assert.equal(stored.prompt, "");
   assert.equal(stored.revisedPrompt, "");
   const image = repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`);
+  assert.equal(image.bytes, calls.uploadBuffers[0].length);
+  assert.equal(image.aigcProduceId, calls.aigc[0].produceId);
   assert.equal(image.moderation, "pending");
   assert.deepEqual(calls.moderation, [{ fileID: image.fileID, openid: OWNER_OPENID }]);
+});
+
+test("确定性的隐式标识写入失败进入终态，保留结果链接且不再重试", async () => {
+  let metadataAttempts = 0;
+  const { handlers, calls, repo } = harness({
+    deps: {
+      aigcMetadata: {
+        configured: true,
+        writeForSource() { metadataAttempts++; throw new Error("AIGC_IMAGE_DECODE_FAILED"); },
+      },
+    },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(result.job.status, "failed");
+  assert.equal(result.job.message, core.MESSAGES.failed);
+  assert.equal(repo.jobs.get(job.jobId).errorCode, "AIGC_IMAGE_DECODE_FAILED");
+  assert.equal(repo.jobs.get(job.jobId).resultUrl, "https://result.example/1.png");
+  assert.equal(calls.upload.length, 0);
+  assert.equal(calls.moderation.length, 0);
+  assert.equal(repo.images.size, 0);
+  assert.equal(calls.generate.length, 1);
+  assert.equal(calls.download.length, 1);
+  assert.equal(metadataAttempts, 1);
+
+  await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  await handlers.sweep();
+  assert.equal(calls.generate.length, 1);
+  assert.equal(calls.download.length, 1);
+  assert.equal(metadataAttempts, 1);
+  assert.equal(calls.upload.length, 0);
+  assert.equal(calls.moderation.length, 0);
+});
+
+test("隐式标识配置或内部故障会保留已付费结果，恢复后重试转存", async () => {
+  let metadataAttempts = 0;
+  const calls = [];
+  const writer = aigcMetadataFake({ aigc: calls });
+  const { handlers, repo, calls: effects } = harness({
+    deps: {
+      aigcMetadata: {
+        configured: true,
+        writeForSource(...args) {
+          metadataAttempts += 1;
+          if (metadataAttempts === 1) throw new Error("AIGC_METADATA_NOT_CONFIGURED");
+          if (metadataAttempts === 2) throw new Error("unexpected decoder detail");
+          return writer.writeForSource(...args);
+        },
+      },
+    },
+  });
+  const { job } = await handlers.submit(ctx, submitEvent());
+  const first = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(first.job.status, "generated");
+  assert.equal(repo.jobs.get(job.jobId).resultUrl, "https://result.example/1.png");
+  assert.equal(effects.generate.length, 1);
+  assert.equal(effects.upload.length, 0);
+
+  const second = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(second.job.status, "generated");
+  assert.equal(effects.generate.length, 1);
+  assert.equal(effects.upload.length, 0);
+
+  const third = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(third.job.status, "stored");
+  assert.equal(effects.generate.length, 1);
+  assert.equal(effects.download.length, 3);
+  assert.equal(effects.upload.length, 1);
 });
 
 test("两个查询同时到达，只出一张图、只转存一次", async () => {
@@ -948,14 +1067,17 @@ test("内容安全检测判为违规的生成图会被隐藏并删除文件，�
   assert.deepEqual(forwarded, [{ traceId: "photo-trace", suggest: "pass", label: 100 }]);
 });
 
-test("云函数配置：每分钟补做一次，申请内容安全接口；不再依赖腾讯云签名密钥", () => {
+test("云函数配置：每分钟补做一次，申请内容安全接口，并从环境读取 AIGC 服务提供者编码", () => {
   const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/config.json"), "utf8"));
   assert.deepEqual(config.permissions.openapi, ["security.mediaCheckAsync"]);
   assert.equal(config.triggers[0].config, "0 * * * * * *");
   const index = fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/index.js"), "utf8");
   assert.match(index, /process\.env\.TOKENHUB_API_KEY/);
+  assert.match(index, /createAigcMetadataWriter\(\{ contentProducer: process\.env\.AIGC_CONTENT_PRODUCER \}\)/);
   assert.doesNotMatch(index, /HUNYUAN_SECRET/);
   assert.equal(fs.existsSync(path.join(__dirname, "../cloudfunctions/storyImages/hunyuan.js")), false);
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../deploy/wechat-cloud.manifest.json"), "utf8"));
+  assert.ok(manifest.cloudFunctions.storyImages.environmentVariables.includes("AIGC_CONTENT_PRODUCER"));
 });
 
 test("清空记忆之家时先删云存储里的配图文件，再删配图记录", () => {
@@ -1082,7 +1204,7 @@ const DIAGNOSE_TOKEN = "diag-token-0123456789abcdef";
 function diagnosticsHarness({ provider = {}, deps = {} } = {}) {
   const repo = memoryRepo();
   let clock = T0;
-  const calls = { scene: [], generate: [], upload: [], moderation: [], quality: [], drafts: 0 };
+  const calls = { scene: [], generate: [], aigc: [], upload: [], uploadBuffers: [], moderation: [], quality: [], drafts: 0 };
   repo.listDraftRecords = async () => { calls.drafts++; return []; };
   const diagnostics = createDiagnostics({
     repo,
@@ -1105,8 +1227,13 @@ function diagnosticsHarness({ provider = {}, deps = {} } = {}) {
       configured: true,
       async check(url) { calls.quality.push(url); return { quality: "pass", qualityIssues: [], qualityNote: "", qualityError: "" }; },
     },
+    aigcMetadata: aigcMetadataFake(calls),
     storage: {
-      async upload(cloudPath) { calls.upload.push(cloudPath); return `cloud://env/${cloudPath}`; },
+      async upload(cloudPath, buffer) {
+        calls.upload.push(cloudPath);
+        calls.uploadBuffers.push(Buffer.from(buffer));
+        return `cloud://env/${cloudPath}`;
+      },
       async tempUrls(fileIDs) { return Object.fromEntries(fileIDs.map(id => [id, "https://tmp.example/d.png"])); },
       async remove() {},
     },
@@ -1136,7 +1263,7 @@ test("只检查配置：回报各项是否已配置和运行环境，不花钱�
   const result = await diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN });
   assert.deepEqual(result, {
     ok: true, mode: "config", runtime: "v16.13.0",
-    configured: { image: true, sceneModel: true, quality: true }, hasOpenId: true,
+    configured: { image: true, sceneModel: true, quality: true, aigcMetadata: true }, hasOpenId: true,
   });
   assert.equal(calls.generate.length + calls.scene.length, 0);
   assert.doesNotMatch(JSON.stringify(result), new RegExp(DIAGNOSE_TOKEN));
@@ -1158,17 +1285,23 @@ test("试画一张：出图、下载、存云存储、送审、质检每步都�
   assert.equal(result.ok, true);
   assert.equal(result.jobStatus, "stored");
   assert.deepEqual(result.steps.map(item => [item.name, item.ok]), [
-    ["generate", true], ["download", true], ["upload", true], ["moderation", true], ["quality", true],
+    ["generate", true], ["download", true], ["aigcMetadata", true], ["upload", true], ["moderation", true], ["quality", true],
   ]);
   assert.ok(result.steps.every(item => typeof item.ms === "number"));
   assert.deepEqual([calls.generate[0].width, calls.generate[0].height], [1024, 768]);
   assert.match(calls.generate[0].prompt, /石桥/);
   assert.match(calls.upload[0], /^story-images\/_diagnostics\/req-diag-/);
+  assert.equal(calls.aigc.length, 1);
+  assert.equal(calls.uploadBuffers[0].toString(), "png-with-aigc");
   assert.deepEqual(calls.moderation, [{ fileID: result.fileID, openid: OWNER_OPENID }]);
   assert.equal(result.viewUrl, "https://tmp.example/d.png");
   const image = repo.images.get(result.imageId);
   assert.equal(image.familyId, "_diagnostics");
   assert.equal(image.purpose, "diagnostic");
+  assert.equal(image.bytes, calls.uploadBuffers[0].length);
+  assert.equal(image.aigcProduceId, calls.aigc[0].produceId);
+  const job = repo.jobs.get(image.jobId);
+  assert.equal(job.aigcProduceId, image.aigcProduceId);
   assert.equal(image.quality, "pass");
   assert.equal(image.moderationTraceId, "trace-d");
   assert.equal(calls.drafts, 0);
@@ -1204,6 +1337,38 @@ test("没配出图密钥时说明缺哪项，不留记录", async () => {
   assert.equal(result.ok, false);
   assert.equal(result.steps[0].error.code, "IMAGE_NOT_CONFIGURED");
   assert.equal(repo.jobs.size, 0);
+});
+
+test("诊断没配 AIGC 隐式标识时不调用付费生图", async () => {
+  const { diagnostics, calls, repo } = diagnosticsHarness({ deps: { aigcMetadata: { configured: false } } });
+  const result = await diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "image" });
+  assert.equal(result.ok, false);
+  assert.equal(result.steps[0].error.code, "AIGC_METADATA_NOT_CONFIGURED");
+  assert.equal(calls.generate.length, 0);
+  assert.equal(repo.jobs.size, 0);
+});
+
+test("诊断写入 AIGC 隐式标识失败时将任务记为失败并保留结果链接", async () => {
+  const { diagnostics, calls, repo } = diagnosticsHarness({
+    deps: {
+      aigcMetadata: {
+        configured: true,
+        writeForSource() { const error = new Error("secret detail"); error.code = "AIGC_PRODUCE_ID_REQUIRED"; throw error; },
+      },
+    },
+  });
+  const result = await diagnostics.run(ctx, { action: "diagnose", diagnoseToken: DIAGNOSE_TOKEN, sample: "image" });
+  assert.equal(result.ok, false);
+  assert.equal(result.jobStatus, "failed");
+  assert.deepEqual(result.steps.map(item => item.name), ["generate", "download", "aigcMetadata"]);
+  const job = [...repo.jobs.values()][0];
+  assert.equal(job.status, "failed");
+  assert.equal(job.errorCode, "AIGC_PRODUCE_ID_REQUIRED");
+  assert.equal(job.resultUrl, "https://result.example/d.png");
+  assert.equal(calls.upload.length, 0);
+  assert.equal(calls.moderation.length, 0);
+  assert.equal(repo.images.size, 0);
+  assert.doesNotMatch(JSON.stringify(result), /secret detail/);
 });
 
 test("试画每天最多 3 张", async () => {

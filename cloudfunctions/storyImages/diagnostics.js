@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const core = require("./core");
+const { classifyAigcMetadataError } = require("./aigcMetadata");
 
 const DIAGNOSTIC_FAMILY = "_diagnostics";
 const DIAGNOSTIC_DAILY_LIMIT = 3;
@@ -48,6 +49,7 @@ function createDiagnostics({
   storage,
   moderation,
   downloadImage,
+  aigcMetadata,
   expectedToken,
   runtime = process.version,
   now = () => Date.now(),
@@ -74,7 +76,12 @@ function createDiagnostics({
     const base = {
       mode,
       runtime,
-      configured: { image: Boolean(provider.configured), sceneModel: Boolean(sceneConfigured), quality: qualityEnabled() },
+      configured: {
+        image: Boolean(provider.configured),
+        sceneModel: Boolean(sceneConfigured),
+        quality: qualityEnabled(),
+        aigcMetadata: Boolean(aigcMetadata && aigcMetadata.configured),
+      },
       hasOpenId: Boolean(ctx.openid),
     };
     if (mode === "config") return { ok: true, ...base };
@@ -98,6 +105,9 @@ function createDiagnostics({
   async function runImage(ctx, base) {
     if (!provider.configured) {
       return { ok: false, ...base, steps: [{ name: "generate", ok: false, ms: 0, error: { code: "IMAGE_NOT_CONFIGURED", message: "TOKENHUB_API_KEY 没有配置" } }] };
+    }
+    if (!aigcMetadata || !aigcMetadata.configured) {
+      return { ok: false, ...base, steps: [{ name: "aigcMetadata", ok: false, ms: 0, error: { code: "AIGC_METADATA_NOT_CONFIGURED", message: "AIGC_CONTENT_PRODUCER 没有配置" } }] };
     }
     const runStartedMs = now();
     const dayKey = core.chinaDayKey(runStartedMs);
@@ -156,10 +166,25 @@ function createDiagnostics({
     });
     if (!downloaded.ok) return done(false, "generated");
 
+    let markedImage;
+    let aigcProduceId;
+    const marked = await step(steps, "aigcMetadata", async () => {
+      markedImage = aigcMetadata.writeForSource(image.buffer, image.contentType, jobId);
+      aigcProduceId = markedImage.produceId;
+      return { bytes: markedImage.buffer.length, contentType: markedImage.contentType, produceId: aigcProduceId };
+    });
+    if (!marked.ok) {
+      const outcome = classifyAigcMetadataError(marked.error);
+      steps.at(-1).error = { code: outcome.errorCode, message: outcome.errorCode };
+      const status = outcome.terminal ? "failed" : "generated";
+      await repo.updateJob(jobId, { status, ...(outcome.terminal ? { errorCode: outcome.errorCode } : {}), updatedAtMs: now() });
+      return done(false, status);
+    }
+
     let fileID;
-    const cloudPath = `story-images/${DIAGNOSTIC_FAMILY}/${requestId}.${core.extensionFor(image.contentType)}`;
+    const cloudPath = `story-images/${DIAGNOSTIC_FAMILY}/${requestId}.${core.extensionFor(markedImage.contentType)}`;
     const uploaded = await step(steps, "upload", async () => {
-      fileID = await storage.upload(cloudPath, image.buffer);
+      fileID = await storage.upload(cloudPath, markedImage.buffer);
       return { fileID };
     });
     if (!uploaded.ok) return done(false, "generated");
@@ -175,8 +200,9 @@ function createDiagnostics({
       fileID,
       width,
       height,
-      bytes: image.buffer.length,
-      contentType: image.contentType,
+      bytes: markedImage.buffer.length,
+      contentType: markedImage.contentType,
+      aigcProduceId,
       moderation: "unchecked",
       quality: qualityEnabled() ? "pending" : "unchecked",
       qualityIssues: [],
@@ -184,7 +210,7 @@ function createDiagnostics({
       jobId,
       createdAtMs: now(),
     });
-    await repo.updateJob(jobId, { status: "stored", imageId, updatedAtMs: now() });
+    await repo.updateJob(jobId, { status: "stored", imageId, aigcProduceId, updatedAtMs: now() });
 
     if (ctx.openid) {
       await step(steps, "moderation", async () => {

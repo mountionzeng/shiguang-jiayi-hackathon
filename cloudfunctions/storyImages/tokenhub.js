@@ -7,6 +7,14 @@ const IMAGE_MODEL = "hy-image-v3";
 const AI_FOOTNOTE = "图片由AI生成";
 /** TokenHub allows each side in [512, 2048] and at most 1024×1024 pixels in total. */
 const MAX_IMAGE_AREA = 1024 * 1024;
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+function imageContentType(buffer) {
+  if (buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) return "image/png";
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") return "image/webp";
+  throw new Error("RESULT_IMAGE_TYPE_UNSUPPORTED");
+}
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -73,7 +81,7 @@ async function downloadResult(url, { fetchImpl = defaultFetch, timeoutMs = 15_00
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response;
   try {
-    response = await fetchImpl(url, { signal: controller.signal });
+    response = await fetchImpl(url, { signal: controller.signal, headers: { Accept: "image/png,image/jpeg" } });
   } finally {
     clearTimeout(timer);
   }
@@ -85,8 +93,7 @@ async function downloadResult(url, { fetchImpl = defaultFetch, timeoutMs = 15_00
   if (!response.ok) throw new Error(`RESULT_HTTP_${response.status}`);
   const buffer = Buffer.from(await response.arrayBuffer());
   if (!buffer.length || buffer.length > maxBytes) throw new Error("RESULT_SIZE_INVALID");
-  const contentType = String((response.headers && response.headers.get("content-type")) || "image/png").split(";")[0].trim();
-  return { buffer, contentType };
+  return { buffer, contentType: imageContentType(buffer) };
 }
 
 module.exports = {
