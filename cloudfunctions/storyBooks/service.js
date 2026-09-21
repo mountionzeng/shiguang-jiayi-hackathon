@@ -124,6 +124,7 @@ function createStoryService(repo, options = {}) {
     else if (action === 'memberUpdate') result = await handlers.memberUpdate(ctx, event);
     else if (action === 'memberDelete') result = await handlers.memberDelete(ctx, event);
     else if (action === 'memberRestore') result = await handlers.memberRestore(ctx, event);
+    else if (action === 'roomProfileUpdate') result = await handlers.roomProfileUpdate(ctx, event);
     else result = await handlers.command(ctx, event);
     // Reads and already-acknowledged operations can return without a write
     // transaction. Do not release data if identity was revoked during the read.

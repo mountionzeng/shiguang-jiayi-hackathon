@@ -70,6 +70,14 @@
   <view class="me-section-title">记忆管理</view>
   <view class="local-storage-note">档案、人物、文字和版本保存在微信云开发数据库，压缩后的照片保存在微信云开发云存储，换手机后可以恢复。还没存到云端的照片只在这台手机上。照片默认只有你能看，家人按邀请权限查看；在线 AI 需另行授权。</view>
   <view class="me-list">
+    <button class="me-row" bindtap="startEditRoom" hover-class="none">
+      <text class="me-row-icon">家</text>
+      <view class="me-row-copy">
+        <text class="me-row-title">{{roomName || "我的拾光房间"}}</text>
+        <text class="me-row-note">{{protagonistName ? "主人公 " + protagonistName : "还没有写主人公的名字"}}</text>
+      </view>
+      <text class="me-row-arrow">›</text>
+    </button>
     <button class="me-row" bindtap="openArchive" hover-class="none">
       <text class="me-row-icon">忆</text>
       <view class="me-row-copy">
@@ -139,6 +147,19 @@
       </view>
       <text class="me-row-arrow">›</text>
     </button>
+  </view>
+
+  <view class="account-edit-mask" wx:if="{{editingRoom}}">
+    <view class="account-edit-card">
+      <view class="account-edit-title serif">记忆之家叫什么？</view>
+      <input class="account-edit-input" value="{{roomNameInput}}" maxlength="12" bindinput="onRoomNameInput" />
+      <view class="account-edit-title serif">这本书写的是谁？</view>
+      <input class="account-edit-input" value="{{protagonistNameInput}}" maxlength="12" bindinput="onProtagonistNameInput" />
+      <view class="account-edit-actions">
+        <button bindtap="cancelEditRoom" disabled="{{roomSaving}}">取消</button>
+        <button class="account-edit-save" bindtap="saveRoomProfile" loading="{{roomSaving}}" disabled="{{roomSaving}}">保存</button>
+      </view>
+    </view>
   </view>
 
   <view class="account-edit-mask" wx:if="{{editingAccount}}">

@@ -17,6 +17,7 @@ import {
   deleteCloudMember,
   restoreCloudMember,
   updateCloudMember,
+  updateCloudRoomProfile,
   restoreCloudStory,
   softDeleteCloudMemory,
   restoreCloudMemory,
@@ -40,6 +41,7 @@ import {
   softDeleteMemory,
   restoreMemory,
   loadCurrentMember,
+  saveRoomState,
   saveCurrentMemberId,
   loadRoomState,
   replaceContribution,
@@ -233,6 +235,16 @@ export async function classifyMemberRemoteFirst(memberId: string, kind: MemberKi
 export async function deleteMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) return await deleteCloudMember(memberId);
   return deleteMember(memberId);
+}
+
+/** 改记忆之家的名字与主人公名字。本地模式直接写本机状态。 */
+export async function saveRoomProfileRemoteFirst(
+  profile: { roomName?: string; protagonistName?: string },
+): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await updateCloudRoomProfile(profile);
+  const next = { ...loadRoomState(), ...profile };
+  saveRoomState(next);
+  return next;
 }
 
 export async function restoreMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {

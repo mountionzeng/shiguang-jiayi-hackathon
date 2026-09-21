@@ -9,6 +9,7 @@ import {
   loadCurrentMemberRemoteFirst,
   loadRoomStateRemoteFirst,
   resetCurrentUserRoomRemoteFirst,
+  saveRoomProfileRemoteFirst,
 } from "../../services/roomRepository";
 import { clearAiConsent, requestAiConsent } from "../../services/aiConsent";
 import { formatComputeBalance, loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
@@ -35,6 +36,12 @@ Page({
     accountNameInput: "",
     accountAvatarPreview: "忆",
     accountSaving: false,
+    roomName: "",
+    protagonistName: "",
+    editingRoom: false,
+    roomNameInput: "",
+    protagonistNameInput: "",
+    roomSaving: false,
     computeBalance: "0.00 算力",
     computeRate: "¥1 = 2 算力",
     joinedRooms: [] as JoinedFamilyRoom[],
@@ -63,6 +70,8 @@ Page({
 
     this.setData({
       memberName: member.name,
+      roomName: currentState.roomName ?? "",
+      protagonistName: currentState.protagonistName ?? "",
       memberRelation: member.relation,
       memberAvatarText: member.avatarText,
       memoryCount: memoryPool(currentState.contributions).length,
@@ -118,6 +127,39 @@ Page({
       accountNameInput: event.detail.value,
       accountAvatarPreview: Array.from(event.detail.value.trim())[0] || "忆",
     });
+  },
+
+  startEditRoom() {
+    this.setData({
+      editingRoom: true,
+      roomNameInput: this.data.roomName,
+      protagonistNameInput: this.data.protagonistName,
+    });
+  },
+
+  cancelEditRoom() {
+    if (!this.data.roomSaving) this.setData({ editingRoom: false });
+  },
+
+  onRoomNameInput(event: WechatMiniprogram.Input) { this.setData({ roomNameInput: event.detail.value }); },
+  onProtagonistNameInput(event: WechatMiniprogram.Input) { this.setData({ protagonistNameInput: event.detail.value }); },
+
+  async saveRoomProfile() {
+    if (this.data.roomSaving) return;
+    this.setData({ roomSaving: true });
+    try {
+      const state = await saveRoomProfileRemoteFirst({
+        roomName: this.data.roomNameInput.trim(),
+        protagonistName: this.data.protagonistNameInput.trim(),
+      });
+      await this.refresh(state);
+      this.setData({ editingRoom: false });
+      wx.showToast({ title: "记忆之家已更新", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "修改失败，请重试", icon: "none" });
+    } finally {
+      this.setData({ roomSaving: false });
+    }
   },
 
   async saveAccountProfile() {

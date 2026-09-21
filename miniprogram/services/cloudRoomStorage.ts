@@ -429,7 +429,7 @@ function unsupportedStoryMemberAction(error: unknown): boolean {
 }
 
 async function callStoryMemberAction(
-  action: "memberAdd" | "memberUpdate" | "memberDelete" | "memberRestore",
+  action: "memberAdd" | "memberUpdate" | "memberDelete" | "memberRestore" | "roomProfileUpdate",
   data: Record<string, unknown>,
 ): Promise<boolean> {
   try {
@@ -904,6 +904,19 @@ export async function deleteCloudMember(memberId: string, now = new Date()): Pro
   // 界面上看得见却永远删不掉。服务端不支持时才退回本地改法。
   if (await callStoryMemberAction("memberDelete", { memberId })) return loadCloudRoomState();
   return changeCloudMember((state) => planDelete(state, memberId, loadCurrentMember(state).id, now));
+}
+
+/**
+ * 改记忆之家的名字与主人公名字。只走服务端：families 文档是整份重写的，
+ * 客户端直写会连带覆盖迁移元信息与书稿元数据。
+ */
+export async function updateCloudRoomProfile(
+  profile: { roomName?: string; protagonistName?: string },
+): Promise<FamilyRoomState> {
+  if (!(await callStoryMemberAction("roomProfileUpdate", { ...profile }))) {
+    throw new Error("这个版本还不支持修改记忆之家资料，请更新后重试");
+  }
+  return loadCloudRoomState();
 }
 
 export async function restoreCloudMember(memberId: string): Promise<FamilyRoomState> {

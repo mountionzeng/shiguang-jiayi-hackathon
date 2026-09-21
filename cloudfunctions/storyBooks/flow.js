@@ -207,6 +207,33 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     });
     return {ok:true,memberId:id};
   }
+  /*
+   * 记忆之家的名字与主人公名字。
+   *
+   * 这两个字段原先服务端只读不写、前端也没有编辑界面，是建房间或重置时写死的。
+   * 后果是可见的：邀请卡片上朋友看到的永远是默认的「我的拾光房间」；
+   * 主人公名为空时，审阅页会渲染成「只有　本人能确认」。
+   */
+  async function roomProfileUpdate(ctx,event) {
+    const has = key => Object.prototype.hasOwnProperty.call(event || {},key);
+    const roomName = has('roomName') ? memberText(event.roomName,'记忆之家的名字',{required:true}) : undefined;
+    const protagonistName = has('protagonistName') ? memberText(event.protagonistName,'主人公的名字',{required:true}) : undefined;
+    if(roomName===undefined && protagonistName===undefined)memberError('MEMBER_INVALID','没有要修改的内容');
+    const family=await repo.get('families',ctx.familyId);
+    if(!family)throw new Error('没有找到你的记录空间');
+    await repo.ensureCollection?.(SNAPSHOT_TABLE);
+    await repo.transaction(async tx=>{
+      const latest=await tx.get('families',ctx.familyId);
+      if(!latest)throw new Error('没有找到你的记录空间');
+      const next={...latest};
+      if(roomName!==undefined)next.roomName=roomName;
+      if(protagonistName!==undefined)next.protagonistName=protagonistName;
+      if(next.roomName===latest.roomName && next.protagonistName===latest.protagonistName)return;
+      await snapshotFamily(tx,ctx.familyId,latest,'roomProfileUpdate');
+      await tx.set('families',ctx.familyId,next);
+    });
+    return {ok:true,roomName,protagonistName};
+  }
   async function assertLegacyTransaction(tx, familyId, story) {
     if (!story) return;
     assertLegacyWritable(story);
@@ -487,6 +514,6 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     if(!Array.isArray(requested) || requested.some(id=>!story.memoryIds.includes(id)))throw new Error('不能引用其他故事的记忆');
     return {story,draft:core.current(loaded,story.id).draft,memories:loaded.contributions.filter(m=>requested.includes(m.id) && !m.deletedAt && m.scope==='personal'),fingerprint:core.fingerprint(loaded,story.id)};
   }
-  return {state,command,migrate,aiContext,memberAdd,memberUpdate,memberDelete,memberRestore};
+  return {state,command,migrate,aiContext,memberAdd,memberUpdate,memberDelete,memberRestore,roomProfileUpdate};
 }
 module.exports={createHandlers};
