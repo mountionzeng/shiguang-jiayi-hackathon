@@ -5,6 +5,8 @@ const CORE_COLLECTIONS = [
   "memories",
   "biography_drafts",
   "generated_artifacts",
+  "assets",
+  "ai_tasks",
   "image_jobs",
   "story_images",
   "user_accounts",

@@ -72,13 +72,13 @@ API key 应只放在云函数环境变量中，不能写入小程序代码或提
 
 ## 当前云开发配置
 
-- 小程序 AppID：`wx6be512f0fe129b62`
-- 云开发环境 ID：`cloud1-d0g8c8yg0513a6068`
+- 企业小程序 AppID：`wx86ae3e9d507ce52d`
+- 云开发环境 ID：待在企业小程序账号下创建，禁止继续使用旧账号环境
 - 云 AI 开关：`miniprogram/config/runtime.ts` 中的 `CLOUD_AI_ENABLED`
 - FastAPI 后端开关：`miniprogram/config/runtime.ts` 中的 `BACKEND_API_ENABLED`
 - FastAPI 本地地址：`http://127.0.0.1:8000/api/v1`
 
-当前 `CLOUD_AI_ENABLED = true`。如果云函数未部署或环境变量未配置，页面仍会自动退回本地演示整理，但真机上会多等一次云函数失败返回。
+企业账号迁移期间 `CLOUD_ENV_ID` 为空，启动时会跳过云初始化并使用本地演示数据。新环境创建、集合与权限初始化、云函数部署和环境变量配置完成后，再填写环境 ID 并逐项验证云功能。
 
 ## 已加入的前端适配层
 
@@ -88,7 +88,7 @@ API key 应只放在云函数环境变量中，不能写入小程序代码或提
 - 老人确认：`reviewStatus` → `PUT /families/{family_id}/memories/{memory_id}`
 - 传记生成任务：确认且家庭可见的记忆 → `POST /families/{family_id}/generation-jobs`
 
-当前已经默认开启微信云数据库接管真实数据，页面会显示“数据：微信云端”。如果云端初始化或权限失败，会自动退回本地兜底，并显示“数据：本地兜底”。
+企业账号迁移期间暂不启用微信云数据库，页面使用本地兜底。新环境完成权限核验和云函数部署后，再启用云数据库并验证“数据：微信云端”状态。
 
 默认仍不开启 FastAPI 请求，因为体验版手机无法访问开发者电脑上的 `127.0.0.1`。后续若要使用独立公网 API，再打开 `BACKEND_API_ENABLED`。
 
@@ -104,6 +104,11 @@ API key 应只放在云函数环境变量中，不能写入小程序代码或提
 - `generated_artifacts`
 - `assets`
 - `ai_tasks`
+- `image_jobs`
+- `story_images`
+- `user_accounts`
+- `family_invitations`
+- `family_access`
 
 当前黑客松体验版会使用固定家庭 ID `demo-family` 保存演示数据：
 

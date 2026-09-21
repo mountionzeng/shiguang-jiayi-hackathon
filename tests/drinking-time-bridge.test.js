@@ -13,6 +13,12 @@ test("跨端身份不暴露 OPENID 且签名绑定路径和故事正文", () => 
   assert.notEqual(signature, core.signature("x".repeat(32), "/desktop/pair/issue", "1", "nonce", { ...body, story: { ...story, sourceRevision: "fedcba9876543210" } }));
 });
 
+test("缺少云上下文 APPID 时使用企业小程序身份", () => {
+  const story = { sourceKey: "story:外婆", sourceRevision: "0123456789abcdef" };
+  const body = core.requestBody("issueDesktop", { story }, { OPENID: "openid-secret" });
+  assert.equal(body.subject, core.subjectFor("wx86ae3e9d507ce52d", "openid-secret"));
+});
+
 test("服务地址保留 Drinking Time 桥接前缀", () => {
   assert.equal(core.bridgeUrl("https://test.drinkingtime.top/api/shiguang", "/desktop/pair/issue").toString(), "https://test.drinkingtime.top/api/shiguang/desktop/pair/issue");
 });

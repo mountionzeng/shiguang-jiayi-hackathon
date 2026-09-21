@@ -24,7 +24,7 @@ function requestBody(action, event, context) {
     throw new Error("invalid_input");
   }
   return {
-    subject: subjectFor(String(context.APPID || "wx6be512f0fe129b62"), openid),
+    subject: subjectFor(String(context.APPID || "wx86ae3e9d507ce52d"), openid),
     story: event.story,
   };
 }

@@ -113,6 +113,8 @@ test("cloud collection bootstrap creates the text MVP collections in order", asy
     createCollection: async (name) => created.push(name),
   });
 
+  assert.ok(CORE_COLLECTIONS.includes("assets"));
+  assert.ok(CORE_COLLECTIONS.includes("ai_tasks"));
   assert.deepEqual(created, CORE_COLLECTIONS);
   assert.deepEqual(
     results,
