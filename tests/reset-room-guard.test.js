@@ -114,3 +114,9 @@ test('三件事齐全时才真正执行，证明测试本身没有空转', async
   assert.equal(result.dryRun, undefined, '齐全时不应再是预演');
   assert.ok(calls.removed.length > 0, '齐全时确实会删除文档——说明前几条测试拦下的是真刀');
 });
+
+test('openid 不合规时直接报错，不会落到任何房间上', async () => {
+  const { main, calls } = loadResetFunction({ openid: 'bad openid/../x' });
+  await assert.rejects(() => main({}), /INVALID_OPENID/);
+  assertNothingDestroyed(calls);
+});
