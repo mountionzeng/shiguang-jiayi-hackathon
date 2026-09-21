@@ -103,6 +103,11 @@ function cloudReady(): boolean {
   return Boolean(app && app.globalData && app.globalData.cloudReady && wx.cloud);
 }
 
+function imageAiReady(): boolean {
+  const app = getApp<ShiguangAppOptions>();
+  return Boolean(cloudReady() && app?.globalData?.imageAiReady);
+}
+
 function callFailure(error: unknown): StoryImageServiceError {
   const text = String((error as { errMsg?: unknown })?.errMsg ?? (error as Error)?.message ?? error);
   if (/FUNCTION_NOT_FOUND|-501000|could not be found/i.test(text)) {
@@ -114,8 +119,10 @@ function callFailure(error: unknown): StoryImageServiceError {
   return new StoryImageServiceError("CLOUD_FAILED", "配图服务暂时出错，请稍后再试");
 }
 
-async function callStoryImages<T>(action: string, data: Record<string, unknown>): Promise<T> {
-  if (!cloudReady()) throw new StoryImageServiceError("CLOUD_NOT_READY", "微信云开发还没连上，请重新打开小程序");
+async function callStoryImages<T>(action: string, data: Record<string, unknown>, requireImageAi = true): Promise<T> {
+  if (!cloudReady() || (requireImageAi && !imageAiReady())) {
+    throw new StoryImageServiceError("CLOUD_NOT_READY", "微信云开发还没连上，请重新打开小程序");
+  }
   const familyId = await currentFamilyId();
   let raw: unknown;
   try {
@@ -196,13 +203,17 @@ async function listStoryImages(bookId: string): Promise<StoryImageList> {
 /** 看图写一句话：先单独征得同意，再把选中的照片交给云函数，草稿回来标「文字 AI 生成」。 */
 async function captionPhotos(input: { photoIds: string[]; requestId?: string }): Promise<PhotoCaptionResult> {
   if (!input.photoIds.length) throw new StoryImageServiceError("INVALID_PHOTOS", "先选一张照片");
+  const app = getApp<ShiguangAppOptions>();
+  if (!app?.globalData?.aiReady) {
+    throw new StoryImageServiceError("TEXT_AI_NOT_READY", "AI 看图写文字尚未开放，你可以自己写一句");
+  }
   if (!await requestPhotoAiConsent(input.photoIds.length)) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "这次没有允许把照片发给 AI；你可以自己写一句");
   }
   const result = await callStoryImages<Partial<PhotoCaptionResult>>("caption", {
     photoIds: input.photoIds,
     requestId: input.requestId ?? newImageRequestId(),
-  });
+  }, false);
   if (typeof result.status !== "string") throw new StoryImageServiceError("MALFORMED", "看图服务返回的内容不完整");
   return {
     status: result.status,

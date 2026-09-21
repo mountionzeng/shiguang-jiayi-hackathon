@@ -29,7 +29,7 @@ function silenceExpectedWarnings(): () => void {
 test("cloud interview prompt uses chatInterview when available", async (context) => {
   let requestData: unknown;
   const restoreGetApp = installGlobal("getApp", () => ({
-    globalData: { cloudReady: true },
+    globalData: { cloudReady: true, aiReady: true },
   }));
   const restoreWx = installGlobal("wx", {
     cloud: {
@@ -81,7 +81,7 @@ test("cloud interview prompt uses chatInterview when available", async (context)
 test("cloud interview prompt falls back to local rules", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({
-    globalData: { cloudReady: true },
+    globalData: { cloudReady: true, aiReady: true },
   }));
   const restoreWx = installGlobal("wx", {
     cloud: {
@@ -104,4 +104,16 @@ test("cloud interview prompt falls back to local rules", async (context) => {
 
   assert.ok(["person", "feeling"].includes(prompt.dimension));
   assert.ok(prompt.text.length > 0);
+});
+
+test("cloud-ready preview does not call interview AI before release", async (context) => {
+  let cloudCalls = 0;
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: false } }));
+  const restoreWx = installGlobal("wx", { cloud: { callFunction: async () => { cloudCalls += 1; } } });
+  context.after(() => { restoreWx(); restoreGetApp(); });
+
+  const prompt = await generateInterviewPrompt({ answer: "先保留在本地", askedDimensions: [] });
+  assert.equal(prompt.generationMode, "local-fallback");
+  assert.equal(prompt.fallbackReason, "cloud-not-ready");
+  assert.equal(cloudCalls, 0);
 });

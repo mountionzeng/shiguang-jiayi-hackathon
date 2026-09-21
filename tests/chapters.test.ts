@@ -110,6 +110,11 @@ test("chapter operations keep one memory in one chapter and only append to the s
   assert.equal(edited[1].handEdited, true);
   assert.deepEqual(edited[0], added[0]);
   assert.equal(updateChapter(added, "chapter-2", { title: "只改名" })[1].handEdited, undefined);
+  const aiChapter = { ...added[1], generationMode: "cloud-ai" as const };
+  assert.equal(updateChapter([aiChapter], "chapter-2", { title: "AI 标题改过了" })[0].handEdited, true,
+    "editing only an AI chapter title persists the disclosure");
+  assert.equal(updateChapter([aiChapter], "chapter-2", { title: aiChapter.title })[0].handEdited, undefined,
+    "an unchanged AI title is not treated as a hand edit");
   assert.deepEqual(one.memoryIds, ["m1", "m2"], "inputs are never mutated");
 
   const placed = placeMemoryInChapter(added, { id: "m4", text: "新放进来的原始记忆。" }, "chapter-1");

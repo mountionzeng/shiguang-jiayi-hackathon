@@ -4,9 +4,10 @@
   "private": true,
   "main": "index.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=16.13"
   },
   "dependencies": {
+    "jpeg-js": "0.4.4",
     "wx-server-sdk": "latest"
   }
 }

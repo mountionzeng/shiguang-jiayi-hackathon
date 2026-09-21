@@ -1,4 +1,5 @@
 const cloud = require("wx-server-sdk");
+const { createAigcMetadataWriter } = require("./aigcMetadata");
 const { StoryImageError, assertUnrestrictedStory, chapterSource, draftReferencesStoryImage, textHash } = require("./core");
 const { createCaptionHandler } = require("./caption");
 const { createDiagnostics } = require("./diagnostics");
@@ -279,9 +280,10 @@ const referenceAnalyzer = createReferenceAnalyzer({
   baseUrl: process.env.VISION_BASE_URL,
 });
 const downloadImage = url => downloadResult(url);
+const aigcMetadata = createAigcMetadataWriter({ contentProducer: process.env.AIGC_CONTENT_PRODUCER });
 
 const handlers = createStoryImageHandlers({
-  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker, referenceAnalyzer,
+  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker, referenceAnalyzer,
   async forwardPhotoModeration({ traceId, suggest, label }) {
     const response = await cloud.callFunction({
       name: "photoAccess",
@@ -318,7 +320,7 @@ const captions = createCaptionHandler({
   checkText: input => textChecker.check(input),
 });
 const diagnostics = createDiagnostics({
-  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, qualityChecker,
+  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker,
   expectedToken: process.env.STORY_IMAGES_DIAGNOSE_TOKEN,
 });
 

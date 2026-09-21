@@ -1,7 +1,7 @@
-import test from 'node:test';
+import test,{afterEach,beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {audioCreatePath} from '../miniprogram/services/storyAudioService';
+import {audioCreatePath,StoryAudioServiceError,storyAudioApi} from '../miniprogram/services/storyAudioService';
 
 type Definition=Record<string,any>;
 async function capture(path:string):Promise<Definition>{
@@ -15,6 +15,13 @@ const instance=(definition:Definition):Definition=>{const page:Definition={...de
 let voiceDefinition:Definition;
 let createDefinition:Definition;
 let playerDefinition:Definition;
+let previousGetApp:unknown;
+
+beforeEach(()=>{
+  previousGetApp=(globalThis as any).getApp;
+  (globalThis as any).getApp=()=>({globalData:{cloudReady:true,aiReady:true}});
+});
+afterEach(()=>{(globalThis as any).getApp=previousGetApp;});
 
 test('audio pages live in a separate mini-program package',()=>{
   const app=JSON.parse(readFileSync('miniprogram/app.json','utf8'));
@@ -39,6 +46,16 @@ test('create page stays fail-closed when capabilities are disabled',async contex
   assert.equal(calls,1);
   assert.equal(page.data.canCreate,false);
   assert.match(toasts[0],/费用配置|暂未开放|安全验证/);
+});
+
+test('audio release gate prevents cloud calls before the configured function is ready',async context=>{
+  const previousWx=(globalThis as any).wx,previousGetApp=(globalThis as any).getApp;
+  let calls=0;
+  (globalThis as any).getApp=()=>({globalData:{cloudReady:true,aiReady:false}});
+  (globalThis as any).wx={cloud:{callFunction:async()=>{calls+=1;return {result:{}};}}};
+  context.after(()=>{(globalThis as any).wx=previousWx;(globalThis as any).getApp=previousGetApp;});
+  await assert.rejects(storyAudioApi.capabilities(),(error:unknown)=>error instanceof StoryAudioServiceError&&error.code==='STORY_AUDIO_NOT_READY');
+  assert.equal(calls,0);
 });
 
 test('create page submits the saved version once a selected voice is available',async context=>{

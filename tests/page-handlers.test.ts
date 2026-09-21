@@ -895,6 +895,14 @@ test("照片导入可以取得 AI 草稿，用户改过后以 AI 已修改标识
   assert.equal(imported?.organizationMode, "cloud-ai");
 });
 
+test("文字 AI 发布闸门关闭时照片导入页不显示看图写文字入口", async () => {
+  const interview = instantiate(await pageDefinition("interview"));
+  assert.equal(interview.data.importCaptionAiReady, false, "当前生产配置不能开放照片文字 AI");
+
+  const wxml = readFileSync("miniprogram/pages/interview/interview.wxml", "utf8");
+  assert.match(wxml, /wx:if="\{\{importCaptionAiReady\}\}"[^>]*bindtap="generateImportCaption"/);
+});
+
 test("the home cover and its three counts are about the story you are on", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -1837,4 +1845,17 @@ test("memory entry preselects its source and preview edits become the saved chap
   assert.equal((page.data.draft as any).chapters[0].title, "雨中的陪伴");
   assert.equal((page.data.draft as any).chapters[0].content[0].text, "我确认的正文。\n");
   assert.equal(storage.roomState().contributions[0].text, createInitialRoomState().contributions[0].text);
+});
+
+test("editing only an AI organize-preview title updates the disclosure immediately", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  page.setData({ previewAiLabel: "文字 AI 生成", previewTitle: "AI 原标题" });
+  callPage(page, "onPreviewTitle", { detail: { value: "我改过的标题" } });
+  assert.equal(page.data.previewAiLabel, "文字 AI 生成 · 已由你修改");
+
+  page.setData({ previewAiLabel: "", previewTitle: "普通标题" });
+  callPage(page, "onPreviewTitle", { detail: { value: "普通标题改过了" } });
+  assert.equal(page.data.previewAiLabel, "", "non-AI previews are never mislabeled");
 });

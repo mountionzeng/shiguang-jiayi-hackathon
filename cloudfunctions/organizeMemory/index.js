@@ -1,5 +1,15 @@
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
+const { defaultFetch } = require("./httpFetch.js");
 const MEMORY_TYPES = ["note", "memoir"];
+const {
+  aiError,
+  assertIdentityStillActive,
+  assertServerReady,
+  moderateText,
+  reserveAiRequest,
+  resolveActiveIdentity,
+} = require("./aiGuard.js");
 
 function sanitizeText(value, maxLength) {
   return String(value || "").trim().slice(0, maxLength);
@@ -87,14 +97,29 @@ function organizationBrief(memoryType) {
   };
 }
 
-async function main(event) {
+async function main(event, dependencies = {}) {
   const apiKey = process.env.ORGANIZE_AI_API_KEY || process.env.CHAT_AI_API_KEY || process.env.AI_API_KEY;
   const model = process.env.ORGANIZE_AI_MODEL || process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
-  const baseUrl = (process.env.ORGANIZE_AI_BASE_URL || process.env.CHAT_AI_BASE_URL || process.env.AI_BASE_URL || DEFAULT_BASE_URL)
+  const configuredBaseUrl = process.env.ORGANIZE_AI_BASE_URL || process.env.CHAT_AI_BASE_URL || process.env.AI_BASE_URL || "";
+  const baseUrl = (configuredBaseUrl || DEFAULT_BASE_URL)
     .replace(/\/$/, "");
 
-  if (!apiKey || !model) {
+  if (!apiKey || !model || (!dependencies.skipGuard && !configuredBaseUrl)) {
     throw new Error("AI_NOT_CONFIGURED");
+  }
+  if (!dependencies.skipGuard && baseUrl !== TOKENHUB_BASE_URL) {
+    throw aiError("AI_PROVIDER_NOT_ALLOWED", "文字模型必须使用已备案的 TokenHub 服务");
+  }
+
+  let cloud = dependencies.cloud;
+  let db = dependencies.db;
+  let identity = dependencies.identity;
+  if (!dependencies.skipGuard) {
+    assertServerReady();
+    cloud = cloud || require("wx-server-sdk");
+    if (cloud.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+    db = db || cloud.database();
+    identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
   }
 
   const memoryType = MEMORY_TYPES.includes(event.memoryType) ? event.memoryType : "note";
@@ -107,12 +132,26 @@ async function main(event) {
     .map((item, index) => `第 ${index + 1} 句：${item}`)
     .join("\n");
   const brief = organizationBrief(memoryType);
+  const userMessage = [
+    `讲述者：${memberName}`,
+    `类型：${memoryType === "note" ? "随手记" : "回忆录"}`,
+    storyTitle ? `当前故事名：${storyTitle}` : "当前还没有故事名",
+    brief.rule,
+    "请不要输出 Markdown，不要解释处理过程。",
+    "若信息不足以写满目标字数，宁可短一点，也不要编造。",
+    transcriptText,
+  ].join("\n");
+
+  if (!dependencies.skipGuard) {
+    await moderateText(cloud, identity.openid, userMessage, "AI 记忆整理输入");
+    await reserveAiRequest(db, identity, "organizeMemory", dependencies.nowMs);
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 28_000);
   let response;
   try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
+    response = await defaultFetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -128,22 +167,16 @@ async function main(event) {
           },
           {
             role: "user",
-            content: [
-              `讲述者：${memberName}`,
-              `类型：${memoryType === "note" ? "随手记" : "回忆录"}`,
-              storyTitle ? `当前故事名：${storyTitle}` : "当前还没有故事名",
-              brief.rule,
-              "请不要输出 Markdown，不要解释处理过程。",
-              "若信息不足以写满目标字数，宁可短一点，也不要编造。",
-              transcriptText,
-            ].join("\n"),
+            content: userMessage,
           },
         ],
       }),
     });
   } catch (error) {
     if (error && error.name === "AbortError") {
-      return buildLocalCard(transcript, memoryType);
+      const fallback = buildLocalCard(transcript, memoryType);
+      if (!dependencies.skipGuard) await assertIdentityStillActive(db, identity);
+      return fallback;
     }
     throw error;
   } finally {
@@ -156,7 +189,12 @@ async function main(event) {
 
   const payload = await response.json();
   const content = payload?.choices?.[0]?.message?.content;
-  return parseOrganizedMemory(content, transcript, memoryType);
+  const result = parseOrganizedMemory(content, transcript, memoryType);
+  if (!dependencies.skipGuard) {
+    await moderateText(cloud, identity.openid, [result.title, result.summary, result.body].join("\n"), "AI 记忆整理输出");
+    await assertIdentityStillActive(db, identity);
+  }
+  return { ...result, aiDisclosure: result.generationMode === "cloud-ai" ? "文字 AI 生成" : "" };
 }
 
 module.exports = {

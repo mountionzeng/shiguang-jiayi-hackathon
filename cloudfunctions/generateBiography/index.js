@@ -1,5 +1,15 @@
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
+const { defaultFetch } = require("./httpFetch.js");
 const STORY_ID = /^story-[a-z0-9-]{1,100}$/;
+const {
+  aiError,
+  assertIdentityStillActive,
+  assertServerReady,
+  moderateText,
+  reserveAiRequest,
+  resolveActiveIdentity,
+} = require("./aiGuard.js");
 
 async function loadAll(db, collection, familyId) {
   const rows = [];
@@ -31,21 +41,23 @@ function assertOpenid(openid) {
 }
 
 /** Resolve selected sources under the authenticated story boundary. */
-async function loadStoryMemories(event, cloud) {
+async function loadStoryMemories(event, cloud, resolvedIdentity) {
   const storyId = String(event.storyId || "").trim();
-  if (!STORY_ID.test(storyId)) throw new Error("INVALID_STORY_ID");
+  if (storyId && !STORY_ID.test(storyId)) throw new Error("INVALID_STORY_ID");
   const openid = String(cloud.getWXContext().OPENID || "");
   if (!openid) throw new Error("LOGIN_REQUIRED");
-  const familyId = `family_${assertOpenid(openid)}`;
+  const familyId = resolvedIdentity?.familyId || `family_${assertOpenid(openid)}`;
   const db = cloud.database();
   let story;
-  try { story = (await db.collection("stories").doc(`${familyId}_${storyId}`).get()).data; }
-  catch { throw new Error("STORY_NOT_FOUND"); }
-  if (!story || story.familyId !== familyId || story.deletedAt) throw new Error("STORY_NOT_FOUND");
-  protocolRequired(story);
-  if (story.writingMode !== "creative") throw new Error("STORY_NOT_CREATIVE");
+  if (storyId) {
+    try { story = (await db.collection("stories").doc(`${familyId}_${storyId}`).get()).data; }
+    catch { throw new Error("STORY_NOT_FOUND"); }
+    if (!story || story.familyId !== familyId || story.deletedAt) throw new Error("STORY_NOT_FOUND");
+    protocolRequired(story);
+    if (story.writingMode !== "creative") throw new Error("STORY_NOT_CREATIVE");
+  }
   const requested = Array.isArray(event.memoryIds) ? [...new Set(event.memoryIds.map(String))] : [];
-  if (!requested.length || requested.length > 20 || requested.some(id => !(story.memoryIds || []).includes(id))) throw new Error("INVALID_STORY_SOURCES");
+  if (!requested.length || requested.length > 20 || (story && requested.some(id => !(story.memoryIds || []).includes(id)))) throw new Error("INVALID_STORY_SOURCES");
   const requestedSet = new Set(requested);
   const records = await loadAll(db, "memories", familyId);
   const byId = new Map();
@@ -152,25 +164,44 @@ function buildUserMessage(event, memories) {
 async function main(event, dependencies = {}) {
   const apiKey = process.env.AI_API_KEY;
   const model = process.env.AI_MODEL;
-  const baseUrl = (process.env.AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "");
+  const configuredBaseUrl = process.env.AI_BASE_URL || "";
+  const baseUrl = (configuredBaseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
 
-  if (!apiKey || !model) {
+  if (!apiKey || !model || (!dependencies.skipGuard && !configuredBaseUrl)) {
     throw new Error("AI_NOT_CONFIGURED");
   }
+  if (!dependencies.skipGuard && baseUrl !== TOKENHUB_BASE_URL) {
+    throw aiError("AI_PROVIDER_NOT_ALLOWED", "文字模型必须使用已备案的 TokenHub 服务");
+  }
 
-  let sources = event.memories;
-  if (event.storyId) {
-    const cloud = dependencies.cloud || require("wx-server-sdk");
+  let cloud = dependencies.cloud;
+  let db = dependencies.db;
+  let identity = dependencies.identity;
+  if (!dependencies.skipGuard) {
+    assertServerReady();
+    cloud = cloud || require("wx-server-sdk");
     if (cloud.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-    sources = await loadStoryMemories(event, cloud);
+    db = db || cloud.database();
+    identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
+  }
+  let sources = event.memories;
+  if (!dependencies.skipGuard || event.storyId || event.memoryIds) {
+    cloud = cloud || require("wx-server-sdk");
+    if (cloud.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+    sources = await loadStoryMemories(event, cloud, identity);
   }
   const memories = validateMemories(sources);
+  const userMessage = buildUserMessage(event, memories);
+  if (!dependencies.skipGuard) {
+    await moderateText(cloud, identity.openid, userMessage, "AI 书稿输入");
+    await reserveAiRequest(db, identity, "generateBiography", dependencies.nowMs);
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20_000);
   let response;
   try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
+    response = await defaultFetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -188,7 +219,7 @@ async function main(event, dependencies = {}) {
           },
           {
             role: "user",
-            content: buildUserMessage(event, memories),
+            content: userMessage,
           },
         ],
       }),
@@ -203,7 +234,12 @@ async function main(event, dependencies = {}) {
 
   const payload = await response.json();
   const content = payload?.choices?.[0]?.message?.content;
-  return parseChapter(content, memories.length);
+  const result = parseChapter(content, memories.length);
+  if (!dependencies.skipGuard) {
+    await moderateText(cloud, identity.openid, [result.title, ...result.paragraphs].join("\n"), "AI 书稿输出");
+    await assertIdentityStillActive(db, identity);
+  }
+  return { ...result, aiDisclosure: "文字 AI 生成" };
 }
 
 module.exports = {

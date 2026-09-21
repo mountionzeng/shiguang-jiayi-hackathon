@@ -395,7 +395,11 @@ export function updateChapter(chapters: ManuscriptChapter[], id: string, patch: 
   return chapters.map(chapter => {
     if (chapter.id !== id) return copyChapter(chapter);
     const next = copyChapter(chapter);
-    if (patch.title !== undefined) next.title = patch.title.trim().slice(0, 40);
+    if (patch.title !== undefined) {
+      const title = patch.title.trim().slice(0, 40);
+      next.title = title;
+      if (title !== chapter.title && (chapter.containsAiText || chapter.generationMode === "cloud-ai")) next.handEdited = true;
+    }
     if (patch.content && JSON.stringify(patch.content) !== JSON.stringify(chapter.content)) {
       next.content = patch.content.map(item => ({ ...item }));
       next.handEdited = true;

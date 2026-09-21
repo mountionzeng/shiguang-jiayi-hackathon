@@ -24,7 +24,15 @@
 npm run configure:wechat -- --appid wx0000000000000000 --env new-cloud-env
 ```
 
-确认预览无误后显式增加 `--write`。脚本会更新 `project.config.json`、JSON 映射和真机脚本副本，新增映射并保留旧 AppID，便于新旧账号并行验证；它不处理或复制任何密钥。
+如果新云环境还没有创建，可先进入安全的待配置状态，用于开发者工具导入、编译和本地界面检查：
+
+```bash
+npm run configure:wechat -- --appid wx0000000000000000 --pending --write
+```
+
+该模式会切换 `project.config.json`，并从 JSON 映射和真机脚本副本中移除目标 AppID 可能残留的旧映射；其他 AppID 的映射保持不变。这样不会给新 AppID 绑定或复用旧云环境，运行时查不到新 AppID 映射便会停止云初始化。创建新环境后，再用 `--env <新环境ID> --write` 补齐映射。
+
+确认预览无误后显式增加 `--write`。两种模式都会同步更新 `project.config.json`、JSON 映射和真机脚本副本：`--pending` 移除目标 AppID 的映射，`--env` 新增或替换目标映射；其他 AppID 的映射会保留，便于新旧账号并行验证。脚本使用锁、写前日志、备份和崩溃恢复，并在提交前再次校验读取快照；脚本不处理或复制任何密钥。自动化如需 JSON 结果，在 `--write` 后再加 `--json`；不加时保留原有的人类可读成功文案。
 
 云函数从 `cloud.getWXContext()` 读取当前 AppID/OpenID。`drinkingTimeBridge` 不再回退到旧 AppID；极少数上下文取不到 AppID 时，使用云函数环境变量 `WECHAT_APP_ID`，缺失则明确失败。
 
@@ -41,13 +49,33 @@ npm run configure:wechat -- --appid wx0000000000000000 --env new-cloud-env
 
 ## 新账号重建顺序
 
-1. 在新账号创建独立云环境，不复用旧账号的生产环境。
-2. 用 `npm run configure:wechat -- --appid <新AppID> --env <新环境ID> --write` 更新账号配置；脚本会保留旧映射用于并行验证。
+1. 在新账号创建独立云环境，不复用旧账号的生产环境。创建前可以用 `--pending --write` 先安全切换 AppID 做本地检查。
+2. 用 `npm run configure:wechat -- --appid <新AppID> --env <新环境ID> --write` 补齐账号配置；脚本会保留旧映射用于并行验证。
 3. 按 `deploy/wechat-cloud.manifest.json` 创建集合和索引。
-4. 部署云函数，再逐项填写新环境的密钥；共享 Token 需要在新环境重新生成，不能从日志或代码复制。
+4. 先运行 `npm run deploy:wechat:preview` 查看默认计划；正常执行只显式部署 `defaultDeploy=true` 的基础函数并逐个核验 `Active`。`configured`、`bootstrapOnce`、`diagnosticOnly` 必须用 `--include <函数名>` 显式选择；`dangerousMaintenance` 一律被该命令拒绝。然后再逐项填写新环境的密钥；共享 Token 需要在新环境重新生成，不能从日志或代码复制。
 5. 重建定时触发器、`wxa_media_check` 消息路由、数据库规则和存储规则。
 6. 配置新账号的隐私保护指引、服务器域名、业务域名、服务类目和审核材料。
 7. 上传体验版，用新微信号从零验证注册、家庭邀请、照片上传、内容检测、AI 配图和删除流程。
+
+## 当前企业账号迁移状态（2026-09-21）
+
+- 新 AppID：`wx86ae3e9d507ce52d`
+- 独立云环境：`cloud1-d5ghzk30ve609f544`
+- 已部署并通过云端 `list` / `info` 核验的基础函数：`getOpenId`、`contentSecurityCheck`、`familyInvite`、`storyBooks`、`resetCurrentUserRoom`
+- 五个基础函数均为 `Active`；部署后又逐个下载并与本地源代码比对，代码与 `config.json` 一致
+- 云端当前仍使用新建函数的 3 秒默认超时，须按 `deploy/wechat-cloud.manifest.json` 调整为 10 或 20 秒后再次核验
+- 其余 `configured` 函数尚未部署；先配置相应密钥、功能开关、定时触发器或消息路由，再按清单启用
+- `CLOUD_AI_RELEASE_READY` 当前为 `false`；新环境即使云数据库已连接，也不会调用尚未发布的文本或图片 AI 函数
+- `ensureCloudCollections` 当前会幂等创建 42 个集合；尚未在新环境执行，执行前需临时设置至少 24 位的 `COLLECTION_BOOTSTRAP_TOKEN`，完成核验后立即移除 token 和该函数
+- 索引、数据库规则、存储规则与 `wxa_media_check` 消息路由仍需在控制台逐项配置和做负向权限测试
+
+图片、文本、音频任一功能不能只以“密钥已填”作为上线条件。还必须确认对应产品已开通、IAM 权限足够、配额和计费方式明确，并且只发起一次带稳定请求 ID 的受控真实请求做最终验证。该请求可能产生费用，执行前需要用户明确授权。
+
+云开发 CLI 即使远端报错也可能返回退出码 0。部署和查询时不能只看 `$?`，还必须拒绝输出中的 `ResourceNotFound`、`[error]`、`Error`、`✖`，并要求函数名与 `Active` 同时出现。
+
+`deleteDemoFamilyOnce` 不在任何默认部署路径中。如果确有一次性维护需求，还必须临时设置至少 24 位的 `DELETE_DEMO_FAMILY_TOKEN`，调用时同时提供固定确认语和相同 `operatorToken`，完成后立即删除函数和 token。
+
+上传正式提审的体验版前，工作树必须干净，并在构建信息中记录 commit SHA、构建时间、AppID、云环境 ID 和云函数核验结果。未提交工作树生成的码只能标注为内部预览，不得当作最终提审版。
 
 ## 数据和身份迁移
 

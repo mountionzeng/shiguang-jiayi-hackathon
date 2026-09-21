@@ -1,15 +1,15 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { main, _test } = require("../cloudfunctions/generateBiography/index.js");
-const {
-  main: chatInterviewMain,
-  _test: chatInterviewTest,
-} = require("../cloudfunctions/chatInterview/index.js");
-const {
-  main: organizeMemoryMain,
-  _test: organizeMemoryTest,
-} = require("../cloudfunctions/organizeMemory/index.js");
+const biographyCloud = require("../cloudfunctions/generateBiography/index.js");
+const chatInterviewCloud = require("../cloudfunctions/chatInterview/index.js");
+const organizeMemoryCloud = require("../cloudfunctions/organizeMemory/index.js");
+const main = (event, dependencies = {}) => biographyCloud.main(event, { skipGuard: true, ...dependencies });
+const chatInterviewMain = (event, dependencies = {}) => chatInterviewCloud.main(event, { skipGuard: true, ...dependencies });
+const organizeMemoryMain = (event, dependencies = {}) => organizeMemoryCloud.main(event, { skipGuard: true, ...dependencies });
+const { _test } = biographyCloud;
+const { _test: chatInterviewTest } = chatInterviewCloud;
+const { _test: organizeMemoryTest } = organizeMemoryCloud;
 const {
   CORE_COLLECTIONS,
   collectionAlreadyExists,
@@ -247,6 +247,18 @@ test("story AI sources are loaded under the authenticated current-book boundary"
     () => _test.loadStoryMemories({ storyId: "story-a", memoryIds: ["memory-b"] }, cloud),
     /INVALID_STORY_SOURCES/,
   );
+
+  const migratedCloud = { ...cloud, getWXContext: () => ({ OPENID: "new-enterprise-openid" }) };
+  const migratedIdentity = { familyId: "family_fixture-user" };
+  assert.match(
+    await chatInterviewTest.loadStoryContext({ storyId: "story-a" }, migratedCloud, migratedIdentity),
+    /A 书记忆/,
+  );
+  assert.deepEqual(
+    (await _test.loadStoryMemories({ storyId: "story-a", memoryIds: ["memory-a"] }, migratedCloud, migratedIdentity))
+      .map(memory => memory.text),
+    ["A 书记忆"],
+  );
 });
 
 test("story AI refuses source-bound stories and memories before provider input is built",async()=>{
@@ -474,6 +486,7 @@ test("the interview cloud function returns one safe follow-up", async () => {
     assert.match(requests[0].messages[0].content, /小忆/);
     const prompt = requests[0].messages[1].content;
     assert.match(prompt, /老屋门口/);
+    assert.match(prompt, /讲述者：林岚/);
     assert.match(prompt, /内容类型：回忆录/);
     // 模型要看到自己问过什么，才不会把用户答过的事再问一遍。
     assert.match(prompt, /小忆：那时候谁和你在一起？/);
@@ -638,16 +651,19 @@ test("the interview cloud function diagnoses its configured provider without lea
   const previousKey = process.env.CHAT_AI_API_KEY;
   const previousModel = process.env.CHAT_AI_MODEL;
   const previousBaseUrl = process.env.CHAT_AI_BASE_URL;
+  const previousDiagnoseToken = process.env.AI_DIAGNOSE_TOKEN;
   process.env.CHAT_AI_API_KEY = "secret-chat-key";
   process.env.CHAT_AI_MODEL = "deepseek-chat";
   process.env.CHAT_AI_BASE_URL = "https://api.deepseek.com";
+  process.env.AI_DIAGNOSE_TOKEN = "diagnose-only-token-123456789";
 
   try {
-    const result = await chatInterviewMain({ __diagnose: true });
+    await assert.rejects(() => chatInterviewMain({ __diagnose: true }), /DIAGNOSE_FORBIDDEN|诊断口令/);
+    const result = await chatInterviewMain({ __diagnose: true, diagnoseToken: process.env.AI_DIAGNOSE_TOKEN });
 
     assert.equal(result.diagnostic, true);
     assert.equal(result.provider, "deepseek");
-    assert.equal(result.baseUrl, "https://api.deepseek.com");
+    assert.equal(result.baseUrl, undefined);
     assert.equal(result.model, "deepseek-chat");
     assert.equal(result.hasApiKey, true);
     assert.doesNotMatch(JSON.stringify(result), /secret-chat-key/);
@@ -658,6 +674,8 @@ test("the interview cloud function diagnoses its configured provider without lea
     else process.env.CHAT_AI_MODEL = previousModel;
     if (previousBaseUrl === undefined) delete process.env.CHAT_AI_BASE_URL;
     else process.env.CHAT_AI_BASE_URL = previousBaseUrl;
+    if (previousDiagnoseToken === undefined) delete process.env.AI_DIAGNOSE_TOKEN;
+    else process.env.AI_DIAGNOSE_TOKEN = previousDiagnoseToken;
   }
 });
 
@@ -736,6 +754,7 @@ test("the organize cloud function returns a structured memory card", async () =>
       transcript: ["小时候爸妈骂我时，外公总会把我护在身后。", "是在屋里。"],
       memoryType: "note",
       memberName: "林岚",
+      storyTitle: "旧屋往事",
     });
 
     assert.equal(result.generationMode, "cloud-ai");
@@ -743,6 +762,8 @@ test("the organize cloud function returns a structured memory card", async () =>
     assert.equal(result.title, "外公护着我");
     assert.deepEqual(result.emotions, ["安心", "委屈"]);
     assert.match(requestBody.messages[1].content, /外公总会把我护在身后/);
+    assert.match(requestBody.messages[1].content, /讲述者：林岚/);
+    assert.match(requestBody.messages[1].content, /当前故事名：旧屋往事/);
     assert.match(requestBody.messages[0].content, /生活记忆编辑/);
     assert.match(requestBody.messages[1].content, /随手记：整理成近期记忆卡片/);
     assert.equal(requestBody.temperature, undefined);

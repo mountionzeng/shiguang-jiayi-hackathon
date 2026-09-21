@@ -58,9 +58,9 @@
 1. 安装依赖：`npm install`
 2. 类型与测试检查：`npm run check`
 3. 在微信开发者工具中导入仓库根目录
-4. 当前项目 AppID 为 `wx6be512f0fe129b62`；使用微信开发者工具的成员需先由管理员添加为该小程序的开发者
-5. 如需使用虚构资料演示真实 AI 生成，可在微信云开发中部署 `cloudfunctions/generateBiography` 并配置服务端环境变量
-6. 部署完成后，将 `miniprogram/config/runtime.ts` 中的 `CLOUD_AI_ENABLED` 改为 `true`；真实用户使用前不得开启，需先补齐服务端身份、来源校验、配额和请求去重
+4. 当前企业小程序 AppID 为 `wx86ae3e9d507ce52d`；使用微信开发者工具的成员需先由管理员添加为该小程序的开发者
+5. 新账号使用独立的免费开发环境 `cloud1-d5ghzk30ve609f544`，不会回退连接旧账号环境
+6. 新环境已部署五个基础函数；先用 `npm run deploy:wechat:preview` 核对安全默认清单，再按 `deploy/wechat-cloud.manifest.json` 补齐 42 个集合、索引、规则、超时、配置后启用的函数和服务端环境变量。当前 `CLOUD_AI_RELEASE_READY = false`，在函数、密钥、产品权限、配额、计费和安全路由验证完成前，真机不会调用在线 AI。实时进度见[微信小程序换账号迁移手册](docs/wechat-account-migration-runbook.md)
 
 ## AI 云函数环境变量
 

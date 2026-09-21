@@ -14,7 +14,7 @@ test("local demo without a cloud SDK retains edits and photo manuscript revision
   const beforeApp = (globalThis as any).getApp;
   context.after(() => { (globalThis as any).wx = before; (globalThis as any).getApp = beforeApp; });
   const stored = new Map<string, unknown>([["shiguang-family-room-v5", createDemoRoomStateForTests()]]);
-  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true } });
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
   (globalThis as any).wx = {
     getStorageSync: (key: string) => stored.get(key),
     setStorageSync: (key: string, value: unknown) => stored.set(key, value),
@@ -50,7 +50,7 @@ test("declining online AI prevents all three AI service paths from transmitting 
   clearAiConsent();
   let calls = 0;
   let consentCopy = "";
-  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true } });
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
   (globalThis as any).wx = {
     showModal: ({ content, success }: any) => {
       consentCopy = content;

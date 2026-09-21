@@ -39,6 +39,7 @@ import { classifyImportFiles, ImportFileLike, readImportTextFile } from "../../s
 import { CAPTION_EDITED_LABEL, CAPTION_LABEL, storyImageApi } from "../../services/storyImageService";
 import { resumePhotoUploads } from "../../services/photoCloud";
 import { activeStory, linkStoryMemories } from "../../services/storyBooks";
+import { CLOUD_AI_RELEASE_READY } from "../../config/runtime";
 
 interface MessageView {
   id: string;
@@ -165,6 +166,7 @@ Page({
     stage: "loading" as "loading" | "choose" | "chat" | "save",
     draftTitle: "",
     draftSummary: "",
+    draftAiLabel: "",
     draftText: "",
     draftLength: 0,
     draftEmotions: [] as string[],
@@ -200,6 +202,7 @@ Page({
     importAiOriginal: "",
     importAiLabel: "",
     importAiLoading: false,
+    importCaptionAiReady: CLOUD_AI_RELEASE_READY,
   },
 
   messageSeq: 0,
@@ -413,7 +416,7 @@ Page({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
-      this.pushMessage("followup", prompt.text, FOLLOW_UP_LABEL);
+      this.pushMessage("followup", prompt.text, prompt.generationMode === "cloud-ai" ? "文字 AI 生成" : FOLLOW_UP_LABEL);
     } catch (error) {
       console.warn("追问生成失败", error);
       this.setData({ asking: false });
@@ -448,6 +451,7 @@ Page({
         inputText: "",
         draftTitle: draft.title,
         draftSummary: draft.summary,
+        draftAiLabel: draft.generationMode === "cloud-ai" ? "文字 AI 生成" : "",
         draftText: draft.body,
         draftLength: draft.body.length,
         draftEmotions: draft.emotions,
@@ -477,6 +481,7 @@ Page({
     const draftText = event.detail.value;
     this.setData({
       draftText,
+      draftAiLabel: this.data.draftOrganizationMode === "cloud-ai" ? "文字 AI 生成 · 已由你修改" : "",
       draftLength: draftText.length,
       tooLong: draftText.length > MAX_MEMORY_LENGTH,
     });

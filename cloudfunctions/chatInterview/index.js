@@ -1,4 +1,15 @@
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
+const { defaultFetch } = require("./httpFetch.js");
+const {
+  aiError,
+  assertIdentityStillActive,
+  assertServerReady,
+  diagnoseAuthorized,
+  moderateText,
+  reserveAiRequest,
+  resolveActiveIdentity,
+} = require("./aiGuard.js");
 const DIMENSIONS = ["person", "time", "place", "event", "feeling"];
 const MEMORY_TYPES = ["note", "memoir"];
 const INPUT_TYPES = ["情感信号", "信息片段", "反问跑题", "完整叙述", "模糊描述"];
@@ -53,13 +64,13 @@ function assertLegacyStoryValue(value) {
 }
 
 /** The model's saved-book context is read under the caller's account, never trusted from the client. */
-async function loadStoryContext(event, cloud) {
+async function loadStoryContext(event, cloud, resolvedIdentity) {
   const storyId = String(event.storyId || "").trim();
   if (!storyId) return "";
   if (!STORY_ID.test(storyId)) throw new Error("INVALID_STORY_ID");
   const openid = String(cloud.getWXContext().OPENID || "");
   if (!openid) throw new Error("LOGIN_REQUIRED");
-  const familyId = `family_${assertOpenid(openid)}`;
+  const familyId = resolvedIdentity?.familyId || `family_${assertOpenid(openid)}`;
   const db = cloud.database();
   let story;
   try { story = (await db.collection("stories").doc(`${familyId}_${storyId}`).get()).data; }
@@ -164,6 +175,7 @@ function localFallbackDimension(askedDimensions) {
 }
 
 function providerLabel(baseUrl) {
+  if (baseUrl.includes("tokenhub.tencentmaas.com")) return "tokenhub";
   if (baseUrl.includes("moonshot.cn")) return "kimi";
   if (baseUrl.includes("deepseek.com")) return "deepseek";
   if (baseUrl.includes("openai.com")) return "openai";
@@ -393,7 +405,7 @@ function buildOutputMessages({
 
 async function requestChatCompletion({ baseUrl, apiKey, model, messages, temperature, signal }) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await defaultFetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -422,21 +434,38 @@ async function requestChatCompletion({ baseUrl, apiKey, model, messages, tempera
 async function main(event, dependencies = {}) {
   const apiKey = process.env.CHAT_AI_API_KEY || process.env.AI_API_KEY;
   const model = process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
-  const baseUrl = (process.env.CHAT_AI_BASE_URL || process.env.AI_BASE_URL || DEFAULT_BASE_URL)
+  const configuredBaseUrl = process.env.CHAT_AI_BASE_URL || process.env.AI_BASE_URL || "";
+  const baseUrl = (configuredBaseUrl || DEFAULT_BASE_URL)
     .replace(/\/$/, "");
 
   if (event && event.__diagnose === true) {
+    if (!diagnoseAuthorized(event)) throw aiError("DIAGNOSE_FORBIDDEN", "诊断口令无效");
     return {
       diagnostic: true,
       provider: providerLabel(baseUrl),
-      baseUrl,
       model: model || "",
       hasApiKey: Boolean(apiKey),
+      serverReady: process.env.AI_SERVER_RELEASE_READY === "true",
+      expectedAppConfigured: /^wx[0-9A-Za-z_-]{1,80}$/.test(String(process.env.WECHAT_APP_ID || "")),
     };
   }
 
-  if (!apiKey || !model) {
+  if (!apiKey || !model || (!dependencies.skipGuard && !configuredBaseUrl)) {
     throw new Error("AI_NOT_CONFIGURED");
+  }
+  if (!dependencies.skipGuard && baseUrl !== TOKENHUB_BASE_URL) {
+    throw aiError("AI_PROVIDER_NOT_ALLOWED", "文字模型必须使用已备案的 TokenHub 服务");
+  }
+
+  let cloud = dependencies.cloud;
+  let db = dependencies.db;
+  let identity = dependencies.identity;
+  if (!dependencies.skipGuard) {
+    assertServerReady();
+    cloud = cloud || require("wx-server-sdk");
+    if (cloud.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+    db = db || cloud.database();
+    identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
   }
 
   const answer = sanitizeText(event.answer, 500);
@@ -453,9 +482,24 @@ async function main(event, dependencies = {}) {
   const memoryType = validateMemoryType(event.memoryType);
   const memberName = sanitizeText(event.memberName, 40) || "讲述者";
   const storyTitle = sanitizeText(event.storyTitle, 40);
-  const cloud = dependencies.cloud || (event.storyId ? require("wx-server-sdk") : undefined);
+  if (!cloud && event.storyId) cloud = require("wx-server-sdk");
   if (cloud?.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-  const storyContext = await loadStoryContext(event, cloud);
+  const storyContext = await loadStoryContext(event, cloud, identity);
+  const messages = buildOutputMessages({
+    answer,
+    history,
+    lastDimension: askedDimensions[askedDimensions.length - 1],
+    mode,
+    memoryType,
+    memberName,
+    storyTitle,
+    storyContext,
+  });
+
+  if (!dependencies.skipGuard) {
+    await moderateText(cloud, identity.openid, messages[1].content, "AI 访谈输入");
+    await reserveAiRequest(db, identity, "chatInterview", dependencies.nowMs);
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20_000);
@@ -467,18 +511,14 @@ async function main(event, dependencies = {}) {
       model,
       temperature: 0.7,
       signal: controller.signal,
-      messages: buildOutputMessages({
-        answer,
-        history,
-        lastDimension: askedDimensions[askedDimensions.length - 1],
-        mode,
-        memoryType,
-        memberName,
-        storyTitle,
-        storyContext,
-      }),
+      messages,
     });
-    return parseInterviewPrompt(content, fallbackDimension);
+    const result = parseInterviewPrompt(content, fallbackDimension);
+    if (!dependencies.skipGuard) {
+      await moderateText(cloud, identity.openid, result.text, "AI 访谈回复");
+      await assertIdentityStillActive(db, identity);
+    }
+    return { ...result, aiDisclosure: "文字 AI 生成" };
   } finally {
     clearTimeout(timeoutId);
   }

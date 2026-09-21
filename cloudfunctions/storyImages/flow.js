@@ -1,4 +1,5 @@
 const core = require("./core");
+const { classifyAigcMetadataError } = require("./aigcMetadata");
 
 const RECENT_JOB_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SWEEP_BATCH = 10;
@@ -29,6 +30,7 @@ function createStoryImageHandlers(deps) {
     moderation,
     forwardPhotoModeration,
     downloadImage,
+    aigcMetadata,
     qualityChecker,
     referenceAnalyzer,
     now = () => Date.now(),
@@ -57,6 +59,9 @@ function createStoryImageHandlers(deps) {
     core.requireOwner(ctx.openid, input.familyId);
     if (!provider.configured) throw new core.StoryImageError("IMAGE_NOT_CONFIGURED", "出图服务还没配置好");
     if (!sceneConfigured) throw new core.StoryImageError("AI_NOT_CONFIGURED", "在线 AI 还没配置好");
+    if (!aigcMetadata || !aigcMetadata.configured) {
+      throw new core.StoryImageError("AIGC_METADATA_NOT_CONFIGURED", "AI 图片的文件标识还没配置好");
+    }
 
     const jobId = `${input.familyId}_${input.requestId}`;
     const existing = await repo.getJob(jobId);
@@ -247,11 +252,25 @@ function createStoryImageHandlers(deps) {
       return release();
     }
 
+    let markedImage;
+    let aigcProduceId;
+    try {
+      markedImage = aigcMetadata.writeForSource(image.buffer, image.contentType, job._id);
+      aigcProduceId = markedImage.produceId;
+    } catch (error) {
+      const outcome = classifyAigcMetadataError(error);
+      log.error("storyImages AIGC metadata", outcome.errorCode);
+      if (!outcome.terminal) return release();
+      const patch = { status: "failed", errorCode: outcome.errorCode, updatedAtMs: now() };
+      await repo.updateJob(job._id, patch);
+      return { ...job, ...patch };
+    }
+
     const imageId = `${job.familyId}_img_${job.requestId}`;
-    const cloudPath = `story-images/${job.familyId}/${job.storyId || job.memberId}/${job.requestId}.${core.extensionFor(image.contentType)}`;
+    const cloudPath = `story-images/${job.familyId}/${job.storyId || job.memberId}/${job.requestId}.${core.extensionFor(markedImage.contentType)}`;
     let fileID;
     try {
-      fileID = await storage.upload(cloudPath, image.buffer);
+      fileID = await storage.upload(cloudPath, markedImage.buffer);
     } catch (error) {
       log.error("storyImages upload", String(error && error.message));
       return release();
@@ -267,8 +286,9 @@ function createStoryImageHandlers(deps) {
       fileID,
       width: job.width,
       height: job.height,
-      bytes: image.buffer.length,
-      contentType: image.contentType,
+      bytes: markedImage.buffer.length,
+      contentType: markedImage.contentType,
+      aigcProduceId,
       moderation: "unchecked",
       quality: qualityEnabled ? "pending" : "unchecked",
       qualityIssues: [],
@@ -277,7 +297,7 @@ function createStoryImageHandlers(deps) {
       createdAtMs: nowMs,
     };
     await repo.createImage(imageId, imageDoc);
-    const patch = { status: "stored", imageId, storedAtMs: nowMs, updatedAtMs: nowMs };
+    const patch = { status: "stored", imageId, aigcProduceId, storedAtMs: nowMs, updatedAtMs: nowMs };
     await repo.updateJob(job._id, patch);
     await requestModeration(imageId, imageDoc, job.requesterOpenId);
     if (qualityEnabled && now() - startedMs <= QUALITY_START_WINDOW_MS) await runQualityCheck(imageId, imageDoc);

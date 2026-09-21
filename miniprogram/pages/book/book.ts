@@ -12,7 +12,7 @@ import {
 import { StoryImage, storyImageApi } from "../../services/storyImageService";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import {
-  addChapter, applyOrganized, assignMemory, chapterLabel, chaptersOf, draftWithChapters, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter,
+  addChapter, applyOrganized, assignMemory, chapterAiLabel, chapterLabel, chaptersOf, draftWithChapters, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter,
 } from "../../services/chapters";
 import { logLoadError } from "../../services/loadErrorLog";
 import { activeStory, storyAiContext, storySourceFingerprint, updateStoryBook } from "../../services/storyBooks";
@@ -50,7 +50,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 
 Page({
   data: {
-    organizeBooks: [] as Array<{ id: string; title: string; memberId: string; detail: string; memoryIds: string[] }>, organizeBookKey: "", previewText: "", previewTitle: "",
+    organizeBooks: [] as Array<{ id: string; title: string; memberId: string; detail: string; memoryIds: string[] }>, organizeBookKey: "", previewText: "", previewTitle: "", previewAiLabel: "",
     protagonistName: "", memberId: "", storyId: "", savedRevisionId: "", writingMode: "objective" as "objective" | "creative", sources: [] as Array<{ id: string; text: string; byline: string }>,
     sourceCount: 0, draft: null as BiographyDraft | null,
     generating: false, saving: false, isCloudDraft: false, modeLabel: "", modeNote: "",
@@ -64,7 +64,7 @@ Page({
     // "contents" lists the chapters; "chapter" edits one of them. Empty until the first load.
     view: "" as "" | "contents" | "chapter",
     chapterRows: [] as Array<{ id: string; label: string; title: string; memoryCount: number; photoCount: number }>,
-    chapterLabelText: "", editChapterTitle: "",
+    chapterLabelText: "", chapterAiLabelText: "", editChapterTitle: "",
     unassigned: [] as MemoryRow[], chapterMemories: [] as MemoryRow[],
     storyOptions: [] as Array<{ title: string; count: number }>, assignMemoryId: "",
     // AI organizing: choose memories, choose a chapter, write it in directly; undo restores the version before.
@@ -327,6 +327,7 @@ Page({
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
       chapterMemories: active ? active.memoryIds.flatMap(id => known.has(id) ? [memoryRow(known.get(id)!)] : []) : [],
       chapterLabelText: active ? chapterLabel(visibleChapters.indexOf(active) + 1) : "",
+      chapterAiLabelText: active ? chapterAiLabel(active) : "",
       storyOptions: Array.from(stories, ([title, count]) => ({ title, count })),
       backdropUrl: this.activeBackdropUrl(),
     };
@@ -930,8 +931,18 @@ Page({
     this.organizeCandidate = undefined;
     try { await this.refresh(); } catch (error) { this.setData({ saveNotice: error instanceof Error ? error.message : "加载失败" }); }
   },
-  onPreviewText(event: WechatMiniprogram.Input) { this.setData({ previewText: event.detail.value }); },
-  onPreviewTitle(event: WechatMiniprogram.Input) { this.setData({ previewTitle: event.detail.value }); },
+  onPreviewText(event: WechatMiniprogram.Input) {
+    this.setData({
+      previewText: event.detail.value,
+      previewAiLabel: this.data.previewAiLabel ? "文字 AI 生成 · 已由你修改" : "",
+    });
+  },
+  onPreviewTitle(event: WechatMiniprogram.Input) {
+    this.setData({
+      previewTitle: event.detail.value,
+      previewAiLabel: this.data.previewAiLabel ? "文字 AI 生成 · 已由你修改" : "",
+    });
+  },
   onOrganizeMemories(event: { detail: { value: string[] } }) { this.organizeSelection = event.detail.value; },
   onOrganizeTarget(event: { detail: { value: string } }) { this.setData({ organizeTarget: event.detail.value }); },
   async runOrganize() {
@@ -972,7 +983,13 @@ Page({
         + (keptImageCount ? "保留了 " + keptImageCount + " 张照片或插图。" : "");
       this.organizeCandidate = { draft: draftWithChapters(base, chapters), fingerprint, chapterId, label, notice, revisionId: this.revisionId };
       const chapter = chapters.find(item => item.id === chapterId)!;
-      this.setData({ panel: "organize-preview", previewTitle: chapter.title, previewText: plainText(chapter.content), saveNotice: notice + "尚未写入，请查看并确认。" });
+      this.setData({
+        panel: "organize-preview",
+        previewTitle: chapter.title,
+        previewText: plainText(chapter.content),
+        previewAiLabel: organized.generationMode === "cloud-ai" ? "文字 AI 生成" : "",
+        saveNotice: notice + "尚未写入，请查看并确认。",
+      });
     } catch (error) {
       this.setData({ saveNotice: error instanceof Error ? error.message : "整理失败，请重试" });
     } finally { if (this.data.generating) this.setData({ generating: false }); }
