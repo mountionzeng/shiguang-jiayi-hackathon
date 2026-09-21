@@ -327,3 +327,39 @@ test('每次人物写入都追加一份快照，只增不删',async()=>{
   const snapshots=[...tables].filter(([key])=>key.startsWith('family_snapshots:'));
   assert.equal(snapshots.length,2,'新增与改名各留一份');
 });
+
+/*
+ * 记忆之家的名字与主人公名字原先服务端只读不写、前端也没有编辑界面。
+ * 后果是可见的：邀请卡片上朋友看到的永远是默认的「我的拾光房间」；
+ * 主人公名为空时审阅页会渲染成「只有　本人能确认」。
+ */
+test('可以改记忆之家的名字与主人公，并且写入前留底',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('families:family_test',{roomName:'我的拾光房间',protagonistName:'',storyBooks:{status:'active',version:1,cursor:7}});
+
+  await h.roomProfileUpdate(ctx,{roomName:'岱的拾光房间',protagonistName:'岱'});
+
+  const family=tables.get('families:family_test');
+  assert.equal(family.roomName,'岱的拾光房间');
+  assert.equal(family.protagonistName,'岱');
+  assert.deepEqual(family.storyBooks,{status:'active',version:1,cursor:7},'迁移元信息不得被这次改名覆盖');
+
+  const snapshots=[...tables].filter(([key])=>key.startsWith('family_snapshots:')).map(([,value])=>value);
+  assert.equal(snapshots.length,1,'改房间资料前应当留一份底');
+  assert.equal(snapshots[0].document.roomName,'我的拾光房间','快照里应当是改之前的名字');
+});
+
+test('房间资料的名字必填、有长度上限，失败时一个字都不改',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  tables.set('families:family_test',{roomName:'原来的名字',protagonistName:'原来的主人公',storyBooks:{status:'active',version:1}});
+
+  await assert.rejects(()=>h.roomProfileUpdate(ctx,{roomName:'   '}),error=>error.code==='MEMBER_INVALID');
+  await assert.rejects(()=>h.roomProfileUpdate(ctx,{roomName:'名'.repeat(13)}),error=>error.code==='MEMBER_INVALID');
+  await assert.rejects(()=>h.roomProfileUpdate(ctx,{protagonistName:''}),error=>error.code==='MEMBER_INVALID');
+  await assert.rejects(()=>h.roomProfileUpdate(ctx,{}),error=>error.code==='MEMBER_INVALID');
+
+  const family=tables.get('families:family_test');
+  assert.equal(family.roomName,'原来的名字');
+  assert.equal(family.protagonistName,'原来的主人公');
+  assert.equal([...tables].filter(([key])=>key.startsWith('family_snapshots:')).length,0,'失败的改动不该留下快照');
+});
