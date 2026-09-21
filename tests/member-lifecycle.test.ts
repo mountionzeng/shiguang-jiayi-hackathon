@@ -223,6 +223,14 @@ test("cloud delete writes references before the member, survives a failed write,
       id: "memory-a", authorMemberId: "owner", authorName: "测试者", relation: "自己", text: "虚构记录。",
       scope: "personal", visibility: "private", relatedMemberIds: ["friend"], sharedWithMemberIds: ["friend"],
     }));
+    // 模拟尚未部署 memberDelete/memberRestore 的旧版 storyBooks：服务端回「不支持的故事操作」，
+    // 客户端应当回退到本地改法。这条回退路径的安全性正是本用例要守住的。
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name === "storyBooks" && data?.action === "state") return { result: {} };
+      if (name === "storyBooks") return { result: { error: "STORY_BOOK_ERROR", message: "不支持的故事操作" } };
+      throw new Error(`unexpected cloud function ${name}`);
+    };
     cloud.failures.add("family_members:set");
     await assert.rejects(deleteCloudMember("friend"), /permission denied/);
     let state = await loadCloudRoomState();
@@ -350,5 +358,39 @@ test("cloud member editing writes attribution before the member and survives rel
       reloaded.contributions.map((memory) => [memory.id, memory.authorName, memory.relation, memory.text]),
       [["memory-by-friend", "新名字", "老朋友", "一段不会被改写的虚构记忆。"]],
     );
+  } finally { cloud.restore(); }
+});
+
+/*
+ * 云函数创建的人物文档没有客户端 _openid，客户端直写会被权限规则挡掉：
+ * 界面上看得见、却永远删不掉，只反复提示「删除没有完成，请重试」。
+ * 2026-09-21 实测：真实房间 3 个人物，客户端只读得到 1 个。
+ * 所以删除必须优先走服务端动作。
+ */
+test("人物删除优先走服务端，客户端直写被权限挡住也能删成功", async () => {
+  const cloud = installCloud();
+  try {
+    cloud.seed("owner", "测试者", "recording-profile");
+    cloud.seed("friend", "测试朋友", "person");
+    const calls: string[] = [];
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      if (name === "storyBooks" && data?.action === "state") return { result: {} };
+      if (name === "storyBooks" && data?.action === "memberDelete") {
+        calls.push("memberDelete");
+        const member = cloud.records("family_members").get(`${FAMILY}_friend`);
+        cloud.records("family_members").set(`${FAMILY}_friend`, { ...member, deletedAt: "2026-09-21T00:00:00.000Z" });
+        return { result: { ok: true } };
+      }
+      throw new Error(`unexpected cloud function ${name}`);
+    };
+    // 线上就是这样：客户端对这些文档没有写权限。
+    cloud.failures.add("family_members:set");
+
+    const state = await deleteCloudMember("friend");
+
+    assert.deepEqual(calls, ["memberDelete"], "必须调用服务端动作，而不是客户端直写");
+    assert.equal(cloud.records("family_members").get(`${FAMILY}_friend`).deletedAt, "2026-09-21T00:00:00.000Z");
+    assert.equal(state.members.find((member) => member.id === "friend")?.deletedAt, "2026-09-21T00:00:00.000Z");
   } finally { cloud.restore(); }
 });

@@ -147,6 +147,66 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     });
     return {ok:true,memberId:id};
   }
+  /*
+   * 删除与恢复必须走服务端。
+   *
+   * 客户端原先直接写 family_members（cloudRoomStorage 的 saveMembers），但云函数
+   * 创建的人物文档没有客户端 _openid，权限规则把客户端挡在外面。于是界面上看得见、
+   * 却永远删不掉，只会反复提示「删除没有完成，请重试」——一条走不通的路，
+   * 却不肯明说走不通。2026-09-21 实测：房间里 3 个人物，客户端只读得到 1 个。
+   *
+   * 这里刻意不释放名字占用：软删除后人物仍在名单里，仍然拥有这个名字，
+   * 恢复时才不会被别人顶掉。真正陈旧的占用由 claimMemberName 自行识别。
+   */
+  async function memberDelete(ctx,event) {
+    const id=memberId(event.memberId);
+    const members=await repo.all('family_members',ctx.familyId);
+    const member=members.find(item=>storedMemberId(item)===id);
+    if(!member)memberError('MEMBER_NOT_FOUND','没有找到这个人，请刷新后重试');
+    if(member.role==='owner')memberError('MEMBER_INVALID','这是你自己，不能删除');
+    if(member.deletedAt)return {ok:true,memberId:id};
+    /*
+     * 先清记忆里对这个人的引用，再删人物——顺序和客户端一致：
+     * 万一引用没写成，人物仍然可见，重试会重复同样的写入；
+     * 反过来先删人物，删掉的人会继续留在别的记忆的「分享给谁」里。
+     */
+    const strip = ids => Array.isArray(ids) && ids.includes(id) ? ids.filter(item=>item!==id) : undefined;
+    const memories=await repo.all('memories',ctx.familyId);
+    for(const memory of memories) {
+      const related=strip(memory.relatedMemberIds),readers=strip(memory.sharedWithMemberIds);
+      if(!related && !readers)continue;
+      const next={...memory};
+      if(related)next.relatedMemberIds=related.length?related:undefined;
+      if(readers)next.sharedWithMemberIds=readers.length?readers:undefined;
+      await repo.set('memories',memory._id,next);
+    }
+    await repo.transaction(async tx=>{
+      const stored=await tx.get('family_members',docId(ctx.familyId,id));
+      if(!stored || stored.familyId!==ctx.familyId || storedMemberId(stored)!==id)memberError('MEMBER_CONFLICT','人物资料已变化，请刷新后重试');
+      if(stored.role==='owner')memberError('MEMBER_INVALID','这是你自己，不能删除');
+      if(stored.deletedAt)return;
+      await tx.set('family_members',docId(ctx.familyId,id),{...stored,deletedAt:now()});
+    });
+    return {ok:true,memberId:id};
+  }
+  async function memberRestore(ctx,event) {
+    const id=memberId(event.memberId);
+    const members=await repo.all('family_members',ctx.familyId);
+    const member=members.find(item=>storedMemberId(item)===id);
+    if(!member)memberError('MEMBER_NOT_FOUND','没有找到这个人，请刷新后重试');
+    if(!member.deletedAt)return {ok:true,memberId:id};
+    // 删除期间别人可能占了这个名字，恢复不能造成两个同名的人。
+    const taken=members.find(item=>storedMemberId(item)!==id && !item.deletedAt && item.name===member.name);
+    if(taken)memberError('MEMBER_CONFLICT','名单里已经有这个名字，请先改名再恢复');
+    await repo.transaction(async tx=>{
+      const stored=await tx.get('family_members',docId(ctx.familyId,id));
+      if(!stored || stored.familyId!==ctx.familyId || storedMemberId(stored)!==id)memberError('MEMBER_CONFLICT','人物资料已变化，请刷新后重试');
+      if(!stored.deletedAt)return;
+      const {deletedAt,...restored}=stored;
+      await tx.set('family_members',docId(ctx.familyId,id),restored);
+    });
+    return {ok:true,memberId:id};
+  }
   async function assertLegacyTransaction(tx, familyId, story) {
     if (!story) return;
     assertLegacyWritable(story);
@@ -427,6 +487,6 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     if(!Array.isArray(requested) || requested.some(id=>!story.memoryIds.includes(id)))throw new Error('不能引用其他故事的记忆');
     return {story,draft:core.current(loaded,story.id).draft,memories:loaded.contributions.filter(m=>requested.includes(m.id) && !m.deletedAt && m.scope==='personal'),fingerprint:core.fingerprint(loaded,story.id)};
   }
-  return {state,command,migrate,aiContext,memberAdd,memberUpdate};
+  return {state,command,migrate,aiContext,memberAdd,memberUpdate,memberDelete,memberRestore};
 }
 module.exports={createHandlers};

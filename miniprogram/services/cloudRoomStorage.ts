@@ -429,7 +429,7 @@ function unsupportedStoryMemberAction(error: unknown): boolean {
 }
 
 async function callStoryMemberAction(
-  action: "memberAdd" | "memberUpdate",
+  action: "memberAdd" | "memberUpdate" | "memberDelete" | "memberRestore",
   data: Record<string, unknown>,
 ): Promise<boolean> {
   try {
@@ -900,10 +900,14 @@ export async function classifyCloudMember(memberId: string, kind: MemberKind): P
 }
 
 export async function deleteCloudMember(memberId: string, now = new Date()): Promise<FamilyRoomState> {
+  // 先走服务端：云函数创建的人物文档没有客户端 _openid，客户端直写会被权限挡掉，
+  // 界面上看得见却永远删不掉。服务端不支持时才退回本地改法。
+  if (await callStoryMemberAction("memberDelete", { memberId })) return loadCloudRoomState();
   return changeCloudMember((state) => planDelete(state, memberId, loadCurrentMember(state).id, now));
 }
 
 export async function restoreCloudMember(memberId: string): Promise<FamilyRoomState> {
+  if (await callStoryMemberAction("memberRestore", { memberId })) return loadCloudRoomState();
   return changeCloudMember((state) => planRestore(state, memberId));
 }
 
