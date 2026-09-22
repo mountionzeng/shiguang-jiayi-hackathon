@@ -85,7 +85,32 @@ function normalizeContributionInput(event) {
     summary: String(contribution.summary || "").trim().slice(0, 60) || undefined,
     memoryType: contribution.memoryType === "memoir" ? "memoir" : "note",
     storyTitle: storyTitle || undefined,
+    aiRevisions: normalizeAiRevisions(contribution.aiRevisions),
   };
+}
+
+/** 失败关闭：非法的 aiRevisions 一律当作没有，照客户端 memoryAiRevisions() 的读法。 */
+function normalizeAiRevisions(value) {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const validKinds = new Set(["spoken", "ai", "manual", "restore"]);
+  const revisions = value.map(item => {
+    if (!item || typeof item !== "object") return undefined;
+    const id = String(item.id || "").trim();
+    const kind = item.kind;
+    const text = String(item.text || "").trim();
+    const createdAt = String(item.createdAt || "").trim();
+    if (!id || !validKinds.has(kind) || !text || !createdAt) return undefined;
+    return {
+      id,
+      kind,
+      text: text.slice(0, 500),
+      title: String(item.title || "").trim().slice(0, 40) || undefined,
+      createdAt,
+      organizationMode: item.organizationMode === "cloud-ai" ? "cloud-ai" : item.organizationMode === "local-demo" ? "local-demo" : undefined,
+    };
+  });
+  if (revisions.some(revision => revision === undefined)) return undefined;
+  return revisions;
 }
 
 /**

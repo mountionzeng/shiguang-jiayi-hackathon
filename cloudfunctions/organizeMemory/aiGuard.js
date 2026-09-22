@@ -7,6 +7,7 @@ const FAMILY_ID = /^family_[0-9A-Za-z_-]{1,120}$/;
 const DEFAULT_DAILY_LIMIT = 60;
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 const MODERATION_CHUNK = 2_500;
+const AI_CONSENT_VERSION = 1;
 
 function aiError(code, message = code) { return Object.assign(new Error(message), { code }); }
 function accountDocumentIdFor(openid) { return `account_${crypto.createHash("sha256").update(openid).digest("hex").slice(0, 24)}`; }
@@ -46,7 +47,11 @@ async function resolveActiveIdentity(db, context) {
   try { family = (await db.collection("families").doc(familyId).get()).data; }
   catch { throw aiError("IDENTITY_UNLINKED", "家庭数据还没有迁移完成"); }
   if (!family || family.ownerAccountId !== accountId) throw aiError("IDENTITY_UNLINKED", "家庭数据还没有迁移完成");
-  return identity;
+  return { ...identity, account };
+}
+function assertConsentVersion(account, requiredVersion) {
+  const version = Number(account && account.aiConsent && account.aiConsent.version);
+  if (!Number.isSafeInteger(version) || version < requiredVersion) throw aiError("AI_CONSENT_REQUIRED", "请先同意在线 AI 使用授权");
 }
 async function assertIdentityStillActive(db, identity) {
   let account;
@@ -97,5 +102,5 @@ function diagnoseAuthorized(event) {
   const expected = String(process.env.AI_DIAGNOSE_TOKEN || "");
   return expected.length >= 24 && typeof event?.diagnoseToken === "string" && event.diagnoseToken === expected;
 }
-module.exports = { accountDocumentIdFor, aiError, assertIdentityStillActive, assertServerReady, chinaDayKey,
+module.exports = { AI_CONSENT_VERSION, accountDocumentIdFor, aiError, assertConsentVersion, assertExpectedApp, assertIdentityStillActive, assertServerReady, chinaDayKey,
   diagnoseAuthorized, moderateText, reserveAiRequest, resolveActiveIdentity };

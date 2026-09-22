@@ -1,4 +1,4 @@
-import { contributionStoryTitle, MemoryContribution, memoryPool } from "../../domain/biography";
+import { contributionStoryTitle, memoryAiLabel, MemoryContribution, memoryPool } from "../../domain/biography";
 import { memoryDisplayTitle } from "../../domain/memoryTitle";
 import { loadRoomStateRemoteFirst } from "../../services/roomRepository";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -14,6 +14,7 @@ interface RecallRow {
   storyId: string;
   needsStoryChoice: boolean;
   storyChoices: Array<{ id: string; title: string }>;
+  aiLabel: string;
 }
 
 function formatDate(iso: string): string {
@@ -39,6 +40,7 @@ function recallRows(contributions: MemoryContribution[], stories: Array<{ id: st
         storyId: selected?.id || "",
         needsStoryChoice: candidates.length > 1 && !selected,
         storyChoices: candidates.map(story => ({ id: story.id, title: story.bookTitle || story.title })),
+        aiLabel: memoryAiLabel(memory),
       };
     });
 }

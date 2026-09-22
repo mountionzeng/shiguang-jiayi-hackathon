@@ -48,6 +48,7 @@
       <view class="tl-body">
         <view class="tl-title serif" wx:if="{{item.title}}">{{item.title}}</view>
         <view class="tl-text serif">{{item.text}}</view>
+        <view class="ai-label" wx:if="{{item.aiLabel}}">{{item.aiLabel}}</view>
         <view class="tl-foot">
           <text class="tag tag-jade" wx:if="{{item.storyLabel}}"><text class="tag-mark">故</text>{{item.storyLabel}}</text>
           <text class="tl-place">{{item.placeLabel}}</text>

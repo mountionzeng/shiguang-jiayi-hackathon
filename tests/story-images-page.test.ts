@@ -234,6 +234,7 @@ test("旧版云函数静默忽略参考图时，新客户端明确报错而不�
   const env = installWx({
     cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
       if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      if (name !== "storyImages") return { result: {} };
       actions.push(data?.action);
       return { result: { error: { code: "UNKNOWN_ACTION", message: "不支持的操作" } } };
     } },
@@ -260,6 +261,7 @@ test("云端明确报告参考图分析未配置时，不弹参考图授权也�
     },
     cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
       if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      if (name !== "storyImages") return { result: {} };
       actions.push(data?.action);
       return { result: { apiVersion: 2, referenceIllustration: false } };
     } },
@@ -304,6 +306,7 @@ test("拒绝或无法显示参考图授权时不发送图片，拒绝后仍可�
     },
     cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
       if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      if (name !== "storyImages") return { result: {} };
       actions.push(data?.action);
       return { result: { apiVersion: 2, referenceIllustration: true } };
     } },
@@ -337,6 +340,7 @@ test("能力预检通过但提交没有确认具体参考图时，客户端拒�
   const env = installWx({
     cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
       if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      if (name !== "storyImages") return { result: {} };
       actions.push(data?.action);
       if (data?.action === "capabilities") return { result: { apiVersion: 2, referenceIllustration: true } };
       return { result: { job: {

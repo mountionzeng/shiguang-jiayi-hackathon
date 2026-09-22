@@ -1,8 +1,13 @@
 import {
+  appendAiRevision,
   contributionStoryTitle,
   MemoryContribution,
+  memoryAiLabel,
+  memoryAiRevisions,
+  memoryOriginalSpokenText,
   memoryPool,
   normalizeMemoryText,
+  revertMemoryToSpoken,
   MAX_MEMORY_LENGTH,
 } from "../../domain/biography";
 import {
@@ -32,6 +37,25 @@ function formatDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+const HISTORY_KIND_LABELS: Record<string, string> = {
+  spoken: "原话",
+  ai: "AI 整理",
+  manual: "人工修改",
+  restore: "撤回到原话",
+};
+
+function historyRows(revisions: ReturnType<typeof memoryAiRevisions>) {
+  return revisions
+    .slice()
+    .reverse()
+    .map((revision) => ({
+      id: revision.id,
+      kindLabel: HISTORY_KIND_LABELS[revision.kind] || revision.kind,
+      text: revision.text,
+      dateLabel: formatDate(revision.createdAt),
+    }));
 }
 
 function noteTitle(memory: MemoryContribution): string {
@@ -64,6 +88,13 @@ Page({
     savingEdit: false,
     loadError: "",
     storageLabel: "",
+    editAiLabel: "",
+    showOriginal: false,
+    originalText: "",
+    canRevertToSpoken: false,
+    reverting: false,
+    historyItems: [] as Array<{ id: string; kindLabel: string; text: string; dateLabel: string }>,
+    showHistory: false,
   },
 
   swipeStartX: 0,
@@ -147,7 +178,65 @@ Page({
 
   showEditor(memory: MemoryContribution) {
     this.editingOriginal = memory;
-    this.setData({ editingId: memory.id, editTitle: memory.title || "", editText: memory.text, editStory: contributionStoryTitle(memory), swipedItemId: "" });
+    const revisions = memoryAiRevisions(memory);
+    const original = memoryOriginalSpokenText(memory);
+    this.setData({
+      editingId: memory.id,
+      editTitle: memory.title || "",
+      editText: memory.text,
+      editStory: contributionStoryTitle(memory),
+      swipedItemId: "",
+      editAiLabel: memoryAiLabel(memory),
+      showOriginal: false,
+      originalText: original,
+      canRevertToSpoken: revisions.length > 0 && original !== memory.text,
+      historyItems: historyRows(revisions),
+      showHistory: false,
+    });
+  },
+
+  toggleOriginal() {
+    this.setData({ showOriginal: !this.data.showOriginal });
+  },
+
+  toggleHistory() {
+    this.setData({ showHistory: !this.data.showHistory });
+  },
+
+  revertToSpoken() {
+    if (this.data.reverting || !this.editingOriginal) return;
+    wx.showModal({
+      title: "撤回到原话？",
+      content: "会把这段记忆恢复成你最初说的原话，AI 整理和后续修改仍保留在历史里，可以随时查看。",
+      confirmText: "撤回",
+      success: (result) => {
+        if (result.confirm) void this.confirmRevertToSpoken();
+      },
+    });
+  },
+
+  async confirmRevertToSpoken() {
+    this.setData({ reverting: true });
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      const latest = memoryPool(state.contributions).find(item => item.id === this.data.editingId);
+      if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
+      const reverted = revertMemoryToSpoken(latest);
+      await replaceContributionRemoteFirst(reverted);
+      this.editingOriginal = reverted;
+      this.setData({
+        editText: reverted.text,
+        editAiLabel: memoryAiLabel(reverted),
+        canRevertToSpoken: false,
+        showOriginal: false,
+        historyItems: historyRows(memoryAiRevisions(reverted)),
+      });
+      wx.showToast({ title: "已撤回到原话", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "撤回未成功，请重试", icon: "none" });
+    } finally {
+      this.setData({ reverting: false });
+    }
   },
 
   async openMemory(event: { currentTarget: { dataset: { id: string } } }) {
@@ -194,10 +283,22 @@ Page({
       if (latest.text !== original.text || latest.title !== original.title || latest.storyTitle !== original.storyTitle) {
         throw new Error("这段记忆已有新修改，请重新打开后编辑");
       }
-      const next = { ...latest, text, title: this.data.editTitle.trim().slice(0, 40) || undefined, storyTitle: this.data.editStory.trim().slice(0, 30) || undefined,
-        summary: text === latest.text ? latest.summary : undefined };
+      const title = this.data.editTitle.trim().slice(0, 40) || undefined;
+      const textChanged = text !== latest.text;
+      const withEdits = { ...latest, title, storyTitle: this.data.editStory.trim().slice(0, 30) || undefined,
+        summary: textChanged ? undefined : latest.summary };
+      // 只有正文真的改了才追加一条 manual 历史；只改标题/分组不会假装成一次人工修改。
+      const next = textChanged && memoryAiRevisions(latest).length > 0
+        ? appendAiRevision(withEdits, "manual", text, title, latest.organizationMode)
+        : { ...withEdits, text };
       await replaceContributionRemoteFirst(next);
       this.editingOriginal = next;
+      this.setData({
+        editAiLabel: memoryAiLabel(next),
+        originalText: memoryOriginalSpokenText(next),
+        canRevertToSpoken: memoryAiRevisions(next).length > 0 && memoryOriginalSpokenText(next) !== next.text,
+        historyItems: historyRows(memoryAiRevisions(next)),
+      });
       wx.showToast({ title: "修改已保存", icon: "success" });
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : "修改未确认，请重试", icon: "none" });

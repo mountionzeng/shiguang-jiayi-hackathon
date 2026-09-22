@@ -7,6 +7,7 @@ const FAMILY_ID = /^family_[0-9A-Za-z_-]{1,120}$/;
 const DEFAULT_DAILY_LIMIT = 60;
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 const MODERATION_CHUNK = 2_500;
+const AI_CONSENT_VERSION = 1;
 
 function aiError(code, message = code) {
   return Object.assign(new Error(message), { code });
@@ -76,7 +77,12 @@ async function resolveActiveIdentity(db, context) {
   if (!family || family.ownerAccountId !== accountId) {
     throw aiError("IDENTITY_UNLINKED", "家庭数据还没有迁移完成");
   }
-  return identity;
+  return { ...identity, account };
+}
+
+function assertConsentVersion(account, requiredVersion) {
+  const version = Number(account && account.aiConsent && account.aiConsent.version);
+  if (!Number.isSafeInteger(version) || version < requiredVersion) throw aiError("AI_CONSENT_REQUIRED", "请先同意在线 AI 使用授权");
 }
 
 async function assertIdentityStillActive(db, identity) {
@@ -149,8 +155,11 @@ function diagnoseAuthorized(event) {
 }
 
 module.exports = {
+  AI_CONSENT_VERSION,
   accountDocumentIdFor,
   aiError,
+  assertConsentVersion,
+  assertExpectedApp,
   assertIdentityStillActive,
   assertServerReady,
   chinaDayKey,

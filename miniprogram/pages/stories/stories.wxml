@@ -26,7 +26,7 @@
       <view class="note-list selected-memory-list">
         <button class="story-memory" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="editMemory">
           <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
-          <view class="note-title serif">{{item.title || '一段记忆'}}</view><view class="note-excerpt">{{item.text}}</view><view class="note-archive">点开编辑或调整归类</view>
+          <view class="note-title serif">{{item.title || '一段记忆'}}</view><view class="ai-label" wx:if="{{item.aiLabel}}">{{item.aiLabel}}</view><view class="note-excerpt">{{item.text}}</view><view class="note-archive">点开编辑或调整归类</view>
         </button>
       </view>
     </block>

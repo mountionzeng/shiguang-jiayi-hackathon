@@ -7,7 +7,6 @@ const FAMILY_ID = /^family_[0-9A-Za-z_-]{1,120}$/;
 const DEFAULT_DAILY_LIMIT = 60;
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 const MODERATION_CHUNK = 2_500;
-const AI_CONSENT_VERSION = 1;
 
 function aiError(code, message = code) { return Object.assign(new Error(message), { code }); }
 function accountDocumentIdFor(openid) { return `account_${crypto.createHash("sha256").update(openid).digest("hex").slice(0, 24)}`; }
@@ -102,5 +101,5 @@ function diagnoseAuthorized(event) {
   const expected = String(process.env.AI_DIAGNOSE_TOKEN || "");
   return expected.length >= 24 && typeof event?.diagnoseToken === "string" && event.diagnoseToken === expected;
 }
-module.exports = { AI_CONSENT_VERSION, accountDocumentIdFor, aiError, assertConsentVersion, assertExpectedApp, assertIdentityStillActive, assertServerReady, chinaDayKey,
+module.exports = { accountDocumentIdFor, aiError, assertConsentVersion, assertExpectedApp, assertIdentityStillActive, assertServerReady, chinaDayKey,
   diagnoseAuthorized, moderateText, reserveAiRequest, resolveActiveIdentity };

@@ -140,6 +140,13 @@
         "STORY_SHARE_CARD_ENABLED"
       ]
     },
+    "recordAiConsent": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Set WECHAT_APP_ID before enabling online AI features that call this"],
+      "timeoutSeconds": 10,
+      "environmentVariables": ["WECHAT_APP_ID"]
+    },
     "getOpenId": {
       "deploymentClass": "base",
       "defaultDeploy": true,

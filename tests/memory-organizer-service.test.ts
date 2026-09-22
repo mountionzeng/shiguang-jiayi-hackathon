@@ -60,14 +60,19 @@ test("organizeMemory uses the cloud function when available", async (context) =>
     transcript: ["小时候爸妈骂我时，外公总会把我护在身后。"],
     memoryType: "note",
     memberName: "林岚",
+    memoryId: "memory-1",
   });
 
   assert.equal(draft.generationMode, "cloud-ai");
   assert.equal(draft.title, "外公护着我");
   assert.deepEqual(draft.people, ["外公", "父母"]);
-  assert.deepEqual((requestData as { transcript: string[] }).transcript, [
-    "小时候爸妈骂我时，外公总会把我护在身后。",
-  ]);
+  assert.deepEqual(requestData, {
+    memoryId: "memory-1",
+    memoryType: "note",
+    memberName: "林岚",
+    storyTitle: undefined,
+    consentVersion: undefined,
+  });
 });
 
 test("organizeMemory falls back to editable original text", async (context) => {

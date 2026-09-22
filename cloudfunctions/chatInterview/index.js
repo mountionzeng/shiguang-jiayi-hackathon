@@ -2,7 +2,9 @@ const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
 const { defaultFetch } = require("./httpFetch.js");
 const {
+  AI_CONSENT_VERSION,
   aiError,
+  assertConsentVersion,
   assertIdentityStillActive,
   assertServerReady,
   diagnoseAuthorized,
@@ -497,6 +499,7 @@ async function main(event, dependencies = {}) {
   });
 
   if (!dependencies.skipGuard) {
+    assertConsentVersion(identity.account, AI_CONSENT_VERSION);
     await moderateText(cloud, identity.openid, messages[1].content, "AI 访谈输入");
     await reserveAiRequest(db, identity, "chatInterview", dependencies.nowMs);
   }
