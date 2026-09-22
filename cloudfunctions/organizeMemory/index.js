@@ -1,3 +1,6 @@
+const {createRepository: createMemoryRepository} = require('./personalMemoryRepository');
+const {prepareContext,commitContext} = require('./personalMemoryContext');
+const {formatContext} = require('./personalMemoryCore');
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
 const { defaultFetch } = require("./httpFetch.js");
@@ -180,6 +183,12 @@ async function main(event, dependencies = {}) {
     .map((item, index) => `第 ${index + 1} 句：${item}`)
     .join("\n");
   const brief = organizationBrief(memoryType);
+  let personalContext;
+  const memoryRepo = db ? createMemoryRepository(db) : null;
+  if (!dependencies.skipGuard && process.env.PERSONAL_MEMORY_ENABLED === 'true') {
+    assertConsentVersion(identity.account, AI_CONSENT_VERSION);
+    personalContext = await prepareContext(memoryRepo, identity, {excludeMemoryId:event.memoryId}).catch(() => undefined);
+  }
   const userMessage = [
     `讲述者：${memberName}`,
     `类型：${memoryType === "note" ? "随手记" : "回忆录"}`,
@@ -188,6 +197,7 @@ async function main(event, dependencies = {}) {
     "请不要输出 Markdown，不要解释处理过程。",
     "若信息不足以写满目标字数，宁可短一点，也不要编造。",
     transcriptText,
+    personalContext ? formatContext(personalContext.promptContext) : "",
   ].join("\n");
 
   if (!dependencies.skipGuard) {
@@ -243,7 +253,8 @@ async function main(event, dependencies = {}) {
     await moderateText(cloud, identity.openid, [result.title, result.summary, result.body].join("\n"), "AI 记忆整理输出");
     await assertIdentityStillActive(db, identity);
   }
-  return { ...result, aiDisclosure: result.generationMode === "cloud-ai" ? "文字 AI 生成" : "" };
+  if (personalContext) await commitContext(memoryRepo, identity, personalContext);
+  return { ...result, personalMemorySelectorVersion: personalContext?.selectorVersion, aiDisclosure: result.generationMode === "cloud-ai" ? "文字 AI 生成" : "" };
 }
 
 module.exports = {

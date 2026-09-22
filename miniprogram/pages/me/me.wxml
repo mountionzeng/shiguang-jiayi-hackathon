@@ -134,6 +134,7 @@
       <view class="me-row-copy"><text class="me-row-title">修改个人信息</text><text class="me-row-note">称呼与一个字头像</text></view>
       <text class="me-row-arrow">›</text>
     </button>
+    <button class="me-row" bindtap="openPersonalMemory"><text class="me-row-icon">忆</text><view class="me-row-copy"><text class="me-row-title">小忆记住的事</text><text class="me-row-note">查看、暂停或让小忆忘记</text></view><text class="me-row-arrow">›</text></button>
     <button class="me-row" bindtap="configureAiPrivacy">
       <text class="me-row-icon">私</text>
       <view class="me-row-copy"><text class="me-row-title">在线 AI 授权</text><text class="me-row-note">本次允许或关闭文字处理；看照片会另外询问</text></view>

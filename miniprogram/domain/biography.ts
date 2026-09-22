@@ -264,6 +264,7 @@ export interface DeletedStory {
  *
  * 规则来源：docs/2026-09-14-story-records-plan.md，用户 2026-09-14 确认。
  */
+/** One independent story book. 人生之书 is the shelf of all Story records, never a single record. */
 export interface Story {
   /** Server-owned marker; ownership does not override source distribution restrictions. */
   sourcePolicyRequired?: boolean;

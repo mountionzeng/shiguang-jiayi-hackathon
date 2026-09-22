@@ -1,0 +1,18 @@
+<view class="memory-page page-enter">
+  <view class="memory-eyebrow">小忆与你</view>
+  <view class="memory-heading serif">小忆记住的事</view>
+  <view class="memory-intro">这些是从你的讲述里提炼的少量理解，可能不够准确。你可以随时让小忆忘记。</view>
+  <view wx:if="{{loading}}" class="memory-status">正在读取…</view>
+  <view wx:elif="{{error}}" class="memory-status">{{error}}<button class="btn btn-jade" bindtap="refresh">重新读取</button></view>
+  <block wx:else>
+    <view class="memory-setting">
+      <view><view class="memory-setting-title">{{enabled ? '已开启记忆' : '记忆已暂停'}}</view><view class="memory-note">{{enabled ? '从今后保存的本人原话中学习' : '暂停提炼和使用，已有内容仍可忘记'}}</view></view>
+      <button class="memory-action" bindtap="toggleEnabled" disabled="{{busy}}">{{enabled ? '暂停' : '开启'}}</button>
+    </view>
+    <view class="memory-empty" wx:if="{{!insights.length}}">这里还没有理解。不是每段讲述都需要被提炼，原话和故事始终留在你的记忆里。</view>
+    <view class="memory-item" wx:for="{{insights}}" wx:key="lineageKey">
+      <view class="memory-text">{{item.text}}</view>
+      <view class="memory-item-bottom"><view class="memory-note">{{item.originLabel}}{{item.allowProactiveMention ? '' : ' · 不主动提及'}}</view><button class="memory-action" data-key="{{item.lineageKey}}" bindtap="forget" disabled="{{busy}}" aria-label="忘记：{{item.text}}">忘记</button></view>
+    </view>
+  </block>
+</view>

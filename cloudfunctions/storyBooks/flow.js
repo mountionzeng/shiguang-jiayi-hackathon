@@ -253,6 +253,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
   }
   const migrationTables=['stories','story_names','biography_drafts','story_migration_items','story_image_links','story_image_job_links'];
   const legacySource = source => ({
+    ...((source.stories || []).some(s=>!s.legacy) ? {independentStories:source.stories.filter(s=>!s.legacy).map(s=>({id:s.id,title:s.title})).sort((a,b)=>a.id.localeCompare(b.id))} : {}),
     contributions:[...(source.contributions || [])].sort((a,b)=>String(a.id).localeCompare(String(b.id))),
     deletedStories:[...(source.deletedStories || [])].sort((a,b)=>String(a.key).localeCompare(String(b.key))),
     legacyPersonalDrafts:source.legacyPersonalDrafts || {},
@@ -307,7 +308,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       personalDraftSourceFingerprints:loaded.personalDraftSourceFingerprints,
       deletedStories:loaded.deletedStories,
       storyMigration:loaded.storyMigration,
-      stories:loaded.storyMigration?.status==='active' ? loaded.stories : [],
+      stories:loaded.storyMigration?.status==='active' ? loaded.stories : loaded.stories.filter(story=>!story.legacy),
       manuscriptRevisions:loaded.manuscriptRevisions,
     };
   }
@@ -387,7 +388,8 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     const imageRefs=newRevision ? new Set(newRevision.draft.chapters.flatMap(c=>[...(c.backdropImageId?[c.backdropImageId]:[]),...c.content.flatMap(i=>i.photoId?.startsWith('photo-ai-')?[ctx.familyId+'_img_'+i.photoId.slice(9)]:[])])) : new Set();
     return repo.transaction(async tx=>{
       const family=await tx.get('families',ctx.familyId);
-      if(family?.storyBooks?.status!=='active')throw new Error('故事书迁移尚未完成');
+      if (!family) throw new Error('没有找到你的记录空间');
+      if(family.storyBooks?.status!=='active' && !core.isEmptyStoryCreate(input))throw new Error('故事书迁移尚未完成');
       const retry=await tx.get('story_operations',opId);
       if(retry) {
         if(retry.fingerprint!==core.stable(input))throw new Error('请求编号冲突');
@@ -417,6 +419,9 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       }
       if(newRevision)await tx.set('biography_drafts',docId(ctx.familyId,newRevision.id),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision:newRevision});
       await tx.set('stories',docId(ctx.familyId,story.id),story);
+      if (core.isEmptyStoryCreate(input) && family.storyBooks?.status!=='active') {
+        await tx.set('families',ctx.familyId,{...family,independentStoryVersion:(family.independentStoryVersion || 0)+1});
+      }
       await tx.set('story_operations',opId,{familyId:ctx.familyId,fingerprint:core.stable(input),storyId:story.id});
       return {ok:true,storyId:story.id};
     });
@@ -462,7 +467,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     source=await load(ctx,{includeMigrationSources:true}); digest=sourceDigest(source);
     if(family.storyBooks.sourceDigest!==digest)return migrate(ctx);
     const snapshot=legacySource(source);
-    const planned=core.migrate({...source,...snapshot,stories:[]},ctx.familyId,family.storyBooks.startedAt);
+    const planned=core.migrate({...source,...snapshot,stories:source.stories.filter(s=>!s.legacy)},ctx.familyId,family.storyBooks.startedAt);
     const chapterOwners=new Map();
     for(const revision of planned.manuscriptRevisions.filter(revision=>revision.storyId))for(const chapter of revision.draft.chapters || []) {
       const owners=chapterOwners.get(chapter.id) || new Set();owners.add(revision.storyId);chapterOwners.set(chapter.id,owners);
@@ -487,8 +492,8 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     }
     const staged=(table,id,value)=>[table,id,{...value,migrationSourceDigest:digest,migrationDocumentId:id}];
     const rows=[
-      ...planned.stories.map(s=>staged('stories',docId(ctx.familyId,s.id),s)),
-      ...planned.stories.filter(s=>!s.deletedAt).map(s=>{const id=docId(ctx.familyId,core.hash(s.title));return staged('story_names',id,{familyId:ctx.familyId,storyId:s.id,title:s.title});}),
+      ...planned.stories.filter(s=>s.legacy).map(s=>staged('stories',docId(ctx.familyId,s.id),s)),
+      ...planned.stories.filter(s=>s.legacy && !s.deletedAt).map(s=>{const id=docId(ctx.familyId,core.hash(s.title));return staged('story_names',id,{familyId:ctx.familyId,storyId:s.id,title:s.title});}),
       ...planned.manuscriptRevisions.filter(r=>r.storyId).map(r=>{const id=docId(ctx.familyId,r.id);return staged('biography_drafts',id,{familyId:ctx.familyId,storyId:r.storyId,draftType:'story-revision',revision:r});}),
       ...[...planned.storyMigration.pending,...assetPending].map(item=>{const id=docId(ctx.familyId,item.id);return staged('story_migration_items',id,{familyId:ctx.familyId,item});}),
       ...imageLinks.map(link=>{const id=docId(ctx.familyId,core.hash(link.storyId+'|'+link.imageId));return staged('story_image_links',id,link);}),
@@ -497,6 +502,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     return repo.transaction(async tx=>{
       const latest=await tx.get('families',ctx.familyId);
       if(latest.storyBooks.status==='active')return {status:'active'};
+      if((latest.independentStoryVersion || 0)!==(family.independentStoryVersion || 0))throw new Error('新建故事已有变化，请重试迁移');
       if(latest.storyBooks.sourceDigest!==digest)throw new Error('迁移来源已变化，不能激活旧快照');
       const cursor=latest.storyBooks.cursor;
       for(const [table,id,value] of rows.slice(cursor,cursor+MIGRATION_BATCH_SIZE))await tx.set(table,id,value);

@@ -1,3 +1,4 @@
+import { learnFromSavedMemory } from './personalMemory';
 import type { ShiguangAppOptions } from "../app";
 import {
   BiographyDraft,
@@ -84,9 +85,12 @@ export function saveCurrentMemberIdLocal(memberId: string): void {
 
 export async function appendContributionRemoteFirst(
   contribution: MemoryContribution,
+  options: { learn?: boolean } = {},
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    return await appendCloudContribution(contribution);
+    const state = await appendCloudContribution(contribution);
+    if (options.learn !== false) learnFromSavedMemory(contribution);
+    return state;
   }
 
   return appendContribution(contribution, loadRoomState());
@@ -95,7 +99,11 @@ export async function appendContributionRemoteFirst(
 export async function appendContributionsRemoteFirst(
   contributions: MemoryContribution[],
 ): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) return appendCloudContributions(contributions);
+  if (shouldUseCloudDatabase()) {
+    const state = await appendCloudContributions(contributions);
+    contributions.forEach(learnFromSavedMemory);
+    return state;
+  }
   return contributions.reduce((state, contribution) => appendContribution(contribution, state), loadRoomState());
 }
 
@@ -115,7 +123,9 @@ export async function replaceContributionRemoteFirst(
   contribution: MemoryContribution,
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    return await replaceCloudContribution(contribution);
+    const state = await replaceCloudContribution(contribution);
+    learnFromSavedMemory(contribution);
+    return state;
   }
 
   return replaceContribution(contribution, loadRoomState());

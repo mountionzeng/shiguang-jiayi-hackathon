@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "collections": {
+    "personal_memory_controls": {
+      "read": false,
+      "write": false
+    },
+    "personal_memory_insights": {
+      "read": false,
+      "write": false
+    },
+    "personal_memory_evidence": {
+      "read": false,
+      "write": false
+    },
+    "personal_memory_suppressions": {
+      "read": false,
+      "write": false
+    },
+    "personal_memory_jobs": {
+      "read": false,
+      "write": false
+    }
+  },
+  "note": "逐集合应用并验证；只允许云函数按认证账号读写。忘记记录永久保留，禁止通用房间清理任务删掉。"
+}

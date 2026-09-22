@@ -599,7 +599,7 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
     .map(record => [record.memberId as string, record.draft as BiographyDraft]));
   try {
     const result = storyServiceState ?? await loadStoryServiceRoomState();
-    if (result?.storyMigration) return {...state,stories:result.stories ?? [],storyMigration:result.storyMigration,
+    if (result?.stories) return {...state,stories:result.stories,storyMigration:result.storyMigration,
       manuscriptRevisions:[...state.manuscriptRevisions,...(result.manuscriptRevisions ?? [])]};
   } catch (error) {
     // Older deployments remain readable, but the new write API never falls back.

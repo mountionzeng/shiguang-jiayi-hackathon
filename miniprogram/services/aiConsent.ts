@@ -17,6 +17,11 @@ function loadStored(): StoredConsent | undefined {
   return stored && typeof stored.granted === "boolean" ? stored : undefined;
 }
 
+export function hasAiConsent(): boolean {
+  const stored = loadStored();
+  return stored?.granted === true && stored.version === AI_CONSENT_VERSION;
+}
+
 /** Version the user last confirmed, or undefined if never confirmed. */
 export function currentConsentVersion(): number | undefined {
   return loadStored()?.version;

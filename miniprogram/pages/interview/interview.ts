@@ -366,7 +366,9 @@ Page({
 
   onInput(event: { detail: { value: string } }) {
     const inputText = event.detail.value;
-    this.setData({ inputText });
+    // Keep the native keyboard in charge while composing (including voice IME).
+    // setData is reserved for explicit seeds/resets, never input echo.
+    this.data.inputText = inputText;
     if (inputText.trim()) {
       wx.enableAlertBeforeUnload({
         message: "退出时会尝试保存。为避免网络失败，请先完成保存并确认成功。",
@@ -463,7 +465,7 @@ Page({
       : base;
 
     if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, contribution);
-    else await appendContributionRemoteFirst(contribution);
+    else await appendContributionRemoteFirst(contribution, {learn:false});
     this.pendingContribution = contribution;
     return contribution;
   },
@@ -524,7 +526,7 @@ Page({
   },
 
   onTitleInput(event: { detail: { value: string } }) {
-    this.setData({ draftTitle: event.detail.value });
+    this.data.draftTitle = event.detail.value;
   },
 
   onDraftInput(event: { detail: { value: string } }) {
@@ -534,8 +536,8 @@ Page({
     const previewLabel = this.pendingContribution
       ? memoryAiLabel({ ...this.pendingContribution, text: draftText })
       : this.data.draftOrganizationMode === "cloud-ai" ? "文字 AI 生成 · 已由你修改" : "";
+    this.data.draftText = draftText;
     this.setData({
-      draftText,
       draftAiLabel: previewLabel,
       draftLength: draftText.length,
       tooLong: draftText.length > MAX_MEMORY_LENGTH,
@@ -573,8 +575,8 @@ Page({
 
   onStoryTitleInput(event: { detail: { value: string } }) {
     const storyTitle = event.detail.value;
+    this.data.storyTitle = storyTitle;
     this.setData({
-      storyTitle,
       storyOptions: this.data.storyOptions.map((option) => ({
         ...option,
         selected: option.title === storyTitle.trim(),
@@ -680,7 +682,8 @@ Page({
     const importAiLabel = !importCaption || !this.data.importAiOriginal
       ? ""
       : importCaption === this.data.importAiOriginal ? CAPTION_LABEL : CAPTION_EDITED_LABEL;
-    this.setData({ importCaption, importAiLabel });
+    this.data.importCaption = importCaption;
+    this.setData({ importAiLabel });
   },
 
   async generateImportCaption() {
