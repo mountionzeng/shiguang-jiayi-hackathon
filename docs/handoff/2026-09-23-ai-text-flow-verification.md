@@ -7,7 +7,7 @@
 
 四段真实 DeepSeek 调用完成，实际云函数入口、仓储、解析与原话版本逻辑可衔接。此次使用虚构素材和本地双账号内存数据库；微信身份上下文和内容审核接口由测试夹具提供。**这不是已部署云函数全链路验收，也不能替代双微信账号真机或真实微信内容审核验收。**
 
-微信开发者工具真实页面另行验证发现“小忆记住的事”首次读取失败；已定位、修复并通过本地回归，增量部署待工具确认。正式 AI 发布开关仍关闭。
+微信开发者工具真实页面另行验证发现“小忆记住的事”首次读取失败；已定位、修复并通过本地回归。用户确认后，三个增量部署成功，15:22 页面复验正常显示默认暂停与空列表。正式 AI 发布开关仍关闭。
 
 ## 真实模型验证
 
@@ -61,17 +61,16 @@ document.get:fail document with _id <account-id> does not exist
 目标 AppID `wx86ae3e9d507ce52d`；环境 `cloud1-d5ghzk30ve609f544`。
 仅增量更新各函数的 `personalMemoryRepository.js`；原文件回滚备份在 `/private/tmp/shiguang-ai-flow-20260923/rollback/`。
 
-截至本记录初稿，三个请求等待微信开发者工具内确认，尚不能宣称修复已上线：
+用户确认后，以下三个原请求均返回 `status=success`、`detail=execution_success`，每个仅更新 1 个文件（2.0 KB）；没有重新提交部署：
 
 - personalMemory：`confirmation_cloud_fn_inc_deploy_6c5b9abb-eec6-4983-8b21-592899d39d1e`
 - chatInterview：`confirmation_cloud_fn_inc_deploy_eb3825c9-0eda-4960-aab0-7a033f0df1d2`
 - organizeMemory：`confirmation_cloud_fn_inc_deploy_096476df-1633-4700-a1ad-6f1220877ced`
 
-确认后读取原任务结果，再验证实际 list 返回 `enabled=false`、空理解列表且页面正常；不要重发部署请求。
+官方 `cloud_fn_info` 确认三个函数均为 Active、60 秒、Nodejs16.13。2026-09-23 15:22，在原来报错的真实微信开发工具页面点击“重新读取”，加载完成后显示“记忆已暂停”“暂停提炼和使用，已有内容仍可忘记”、按钮“开启”和“这里还没有理解”。这验证了部署后的 list 读取链路能够处理尚未存在的控制记录，默认仍关闭。没有点击开启，没有新增模型请求或写入个人理解。
 
 ## 剩余发布条件
 
-- 三个增量部署的最终成功结果与真实页面复验。
 - 微信键盘真机语音三段、收放键盘、删改和长文本；模拟 input 回归不能覆盖原生输入法。
 - 双微信账号真机验证授权、归属、越权拒绝、家庭 pending 流程及客户端数据库规则。
 - 真实部署链路的内容审核、授权回执、保存与生成流程；personalMemory 供应商凭据仍待配置。
