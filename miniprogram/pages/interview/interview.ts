@@ -42,6 +42,7 @@ import { classifyImportFiles, ImportFileLike, readImportTextFile } from "../../s
 import { CAPTION_EDITED_LABEL, CAPTION_LABEL, storyImageApi } from "../../services/storyImageService";
 import { resumePhotoUploads } from "../../services/photoCloud";
 import { activeStory, linkStoryMemories } from "../../services/storyBooks";
+import { storyShelf } from "../../services/storyShelf";
 import { CLOUD_AI_RELEASE_READY } from "../../config/runtime";
 
 interface MessageView {
@@ -52,6 +53,10 @@ interface MessageView {
 }
 
 interface StoryOptionView {
+  key: string;
+  storyId?: string;
+  memberId?: string;
+  chapterCount?: number;
   title: string;
   count: number;
   selected: boolean;
@@ -105,7 +110,7 @@ function storyOptionsFor(
     }
   });
   return Array.from(counts.entries()).map(([title, count]) => ({
-    title,
+    key: `story:${title}`, title,
     count,
     selected: title === selectedTitle,
   }));
@@ -183,6 +188,7 @@ Page({
     // 「随手记 / 回忆录」沿用原型的说法，在整理时才选，入口仍然只有一个。
     memoryType: "note" as MemoryType,
     storyTitle: "",
+    selectedStoryKey: "",
     storyId: "", writingMode: "creative" as "objective" | "creative",
     guidedQuestion: false,
     storyOptions: [] as StoryOptionView[],
@@ -279,12 +285,14 @@ Page({
       storyId: requestedStory?.id || "",
       writingMode: requestedStory?.writingMode || "creative",
       guidedQuestion: Boolean(requestedQuestion),
-      storyOptions: storyOptionsFor(
-        state.contributions,
-        storyTitle,
-        Boolean(sharedFamilyId),
-        (state.deletedStories ?? []).map(story => story.title),
-      ),
+      selectedStoryKey: requestedStory?.id || "",
+      storyOptions: sharedFamilyId
+        ? storyOptionsFor(state.contributions, storyTitle, true, (state.deletedStories ?? []).map(story => story.title))
+        : storyShelf(state).filter(item => !state.stories?.some(story => story.id === item.storyId && story.sourcePolicyRequired)).map(item => ({
+          key: item.key, storyId: item.storyId, memberId: item.storyId ? undefined : item.manuscriptMemberId,
+          title: item.title, count: item.memoryIds.length, chapterCount: item.chapterCount,
+          selected: requestedStory ? item.storyId === requestedStory.id : false,
+        })),
       relatedOptions: memberOptionsFor(state.members, member.id),
       audienceOptions: memberOptionsFor(state.members, member.id),
     });
@@ -558,7 +566,7 @@ Page({
 
   chooseFragment() {
     this.setData({
-      storyTitle: "",
+      storyTitle: "", storyId: "", selectedStoryKey: "",
       storyOptions: this.data.storyOptions.map((option) => ({
         ...option,
         selected: false,
@@ -566,25 +574,21 @@ Page({
     });
   },
 
-  chooseStory(event: { currentTarget: { dataset: { title: string } } }) {
-    const storyTitle = event.currentTarget.dataset.title;
+  chooseStory(event: { currentTarget: { dataset: { key?: string; title?: string } } }) {
+    const { key, title } = event.currentTarget.dataset;
+    const selected = this.data.storyOptions.find(option => key ? option.key === key : option.title === title);
+    if (!selected) return;
     this.setData({
-      storyTitle,
-      storyOptions: this.data.storyOptions.map((option) => ({
-        ...option,
-        selected: option.title === storyTitle,
-      })),
+      storyTitle: selected.title, storyId: selected.storyId || "", selectedStoryKey: this.data.sharedFamilyId ? "" : selected.key,
+      storyOptions: this.data.storyOptions.map(option => ({ ...option, selected: option.key === selected.key })),
     });
   },
 
   onStoryTitleInput(event: { detail: { value: string } }) {
-    const storyTitle = event.detail.value;
-    this.data.storyTitle = storyTitle;
+    this.data.storyTitle = event.detail.value;
     this.setData({
-      storyOptions: this.data.storyOptions.map((option) => ({
-        ...option,
-        selected: option.title === storyTitle.trim(),
-      })),
+      storyId: "", selectedStoryKey: "",
+      storyOptions: this.data.storyOptions.map(option => ({ ...option, selected: false })),
     });
   },
 
@@ -849,6 +853,9 @@ Page({
       if (selectedMemberIds.some((memberId) => !availableMemberIds.has(memberId))) {
         throw new Error("选的人有变动，请重新打开本页再选");
       }
+      if (this.data.selectedStoryKey && !storyShelf(state).some(item => item.key === this.data.selectedStoryKey)) {
+        throw new Error("这个故事已变动，请重新选择");
+      }
       // 已经先存过原话（finish() persist-first），这里更新同一条记忆而不是新建：
       // 若草稿文字跟最后一条历史不一样，说明用户手改过，补一条 manual 记录；
       // 没改过（比如 AI 整理失败走本地兜底，草稿=原话）就不重复追加历史。
@@ -902,8 +909,9 @@ Page({
         storageLabel: this.data.sharedFamilyId ? "已提交到微信记忆之家" : roomDataModeLabel(),
         saveMessage: this.data.sharedFamilyId
           ? "已交给主人确认；确认后会出现在大家的记忆之家。"
-          : this.data.storyTitle.trim()
-            ? `已保存到「${this.data.storyTitle.trim()}」，也可在“记忆”中找到。`
+          : this.data.selectedStoryKey
+            ? `记忆已保存。接下来选择「${this.data.storyTitle.trim()}」的章节，预览后再写入正文。`
+            : this.data.storyTitle.trim() ? `已归入「${this.data.storyTitle.trim()}」的记忆，之后可以整理进正文。`
             : "已保存到“记忆”，暂未归入故事。以后再整理也可以。",
       });
       wx.disableAlertBeforeUnload();
@@ -911,11 +919,12 @@ Page({
         title: this.data.sharedFamilyId
           ? "已提交，等待确认"
           : this.data.storyTitle.trim()
-            ? `已放进「${this.data.storyTitle.trim()}」`
+            ? "记忆已保存"
             : "已存入未整理片段",
         icon: "none",
         duration: 2400,
       });
+      if (this.data.selectedStoryKey) this.continueToChapter();
     } catch (error) {
       this.setData({
         saving: false,
@@ -923,6 +932,17 @@ Page({
       });
       wx.showToast({ title: error instanceof Error ? error.message : "暂时无法确认保存", icon: "none" });
     }
+  },
+
+  continueToChapter() {
+    if (!this.data.saved || !this.pendingContribution || !this.data.selectedStoryKey || this.data.sharedFamilyId) return;
+    const selected = this.data.storyOptions.find(item => item.key === this.data.selectedStoryKey);
+    if (!selected) return;
+    const query = `storyId=${encodeURIComponent(selected.key)}&memoryIds=${encodeURIComponent(this.pendingContribution.id)}`
+      + (selected.memberId ? `&memberId=${encodeURIComponent(selected.memberId)}` : "");
+    wx.navigateTo({ url: `/pages/book/book?${query}`, fail: () => {
+      this.setData({ saveMessage: "记忆已保存，打开章节暂时失败，请点“继续选择章节”重试。" });
+    } });
   },
 
   viewSavedMemory() {

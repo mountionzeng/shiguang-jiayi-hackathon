@@ -191,7 +191,8 @@
       <view class="organize-title serif">{{sharedFamilyId ? '故事已提交' : '记忆已保存'}}</view>
       <view class="organize-note">{{saveMessage}}</view>
       <view class="organize-note">{{storageLabel}}</view>
-      <button class="btn btn-primary" bindtap="viewSavedMemory">查看这段记忆</button>
+      <button wx:if="{{selectedStoryKey}}" class="btn btn-primary" bindtap="continueToChapter">继续选择章节</button>
+      <button class="btn btn-ghost" bindtap="viewSavedMemory">查看这段记忆</button>
       <button class="btn btn-ghost" bindtap="leaveSavedMemory">返回</button>
     </view>
   </block>
@@ -265,10 +266,10 @@
             <view
               class="story-chip {{item.selected ? 'story-chip-on' : ''}}"
               wx:for="{{storyOptions}}"
-              wx:key="title"
-              data-title="{{item.title}}"
+              wx:key="key"
+              data-key="{{item.key}}"
               bindtap="chooseStory"
-            >{{item.title}} · {{item.count}}段</view>
+            >{{item.title}} · {{item.chapterCount ? item.chapterCount + '章 · ' : ''}}{{item.count}}段记忆</view>
           </view>
 
           <input
@@ -348,7 +349,7 @@
           class="btn btn-primary save-go {{(saving || tooLong) ? 'btn-disabled' : ''}}"
           bindtap="save"
           disabled="{{saving || tooLong}}"
-        >{{saving ? '正在保存…' : (sharedFamilyId ? '提交给主人确认' : '保存这段记忆')}}</button>
+        >{{saving ? '正在保存…' : (sharedFamilyId ? '提交给主人确认' : selectedStoryKey ? '保存并选择章节' : '保存这段记忆')}}</button>
       </view>
     </view>
   </block>

@@ -1522,6 +1522,7 @@ test("AI organizing a chapter keeps the book title and every photo, and can be u
   await callPage(page, "refresh");
   callPage(page, "showOrganize");
   assert.equal(page.data.organizeTarget, "chapter-1", "organizing from a chapter targets that chapter");
+  callPage(page, "onOrganizeMethod", { detail: { value: "blend" } });
   const beforePreview = JSON.stringify(storage.roomState().manuscriptRevisions);
   await callPage(page, "runOrganize");
   assert.equal(page.data.panel, "organize-preview");
@@ -2042,4 +2043,112 @@ test("saved-memory learning is nonblocking, sends only an id and respects local 
   assert.equal(learnFromSavedMemory(memory),undefined);
   assert.deepEqual(calls,[{name:"personalMemory",data:{action:"extract",memoryId:memory.id}}]);
   finish?.({result:{status:"complete"}});
+});
+
+test("saving memory offers empty existing books and saved legacy manuscripts, and carries its stable id to chapters", async context => {
+  const state = createInitialRoomState();
+  state.stories = [{ id: "story-existing", familyId: "local", title: "既有故事", writingMode: "objective", memoryIds: [], protagonistMemberIds: [], createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z", version: 0 }];
+  state.personalDrafts = { owner: { title: "旧书稿", paragraphs: ["原文"], sourceCount: 0, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad");
+  assert.ok((page.data.storyOptions as any[]).some(item => item.key === "story-existing" && item.count === 0));
+  assert.ok((page.data.storyOptions as any[]).some(item => item.key === "manuscript:owner"));
+  wx.setStorageSync(ROOM_KEY, { ...storage.roomState(), storyMigration: { version: 1, status: "active", pending: [] } });
+  callPage(page, "chooseStory", { currentTarget: { dataset: { key: "story-existing" } } });
+  page.setData({ stage: "save", draftText: "新的虚构记忆。", draftTitle: "午后" });
+  const before = storage.roomState().contributions.length;
+  await callPage(page, "save");
+  const memory = storage.roomState().contributions.find(item => item.text === "新的虚构记忆。");
+  assert.ok(memory);
+  assert.equal(page.data.saved, true, String(page.data.saveError) + storage.toasts.join(";"));
+  assert.deepEqual(storage.roomState().stories![0].memoryIds, [memory.id]);
+  const query = new URLSearchParams(last(storage.navigations)!.split("?")[1]);
+  assert.equal(query.get("storyId"), "story-existing");
+  assert.equal(query.get("memoryIds"), memory.id);
+  assert.equal(storage.roomState().manuscriptRevisions, undefined, "save does not write chapter contents");
+  await callPage(page, "save");
+  callPage(page, "continueToChapter");
+  assert.equal(storage.roomState().contributions.length, before + 1, "retry navigation must not duplicate the memory");
+});
+
+test("changing the destination to fragment or a typed title clears the previously selected story id", async context => {
+  const state = createInitialRoomState();
+  state.stories = [{ id: "story-existing", familyId: "local", title: "同名故事", writingMode: "objective", memoryIds: [], protagonistMemberIds: [], createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z", version: 0 }];
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad", { storyId: "story-existing" });
+  callPage(page, "chooseFragment");
+  assert.equal(page.data.storyId, "");
+  assert.equal(page.data.selectedStoryKey, "");
+  callPage(page, "chooseStory", { currentTarget: { dataset: { key: "story-existing" } } });
+  callPage(page, "onStoryTitleInput", { detail: { value: "新的故事名" } });
+  assert.equal(page.data.storyId, "");
+  assert.equal(page.data.selectedStoryKey, "");
+  page.setData({ stage: "save", draftText: "新记忆。" });
+  await callPage(page, "save");
+  assert.deepEqual(storage.roomState().stories![0].memoryIds, []);
+  assert.equal(storage.navigations.length, 0);
+});
+
+test("chapter insertion previews original context, edits only added text, and preserves old memory links and photos", async context => {
+  const state = createInitialRoomState();
+  const original = [{ text: "第一段。\n\n第二段。\n" }, { photoId: "photo-middle" }, { text: "第三段。" }];
+  state.personalDrafts = { owner: { title: "已有文章", paragraphs: ["第一段。", "第二段。", "第三段。"], sourceCount: 1, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-kept", title: "已有章节", memoryIds: ["old-source"], content: original, handEdited: true },
+    { id: "chapter-other", title: "其他章节", memoryIds: ["demo-personal-rain"], content: [{ text: "另一章保留。" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  callPage(page, "showOrganize");
+  callPage(page, "onOrganizeTarget", { detail: { value: "chapter-kept" } });
+  assert.match(String(page.data.organizeOriginal), /第一段。[\s\S]*第二段。[\s\S]*第三段。/);
+  assert.equal(page.data.organizeMethod, "insert");
+  callPage(page, "onOrganizeMemories", { detail: { value: ["demo-personal-rain"] } });
+  callPage(page, "onInsertionPoint", { detail: { value: "1" } });
+  await callPage(page, "runOrganize");
+  assert.equal(page.data.panel, "organize-preview", String(page.data.saveNotice));
+  assert.equal(page.data.previewInsertion, true);
+  assert.equal(storage.roomState().manuscriptRevisions, undefined);
+  callPage(page, "onInsertionText", { detail: { value: "由我确认的新增记忆。" } });
+  assert.match(String(page.data.previewText), /第一段。[\s\S]*由我确认的新增记忆。[\s\S]*第二段。/);
+  await callPage(page, "confirmOrganize");
+  const chapters = (page.data.draft as any).chapters;
+  assert.deepEqual(chapters[0].content, [{ text: "第一段。\n\n" }, { text: "由我确认的新增记忆。\n\n" }, { text: "第二段。\n" }, { photoId: "photo-middle" }, { text: "第三段。" }]);
+  assert.deepEqual(chapters[0].memoryIds, ["old-source", "demo-personal-rain"]);
+  assert.deepEqual(chapters[1], state.personalDrafts.owner.chapters![1]);
+  assert.equal(storage.roomState().contributions[0].text, createInitialRoomState().contributions[0].text);
+});
+
+test("insertion refuses a changed saved chapter instead of overwriting newer text", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "旧稿", paragraphs: ["原文"], sourceCount: 0, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  callPage(page, "showOrganize");
+  await callPage(page, "runOrganize");
+  assert.equal(page.data.previewInsertion, true);
+  const updated = makeRevision("owner", { ...state.personalDrafts.owner, paragraphs: ["别处已修改"] }, "", "version", "更新");
+  const { saveManuscriptRevision } = await import("../miniprogram/services/manuscript");
+  await saveManuscriptRevision(updated, String(page.revisionId));
+  await callPage(page, "confirmOrganize");
+  assert.match(String(page.data.saveNotice), /已有更新/);
+  const { currentManuscript } = await import("../miniprogram/services/manuscript");
+  assert.equal(currentManuscript(storage.roomState(), "owner").revisionId, updated.id);
+});
+
+test("opening insertion does not preselect memories already written into a chapter", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "已有书", paragraphs: ["已写入的文字"], sourceCount: 1, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-existing", title: "已有章", memoryIds: ["demo-personal-rain"], content: [{ text: "已写入的文字" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  callPage(page, "showOrganize");
+  assert.equal(page.data.organizeMethod, "insert");
+  assert.deepEqual(page.organizeSelection, []);
+  assert.equal(page.data.organizeCount, 0);
 });

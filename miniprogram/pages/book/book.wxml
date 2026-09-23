@@ -166,14 +166,33 @@
             <text class="memory-text">新开一章</text>
           </label>
         </radio-group>
-        <view class="panel-note">下一步会将所选记忆收进这个故事并生成预览；确认后才写入正文。原始记忆保留，预览的标题和文字都可以修改。</view>
+        <block wx:if="{{organizeTarget !== 'new'}}">
+          <view class="field-label contents-label">章节原文</view>
+          <scroll-view class="chapter-original" scroll-y><text selectable>{{organizeOriginal || '这一章还没有正文'}}</text></scroll-view>
+          <view class="field-label contents-label">3. 怎样放进去</view>
+          <radio-group bindchange="onOrganizeMethod">
+            <label class="memory-row"><radio value="insert" checked="{{organizeMethod === 'insert'}}" disabled="{{generating || switchingBook}}" /><text>保留原文，插入这段记忆</text></label>
+            <label wx:if="{{writingMode === 'creative'}}" class="memory-row"><radio value="blend" checked="{{organizeMethod === 'blend'}}" disabled="{{generating || switchingBook}}" /><text>让 AI 结合本章重新衔接</text></label>
+          </radio-group>
+          <picker wx:if="{{organizeMethod === 'insert'}}" range="{{insertionPoints}}" range-key="label" value="{{insertionIndex}}" bindchange="onInsertionPoint" disabled="{{generating || switchingBook}}">
+            <view class="insertion-picker">插入位置：{{insertionPoints[insertionIndex].label}}　⌄</view>
+          </picker>
+          <view wx:else class="panel-note">AI 会读取整章原文与所选记忆，生成新的章节正文。请在下一步检查事实、语气和照片位置。</view>
+        </block>
+        <view class="panel-note">下一步会将所选记忆收进故事并生成预览；确认后才写入正文，旧版本和原始记忆保留。</view>
       </block>
       <block wx:if="{{panel === 'organize-preview'}}">
         <view class="panel-title serif">确认这一章的正文</view>
-        <view class="panel-note">可以修改标题和文字；确认写入前，已保存的书稿不会改变。</view>
+        <view class="panel-note">{{previewInsertion ? '可以修改新增文字，下面会显示插入后的全文。' : '可以修改标题和文字。'}}确认写入前，已保存的书稿不会改变。</view>
         <view wx:if="{{previewAiLabel}}" class="chapter-ai-label">{{previewAiLabel}}</view>
         <input class="version-name" value="{{previewTitle}}" bindinput="onPreviewTitle" maxlength="40" disabled="{{saving}}" placeholder="章节标题" />
-        <textarea class="preview-editor" value="{{previewText}}" bindinput="onPreviewText" maxlength="20000" auto-height disabled="{{saving}}" />
+        <block wx:if="{{previewInsertion}}">
+          <view class="field-label">本次插入的文字 · 可修改</view>
+          <textarea class="preview-editor" value="{{insertionText}}" bindinput="onInsertionText" maxlength="20000" auto-height disabled="{{saving}}" />
+          <view class="field-label contents-label">插入后的完整章节</view>
+          <view class="insertion-preview"><text selectable>{{previewText}}</text></view>
+        </block>
+        <textarea wx:else class="preview-editor" value="{{previewText}}" bindinput="onPreviewText" maxlength="20000" auto-height disabled="{{saving}}" />
       </block>
       <block wx:if="{{panel === 'sources'}}">
         <view class="panel-title serif">原始记忆 · {{sourceCount}}</view>
