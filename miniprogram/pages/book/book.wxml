@@ -1,5 +1,5 @@
 <view class="writing-page {{keyboardHeight ? 'keyboard-open' : ''}}" style="height: {{viewportHeight ? viewportHeight + 'px' : '100%'}};">
-  <view class="writing-toolbar">
+  <view class="writing-toolbar" wx:if="{{panel !== 'organize' && panel !== 'organize-preview'}}">
     <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '目录' : '返回'}}</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button" bindtap="addPhoto" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}</button>
     <button wx:if="{{!protectedCopy && storyImageSelected}}" class="tool-button" catchtouchstart="placeSelectedStoryImage" disabled="{{!editorReady || refreshingStoryImage || saving || generating || pickingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{refreshingStoryImage ? '准备插图' : '插入插图'}}</button>
@@ -41,7 +41,7 @@
   <view class="panel-actions" wx:if="{{canUndo && !panel && !editing}}">
     <button class="tool-button" bindtap="undoOrganize" disabled="{{saving || generating}}"><view class="action-icon icon-undo" aria-hidden="true"></view>撤回这次整理</button>
   </view>
-  <view class="panel-actions" wx:if="{{panel}}">
+  <view class="panel-actions" wx:if="{{panel && panel !== 'organize' && panel !== 'organize-preview'}}">
     <button class="tool-button" bindtap="closePanel" disabled="{{saving || generating || appendingOwn}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '回到正文' : '回到目录'}}</button>
     <button wx:if="{{panel === 'organize'}}" class="tool-button save-button" bindtap="runOrganize" disabled="{{saving || generating}}"><view class="action-icon icon-ai" aria-hidden="true"></view>{{generating ? '整理中…' : '生成正文预览'}}</button>
     <button wx:if="{{panel === 'organize-preview'}}" class="tool-button save-button" bindtap="confirmOrganize" disabled="{{saving}}">确认写入正文</button>
@@ -141,30 +141,32 @@
         </view>
       </block>
       <block wx:if="{{panel === 'organize'}}">
-        <view class="panel-title serif">AI 整理记忆</view>
+        <view class="panel-title serif">把记忆写进故事</view>
+        <view class="panel-note">选好记忆和章节，再点底部“下一步”。</view>
         <view class="field-label">写进哪个故事</view>
-        <radio-group bindchange="onOrganizeBook"><label class="memory-row" wx:for="{{organizeBooks}}" wx:key="id"><radio value="{{item.id}}" checked="{{organizeBookKey === item.id}}" disabled="{{generating}}" /><text class="memory-text">{{item.title}}</text><text class="version-date">{{item.detail}}</text></label></radio-group>
-        <view class="panel-note">人生之书里的所有故事都会显示。选择还没有章节的故事，会在当前人生之书里新开一章。</view>
+        <radio-group bindchange="onOrganizeBook"><label class="memory-row" wx:for="{{organizeBooks}}" wx:key="id"><radio value="{{item.id}}" checked="{{organizeBookKey === item.id}}" disabled="{{generating || switchingBook}}" /><text class="memory-text">{{item.title}}</text><text class="version-date">{{item.detail}}</text></label></radio-group>
+        <view class="panel-note">切换故事会保留你勾选的记忆。没有章节也可以新开一章。</view>
         <view class="field-label">1. 勾选要整理的记忆</view>
         <checkbox-group bindchange="onOrganizeMemories">
           <label class="memory-row" wx:for="{{organizeRows}}" wx:key="id">
-            <checkbox value="{{item.id}}" checked="{{item.checked}}" />
+            <checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{generating || switchingBook}}" />
             <text class="memory-text">{{item.text}}</text>
             <text class="version-date">{{item.where}}</text>
           </label>
         </checkbox-group>
+        <view wx:if="{{!organizeRows.length}}" class="panel-note">还没有可整理的记忆，请先记录一段经历。</view>
         <view class="field-label contents-label">2. 放进哪一章</view>
         <radio-group bindchange="onOrganizeTarget">
           <label class="memory-row" wx:for="{{chapterRows}}" wx:key="id">
-            <radio value="{{item.id}}" checked="{{organizeTarget === item.id}}" />
+            <radio value="{{item.id}}" checked="{{organizeTarget === item.id}}" disabled="{{generating || switchingBook}}" />
             <text class="memory-text">{{item.label}}{{item.title ? '　' + item.title : ''}}</text>
           </label>
           <label class="memory-row">
-            <radio value="new" checked="{{organizeTarget === 'new'}}" />
+            <radio value="new" checked="{{organizeTarget === 'new'}}" disabled="{{generating || switchingBook}}" />
             <text class="memory-text">新开一章</text>
           </label>
         </radio-group>
-        <view class="panel-note">先生成预览，确认后才写入正文。新章按记忆内容建议标题，可以修改；素材少时先写成一章，以后再按人生阶段、主题或事件分章。已有章节会结合原文整理，照片保留。</view>
+        <view class="panel-note">下一步会将所选记忆收进这个故事并生成预览；确认后才写入正文。原始记忆保留，预览的标题和文字都可以修改。</view>
       </block>
       <block wx:if="{{panel === 'organize-preview'}}">
         <view class="panel-title serif">确认这一章的正文</view>
@@ -224,5 +226,13 @@
     <view class="panel-title serif">{{sourceCount ? '把记忆写成一本书' : '从一段记忆开始'}}</view>
     <view class="panel-note">{{sourceCount ? '新开第一章，把记忆放进去；也可以点「更多」请 AI 整理。' : '点右上角「更多」，开始记录经历。'}}</view>
     <button wx:if="{{sourceCount}}" class="tool-button save-button add-chapter" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新开第一章</button>
+  </view>
+  <view class="organize-footer" wx:if="{{panel === 'organize' || panel === 'organize-preview'}}">
+    <view class="organize-summary">{{panel === 'organize' ? ('已选 ' + organizeCount + ' 段记忆 · ' + organizeBookTitle) : '先看看文字，满意后再写入'}}</view>
+    <view class="organize-footer-actions">
+      <button class="tool-button" bindtap="closePanel" disabled="{{saving || generating || switchingBook}}">暂不整理</button>
+      <button wx:if="{{panel === 'organize'}}" class="tool-button workflow-next" bindtap="runOrganize" disabled="{{saving || generating || switchingBook || !organizeCount}}">{{switchingBook ? '正在切换…' : generating ? '正在整理…' : '下一步：预览正文'}}</button>
+      <button wx:else class="tool-button workflow-next" bindtap="confirmOrganize" disabled="{{saving || generating}}">{{saving ? '正在写入…' : '确认写入正文'}}</button>
+    </view>
   </view>
 </view>

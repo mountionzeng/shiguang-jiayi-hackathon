@@ -184,6 +184,7 @@ Page({
     memoryType: "note" as MemoryType,
     storyTitle: "",
     storyId: "", writingMode: "creative" as "objective" | "creative",
+    guidedQuestion: false,
     storyOptions: [] as StoryOptionView[],
     relatedMemberIds: [] as string[],
     relatedOptions: [] as MemberOptionView[],
@@ -277,6 +278,7 @@ Page({
       storyTitle,
       storyId: requestedStory?.id || "",
       writingMode: requestedStory?.writingMode || "creative",
+      guidedQuestion: Boolean(requestedQuestion),
       storyOptions: storyOptionsFor(
         state.contributions,
         storyTitle,
@@ -383,6 +385,7 @@ Page({
   },
 
   async send() {
+    if (this.data.asking || this.data.organizing) return;
     const answer = this.data.inputText.trim();
     if (!answer) {
       wx.showToast({ title: "先说一句吧，短一点也行", icon: "none" });
@@ -403,7 +406,7 @@ Page({
       message: "退出时会尝试保存。为避免网络失败，请先完成保存并确认成功。",
     });
 
-    if (this.data.writingMode === "objective" && this.data.storyId) {
+    if (this.data.writingMode === "objective" && this.data.storyId && !this.data.guidedQuestion) {
       this.setData({ asking: false });
       wx.showToast({ title: "已记下，可以继续补充或完成", icon: "none" });
       return;
@@ -417,7 +420,8 @@ Page({
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
-        storyId: this.data.storyId,
+        // Daily questions can guide a conversation without reading or rewriting an objective book.
+        storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
         previousAnswers,
         conversation,
       });
@@ -471,7 +475,7 @@ Page({
   },
 
   async finish() {
-    if (this.data.organizing) return;
+    if (this.data.organizing || this.data.asking) return;
     const unsentText = this.data.inputText.trim();
     const answers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (answers.length === 0) {

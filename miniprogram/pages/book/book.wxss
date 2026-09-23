@@ -83,3 +83,9 @@ page { height: 100%; overflow: hidden; }
 
 /* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
 .version-row.version-row { width: 100%; }
+
+.organize-footer { flex: none; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); background: var(--paper-card); border-top: 1rpx solid var(--line); }
+.organize-summary { margin: 0 8rpx 10rpx; color: var(--ink-soft); font-size: 24rpx; line-height: 1.5; }
+.organize-footer-actions { display: flex; gap: 16rpx; align-items: center; }
+.organize-footer-actions .tool-button { width: auto; margin: 0; }
+.organize-footer-actions .workflow-next { flex: 1; min-height: 88rpx; justify-content: center; border-radius: 14rpx; color: var(--paper-card); background: var(--jade); font-weight: 600; }

@@ -146,7 +146,7 @@
           bindinput="onInput"
           bindkeyboardheightchange="onKeyboardHeightChange"
         ></textarea>
-        <view class="send-btn" bindtap="send">
+        <view class="send-btn" bindtap="send" role="button" aria-label="{{asking ? '小忆正在回应' : '发送'}}" aria-disabled="{{asking || organizing}}">
           <text class="send-arrow">→</text>
         </view>
       </view>
@@ -155,9 +155,9 @@
         <view class="tool-chip {{importing ? 'tool-chip-off' : ''}}" bindtap="importMemory">{{importing ? '正在导入…' : '导入'}}</view>
         <view class="tool-spacer"></view>
         <view
-          class="tidy-btn {{(answers.length === 0 || organizing) ? 'tidy-btn-off' : ''}}"
+          class="tidy-btn {{(answers.length === 0 || organizing || asking) ? 'tidy-btn-off' : ''}}"
           bindtap="finish"
-        >{{organizing ? '正在整理…' : '整理成片段'}}</view>
+        >{{organizing ? '正在整理…' : asking ? '小忆正在回应…' : '整理成片段'}}</view>
       </view>
     </view>
 

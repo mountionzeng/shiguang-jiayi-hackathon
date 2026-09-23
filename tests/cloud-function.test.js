@@ -907,6 +907,10 @@ test("interview prompt distinguishes a feeling pivot from an explicit goodbye", 
   assert.match(messages[0].content, /是在把话题转向感受，不是告别/);
   assert.match(messages[0].content, /若用户说‘今天先不聊了’，则简短收尾，不再问问题/);
   assert.match(messages[0].content, /不要把普通回答解读成成长、勇敢或疗愈/);
+  assert.match(messages[0].content, /默认每轮一个问题/);
+  assert.match(messages[0].content, /深入来自用户自己的思考/);
+  assert.match(messages[0].content, /不要替他回答/);
+  assert.doesNotMatch(messages[0].content, /不要求每轮提问/);
   assert.match(messages[1].content, /没什么新鲜事，我想讲的是现在的心情/);
   assert.match(messages[1].content, /以前搬家总紧张/);
 });

@@ -75,7 +75,18 @@ document.get:fail document with _id <account-id> does not exist
 - 双微信账号真机验证授权、归属、越权拒绝、家庭 pending 流程及客户端数据库规则。
 - 真实部署链路的内容审核、授权回执、保存与生成流程；personalMemory 供应商凭据仍待配置。
 - 修正或明确接受本次发现的文字重复与延迟问题。
-- `CLOUD_AI_RELEASE_READY` 与 `AI_SERVER_RELEASE_READY` 保持 false，个人记忆功能的生产处理未启用。本轮未改迁移、照片、真实历史记录，也未发布新的客户端。
+- 上述测试结束时，客户端和服务端发布开关均为 false；此状态已被下方 15:52 的本人试用启用记录更新。个人记忆功能的生产处理仍未启用。
+
+## 本人文字 AI 预览启用（2026-09-23 15:52）
+
+用户明确要求立即使用文字 AI，并一起进行真机语音测试；尚未上线，双微信账号验收保留为公开上线前待办，不阻挡本人预览。
+
+- 在企业环境中将 chatInterview、organizeMemory、generateBiography 的 `AI_SERVER_RELEASE_READY` 改为 `true`，逐个保存后在配置页读取确认。模型仍为 `deepseek/deepseek-flash`，原有身份校验、同意回执、审核、限频与每日限额保留。
+- personalMemory 保持关闭，独立供应商凭据未配置，不因文字 AI 开启而自动启用长期理解提炼。
+- 以主线 `4b575a01dc883c149a664aff7c401c41dfb96f25` 建立隔离预览目录 `/private/tmp/shiguang-ai-enabled-preview-20260923`，仅此目录的 `CLOUD_AI_RELEASE_READY=true`；仓库默认开关仍为 false。
+- 官方 `create_preview_qrcode` 返回 success，编译包总大小 1,831,732 字节；二维码 `/private/tmp/shiguang-ai-enabled-preview-20260923/ai-enabled.jpg`。此二维码替代此前 AI 关闭的预览码，尚未上传公开发布。
+- 本次启用和生成预览码没有新增代理发起的模型调用。原四次测试授权已用完。后续由用户在手机中授权并主动发送内容。
+- 真机待验：先在“我的 → 在线 AI 授权”允许处理；使用键盘语音输入三段，检查累计重复、收放键盘与手动修改；发送后核对原文，并检查 AI 消息的“文字 AI 生成”标记及提问是否贴合内容，再验证整理与书稿。尚不能宣称真机验收通过。
 
 ## Post-Deploy Monitoring & Validation
 

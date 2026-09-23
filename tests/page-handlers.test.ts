@@ -1094,6 +1094,68 @@ test("objective story interview records answers without calling any AI function"
   assert.ok(!(page.data.messages as Array<{ kind: string }>).some(message => message.kind === "followup"));
 });
 
+test("daily question keeps guiding the next two answers even in an objective book", async context => {
+  const state = createInitialRoomState();
+  state.stories = [{ id: "story-daily", familyId: "local", title: "日常", writingMode: "objective", memoryIds: [], protagonistMemberIds: [], createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z", version: 0 }];
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad", { storyId: "story-daily", question: "最近哪个小瞬间让你放松下来？" });
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const calls: any[] = [];
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    if (name === "recordAiConsent") return { result: { success: true } };
+    assert.equal(name, "chatInterview"); calls.push(data);
+    return { result: { dimension: "feeling", text: calls.length === 1 ? "阳台上的哪一点让你放松？" : "这份自在和以前有什么不同？" } };
+  } };
+  page.setData({ inputText: "傍晚坐在阳台上，终于能歇一会儿。" });
+  await callPage(page, "send");
+  page.setData({ inputText: "我不用赶着去做下一件事。" });
+  await callPage(page, "send");
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => !call.storyId), "objective book text is not used for AI rewriting");
+  assert.ok(calls[1].conversation.some((turn: any) => turn.text === "阳台上的哪一点让你放松？"));
+  assert.equal((page.data.messages as any[]).filter(message => message.kind === "followup").length, 2);
+  assert.equal(page.data.writingMode, "objective");
+});
+
+test("organizing an unlinked memory survives choosing an empty story and writes only after preview confirmation", async context => {
+  const state = createInitialRoomState();
+  state.storyMigration = { version: 1, status: "active", pending: [] };
+  state.stories = ["a", "b"].map(id => ({ id: `story-${id}`, familyId: "local", title: id === "a" ? "旧篇" : "新篇", writingMode: "objective" as const, memoryIds: id === "a" ? ["demo-personal-rain"] : [], protagonistMemberIds: [], createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z", version: 0 }));
+  state.contributions.push(createContribution({ id: "new-fragment", authorMemberId: "owner", authorName: "林岚", relation: "自己", text: "我在阳台上坐了一会儿，终于不用赶时间。", scope: "personal", visibility: "private" }));
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  page.requestedStoryKey = "story-a";
+  page.requestedMemoryIds = ["new-fragment"];
+  page.openOrganizeOnLoad = true;
+  await callPage(page, "refresh");
+  assert.equal(page.data.panel, "organize");
+  assert.deepEqual(page.organizeSelection, ["new-fragment"]);
+  await callPage(page, "onOrganizeBook", { detail: { value: "story-b" } });
+  assert.equal(page.data.storyId, "story-b");
+  assert.equal(page.data.organizeBookKey, "story-b");
+  assert.equal(page.data.panel, "organize");
+  assert.deepEqual(page.organizeSelection, ["new-fragment"]);
+  assert.deepEqual((page.data.organizeRows as any[]).filter(row => row.checked).map(row => row.id), ["new-fragment"]);
+  assert.equal(storage.roomState().manuscriptRevisions, undefined);
+  await callPage(page, "runOrganize");
+  assert.equal(page.data.panel, "organize-preview", String(page.data.saveNotice));
+  assert.match(String(page.data.previewText), /阳台/);
+  assert.equal(storage.roomState().manuscriptRevisions, undefined, "preview never writes chapter text");
+  await callPage(page, "confirmOrganize");
+  assert.equal(page.data.panel, "", String(page.data.saveNotice));
+  const saved = storage.roomState();
+  const revision = saved.manuscriptRevisions?.find(item => item.storyId === "story-b");
+  assert.deepEqual(revision?.draft.chapters?.[0].memoryIds, ["new-fragment"]);
+  assert.match(JSON.stringify(revision?.draft.chapters?.[0].content), /阳台/);
+  assert.deepEqual(saved.stories?.find(story => story.id === "story-a")?.memoryIds, ["demo-personal-rain"]);
+  assert.equal(saved.contributions.find(memory => memory.id === "new-fragment")?.text, "我在阳台上坐了一会儿，终于不用赶时间。");
+});
+
 test("全部回忆 lists every memory and continues the chat from the one you pick", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -1390,13 +1452,14 @@ test("AI organizing lists every story instead of treating recording profiles as 
   const other = (page.data.organizeBooks as Array<{ id: string; title: string; memberId: string }>).find(item => item.title === "第一次去远方")!;
   assert.equal(other.memberId, "owner", "a story without chapters can still be selected in the current life book");
 
+  callPage(page, "onOrganizeMemories", { detail: { value: ["demo-personal-rain"] } });
   await callPage(page, "onOrganizeBook", { detail: { value: other.id } });
   assert.equal(page.data.organizeBookKey, other.id);
   assert.equal(page.data.organizeTarget, "new");
   assert.deepEqual(
     (page.data.organizeRows as Array<{ id: string; checked: boolean }>).filter(item => item.checked).map(item => item.id),
-    ["another-story"],
-    "choosing a story selects that story's memories for its new chapter",
+    ["demo-personal-rain"],
+    "choosing a destination preserves the memories the user selected",
   );
 });
 
@@ -1438,7 +1501,8 @@ test("choosing a story only shows chapters associated with that story", async co
   );
   assert.deepEqual(
     (page.data.organizeRows as Array<{ id: string }>).map(item => item.id),
-    ["another-story"],
+    ["demo-personal-rain", "another-story"],
+    "source picker offers the whole personal library while chapter targets remain scoped",
   );
 });
 
