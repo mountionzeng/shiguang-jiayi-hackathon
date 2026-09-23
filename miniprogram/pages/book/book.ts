@@ -1039,7 +1039,7 @@ Page({
           memorySegmentCounts: { ...target.memorySegmentCounts, ...Object.fromEntries(selectedMemories.map(memory => [memory.id, memorySegmentCount(memory)])) },
         };
         const chapters = this.chapters.map(item => item.id === target.id ? chapter : item);
-        const label = chapterLabel(chapters.findIndex(item => item.id === target.id) + 1);
+        const label = this.data.chapterRows.find(row => row.id === target.id)?.label || chapterLabel(chapters.findIndex(item => item.id === target.id) + 1);
         this.organizeCandidate = { draft: draftWithChapters(this.data.draft ?? this.newBookBase(), chapters), fingerprint,
           chapterId: target.id, label, notice: "原文和照片位置已保留。", revisionId: this.revisionId,
           insertion: { original: target.content.map(item => ({ ...item })), pointId: this.data.insertionPoint },
@@ -1065,7 +1065,7 @@ Page({
       if (fingerprint !== latestFingerprint) throw new Error("素材刚刚变了，请重新整理");
       const { chapters, chapterId, keptImageCount } = applyOrganized(this.chapters, target?.id ?? "new", organized, memoryIds);
       const base = { ...(this.data.draft ?? this.newBookBase()), generationMode: organized.generationMode, generatedAt: organized.generatedAt };
-      const label = chapterLabel(chapters.findIndex(chapter => chapter.id === chapterId) + 1);
+      const label = this.data.chapterRows.find(row => row.id === chapterId)?.label || chapterLabel(this.data.chapterRows.length + 1);
       const notice = (story?.writingMode === "objective" ? "已按客观记录模式整理，未调用 AI。" : fallbackReason ? "这次没有用上在线 AI（" + FALLBACK_REASONS[fallbackReason] + "），预览由原话整理。" : "")
         + (keptImageCount ? "保留了 " + keptImageCount + " 张照片或插图。" : "");
       this.organizeCandidate = { draft: draftWithChapters(base, chapters), fingerprint, chapterId, label, notice, revisionId: this.revisionId };

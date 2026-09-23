@@ -2152,3 +2152,25 @@ test("opening insertion does not preselect memories already written into a chapt
   assert.deepEqual(page.organizeSelection, []);
   assert.equal(page.data.organizeCount, 0);
 });
+
+test("inserting into a scoped chapter uses the chapter number displayed in its picker", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "测试书", paragraphs: ["另一故事", "目标章节"], sourceCount: 1, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-hidden", title: "其他故事", memoryIds: [], content: [{ text: "不属于当前故事的原文。" }] },
+    { id: "chapter-target", title: "目标章节", memoryIds: ["demo-personal-rain"], content: [{ text: "当前故事的原文。" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  page.requestedStoryKey = "story:外公接我放学";
+  await callPage(page, "refresh");
+  assert.deepEqual((page.data.chapterRows as any[]).map(row => [row.id, row.label]), [["chapter-target", "第一章"]]);
+  callPage(page, "showOrganize");
+  callPage(page, "onOrganizeTarget", { detail: { value: "chapter-target" } });
+  callPage(page, "onOrganizeMemories", { detail: { value: ["demo-personal-rain"] } });
+  await callPage(page, "runOrganize");
+  assert.equal((page.organizeCandidate as any).label, "第一章");
+  await callPage(page, "confirmOrganize");
+  assert.match(String(page.data.saveNotice), /^已写入第一章/);
+  assert.equal(page.data.chapterLabelText, "第一章");
+  assert.deepEqual((page.data.draft as any).chapters[0], state.personalDrafts.owner.chapters![0]);
+});
