@@ -11,8 +11,21 @@
     <button wx:for="{{placements}}" wx:key="chapterId" class="btn btn-ghost" data-member="{{item.memberId}}" data-chapter="{{item.chapterId}}" bindtap="openPlacement">查看《{{item.bookTitle}}》· {{item.chapter}}</button>
     <view class="editor-label">标题</view>
     <input class="memory-input" value="{{editTitle}}" maxlength="40" bindinput="onEditTitle" disabled="{{savingEdit}}" />
+    <view class="ai-label" wx:if="{{editAiLabel}}">{{editAiLabel}}</view>
     <view class="editor-label">原始记忆</view>
     <textarea class="memory-text serif" value="{{editText}}" maxlength="500" auto-height bindinput="onEditText" disabled="{{savingEdit}}" cursor-spacing="48" />
+    <view class="ai-history-controls" wx:if="{{editAiLabel || historyItems.length}}">
+      <button class="btn btn-ghost" bindtap="toggleOriginal" disabled="{{savingEdit}}">{{showOriginal ? '收起原话' : '查看原话'}}</button>
+      <button class="btn btn-ghost" bindtap="revertToSpoken" disabled="{{savingEdit || reverting || !canRevertToSpoken}}" loading="{{reverting}}" wx:if="{{canRevertToSpoken}}">撤回到原话</button>
+      <button class="btn btn-ghost" bindtap="toggleHistory" disabled="{{savingEdit}}" wx:if="{{historyItems.length}}">{{showHistory ? '收起修改历史' : '查看修改历史'}}</button>
+    </view>
+    <view class="ai-original-text" wx:if="{{showOriginal}}">{{originalText}}</view>
+    <view class="ai-history-list" wx:if="{{showHistory}}">
+      <view class="ai-history-item" wx:for="{{historyItems}}" wx:key="id">
+        <view class="ai-history-meta">{{item.kindLabel}} · {{item.dateLabel}}</view>
+        <view class="ai-history-text">{{item.text}}</view>
+      </view>
+    </view>
     <view class="editor-label">素材分组（可留空，不会写入正文）</view>
     <input class="memory-input" value="{{editStory}}" maxlength="30" bindinput="onEditStory" placeholder="输入故事名，或从下面选择" disabled="{{savingEdit}}" />
     <view class="story-choices">

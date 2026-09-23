@@ -3,6 +3,9 @@ import test from "node:test";
 import { existsSync, readFileSync } from "node:fs";
 
 import {
+  appendAiRevision,
+  memoryAiRevisions,
+  memoryOriginalSpokenText,
   createContribution,
   FamilyRoomState,
 } from "../miniprogram/domain/biography";
@@ -26,7 +29,7 @@ interface TestPageInstance extends TestPageDefinition {
 
 const definitions = new Map<string, TestPageDefinition>();
 
-async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me" | "stories" | "recall" | "invite"): Promise<TestPageDefinition> {
+async function pageDefinition(name: "index" | "interview" | "room" | "book" | "profiles" | "archive" | "me" | "stories" | "recall" | "invite" | "personal-memory"): Promise<TestPageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
 
@@ -41,7 +44,9 @@ async function pageDefinition(name: "index" | "interview" | "room" | "book" | "p
   });
 
   try {
-    if (name === "index") {
+    if (name === "personal-memory") {
+      await import("../miniprogram/pages/personal-memory/personal-memory");
+    } else if (name === "index") {
       await import("../miniprogram/pages/index/index");
     } else if (name === "interview") {
       await import("../miniprogram/pages/interview/interview");
@@ -1858,4 +1863,119 @@ test("editing only an AI organize-preview title updates the disclosure immediate
   page.setData({ previewAiLabel: "", previewTitle: "普通标题" });
   callPage(page, "onPreviewTitle", { detail: { value: "普通标题改过了" } });
   assert.equal(page.data.previewAiLabel, "", "non-AI previews are never mislabeled");
+});
+
+
+test("interview persist-first, manual save and archive restore keep the same memory and original speech", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad");
+  page.setData({ answers: ["小时候我喜欢在院子里听雨。"], writingMode: "objective" });
+  await callPage(page, "finish");
+  const spoken = page.pendingContribution as import("../miniprogram/domain/biography").MemoryContribution;
+  assert.equal(storage.roomState().contributions.find(item => item.id === spoken.id)?.text, spoken.text);
+  const count = storage.roomState().contributions.length;
+  // Model output enters through the same revision boundary as finish().
+  page.pendingContribution = appendAiRevision(spoken, "ai", "童年的院子里，我常静静听雨。", "听雨", "cloud-ai");
+  page.setData({ draftText: "童年的院子里，我常静静听雨。", draftOrganizationMode: "cloud-ai" });
+  callPage(page, "onDraftInput", { detail: { value: "我和外婆在院子里听雨。" } });
+  await callPage(page, "save");
+  assert.equal(page.data.saved, true);
+  assert.equal(storage.roomState().contributions.length, count);
+  const saved = storage.roomState().contributions.find(item => item.id === spoken.id)!;
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), ["spoken", "ai", "manual"]);
+  assert.equal(memoryOriginalSpokenText(saved), spoken.text);
+
+  const archive = instantiate(await pageDefinition("archive"));
+  await callPage(archive, "openMemory", { currentTarget: { dataset: { id: spoken.id } } });
+  assert.equal(archive.data.originalText, spoken.text);
+  assert.equal(archive.data.canRevertToSpoken, true);
+  callPage(archive, "onEditText", { detail: { value: "我和外婆坐在门边听雨。" } });
+  await callPage(archive, "saveEdit");
+  assert.equal((archive.data.historyItems as unknown[]).length, 4);
+  await callPage(archive, "confirmRevertToSpoken");
+  const restored = storage.roomState().contributions.find(item => item.id === spoken.id)!;
+  assert.equal(restored.text, spoken.text);
+  assert.deepEqual(memoryAiRevisions(restored).map(item => item.kind), ["spoken", "ai", "manual", "manual", "restore"]);
+  assert.equal(archive.data.canRevertToSpoken, false);
+  assert.equal(archive.data.reverting, false);
+});
+
+test("interview local fallback preserves persisted speech without inventing AI revisions", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad");
+  callPage(page, "onInput", { detail: { value: "今天想起了老家的院子。" } });
+  await callPage(page, "finish");
+  const id = (page.pendingContribution as { id: string }).id;
+  await callPage(page, "save");
+  const saved = storage.roomState().contributions.find(item => item.id === id)!;
+  assert.equal(saved.text, "今天想起了老家的院子。");
+  assert.equal(memoryAiRevisions(saved).some(item => item.kind === "ai"), false);
+  assert.equal(page.data.draftAiLabel, "");
+});
+
+test("continuous keyboard input never echoes bound values; send clears once and preserves intentional repetition", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  page.setData({ storyId: "story-keyboard", writingMode: "objective" });
+  const updates: Record<string, unknown>[] = [];
+  page.setData = update => { updates.push(update); Object.assign(page.data, update); };
+  const values = ["今天", "今天阳光很好。", "今天阳光很好。准备去公园散步。", "删改后：慢慢来，慢慢来。" + "很长的文字。".repeat(200)];
+  for (const value of values) callPage(page, "onInput", { detail: { value } });
+  callPage(page, "onKeyboardHeightChange", { detail: { height: 300 } });
+  callPage(page, "onKeyboardHeightChange", { detail: { height: 0 } });
+  assert.equal(page.data.inputText, values[values.length - 1]);
+  assert.ok(updates.every(update => !("inputText" in update)));
+  await callPage(page, "send");
+  assert.deepEqual(page.data.answers, [values[values.length - 1]]);
+  assert.equal((page.data.messages as Array<{ text: string }>)[0].text, values[values.length - 1]);
+  assert.deepEqual(updates.filter(update => "inputText" in update).map(update => update.inputText), [""]);
+  assert.equal(page.data.inputText, "");
+  for (const [handler, field] of [["onTitleInput", "draftTitle"], ["onDraftInput", "draftText"], ["onImportCaptionInput", "importCaption"], ["onStoryTitleInput", "storyTitle"]]) {
+    updates.length = 0;
+    callPage(page, handler, { detail: { value: "新的" } });
+    callPage(page, handler, { detail: { value: "新的文字" } });
+    assert.equal(page.data[field], "新的文字");
+    assert.ok(updates.every(update => !(field in update)), handler + " must not echo native input");
+  }
+});
+
+
+test("personal memory is reachable from Me, forget waits for success, and failed settings remain unchanged", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const { personalMemory } = await import("../miniprogram/services/personalMemory");
+  const original = { ...personalMemory }; context.after(() => Object.assign(personalMemory, original));
+  const item = { lineageKey: "lineage-one", text: "喜欢安静地阅读。", origin: "inferred" as const, allowProactiveMention: true };
+  let forgotten = false;
+  personalMemory.list = async () => ({ enabled: true, insights: forgotten ? [] : [item] });
+  personalMemory.forget = async key => { assert.equal(key, item.lineageKey); forgotten = true; };
+  personalMemory.configure = async () => { throw new Error("offline"); };
+  const me = instantiate(await pageDefinition("me")); callPage(me, "openPersonalMemory");
+  assert.equal(storage.navigations[0], "/pages/personal-memory/personal-memory");
+  const page = instantiate(await pageDefinition("personal-memory")); await callPage(page, "refresh");
+  assert.equal((page.data.insights as Array<{ originLabel: string }>)[0].originLabel, "小忆的暂定理解");
+  await callPage(page, "confirmEnabled", false);
+  assert.equal(page.data.enabled, true); assert.equal(page.data.busy, false);
+  await callPage(page, "confirmForget", item.lineageKey);
+  assert.deepEqual(page.data.insights, []); assert.equal(page.data.busy, false);
+});
+
+test("saved-memory learning is nonblocking, sends only an id and respects local consent denial", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", {configurable:true,value:()=>({globalData:{cloudReady:true,aiReady:true}})});
+  context.after(()=>{if(previousApp)Object.defineProperty(globalThis,"getApp",previousApp);else delete (globalThis as any).getApp;});
+  const calls: unknown[] = []; let finish: ((value: unknown) => void) | undefined;
+  (globalThis as any).wx.cloud = {callFunction:(value: unknown)=>{calls.push(value);return new Promise(resolve=>{finish=resolve;});}};
+  const { learnFromSavedMemory } = await import("../miniprogram/services/personalMemory");
+  const memory = createContribution({authorMemberId:"owner",authorName:"我",relation:"自己",text:"私密原话",scope:"personal",visibility:"private"});
+  learnFromSavedMemory(memory); assert.equal(calls.length,0);
+  wx.setStorageSync("aiConsentDecision",{granted:true,version:1});
+  assert.equal(learnFromSavedMemory(memory),undefined);
+  assert.deepEqual(calls,[{name:"personalMemory",data:{action:"extract",memoryId:memory.id}}]);
+  finish?.({result:{status:"complete"}});
 });

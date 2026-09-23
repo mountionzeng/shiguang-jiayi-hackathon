@@ -1,4 +1,4 @@
-import { contributionStoryTitle, MemoryContribution, memoryPool } from "../../domain/biography";
+import { contributionStoryTitle, memoryAiLabel, MemoryContribution, memoryPool } from "../../domain/biography";
 import {
   deleteStoryRemoteFirst,
   loadRoomStateRemoteFirst,
@@ -47,7 +47,7 @@ Page({
     deletedItems: [] as DeletedItemRow[],
     deletedMemoryCount: 0,
     selectedKey: "", selectedTitle: "", selectedBookTitle: "", selectedWritingMode: "objective" as "objective" | "creative",
-    memories: [] as MemoryContribution[], ungroupedCount: 0, loadError: "",
+    memories: [] as Array<MemoryContribution & { aiLabel: string }>, ungroupedCount: 0, loadError: "",
     createOpen: false, createTitle: "", createMode: "objective" as "objective" | "creative",
     createMemories: [] as Array<MemoryContribution & { checked: boolean }>, creating: false, pendingMigrationCount: 0,
   },
@@ -85,7 +85,10 @@ Page({
       selectedTitle: selected?.title ?? "",
       selectedBookTitle: selected?.bookTitle ?? "",
       selectedWritingMode: selected?.writingMode ?? "objective",
-      memories: selected ? selected.memoryIds.map(id => byId.get(id)).filter((memory): memory is MemoryContribution => Boolean(memory)) : [],
+      memories: selected
+        ? selected.memoryIds.map(id => byId.get(id)).filter((memory): memory is MemoryContribution => Boolean(memory))
+          .map(memory => ({ ...memory, aiLabel: memoryAiLabel(memory) }))
+        : [],
       ungroupedCount: pool.filter(memory => !contributionStoryTitle(memory)).length,
       pendingMigrationCount: (state.storyMigration?.pending ?? []).filter(item => !item.resolvedStoryId).length,
       loadError: "",

@@ -63,7 +63,7 @@ export function planDeployment(manifest, includes = []) {
       throw new Error("Dangerous maintenance functions require the separate manual workflow.");
     }
     if (entry.defaultDeploy === true) throw new Error("Default cloud functions must not be included explicitly.");
-    if (!["configured", "bootstrapOnce", "diagnosticOnly"].includes(entry.deploymentClass)) {
+    if (!["configured", "bootstrapOnce", "diagnosticOnly", "migrationOnly"].includes(entry.deploymentClass)) {
       throw new Error("Requested cloud function has an unsupported deployment class.");
     }
   }

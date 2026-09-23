@@ -264,6 +264,12 @@
   color: var(--ink);
 }
 
+.ai-label {
+  margin-top: 12rpx;
+  color: var(--apricot);
+  font-size: 22rpx;
+}
+
 .tl-foot {
   display: flex;
   align-items: center;

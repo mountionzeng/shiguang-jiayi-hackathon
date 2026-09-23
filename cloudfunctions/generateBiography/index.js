@@ -3,7 +3,9 @@ const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
 const { defaultFetch } = require("./httpFetch.js");
 const STORY_ID = /^story-[a-z0-9-]{1,100}$/;
 const {
+  AI_CONSENT_VERSION,
   aiError,
+  assertConsentVersion,
   assertIdentityStillActive,
   assertServerReady,
   moderateText,
@@ -193,6 +195,7 @@ async function main(event, dependencies = {}) {
   const memories = validateMemories(sources);
   const userMessage = buildUserMessage(event, memories);
   if (!dependencies.skipGuard) {
+    assertConsentVersion(identity.account, AI_CONSENT_VERSION);
     await moderateText(cloud, identity.openid, userMessage, "AI 书稿输入");
     await reserveAiRequest(db, identity, "generateBiography", dependencies.nowMs);
   }

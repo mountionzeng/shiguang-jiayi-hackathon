@@ -57,11 +57,12 @@ test("literal client cloud function calls are present and production-classified"
 });
 
 test("operator and dangerous functions cannot be selected for default deployment", () => {
-  for (const name of ["ensureCloudCollections", "inspectFamilyData", "deleteDemoFamilyOnce"]) {
+  for (const name of ["ensureCloudCollections", "inspectFamilyData", "userDataMigration", "deleteDemoFamilyOnce"]) {
     assert.equal(manifest.cloudFunctions[name].defaultDeploy, false);
   }
   assert.equal(manifest.cloudFunctions.ensureCloudCollections.deploymentClass, "bootstrapOnce");
   assert.equal(manifest.cloudFunctions.inspectFamilyData.deploymentClass, "diagnosticOnly");
+  assert.equal(manifest.cloudFunctions.userDataMigration.deploymentClass, "migrationOnly");
   assert.equal(manifest.cloudFunctions.deleteDemoFamilyOnce.deploymentClass, "dangerousMaintenance");
 });
 

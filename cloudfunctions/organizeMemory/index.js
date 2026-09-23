@@ -1,9 +1,14 @@
+const {createRepository: createMemoryRepository} = require('./personalMemoryRepository');
+const {prepareContext,commitContext} = require('./personalMemoryContext');
+const {formatContext} = require('./personalMemoryCore');
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
 const { defaultFetch } = require("./httpFetch.js");
 const MEMORY_TYPES = ["note", "memoir"];
 const {
+  AI_CONSENT_VERSION,
   aiError,
+  assertConsentVersion,
   assertIdentityStillActive,
   assertServerReady,
   moderateText,
@@ -33,6 +38,47 @@ function validateTranscript(value) {
     .map((item) => sanitizeText(item, 500))
     .filter(Boolean)
     .slice(-8);
+}
+
+async function loadAll(db, collection, familyId) {
+  const rows = [];
+  for (let offset = 0; ; offset += 100) {
+    const result = await db.collection(collection).where({ familyId }).orderBy("_id", "asc").skip(offset).limit(100).get();
+    rows.push(...result.data);
+    if (result.data.length < 100) return rows;
+  }
+}
+
+function memoryIdOf(memory, familyId) {
+  return memory.frontendContributionId || memory.id || String(memory.sourceRecordId || "").replace(/^src_/, "").replace(`${familyId}_`, "") || String(memory._id || "").replace(`${familyId}_`, "");
+}
+
+/** 原话：首条 spoken revision，回退到 text（照顾没有 aiRevisions 的旧记忆）。 */
+function originalSpokenText(memory) {
+  const revisions = Array.isArray(memory.aiRevisions) ? memory.aiRevisions : [];
+  const spoken = revisions.find((item) => item && item.kind === "spoken" && typeof item.text === "string");
+  return spoken ? spoken.text : String(memory.text || "");
+}
+
+/** 服务端权威来源：按 memoryId 读，校验 familyId 所有权、未删除、个人范围。伪造/越权/已删一律拒绝。 */
+async function loadMemorySource(event, cloud, resolvedIdentity) {
+  const memoryId = String(event.memoryId || "").trim();
+  if (!memoryId) throw new Error("MEMORY_ID_REQUIRED");
+  const openid = String(cloud.getWXContext().OPENID || "");
+  if (!openid) throw new Error("LOGIN_REQUIRED");
+  const familyId = resolvedIdentity?.familyId || `family_${openid}`;
+  const db = cloud.database();
+  const records = await loadAll(db, "memories", familyId);
+  const memory = records.find((item) => memoryIdOf(item, familyId) === memoryId);
+  if (!memory || memory.familyId !== familyId || memory.deletedAt || memory.scope !== "personal") {
+    throw new Error("MEMORY_NOT_FOUND");
+  }
+  return {
+    transcript: [originalSpokenText(memory)],
+    memberName: memory.authorName || "讲述者",
+    memoryType: memory.memoryType,
+    storyTitle: memory.storyTitle,
+  };
 }
 
 function buildLocalCard(transcript, memoryType) {
@@ -122,16 +168,27 @@ async function main(event, dependencies = {}) {
     identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
   }
 
-  const memoryType = MEMORY_TYPES.includes(event.memoryType) ? event.memoryType : "note";
-  const transcript = validateTranscript(event.transcript);
+  let source = { transcript: event.transcript, memberName: event.memberName, memoryType: event.memoryType, storyTitle: event.storyTitle };
+  if (!dependencies.skipGuard) {
+    source = await loadMemorySource(event, cloud, identity);
+  }
+
+  const memoryType = MEMORY_TYPES.includes(source.memoryType) ? source.memoryType : "note";
+  const transcript = validateTranscript(source.transcript);
   if (transcript.length === 0) throw new Error("EMPTY_TRANSCRIPT");
 
-  const memberName = sanitizeText(event.memberName, 40) || "讲述者";
-  const storyTitle = sanitizeText(event.storyTitle, 40);
+  const memberName = sanitizeText(source.memberName, 40) || "讲述者";
+  const storyTitle = sanitizeText(source.storyTitle, 40);
   const transcriptText = transcript
     .map((item, index) => `第 ${index + 1} 句：${item}`)
     .join("\n");
   const brief = organizationBrief(memoryType);
+  let personalContext;
+  const memoryRepo = db ? createMemoryRepository(db) : null;
+  if (!dependencies.skipGuard && process.env.PERSONAL_MEMORY_ENABLED === 'true') {
+    assertConsentVersion(identity.account, AI_CONSENT_VERSION);
+    personalContext = await prepareContext(memoryRepo, identity, {excludeMemoryId:event.memoryId}).catch(() => undefined);
+  }
   const userMessage = [
     `讲述者：${memberName}`,
     `类型：${memoryType === "note" ? "随手记" : "回忆录"}`,
@@ -140,9 +197,11 @@ async function main(event, dependencies = {}) {
     "请不要输出 Markdown，不要解释处理过程。",
     "若信息不足以写满目标字数，宁可短一点，也不要编造。",
     transcriptText,
+    personalContext ? formatContext(personalContext.promptContext) : "",
   ].join("\n");
 
   if (!dependencies.skipGuard) {
+    assertConsentVersion(identity.account, AI_CONSENT_VERSION);
     await moderateText(cloud, identity.openid, userMessage, "AI 记忆整理输入");
     await reserveAiRequest(db, identity, "organizeMemory", dependencies.nowMs);
   }
@@ -194,7 +253,8 @@ async function main(event, dependencies = {}) {
     await moderateText(cloud, identity.openid, [result.title, result.summary, result.body].join("\n"), "AI 记忆整理输出");
     await assertIdentityStillActive(db, identity);
   }
-  return { ...result, aiDisclosure: result.generationMode === "cloud-ai" ? "文字 AI 生成" : "" };
+  if (personalContext) await commitContext(memoryRepo, identity, personalContext);
+  return { ...result, personalMemorySelectorVersion: personalContext?.selectorVersion, aiDisclosure: result.generationMode === "cloud-ai" ? "文字 AI 生成" : "" };
 }
 
 module.exports = {
@@ -204,5 +264,6 @@ module.exports = {
     parseOrganizedMemory,
     organizationBrief,
     validateTranscript,
+    loadMemorySource,
   },
 };

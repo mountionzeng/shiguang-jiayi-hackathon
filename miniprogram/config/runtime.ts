@@ -20,3 +20,6 @@ export const CLOUD_AI_RELEASE_READY = false;
 export const CLOUD_IMAGE_AI_RELEASE_READY = true;
 export const BACKEND_API_ENABLED = false;
 export const BACKEND_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+// Bump when the AI-consent disclosure text materially changes; existing users
+// must re-confirm before online AI runs again.
+export const AI_CONSENT_VERSION = 1;

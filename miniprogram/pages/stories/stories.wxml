@@ -26,7 +26,7 @@
       <view class="note-list selected-memory-list">
         <button class="story-memory" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="editMemory">
           <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
-          <view class="note-title serif">{{item.title || '一段记忆'}}</view><view class="note-excerpt">{{item.text}}</view><view class="note-archive">点开编辑或调整归类</view>
+          <view class="note-title serif">{{item.title || '一段记忆'}}</view><view class="ai-label" wx:if="{{item.aiLabel}}">{{item.aiLabel}}</view><view class="note-excerpt">{{item.text}}</view><view class="note-archive">点开编辑或调整归类</view>
         </button>
       </view>
     </block>
@@ -55,7 +55,7 @@
         </view>
         <text class="memory-organize-arrow" aria-hidden="true">›</text>
       </button>
-      <button class="btn btn-jade" bindtap="openCreate">创建一本故事书</button>
+      <button class="btn btn-jade" bindtap="openCreate">新建一本故事书</button>
       <button wx:if="{{pendingMigrationCount}}" class="memory-organize" bindtap="openMigration">
         <view class="memory-organize-copy"><text class="memory-organize-title serif">待确认的旧内容</text><text class="memory-organize-note">{{pendingMigrationCount}} 项需要确认去向</text></view>
         <text class="memory-organize-arrow">›</text>
@@ -66,9 +66,9 @@
 </view>
 
 <view class="trash-mask" wx:if="{{createOpen}}" bindtap="closeCreate"></view>
-<view class="trash-sheet" wx:if="{{createOpen}}" bindtap="closeCreate" role="dialog" aria-label="创建故事书">
+<view class="trash-sheet" wx:if="{{createOpen}}" bindtap="closeCreate" role="dialog" aria-label="新建一本故事书">
   <view class="trash-panel create-panel" catchtap="keepCreateOpen">
-    <view class="trash-heading serif">创建故事书</view>
+    <view class="trash-heading serif">新建一本故事书</view>
     <input class="create-title" value="{{createTitle}}" bindinput="onCreateTitle" maxlength="40" placeholder="故事名称（默认也是书名）" disabled="{{creating}}" />
     <radio-group class="create-modes" bindchange="onCreateMode">
       <label><radio value="objective" checked="{{createMode === 'objective'}}" />客观记录</label>

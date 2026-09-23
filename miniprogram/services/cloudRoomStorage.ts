@@ -75,6 +75,7 @@ interface CloudMemory {
   reviewStatus: ReviewStatus;
   createdAt: string;
   segments?: MemoryContribution["segments"];
+  aiRevisions?: MemoryContribution["aiRevisions"];
   photoIds?: MemoryContribution["photoIds"];
   deletedAt?: string;
 }
@@ -292,6 +293,7 @@ async function saveContribution(
       reviewStatus: contribution.reviewStatus,
       createdAt: contribution.createdAt,
       segments: contribution.segments,
+      aiRevisions: contribution.aiRevisions,
       deletedAt: contribution.deletedAt,
       photoIds: contribution.photoIds,
       updatedAt: serverDate(),
@@ -560,6 +562,7 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
       reviewStatus: memory.reviewStatus,
       createdAt: memory.createdAt,
       segments: memory.segments,
+      aiRevisions: memory.aiRevisions,
       deletedAt: memory.deletedAt,
       photoIds: memory.photoIds,
     }),
@@ -596,7 +599,7 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
     .map(record => [record.memberId as string, record.draft as BiographyDraft]));
   try {
     const result = storyServiceState ?? await loadStoryServiceRoomState();
-    if (result?.storyMigration) return {...state,stories:result.stories ?? [],storyMigration:result.storyMigration,
+    if (result?.stories) return {...state,stories:result.stories,storyMigration:result.storyMigration,
       manuscriptRevisions:[...state.manuscriptRevisions,...(result.manuscriptRevisions ?? [])]};
   } catch (error) {
     // Older deployments remain readable, but the new write API never falls back.

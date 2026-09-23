@@ -1,0 +1,13 @@
+.memory-page { padding: 64rpx 40rpx 100rpx; color: var(--text-ink, #343e35); }
+.memory-eyebrow { font-size: 24rpx; color: var(--text-secondary, #68756a); letter-spacing: 3rpx; }
+.memory-heading { font-size: 48rpx; margin-top: 14rpx; }
+.memory-intro { font-size: 28rpx; line-height: 1.8; margin: 26rpx 0 44rpx; }
+.memory-setting { display: flex; justify-content: space-between; align-items: center; padding: 30rpx 0; border-top: 1rpx solid #d6dbd3; border-bottom: 1rpx solid #d6dbd3; }
+.memory-setting-title { font-size: 30rpx; margin-bottom: 12rpx; }
+.memory-note { font-size: 24rpx; color: var(--text-secondary, #68756a); line-height: 1.6; }
+.memory-item { padding: 34rpx 0; border-bottom: 1rpx solid #d6dbd3; }
+.memory-text { font-size: 30rpx; line-height: 1.8; }
+.memory-item-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 18rpx; }
+.memory-action { flex-shrink: 0; margin: 0 0 0 20rpx; padding: 8rpx 22rpx; font-size: 26rpx; line-height: 1.8; color: #315e4a; background: transparent; }
+.memory-action::after { border: 1rpx solid #9aac9e; }
+.memory-empty, .memory-status { padding: 48rpx 0; color: var(--text-secondary, #68756a); font-size: 28rpx; line-height: 1.8; }

@@ -27,6 +27,24 @@ export interface MemorySegment {
   organizationMode?: OrganizationMode;
 }
 
+/**
+ * 一条记忆的「原话 → AI 整理 → 人工修改」历史。
+ * spoken：用户亲口说的原话（首条恒为它，可一键撤回到这里）；
+ * ai：AI 整理后的版本；manual：用户在整理结果上亲手改过；restore：撤回到原话。
+ * 规则来源：P0 #5「AI 生成文字持久显示 AI 整理，支持查看原文、撤回、人工修改历史」。
+ * contribution.text 恒等于最后一条 revision 的 text（旧调用方只读 text，不受影响）。
+ */
+export type MemoryAiRevisionKind = "spoken" | "ai" | "manual" | "restore";
+
+export interface MemoryAiRevision {
+  id: string;
+  kind: MemoryAiRevisionKind;
+  text: string;
+  title?: string;
+  createdAt: string;
+  organizationMode?: OrganizationMode;
+}
+
 export interface FamilyMember {
   id: string;
   name: string;
@@ -117,6 +135,11 @@ export interface MemoryContribution {
    * 只有照片、没写一句话时，text 允许为空——见 createContribution 的校验。
    */
   photoIds?: string[];
+  /**
+   * 原话 → AI 整理 → 人工修改的历史。有这个字段时首条恒为 spoken 原话，
+   * text 等于最后一条 revision 的 text。旧记忆没有这个字段，按「只有原话」处理。
+   */
+  aiRevisions?: MemoryAiRevision[];
 }
 
 export const MAX_MEMORY_PHOTOS = 9;
@@ -241,6 +264,7 @@ export interface DeletedStory {
  *
  * 规则来源：docs/2026-09-14-story-records-plan.md，用户 2026-09-14 确认。
  */
+/** One independent story book. 人生之书 is the shelf of all Story records, never a single record. */
 export interface Story {
   /** Server-owned marker; ownership does not override source distribution restrictions. */
   sourcePolicyRequired?: boolean;
@@ -337,6 +361,8 @@ export interface CreateContributionInput {
   preserveNormalizedText?: boolean;
   /** 有照片时 text 可以留空（只有照片、没写一句话）；最多 9 张，格式由问题九校验。 */
   photoIds?: string[];
+  /** 原话→整理历史；不传时，新建的记忆按「只有原话」处理（首条 spoken 自动补上）。 */
+  aiRevisions?: MemoryAiRevision[];
   now?: Date;
   id?: string;
 }
@@ -417,6 +443,129 @@ export function appendMemorySegment(
     segments,
     text: segments.map((item) => item.text).join("\n"),
     organizationMode: organizationMode ?? contribution.organizationMode,
+  };
+}
+
+const AI_TEXT_LABEL = "文字 AI 生成";
+const AI_TEXT_EDITED_LABEL = "文字 AI 生成 · 已由你修改";
+
+/**
+ * 这条记忆的原话→整理历史。失败关闭：非法的 `aiRevisions` 一律当作没有
+ * （照 memorySegments() 的写法），此时视为「只有原话」，不会假装有 AI 整理过。
+ */
+export function memoryAiRevisions(contribution: MemoryContribution): MemoryAiRevision[] {
+  const stored: unknown = contribution.aiRevisions;
+  if (
+    Array.isArray(stored) &&
+    stored.length > 0 &&
+    stored.every((revision) =>
+      revision &&
+      typeof revision.id === "string" &&
+      typeof revision.kind === "string" &&
+      typeof revision.text === "string" &&
+      typeof revision.createdAt === "string")
+  ) {
+    return stored as MemoryAiRevision[];
+  }
+  return [];
+}
+
+/** 首条原话（没有历史记录时，回退成当前 text——兼容没有这个字段的旧记忆）。 */
+export function memoryOriginalSpokenText(contribution: MemoryContribution): string {
+  const revisions = memoryAiRevisions(contribution);
+  const spoken = revisions.find((revision) => revision.kind === "spoken");
+  return spoken ? spoken.text : contribution.text;
+}
+
+/**
+ * 当前显示的「文字 AI 生成」标签：
+ * - 没有历史，或最后一条已经撤回到原话 → 不显示；
+ * - 最后一条是 AI 整理 → 「文字 AI 生成」；
+ * - AI 整理之后又被人手改过 → 「文字 AI 生成 · 已由你修改」。
+ * 文案锁定，直接复用现成常量，不新造字符串。
+ */
+export function memoryAiLabel(contribution: MemoryContribution): "" | typeof AI_TEXT_LABEL | typeof AI_TEXT_EDITED_LABEL {
+  const revisions = memoryAiRevisions(contribution);
+  if (revisions.length === 0) return "";
+  const last = revisions[revisions.length - 1];
+  if (last.kind === "restore" || last.kind === "spoken") return "";
+  const everOrganizedByAi = revisions.some((revision) => revision.kind === "ai");
+  if (!everOrganizedByAi) return "";
+  return last.kind === "manual" ? AI_TEXT_EDITED_LABEL : AI_TEXT_LABEL;
+}
+
+/**
+ * 非破坏性追加一条历史（原话/AI 整理/人工修改/撤回），并把 `text`/`organizationMode`
+ * 同步更新成这一条——旧调用方只读 `text` 时行为不变。首次调用会自动补上首条原话，
+ * 保证「首条恒为 spoken」这个不变式，即便调用方忘了先建原话记录。
+ */
+export function appendAiRevision(
+  contribution: MemoryContribution,
+  kind: MemoryAiRevisionKind,
+  text: string,
+  title?: string,
+  organizationMode?: OrganizationMode,
+  now = new Date(),
+): MemoryContribution {
+  const normalized = text.trim();
+  if (!normalized) throw new Error("内容不能为空");
+  const existing = memoryAiRevisions(contribution);
+  const withSpoken = existing.length > 0
+    ? existing
+    : [{
+        id: `revision-${contribution.id}-spoken`,
+        kind: "spoken" as const,
+        text: contribution.text,
+        title: contribution.title,
+        createdAt: contribution.createdAt,
+        organizationMode: contribution.organizationMode,
+      }];
+  const revision: MemoryAiRevision = {
+    id: `revision-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind,
+    text: normalized,
+    title: title?.trim() || undefined,
+    createdAt: now.toISOString(),
+    organizationMode,
+  };
+  const aiRevisions = [...withSpoken, revision];
+  return {
+    ...contribution,
+    aiRevisions,
+    text: normalized,
+    title: revision.title ?? contribution.title,
+    organizationMode: organizationMode ?? contribution.organizationMode,
+  };
+}
+
+/**
+ * 撤回到原话：追加一条 restore 记录，把 text/organizationMode 复位成首条原话，
+ * 不删除已有历史（照 book.ts 撤回 AI 整理的语义，可撤回但不销毁记录）。
+ * 已经是原话时不重复追加，避免历史里堆一串无意义的 restore。
+ */
+export function revertMemoryToSpoken(
+  contribution: MemoryContribution,
+  now = new Date(),
+): MemoryContribution {
+  const revisions = memoryAiRevisions(contribution);
+  if (revisions.length === 0) return contribution;
+  const spoken = revisions.find((revision) => revision.kind === "spoken") ?? revisions[0];
+  const last = revisions[revisions.length - 1];
+  if (last.kind === "restore" || last.kind === "spoken") return contribution;
+  const restoreRevision: MemoryAiRevision = {
+    id: `revision-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: "restore",
+    text: spoken.text,
+    title: spoken.title,
+    createdAt: now.toISOString(),
+    organizationMode: spoken.organizationMode,
+  };
+  return {
+    ...contribution,
+    aiRevisions: [...revisions, restoreRevision],
+    text: spoken.text,
+    title: spoken.title,
+    organizationMode: spoken.organizationMode,
   };
 }
 
@@ -538,6 +687,7 @@ export function createContribution(input: CreateContributionInput): MemoryContri
     reviewStatus: scope === "personal" ? "confirmed" : "pending",
     createdAt: now.toISOString(),
     photoIds,
+    aiRevisions: input.aiRevisions,
   };
 }
 

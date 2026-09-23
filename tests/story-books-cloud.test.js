@@ -363,3 +363,32 @@ test('房间资料的名字必填、有长度上限，失败时一个字都不�
   assert.equal(family.protagonistName,'原来的主人公');
   assert.equal([...tables].filter(([key])=>key.startsWith('family_snapshots:')).length,0,'失败的改动不该留下快照');
 });
+
+
+test('empty story creation bypasses migration without bypassing idempotency or legacy protection',async()=>{
+  const {repo,tables}=fixture({migrationStatus:'preparing'}),ctx={familyId:'family_test'};
+  const h=createHandlers(repo,{migrationReady:false});
+  const input={action:'create',storyId:'story-new',title:'新的故事',writingMode:'objective',memoryIds:[],requestId:'create-new-story'};
+  await h.command(ctx,input);
+  await h.command(ctx,input);
+  assert.equal((await h.state(ctx)).stories.length,1);
+  assert.equal(tables.get('families:family_test').storyBooks.status,'preparing');
+  await assert.rejects(h.command(ctx,{...input,title:'别的名字'}),/冲突/);
+  await assert.rejects(h.command(ctx,{...input,storyId:'story-other',requestId:'create-other-story',memoryIds:['legacy-memory']}),/迁移/);
+  await assert.rejects(h.command(ctx,{action:'resolve',storyId:'story-new',requestId:'resolve-legacy-1'}),/迁移/);
+  await assert.rejects(h.command(ctx,{...input,storyId:'story-dupe',requestId:'create-dupe-story'}),/同名/);
+});
+
+test('later migration preserves independently created books and disambiguates old names',async()=>{
+  const {handlers:h,tables}=fixture({migrationStatus:null}),ctx={familyId:'family_test'};
+  tables.set('memories:family_test_old',{familyId:'family_test',frontendContributionId:'old',scope:'personal',authorMemberId:'owner',storyTitle:'童年',text:'旧故事原文'});
+  await h.command(ctx,{action:'create',storyId:'story-new',title:'童年',writingMode:'objective',requestId:'create-new-independent',memoryIds:[]});
+  const original=structuredClone(tables.get('stories:family_test_story-new'));
+  for(let i=0;i<20;i++){if((await h.migrate(ctx)).status==='active')break;}
+  const result=await h.state(ctx);
+  assert.equal(result.storyMigration.status,'active');
+  assert.equal(result.stories.length,2);
+  assert.equal(new Set(result.stories.map(s=>s.title)).size,2);
+  assert.deepEqual(tables.get('stories:family_test_story-new'),original);
+  assert.equal(tables.get('story_names:family_test_'+core.hash('童年')).storyId,'story-new');
+});

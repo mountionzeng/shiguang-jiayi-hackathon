@@ -205,6 +205,8 @@ Page({
     wx.showToast({ title: "后续版本接入", icon: "none" });
   },
 
+  openPersonalMemory() { wx.navigateTo({url:"/pages/personal-memory/personal-memory"}); },
+
   async configureAiPrivacy() {
     clearAiConsent();
     const allowed = await requestAiConsent();

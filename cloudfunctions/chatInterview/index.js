@@ -1,8 +1,13 @@
+const {createRepository: createMemoryRepository} = require('./personalMemoryRepository');
+const {prepareContext,commitContext} = require('./personalMemoryContext');
+const {formatContext} = require('./personalMemoryCore');
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
 const { defaultFetch } = require("./httpFetch.js");
 const {
+  AI_CONSENT_VERSION,
   aiError,
+  assertConsentVersion,
   assertIdentityStillActive,
   assertServerReady,
   diagnoseAuthorized,
@@ -485,6 +490,13 @@ async function main(event, dependencies = {}) {
   if (!cloud && event.storyId) cloud = require("wx-server-sdk");
   if (cloud?.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
   const storyContext = await loadStoryContext(event, cloud, identity);
+  let personalContext;
+  const memoryRepo = db ? createMemoryRepository(db) : null;
+  if (!dependencies.skipGuard && process.env.PERSONAL_MEMORY_ENABLED === 'true' && mode === 'personal') {
+    assertConsentVersion(identity.account, AI_CONSENT_VERSION);
+    // A missing/failed memory store falls back to this conversation only.
+    personalContext = await prepareContext(memoryRepo, identity).catch(() => undefined);
+  }
   const messages = buildOutputMessages({
     answer,
     history,
@@ -496,7 +508,10 @@ async function main(event, dependencies = {}) {
     storyContext,
   });
 
+  if (personalContext?.promptContext.length) messages[1].content += '\n' + formatContext(personalContext.promptContext);
+
   if (!dependencies.skipGuard) {
+    assertConsentVersion(identity.account, AI_CONSENT_VERSION);
     await moderateText(cloud, identity.openid, messages[1].content, "AI 访谈输入");
     await reserveAiRequest(db, identity, "chatInterview", dependencies.nowMs);
   }
@@ -518,7 +533,8 @@ async function main(event, dependencies = {}) {
       await moderateText(cloud, identity.openid, result.text, "AI 访谈回复");
       await assertIdentityStillActive(db, identity);
     }
-    return { ...result, aiDisclosure: "文字 AI 生成" };
+    if (personalContext) await commitContext(memoryRepo, identity, personalContext);
+    return { ...result, personalMemorySelectorVersion: personalContext?.selectorVersion, aiDisclosure: "文字 AI 生成" };
   } finally {
     clearTimeout(timeoutId);
   }

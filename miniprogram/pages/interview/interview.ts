@@ -1,5 +1,6 @@
 import {
   accountOwner,
+  appendAiRevision,
   createContribution,
   createContributionFromSegments,
   contributionScope,
@@ -8,6 +9,8 @@ import {
   FamilyRoomState,
   isActiveMember,
   MAX_MEMORY_LENGTH,
+  memoryAiLabel,
+  memoryAiRevisions,
   MemoryContribution,
   memoryPool,
   MemoryType,
@@ -308,9 +311,18 @@ Page({
 
   async saveRecoverableAnswers(rawAnswers: string[]) {
     try {
-      if (this.pendingContribution) {
-        if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
-        else await appendContributionRemoteFirst(this.pendingContribution);
+      const recoverableText = normalizeMemoryText(
+        this.data.stage === "save" && this.data.draftText
+          ? this.data.draftText
+          : rawAnswers.join(" "),
+      );
+      // 已经先存过原话/整理稿（finish() persist-first）：更新同一条记忆，不再新建，
+      // 避免退出时把「刚整理完」和「又聊了几句」拆成两条。超长时仍走下面的分片新建。
+      if (this.pendingContribution && recoverableText.length <= MAX_MEMORY_LENGTH) {
+        const updated = { ...this.pendingContribution, text: recoverableText };
+        if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, updated);
+        else await appendContributionRemoteFirst(updated);
+        this.pendingContribution = updated;
         return;
       }
       const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;
@@ -319,11 +331,6 @@ Page({
         ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
         : authorFor(state, await loadCurrentMemberRemoteFirst(state));
       if (!member) throw new Error("成员身份已失效");
-      const recoverableText = normalizeMemoryText(
-        this.data.stage === "save" && this.data.draftText
-          ? this.data.draftText
-          : rawAnswers.join(" "),
-      );
       const chunks = splitRecoverableText(recoverableText);
 
       for (const text of chunks) {
@@ -359,7 +366,9 @@ Page({
 
   onInput(event: { detail: { value: string } }) {
     const inputText = event.detail.value;
-    this.setData({ inputText });
+    // Keep the native keyboard in charge while composing (including voice IME).
+    // setData is reserved for explicit seeds/resets, never input echo.
+    this.data.inputText = inputText;
     if (inputText.trim()) {
       wx.enableAlertBeforeUnload({
         message: "退出时会尝试保存。为避免网络失败，请先完成保存并确认成功。",
@@ -424,6 +433,43 @@ Page({
     }
   },
 
+  /**
+   * 先存原话再整理：不管 AI 整理成不成功，answers 先落一条 spoken 记忆并拿到
+   * memoryId——这样 organizeMemory 才能按 ID 在服务端读到本人原话（见
+   * memoryOrganizerService.ts），AI 不可用/失败时原话也已经保存，不会丢。
+   */
+  async persistSpokenAnswers(answers: string[]): Promise<MemoryContribution> {
+    const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;
+    const state = shared?.state ?? await loadRoomStateRemoteFirst();
+    const member = shared
+      ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
+      : authorFor(state, await loadCurrentMemberRemoteFirst(state));
+    if (!member) throw new Error("成员身份已失效，请重新接受邀请");
+
+    const spokenText = normalizeMemoryText(answers.join(" "));
+    const base = this.pendingContribution ?? createContribution({
+      authorMemberId: member.id,
+      authorName: member.name,
+      relation: member.relation,
+      text: spokenText,
+      title: draftTitleFromAnswers(answers),
+      memoryType: this.data.memoryType,
+      storyTitle: this.data.storyTitle,
+      relatedMemberIds: this.data.relatedMemberIds,
+      sharedWithMemberIds: this.data.sharedFamilyId ? [] : this.data.audienceMemberIds,
+      scope: this.data.sharedFamilyId ? "family" : "personal",
+      visibility: this.data.sharedFamilyId ? "family" : "private",
+    });
+    const contribution = this.pendingContribution
+      ? appendAiRevision(base, "spoken", spokenText, base.title, base.organizationMode)
+      : base;
+
+    if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, contribution);
+    else await appendContributionRemoteFirst(contribution, {learn:false});
+    this.pendingContribution = contribution;
+    return contribution;
+  },
+
   async finish() {
     if (this.data.organizing) return;
     const unsentText = this.data.inputText.trim();
@@ -436,14 +482,20 @@ Page({
     this.setData({ organizing: true });
 
     try {
+      const spoken = await this.persistSpokenAnswers(answers);
       const draft = await organizeMemory({
         transcript: answers,
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
         useAi: this.data.writingMode === "creative",
+        memoryId: spoken.id,
       });
       const covered = detectCoveredDimensions(draft.body);
+
+      if (draft.generationMode === "cloud-ai") {
+        this.pendingContribution = appendAiRevision(spoken, "ai", draft.body, draft.title, draft.generationMode);
+      }
 
       this.setData({
         stage: "save",
@@ -451,7 +503,7 @@ Page({
         inputText: "",
         draftTitle: draft.title,
         draftSummary: draft.summary,
-        draftAiLabel: draft.generationMode === "cloud-ai" ? "文字 AI 生成" : "",
+        draftAiLabel: this.pendingContribution ? memoryAiLabel(this.pendingContribution) : "",
         draftText: draft.body,
         draftLength: draft.body.length,
         draftEmotions: draft.emotions,
@@ -474,14 +526,19 @@ Page({
   },
 
   onTitleInput(event: { detail: { value: string } }) {
-    this.setData({ draftTitle: event.detail.value });
+    this.data.draftTitle = event.detail.value;
   },
 
   onDraftInput(event: { detail: { value: string } }) {
     const draftText = event.detail.value;
+    // 手改之后立刻打「已由你修改」，避免用户等到点保存才看到标签变化；
+    // 真正的 manual revision 记录在 save() 里追加，这里只是显示态。
+    const previewLabel = this.pendingContribution
+      ? memoryAiLabel({ ...this.pendingContribution, text: draftText })
+      : this.data.draftOrganizationMode === "cloud-ai" ? "文字 AI 生成 · 已由你修改" : "";
+    this.data.draftText = draftText;
     this.setData({
-      draftText,
-      draftAiLabel: this.data.draftOrganizationMode === "cloud-ai" ? "文字 AI 生成 · 已由你修改" : "",
+      draftAiLabel: previewLabel,
       draftLength: draftText.length,
       tooLong: draftText.length > MAX_MEMORY_LENGTH,
     });
@@ -518,8 +575,8 @@ Page({
 
   onStoryTitleInput(event: { detail: { value: string } }) {
     const storyTitle = event.detail.value;
+    this.data.storyTitle = storyTitle;
     this.setData({
-      storyTitle,
       storyOptions: this.data.storyOptions.map((option) => ({
         ...option,
         selected: option.title === storyTitle.trim(),
@@ -625,7 +682,8 @@ Page({
     const importAiLabel = !importCaption || !this.data.importAiOriginal
       ? ""
       : importCaption === this.data.importAiOriginal ? CAPTION_LABEL : CAPTION_EDITED_LABEL;
-    this.setData({ importCaption, importAiLabel });
+    this.data.importCaption = importCaption;
+    this.setData({ importAiLabel });
   },
 
   async generateImportCaption() {
@@ -787,28 +845,46 @@ Page({
       if (selectedMemberIds.some((memberId) => !availableMemberIds.has(memberId))) {
         throw new Error("选的人有变动，请重新打开本页再选");
       }
-      const contribution = createContribution({
-          authorMemberId: member.id,
-          authorName: member.name,
-          relation: member.relation,
-          text: this.data.draftText,
-          title: this.data.draftTitle,
-          summary: this.data.draftSummary,
-          emotions: this.data.draftEmotions,
-          people: this.data.draftPeople,
-          places: this.data.draftPlaces,
-          organizationMode: this.data.draftOrganizationMode,
-          memoryType: this.data.memoryType,
-          storyTitle: this.data.storyTitle,
-          relatedMemberIds: this.data.relatedMemberIds,
-          sharedWithMemberIds: this.data.sharedFamilyId ? [] : this.data.audienceMemberIds,
-          scope: this.data.sharedFamilyId ? "family" : "personal",
-          visibility: this.data.sharedFamilyId ? "family" : "private",
-        });
+      // 已经先存过原话（finish() persist-first），这里更新同一条记忆而不是新建：
+      // 若草稿文字跟最后一条历史不一样，说明用户手改过，补一条 manual 记录；
+      // 没改过（比如 AI 整理失败走本地兜底，草稿=原话）就不重复追加历史。
+      const base = this.pendingContribution ?? createContribution({
+        authorMemberId: member.id,
+        authorName: member.name,
+        relation: member.relation,
+        text: this.data.draftText,
+        title: this.data.draftTitle,
+        organizationMode: this.data.draftOrganizationMode,
+        memoryType: this.data.memoryType,
+        storyTitle: this.data.storyTitle,
+        relatedMemberIds: this.data.relatedMemberIds,
+        sharedWithMemberIds: this.data.sharedFamilyId ? [] : this.data.audienceMemberIds,
+        scope: this.data.sharedFamilyId ? "family" : "personal",
+        visibility: this.data.sharedFamilyId ? "family" : "private",
+      });
+      const revisions = memoryAiRevisions(base);
+      const lastText = revisions.length > 0 ? revisions[revisions.length - 1].text : base.text;
+      const draftText = normalizeMemoryText(this.data.draftText);
+      const withRevision = draftText !== lastText.trim()
+        ? appendAiRevision(base, "manual", draftText, this.data.draftTitle, base.organizationMode)
+        : { ...base, text: draftText, title: this.data.draftTitle || base.title };
+      const storyTitle = this.data.storyTitle.trim();
+      const relatedMemberIds = this.data.relatedMemberIds.length > 0 ? this.data.relatedMemberIds : undefined;
+      const sharedWithMemberIds = this.data.sharedFamilyId
+        ? undefined
+        : this.data.audienceMemberIds.length > 0 ? this.data.audienceMemberIds : undefined;
       this.pendingContribution = {
-        ...contribution,
-        id: this.pendingContribution?.id ?? contribution.id,
-        createdAt: this.pendingContribution?.createdAt ?? contribution.createdAt,
+        ...withRevision,
+        summary: this.data.draftSummary?.trim() || undefined,
+        emotions: this.data.draftEmotions.length > 0 ? this.data.draftEmotions : undefined,
+        people: this.data.draftPeople.length > 0 ? this.data.draftPeople : undefined,
+        places: this.data.draftPlaces.length > 0 ? this.data.draftPlaces : undefined,
+        memoryType: this.data.memoryType,
+        storyTitle: storyTitle || undefined,
+        relatedMemberIds,
+        sharedWithMemberIds,
+        scope: this.data.sharedFamilyId ? "family" : "personal",
+        visibility: this.data.sharedFamilyId ? "family" : "private",
       };
       if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
       else {

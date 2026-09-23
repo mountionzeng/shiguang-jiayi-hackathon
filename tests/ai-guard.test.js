@@ -141,3 +141,41 @@ test("the server release gate defaults closed", async () => {
     assert.doesNotThrow(() => guard.assertServerReady());
   });
 });
+
+test("AI consent version gate rejects missing or stale authorization and accepts current or newer", () => {
+  for (const name of ["chatInterview", "generateBiography", "organizeMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    assert.throws(() => deployedGuard.assertConsentVersion(undefined, 1), /请先同意在线 AI 使用授权/);
+    assert.throws(() => deployedGuard.assertConsentVersion({}, 1), /请先同意在线 AI 使用授权/);
+    assert.throws(() => deployedGuard.assertConsentVersion({ aiConsent: { version: 0 } }, 1), /请先同意在线 AI 使用授权/);
+    assert.doesNotThrow(() => deployedGuard.assertConsentVersion({ aiConsent: { version: 1 } }, 1));
+    assert.doesNotThrow(() => deployedGuard.assertConsentVersion({ aiConsent: { version: 2 } }, 1));
+    assert.equal(deployedGuard.AI_CONSENT_VERSION, 1, `${name} must export the required consent version`);
+  }
+});
+
+test("recordAiConsent writes version and acceptedAt onto the caller's user_accounts document", async () => {
+  const recordAiConsent = require("../cloudfunctions/recordAiConsent/index.js");
+  const openid = "consent-openid";
+  const accountDocumentId = guard.accountDocumentIdFor(openid);
+  const records = new Map([
+    [`user_accounts:${accountDocumentId}`, { accountId: "account_111111111111111111111111", primaryFamilyId: "family_x", wxOpenId: openid, status: "active" }],
+  ]);
+  const db = databaseFixture(records);
+
+  const result = await recordAiConsent.main({ version: 1 }, { skipGuard: true, db, openid });
+  assert.equal(result.version, 1);
+  assert.match(result.acceptedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(records.get(`user_accounts:${accountDocumentId}`).aiConsent, { version: 1, acceptedAt: result.acceptedAt });
+});
+
+test("recordAiConsent rejects a missing or non-positive version and an unlinked account", async () => {
+  const recordAiConsent = require("../cloudfunctions/recordAiConsent/index.js");
+  const db = databaseFixture(new Map());
+  await assert.rejects(() => recordAiConsent.main({}, { skipGuard: true, db, openid: "any" }), /CONSENT_VERSION_REQUIRED/);
+  await assert.rejects(() => recordAiConsent.main({ version: 0 }, { skipGuard: true, db, openid: "any" }), /CONSENT_VERSION_REQUIRED/);
+  await assert.rejects(
+    () => recordAiConsent.main({ version: 1 }, { skipGuard: true, db, openid: "unlinked-openid" }),
+    /账号还没有关联到企业小程序/,
+  );
+});

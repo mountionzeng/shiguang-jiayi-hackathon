@@ -4,6 +4,7 @@ import {
   FamilyMember,
   FamilyRoomState,
   isActiveMember,
+  memoryAiLabel,
   memoryPool,
   MemoryContribution,
 } from "../../domain/biography";
@@ -46,6 +47,7 @@ interface MemoryRow {
   dateParts: string[];
   storyLabel: string;
   placeLabel: string;
+  aiLabel: string;
 }
 
 /** 和某个人有关的记忆：聊的时候点到了 ta，或者这段记忆本来就记在 ta 名下（旧数据）。 */
@@ -130,6 +132,7 @@ Page({
           placeLabel: places.length
             ? "写进了 " + places.map((place) => `${place.bookName}的书${place.chapter}`).join("、")
             : "还没写进书",
+          aiLabel: memoryAiLabel(memory),
         };
       });
 

@@ -77,6 +77,7 @@
           <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
           <view class="contents-memory-date">{{item.dateLabel}}</view>
           <view class="contents-memory-title serif">{{item.title}}</view>
+          <view wx:if="{{item.aiLabel}}" class="chapter-ai-label">{{item.aiLabel}}</view>
           <view class="contents-memory-excerpt">{{item.excerpt}}</view>
           <view class="contents-memory-foot">
             <button class="contents-place" data-id="{{item.id}}" bindtap="chooseChapterFor" hover-class="contents-place-pressed">放进哪一章 ›</button>
@@ -199,13 +200,19 @@
         <view class="panel-title serif">{{chapterLabelText}}用到的记忆</view>
         <view wx:if="{{!chapterMemories.length}}" class="panel-note">这一章还没有放进记忆。</view>
         <view class="memory-row" wx:for="{{chapterMemories}}" wx:key="id">
-          <text class="memory-text">{{item.text}}</text>
+          <view class="memory-row-body">
+            <text class="memory-text">{{item.text}}</text>
+            <view wx:if="{{item.aiLabel}}" class="chapter-ai-label">{{item.aiLabel}}</view>
+          </view>
           <button class="tool-button" data-id="{{item.id}}" bindtap="removeFromChapter" disabled="{{saving}}"><view class="action-icon icon-remove" aria-hidden="true"></view>移出</button>
         </view>
         <block wx:if="{{unassigned.length}}">
           <view class="field-label contents-label">还没放进书稿的记忆</view>
           <view class="memory-row" wx:for="{{unassigned}}" wx:key="id">
-            <text class="memory-text">{{item.text}}</text>
+            <view class="memory-row-body">
+              <text class="memory-text">{{item.text}}</text>
+              <view wx:if="{{item.aiLabel}}" class="chapter-ai-label">{{item.aiLabel}}</view>
+            </view>
             <button class="tool-button" data-id="{{item.id}}" bindtap="addToChapter" disabled="{{saving}}"><view class="action-icon icon-insert" aria-hidden="true"></view>放进本章</button>
           </view>
         </block>

@@ -273,6 +273,61 @@ test("story AI refuses source-bound stories and memories before provider input i
   await assert.rejects(()=>_test.loadStoryMemories({storyId:"story-a",memoryIds:["memory-a"]},cloud),/STORY_PROTOCOL_REQUIRED/);
 });
 
+test("organizeMemory 按 memoryId 读服务端原话，拒绝伪造/越权/已删的 ID", async () => {
+  const docs = new Map();
+  const rows = {
+    memories: [
+      { familyId: "family_fixture-user", frontendContributionId: "memory-a", scope: "personal", authorName: "甲", memoryType: "note", storyTitle: "", text: "整理后的文字", aiRevisions: [{ kind: "spoken", text: "原话内容甲" }] },
+      { familyId: "family_other-user", frontendContributionId: "memory-b", scope: "personal", authorName: "乙", text: "别人家的原话" },
+      { familyId: "family_fixture-user", frontendContributionId: "memory-c", scope: "personal", authorName: "丙", deletedAt: "2026-01-01T00:00:00.000Z", text: "已删除的原话" },
+      { familyId: "family_fixture-user", frontendContributionId: "memory-d", scope: "family", authorName: "丁", text: "家庭范围，不是个人" },
+    ],
+  };
+  const db = {
+    collection(name) {
+      return {
+        doc(id) { return { get: async () => { const value = docs.get(`${name}:${id}`); if (!value) throw new Error("not found"); return { data: value }; } }; },
+        where(filter) {
+          let result = (rows[name] || []).filter(row => Object.entries(filter).every(([key, value]) => row[key] === value));
+          const chain = { orderBy() { return chain; }, skip(offset) { result = result.slice(offset); return chain; }, limit(count) { result = result.slice(0, count); return chain; }, async get() { return { data: result }; } };
+          return chain;
+        },
+      };
+    },
+  };
+  const cloud = { getWXContext: () => ({ OPENID: "fixture-user" }), database: () => db };
+  const identity = { familyId: "family_fixture-user" };
+
+  const source = await organizeMemoryTest.loadMemorySource({ memoryId: "memory-a" }, cloud, identity);
+  assert.deepEqual(source.transcript, ["原话内容甲"]);
+  assert.equal(source.memberName, "甲");
+
+  await assert.rejects(
+    () => organizeMemoryTest.loadMemorySource({ memoryId: "forged-id" }, cloud, identity),
+    /MEMORY_NOT_FOUND/,
+    "伪造的 memoryId 被拒绝",
+  );
+  await assert.rejects(
+    () => organizeMemoryTest.loadMemorySource({ memoryId: "memory-b" }, cloud, identity),
+    /MEMORY_NOT_FOUND/,
+    "别人家的记忆被拒绝，即使 ID 存在",
+  );
+  await assert.rejects(
+    () => organizeMemoryTest.loadMemorySource({ memoryId: "memory-c" }, cloud, identity),
+    /MEMORY_NOT_FOUND/,
+    "已删除的记忆被拒绝",
+  );
+  await assert.rejects(
+    () => organizeMemoryTest.loadMemorySource({ memoryId: "memory-d" }, cloud, identity),
+    /MEMORY_NOT_FOUND/,
+    "家庭范围（非个人）记忆被拒绝",
+  );
+  await assert.rejects(
+    () => organizeMemoryTest.loadMemorySource({}, cloud, identity),
+    /MEMORY_ID_REQUIRED/,
+  );
+});
+
 test("the cloud function rejects generation when model credentials are absent", async () => {
   const previousKey = process.env.AI_API_KEY;
   const previousModel = process.env.AI_MODEL;

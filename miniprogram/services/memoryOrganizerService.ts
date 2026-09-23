@@ -6,7 +6,7 @@ import {
 } from "../domain/biography";
 import { draftTitleFromAnswers } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
-import { requestAiConsent } from "./aiConsent";
+import { currentConsentVersion, requestAiConsent } from "./aiConsent";
 
 export interface OrganizedMemoryDraft {
   title: string;
@@ -100,6 +100,7 @@ export interface OrganizeMemoryInput {
   memberName?: string;
   storyTitle?: string;
   useAi?: boolean;
+  memoryId?: string;
 }
 
 export async function organizeMemory(
@@ -108,6 +109,7 @@ export async function organizeMemory(
   const transcript = input.transcript.map((item) => item.trim()).filter(Boolean);
   const fallback = localOrganizedDraft(transcript, input.memoryType);
   if (input.useAi === false) return fallback;
+  if (!input.memoryId) return fallback;
   if (!canUseCloudAi()) return fallback;
   if (!await requestAiConsent()) return fallback;
 
@@ -115,10 +117,11 @@ export async function organizeMemory(
     const response = await wx.cloud.callFunction({
       name: "organizeMemory",
       data: {
-        transcript,
+        memoryId: input.memoryId,
         memoryType: input.memoryType,
         memberName: input.memberName,
         storyTitle: input.storyTitle,
+        consentVersion: currentConsentVersion(),
       },
     });
     const cloudDraft = parseCloudDraft(response.result, fallback);

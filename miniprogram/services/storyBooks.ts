@@ -48,7 +48,7 @@ export async function storyCommand(command: Record<string,unknown>): Promise<Fam
   const next = core.apply(state,command); saveRoomState(next); return next;
 }
 export async function createStoryBook(input:{title:string;writingMode:'objective'|'creative';memoryIds?:string[];storyId?:string;requestId?:string}) {
-  await ensureStoryBooks();
+  if (input.memoryIds?.length) await ensureStoryBooks();
   const storyId = input.storyId || newStoryId();
   const state = await storyCommand({...input,storyId,requestId:input.requestId || operationId(),action:'create'});
   return {state,story:core.activeStory(state,storyId)};

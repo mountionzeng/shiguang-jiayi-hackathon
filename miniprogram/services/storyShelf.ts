@@ -30,7 +30,7 @@ export interface ShelfStory {
 export const UNTITLED_MANUSCRIPT = "还没取名的书稿";
 
 export function storyShelf(state: FamilyRoomState): ShelfStory[] {
-  if (state.storyMigration?.status === 'active') return (state.stories ?? []).filter(s=>!s.deletedAt).map(story=>{
+  const independent: ShelfStory[] = (state.stories ?? []).filter(s=>!s.deletedAt).map(story=>{
     const current = currentManuscript(state,story.id);
     const draft = current.draft;
     const memoryIds = story.memoryIds.filter(id=>state.contributions.some(m=>m.id===id && !m.deletedAt));
@@ -38,6 +38,7 @@ export function storyShelf(state: FamilyRoomState): ShelfStory[] {
       excerpt:(draft?.paragraphs[0] || state.contributions.find(m=>memoryIds.includes(m.id))?.text || '').slice(0,64),
       manuscriptMemberId:story.id,chapterCount:draft?.chapters?.length ?? 0};
   }).sort((a,b)=>b.latestAt.localeCompare(a.latestAt));
+  if (state.storyMigration?.status === 'active') return independent;
   const byTitle = new Map<string, ShelfStory>();
   memoryPool(state.contributions)
     .slice()
@@ -89,10 +90,10 @@ export function storyShelf(state: FamilyRoomState): ShelfStory[] {
 
   const deletedKeys = new Set((state.deletedStories ?? []).map((story) => story.key));
   const deletedTitles = new Set((state.deletedStories ?? []).map((story) => story.title));
-  return Array.from(byTitle.values()).concat(manuscripts)
+  return independent.concat(Array.from(byTitle.values()).concat(manuscripts)
     // A manuscript joins a same-named memory story dynamically, which changes its
     // derived key. The title keeps the deletion stable across that transition.
-    .filter((story) => !deletedKeys.has(story.key) && !deletedTitles.has(story.title))
+    .filter((story) => !deletedKeys.has(story.key) && !deletedTitles.has(story.title)))
     .sort((left, right) => right.latestAt.localeCompare(left.latestAt));
 }
 

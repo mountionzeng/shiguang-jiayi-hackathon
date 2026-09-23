@@ -24,6 +24,7 @@
       >
         <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
         <view class="note-title serif">{{item.title}}</view>
+        <view class="ai-label" wx:if="{{item.aiLabel}}">{{item.aiLabel}}</view>
         <view class="note-excerpt">{{item.excerpt}}</view>
         <view class="note-archive">{{item.dateLabel}} · {{item.storyLabel}} · 接着聊</view>
       </button>

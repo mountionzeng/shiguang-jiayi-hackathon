@@ -75,8 +75,12 @@ function fingerprint(state, id) {
   const story = activeStory(state,id);
   return stable({storyId:id, mode:story.writingMode, sources:state.contributions.filter(m => story.memoryIds.includes(m.id) && !m.deletedAt).map(m => ({id:m.id,text:m.text,photoIds:m.photoIds || []})).sort((a,b)=>a.id.localeCompare(b.id))});
 }
+// Only an empty, independent story can be created before legacy migration.
+function isEmptyStoryCreate(command) {
+  return command.action === 'create' && (command.memoryIds === undefined || (Array.isArray(command.memoryIds) && command.memoryIds.length === 0));
+}
 function apply(state, command, now = new Date().toISOString()) {
-  if (!state.storyMigration || state.storyMigration.status !== 'active') fail('故事书迁移尚未完成，请先打开书架');
+  if (state.storyMigration?.status !== 'active' && !isEmptyStoryCreate(command)) fail('故事书迁移尚未完成，请先打开书架');
   const requestId = command.requestId;
   if (typeof requestId !== 'string' || !/^[a-zA-Z0-9-]{8,100}$/.test(requestId)) fail('请求编号无效');
   const requestFingerprint = stable(command);
@@ -159,6 +163,7 @@ function migrate(state, familyId = '', now = new Date().toISOString()) {
   if (state.storyMigration && state.storyMigration.status === 'active') return state;
   const next = copy(state), stories = copy(state.stories || []), pending = [], projected = [];
   const byTitle = new Map(), bySource = new Map();
+  for (const story of stories.filter(s=>!s.deletedAt)) byTitle.set(story.title,[...(byTitle.get(story.title)||[]),story]);
   const legacyMemories = [...state.contributions].sort((a,b)=>{
     const left=[(a.storyTitle || '').trim(),a.authorMemberId || '',a.id || ''].join('|');
     const right=[(b.storyTitle || '').trim(),b.authorMemberId || '',b.id || ''].join('|');
@@ -172,7 +177,9 @@ function migrate(state, familyId = '', now = new Date().toISOString()) {
     if (!story) {
       let id = 'story-t-' + hash(sourceKey), suffix = 0;
       while (stories.some(s=>s.id===id)) id = 'story-t-' + hash(sourceKey) + '-' + (++suffix);
-      const sameTitle=byTitle.get(name) || [], title=sameTitle.length ? name+'（'+(sameTitle.length+1)+'）' : name;
+      const sameTitle=byTitle.get(name) || [];
+      let title=name, number=2;
+      while (stories.some(s=>!s.deletedAt && s.title===title)) title=name+'（'+number+++'）';
       const removed = (state.deletedStories || []).find(d=>d.key==='story:'+name+':'+sourceId || d.key==='story:'+name || d.title===name);
       story = {id,familyId,title,bookTitle:title,writingMode:'objective',version:1,currentRevisionId:'',memoryIds:[],imageIds:[],protagonistMemberIds:[],createdAt:now,updatedAt:now,
         legacy:{...(m.authorMemberId ? {memberId:m.authorMemberId} : {}),storyTitle:name,previousShelfKey:'story:'+name},...(removed ? {deletedAt:removed.deletedAt} : {})};
@@ -227,4 +234,4 @@ function migrate(state, familyId = '', now = new Date().toISOString()) {
   next.storyMigration = {version:1,status:'active',pending};
   return next;
 }
-module.exports = {STORY_ID,stable,hash,activeStory,history,current,flatten,validateDraft,fingerprint,apply,migrate};
+module.exports = {STORY_ID,stable,hash,activeStory,history,current,flatten,validateDraft,fingerprint,isEmptyStoryCreate,apply,migrate};

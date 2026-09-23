@@ -378,6 +378,7 @@ async function submitContribution(event, accountId) {
     scope: "family",
     visibility: "family",
     reviewStatus: "pending",
+    aiRevisions: input.aiRevisions,
     updatedAt: db.serverDate(),
   };
   return db.runTransaction(async (transaction) => {

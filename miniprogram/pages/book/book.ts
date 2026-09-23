@@ -1,6 +1,6 @@
 import {
   accountOwner, BiographyDraft, buildLocalChapterDraft, contributionStoryTitle, createContribution, isActiveMember, isRecordingProfile, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution, Story,
-  memoryPool, personalBookSourceFingerprint,
+  memoryAiLabel, memoryPool, personalBookSourceFingerprint,
 } from "../../domain/biography";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
 import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, usesCloudStorage } from "../../services/roomRepository";
@@ -32,7 +32,7 @@ const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
   malformed: "在线 AI 返回的内容不完整",
 };
 
-type MemoryRow = { id: string; text: string; title: string; excerpt: string; dateLabel: string; createdAt: string };
+type MemoryRow = { id: string; text: string; title: string; excerpt: string; dateLabel: string; createdAt: string; aiLabel: string };
 const imageCount = (content: ManuscriptContent[]) => content.filter(item => item.photoId).length;
 const plainText = (content: ManuscriptContent[]) => content.map(item => item.text ?? "").join("");
 const memoryDate = (iso: string) => {
@@ -46,6 +46,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
   excerpt: memory.text.slice(0, 60),
   dateLabel: memoryDate(memory.createdAt),
   createdAt: memory.createdAt,
+  aiLabel: memoryAiLabel(memory),
 });
 
 Page({

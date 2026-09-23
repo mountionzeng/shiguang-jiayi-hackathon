@@ -10,9 +10,63 @@
     "configured": "Deploy only after the listed secrets, feature flags, routes, or triggers are configured.",
     "bootstrapOnce": "Operator-only bootstrap function; deploy temporarily, run once, verify, then remove.",
     "diagnosticOnly": "Operator diagnostic; do not leave deployed in the production environment.",
+    "migrationOnly": "Temporary, account-scoped data migration; deploy only to the named source and target environments, run dry-run first, then remove.",
     "dangerousMaintenance": "Destructive maintenance function; never deploy by default."
   },
   "cloudFunctions": {
+    "userDataMigration": {
+      "deploymentClass": "migrationOnly",
+      "defaultDeploy": false,
+      "activationRequirements": [
+        "Configure one shared migration secret of at least 32 characters",
+        "Pin source and target AppID, OPENID, accountId, and familyId",
+        "Set USER_DATA_MIGRATION_ROLE separately in source and target environments",
+        "Review target dry-run before enabling writes",
+        "Remove the function and secret after reconciliation"
+      ],
+      "timeoutSeconds": 60,
+      "environmentVariables": [
+        "USER_DATA_MIGRATION_ROLE",
+        "USER_DATA_MIGRATION_SECRET",
+        "USER_DATA_MIGRATION_SOURCE_APP_ID",
+        "USER_DATA_MIGRATION_SOURCE_OPENID",
+        "USER_DATA_MIGRATION_SOURCE_ACCOUNT_ID",
+        "USER_DATA_MIGRATION_SOURCE_FAMILY_ID",
+        "USER_DATA_MIGRATION_TARGET_APP_ID",
+        "USER_DATA_MIGRATION_TARGET_OPENID",
+        "USER_DATA_MIGRATION_TARGET_ACCOUNT_ID",
+        "USER_DATA_MIGRATION_TARGET_FAMILY_ID",
+        "USER_DATA_MIGRATION_WRITE_ENABLED"
+      ],
+      "notes": "Source role is read-only. Target dry-run is read-only. Target apply additionally requires an explicit confirmation phrase, the reviewed package digest, and USER_DATA_MIGRATION_WRITE_ENABLED=true."
+    },
+    "personalMemory": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "timeoutSeconds": 60,
+      "environmentVariables": [
+        "PERSONAL_MEMORY_ENABLED",
+        "PERSONAL_MEMORY_AI_BASE_URL",
+        "PERSONAL_MEMORY_AI_API_KEY",
+        "PERSONAL_MEMORY_AI_MODEL",
+        "CHAT_AI_BASE_URL",
+        "CHAT_AI_API_KEY",
+        "CHAT_AI_MODEL",
+        "AI_BASE_URL",
+        "AI_API_KEY",
+        "AI_MODEL",
+        "AI_SERVER_RELEASE_READY",
+        "WECHAT_APP_ID",
+        "AI_DAILY_REQUEST_LIMIT",
+        "AI_MIN_INTERVAL_MS"
+      ],
+      "activationRequirements": [
+        "Install private database rules and collection indexes",
+        "Verify separate personal memory consent, forgetting and two-account isolation",
+        "Authorize and run one controlled provider request before enabling"
+      ],
+      "databaseRulesFile": "deploy/personal-memory/database.rules.json"
+    },
     "storyBooks": {
       "deploymentClass": "base",
       "defaultDeploy": true,
@@ -140,6 +194,13 @@
         "STORY_SHARE_CARD_ENABLED"
       ]
     },
+    "recordAiConsent": {
+      "deploymentClass": "configured",
+      "defaultDeploy": false,
+      "activationRequirements": ["Set WECHAT_APP_ID before enabling online AI features that call this"],
+      "timeoutSeconds": 10,
+      "environmentVariables": ["WECHAT_APP_ID"]
+    },
     "getOpenId": {
       "deploymentClass": "base",
       "defaultDeploy": true,
@@ -156,9 +217,27 @@
     "chatInterview": {
       "deploymentClass": "configured",
       "defaultDeploy": false,
-      "activationRequirements": ["Configure CHAT_AI_* or fallback AI_* provider settings", "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation", "Confirm provider entitlement, quota, and billing mode", "Verify input/output moderation and one controlled request before enabling both release gates"],
+      "activationRequirements": [
+        "Configure CHAT_AI_* or fallback AI_* provider settings",
+        "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation",
+        "Confirm provider entitlement, quota, and billing mode",
+        "Verify input/output moderation and one controlled request before enabling both release gates"
+      ],
       "timeoutSeconds": 60,
-      "environmentVariables": ["CHAT_AI_API_KEY", "CHAT_AI_BASE_URL", "CHAT_AI_MODEL", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL", "WECHAT_APP_ID", "AI_SERVER_RELEASE_READY", "AI_DAILY_REQUEST_LIMIT", "AI_MIN_INTERVAL_MS", "AI_DIAGNOSE_TOKEN"]
+      "environmentVariables": [
+        "CHAT_AI_API_KEY",
+        "CHAT_AI_BASE_URL",
+        "CHAT_AI_MODEL",
+        "AI_API_KEY",
+        "AI_BASE_URL",
+        "AI_MODEL",
+        "WECHAT_APP_ID",
+        "AI_SERVER_RELEASE_READY",
+        "AI_DAILY_REQUEST_LIMIT",
+        "AI_MIN_INTERVAL_MS",
+        "AI_DIAGNOSE_TOKEN",
+        "PERSONAL_MEMORY_ENABLED"
+      ]
     },
     "generateBiography": {
       "deploymentClass": "configured",
@@ -170,9 +249,29 @@
     "organizeMemory": {
       "deploymentClass": "configured",
       "defaultDeploy": false,
-      "activationRequirements": ["Configure ORGANIZE_AI_*, CHAT_AI_*, or fallback AI_* provider settings", "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation", "Confirm provider entitlement, quota, and billing mode", "Verify input/output moderation and one controlled request before enabling both release gates"],
+      "activationRequirements": [
+        "Configure ORGANIZE_AI_*, CHAT_AI_*, or fallback AI_* provider settings",
+        "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation",
+        "Confirm provider entitlement, quota, and billing mode",
+        "Verify input/output moderation and one controlled request before enabling both release gates"
+      ],
       "timeoutSeconds": 60,
-      "environmentVariables": ["ORGANIZE_AI_API_KEY", "ORGANIZE_AI_BASE_URL", "ORGANIZE_AI_MODEL", "CHAT_AI_API_KEY", "CHAT_AI_BASE_URL", "CHAT_AI_MODEL", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL", "WECHAT_APP_ID", "AI_SERVER_RELEASE_READY", "AI_DAILY_REQUEST_LIMIT", "AI_MIN_INTERVAL_MS"]
+      "environmentVariables": [
+        "ORGANIZE_AI_API_KEY",
+        "ORGANIZE_AI_BASE_URL",
+        "ORGANIZE_AI_MODEL",
+        "CHAT_AI_API_KEY",
+        "CHAT_AI_BASE_URL",
+        "CHAT_AI_MODEL",
+        "AI_API_KEY",
+        "AI_BASE_URL",
+        "AI_MODEL",
+        "WECHAT_APP_ID",
+        "AI_SERVER_RELEASE_READY",
+        "AI_DAILY_REQUEST_LIMIT",
+        "AI_MIN_INTERVAL_MS",
+        "PERSONAL_MEMORY_ENABLED"
+      ]
     },
     "ensureCloudCollections": {
       "deploymentClass": "bootstrapOnce",
@@ -198,6 +297,11 @@
     }
   },
   "collections": {
+    "personal_memory_controls": ["user_id: userId, _id"],
+    "personal_memory_insights": ["user_id: userId, _id"],
+    "personal_memory_evidence": ["user_id: userId, _id"],
+    "personal_memory_suppressions": ["user_id: userId, _id"],
+    "personal_memory_jobs": ["user_id: userId, _id"],
     "audio_operations": [
       "family_created_id: familyId, createdAt, _id",
       "requester_created_id: requesterOpenid, createdAt, _id",

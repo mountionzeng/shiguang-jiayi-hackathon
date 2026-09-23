@@ -1,4 +1,9 @@
 const CORE_COLLECTIONS = [
+  "personal_memory_controls",
+  "personal_memory_insights",
+  "personal_memory_evidence",
+  "personal_memory_suppressions",
+  "personal_memory_jobs",
   // 家庭文档写入前的留底。刻意不带 familyId 字段（用 snapshotOfFamilyId），
   // 任何按 familyId 的清扫都扫不到它，快照因此能在它所防范的那次清空里幸存。
   "family_snapshots",

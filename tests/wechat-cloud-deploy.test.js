@@ -15,7 +15,7 @@ test("default plan contains exactly defaultDeploy functions", () => {
     .map(([name]) => name);
   const plan = planDeployment(manifest);
   assert.deepEqual(plan, expected);
-  for (const excluded of ["ensureCloudCollections", "inspectFamilyData", "deleteDemoFamilyOnce", "storyImages"] ) {
+  for (const excluded of ["ensureCloudCollections", "inspectFamilyData", "userDataMigration", "deleteDemoFamilyOnce", "storyImages"] ) {
     assert.equal(plan.includes(excluded), false);
   }
   assert.ok(plan.every((name) => manifest.cloudFunctions[name].deploymentClass === "base"));
@@ -23,6 +23,7 @@ test("default plan contains exactly defaultDeploy functions", () => {
 
 test("explicit configured inclusion works", () => {
   assert.ok(planDeployment(manifest, ["storyImages"]).includes("storyImages"));
+  assert.ok(planDeployment(manifest, ["userDataMigration"]).includes("userDataMigration"));
 });
 
 test("dangerous maintenance inclusion is always refused", () => {
