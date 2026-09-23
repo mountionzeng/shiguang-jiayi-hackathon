@@ -283,8 +283,76 @@
 .memory-input, .memory-text { box-sizing: border-box; width: 100%; background: #fffdf6; border-radius: 12rpx; padding: 20rpx; color: var(--ink); font-size: 30rpx; }
 .memory-input { height: 92rpx; }
 .memory-text { min-height: 260rpx; line-height: 1.8; }
-.story-choices { display: flex; flex-wrap: wrap; margin: 20rpx 0; gap: 12rpx; }
-.story-chip { margin: 0; font-size: 25rpx; color: var(--jade); background: #efeee1; }
+.story-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin: 20rpx 0 32rpx;
+}
+
+/* 双类选择器覆盖微信原生按钮的固定宽度，长故事名自然换行。 */
+.story-choices .story-chip {
+  display: flex;
+  align-items: center;
+  width: calc((100% - 16rpx) / 2);
+  min-width: 0;
+  min-height: 92rpx;
+  margin: 0;
+  padding: 20rpx;
+  border: 2rpx solid var(--line);
+  border-radius: 20rpx;
+  background: var(--paper-card);
+  color: var(--ink-soft);
+  font-size: 28rpx;
+  line-height: 1.5;
+  text-align: left;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.story-chip-mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: 14rpx;
+  border: 2rpx solid var(--ink-faint);
+  border-radius: 50%;
+  font-size: 23rpx;
+  line-height: 1;
+}
+
+.story-chip-title { min-width: 0; overflow-wrap: anywhere; word-break: break-all; }
+.story-choices .story-chip-selected { border-color: var(--jade); background: var(--jade-soft); color: #355c4c; font-weight: 600; }
+.story-chip-selected .story-chip-mark { border-color: var(--jade); background: var(--jade); color: #fffefb; }
+.story-chip:active { opacity: 0.82; }
+.story-choices .story-chip[disabled] { opacity: 0.45; }
+
+.editor-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  padding-top: 28rpx;
+  border-top: 2rpx solid var(--line);
+}
+
+.editor-actions .editor-action {
+  width: 100%;
+  min-height: 100rpx;
+  margin: 0;
+  padding: 22rpx 32rpx;
+  border-radius: 24rpx;
+  font-size: 32rpx;
+  line-height: 1.4;
+}
+
+.editor-actions .editor-save { font-weight: 600; }
+.editor-actions .editor-organize { justify-content: space-between; min-height: 128rpx; border: 2rpx solid #b8cec1; background: var(--jade-soft); color: #355c4c; text-align: left; }
+.editor-action-title { font-weight: 600; }
+.editor-action-note { margin-top: 6rpx; font-size: 25rpx; font-weight: 400; }
+.editor-action-arrow { flex: none; margin-left: 24rpx; font-size: 48rpx; font-weight: 400; line-height: 1; }
+.editor-actions .editor-return { min-height: 92rpx; border-color: #c6c8bd; background: var(--paper-card); color: var(--ink-soft); font-size: 28rpx; }
 .note-delete-badge { font-size: 22rpx; }
 
 /* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */

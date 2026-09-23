@@ -29,12 +29,26 @@
     <view class="editor-label">素材分组（可留空，不会写入正文）</view>
     <input class="memory-input" value="{{editStory}}" maxlength="30" bindinput="onEditStory" placeholder="输入故事名，或从下面选择" disabled="{{savingEdit}}" />
     <view class="story-choices">
-      <button class="story-chip" data-title="" bindtap="chooseEditStory" disabled="{{savingEdit}}">暂不归类</button>
-      <button class="story-chip" wx:for="{{storyOptions}}" wx:key="*this" data-title="{{item}}" bindtap="chooseEditStory" disabled="{{savingEdit}}">{{item}}</button>
+      <button class="story-chip {{!editStory ? 'story-chip-selected' : ''}}" data-title="" bindtap="chooseEditStory" disabled="{{savingEdit}}" aria-label="暂不归类{{!editStory ? '，已选中' : ''}}">
+        <text class="story-chip-mark" aria-hidden="true">{{!editStory ? '✓' : ''}}</text>
+        <text class="story-chip-title">暂不归类</text>
+      </button>
+      <button class="story-chip {{editStory === item ? 'story-chip-selected' : ''}}" wx:for="{{storyOptions}}" wx:key="*this" data-title="{{item}}" bindtap="chooseEditStory" disabled="{{savingEdit}}" aria-label="{{item}}{{editStory === item ? '，已选中' : ''}}">
+        <text class="story-chip-mark" aria-hidden="true">{{editStory === item ? '✓' : ''}}</text>
+        <text class="story-chip-title">{{item}}</text>
+      </button>
     </view>
-    <button class="btn btn-jade" bindtap="saveEdit" loading="{{savingEdit}}" disabled="{{savingEdit}}">保存修改</button>
-    <button class="btn btn-jade" bindtap="organizeIntoBook" disabled="{{savingEdit}}">整理进书 · 预览后写入</button>
-    <button class="btn btn-ghost" bindtap="closeEditor" disabled="{{savingEdit}}">返回记忆列表</button>
+    <view class="editor-actions">
+      <button class="btn btn-jade editor-action editor-save" bindtap="saveEdit" loading="{{savingEdit}}" disabled="{{savingEdit}}">{{savingEdit ? '正在保存' : '保存修改'}}</button>
+      <button class="btn editor-action editor-organize" bindtap="organizeIntoBook" disabled="{{savingEdit}}" aria-label="整理进书，预览后写入">
+        <view class="editor-action-copy">
+          <view class="editor-action-title">整理进书</view>
+          <view class="editor-action-note">预览后写入</view>
+        </view>
+        <text class="editor-action-arrow" aria-hidden="true">›</text>
+      </button>
+      <button class="btn btn-ghost editor-action editor-return" bindtap="closeEditor" disabled="{{savingEdit}}">返回记忆列表</button>
+    </view>
   </view>
   <block wx:elif="{{!loadError}}">
     <button wx:if="{{hasItems}}" class="btn btn-jade" bindtap="organizeIntoBook">选择记忆，整理进书</button>
