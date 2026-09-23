@@ -1,6 +1,7 @@
 const cloud = require("wx-server-sdk");
 const { createAigcMetadataWriter } = require("./aigcMetadata");
-const { StoryImageError, assertUnrestrictedStory, chapterSource, draftReferencesStoryImage, textHash } = require("./core");
+const { StoryImageError, assertUnrestrictedStory, chapterSource, bookSource, draftReferencesStoryImage, textHash } = require("./core");
+const { createCoverServices, coverSelectionPatch } = require("./cover");
 const { createCaptionHandler } = require("./caption");
 const { createDiagnostics } = require("./diagnostics");
 const { createStoryImageHandlers } = require("./flow");
@@ -90,6 +91,26 @@ async function getTransactionDoc(transaction,collectionName,id) {
 }
 
 const repo = {
+  async listStoryPhotoIds(familyId, storyId, current) {
+    const ids = new Set((current.draft.chapters || []).flatMap(chapter => (chapter.content || []).map(item => item.photoId)));
+    for (const id of current.story.memoryIds || []) {
+      const memory = await getDoc("memories", `${familyId}_${id}`);
+      if (memory?.familyId === familyId && !memory.deletedAt && !memory.sourcePolicyRequired && !memory.sourceIds) {
+        for (const photoId of memory.photoIds || []) ids.add(photoId);
+      }
+    }
+    return [...ids].filter(id => typeof id === "string" && /^photo-[0-9a-z-]{1,80}$/.test(id) && !id.startsWith("photo-ai-"));
+  },
+  async setStoryCover({familyId, storyId, imageId, expectedVersion}) {
+    return db.runTransaction(async transaction => {
+      const key = `${familyId}_${storyId}`;
+      const story = await getTransactionDoc(transaction, STORIES, key);
+      const image = imageId ? await getTransactionDoc(transaction, IMAGES, imageId) : undefined;
+      const patch = coverSelectionPatch(story, image, {familyId, storyId, imageId, expectedVersion});
+      if (patch) await transaction.collection(STORIES).doc(key).update({data:patch});
+      return {ok:true, coverImageId:imageId};
+    });
+  },
   getJob: id => getDoc(JOBS, id),
   createJob: (id, data) => db.collection(JOBS).doc(id).set({ data: withoutId(data) }),
   async createJobForActiveStory(id,data) {
@@ -123,7 +144,7 @@ const repo = {
       if(record?.familyId!==job.familyId||record.storyId!==job.storyId||record.revision?.id!==job.sourceRevisionId||record.revision.storyId!==job.storyId)
         throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
       assertUnrestrictedStory(story,record.revision.draft);
-      const source=chapterSource(record.revision.draft,job.chapterId);
+      const source=job.purpose === "cover" ? bookSource(record.revision.draft) : chapterSource(record.revision.draft,job.chapterId);
       if(textHash(source.text)!==job.source?.textHash)throw new StoryImageError("REVISION_CHANGED","章节内容已经变化，请重新配图");
     });
   },
@@ -282,8 +303,14 @@ const referenceAnalyzer = createReferenceAnalyzer({
 const downloadImage = url => downloadResult(url);
 const aigcMetadata = createAigcMetadataWriter({ contentProducer: process.env.AIGC_CONTENT_PRODUCER });
 
+// Photos are read only through photoAccess, which owns the permission check (problem nine).
+const photoReader = createPhotoReader({
+  callFunction: options => cloud.callFunction(options),
+  internalToken: process.env.PHOTO_ACCESS_INTERNAL_TOKEN,
+});
+const coverServices = createCoverServices({repo, storage, readPhotos: input => photoReader.read(input)});
 const handlers = createStoryImageHandlers({
-  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker, referenceAnalyzer,
+  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker, referenceAnalyzer, coverServices,
   async forwardPhotoModeration({ traceId, suggest, label }) {
     const response = await cloud.callFunction({
       name: "photoAccess",
@@ -300,11 +327,6 @@ const handlers = createStoryImageHandlers({
       throw new Error(String((result && result.error && (result.error.code || result.error.message)) || "PHOTO_MODERATION_FORWARD_FAILED"));
     }
   },
-});
-// Photos are read only through photoAccess, which owns the permission check (problem nine).
-const photoReader = createPhotoReader({
-  callFunction: options => cloud.callFunction(options),
-  internalToken: process.env.PHOTO_ACCESS_INTERNAL_TOKEN,
 });
 const captionVision = createVisionClient({
   apiKey: process.env.VISION_API_KEY || tokenHubKey,
@@ -340,7 +362,9 @@ async function main(event = {}) {
   const ctx = { openid: String(context.OPENID || "").trim() };
   try {
     switch (event.action) {
-      case "capabilities": return { apiVersion: 2, referenceIllustration: referenceAnalyzer.configured };
+      case "capabilities": return { apiVersion: 3, referenceIllustration: referenceAnalyzer.configured, bookCover: true };
+      case "coverSources": return await coverServices.sources(ctx, event);
+      case "selectCover": return await coverServices.select(ctx, event);
       case "submit": return await handlers.submit(ctx, event);
       case "status": return await handlers.status(ctx, event);
       case "list": return await handlers.list(ctx, event);

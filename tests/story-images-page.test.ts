@@ -1,3 +1,4 @@
+import { storyCoverApi } from "../miniprogram/services/storyCoverService";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -24,7 +25,7 @@ type PageInstance = PageDefinition & { data: Record<string, unknown>; setData(up
 
 const definitions = new Map<string, PageDefinition>();
 
-async function pageDefinition(name: "story-images" | "book"): Promise<PageDefinition> {
+async function pageDefinition(name: "story-images" | "book" | "story-cover"): Promise<PageDefinition> {
   const cached = definitions.get(name);
   if (cached) return cached;
   const previous = Object.getOwnPropertyDescriptor(globalThis, "Page");
@@ -32,6 +33,7 @@ async function pageDefinition(name: "story-images" | "book"): Promise<PageDefini
   Object.defineProperty(globalThis, "Page", { configurable: true, writable: true, value: (definition: PageDefinition) => { captured = definition; } });
   try {
     if (name === "book") await import("../miniprogram/pages/book/book");
+    else if (name === "story-cover") await import("../miniprogram/pages/story-cover/story-cover");
     else await import("../miniprogram/pages/story-images/story-images");
   } finally {
     if (previous) Object.defineProperty(globalThis, "Page", previous);
@@ -902,4 +904,56 @@ test("书稿里显示底图时正文区另外标「图片 AI 生成」，和正�
   assert.doesNotMatch(labelRule, /opacity:\s*0/);
   assert.match(styles, /\.keyboard-open \.chapter-backdrop \{ display: none; \}/);
   assert.match(styles, /\.keyboard-open \.backdrop-ai-label \{ display: none; \}/);
+});
+
+test("封面参考支持照片与插图混选，最多三张，等待期间重复点击不重复生成", async context => {
+  const env=installWx();env.setApp(false);
+  const original={...storyCoverApi};
+  const selected:Array<{referencePhotoIds:string[];referenceImageIds:string[]}>=[];
+  let resolveJob!: (value: {jobId:string;status:'failed';message:string;chapterId:string;purpose:string;imageId:string;createdAtMs:number}) => void;
+  storyCoverApi.submit=async input=>{selected.push(input);return new Promise(resolve=>{resolveJob=resolve;});};
+  context.after(()=>{Object.assign(storyCoverApi,original);env.restore();});
+  const page=instantiate(await pageDefinition('story-cover'));
+  page.refresh=async()=>undefined;
+  page.setData({storyId:'story-one',loading:false,references:[
+    {id:'photo-a',kind:'photo',selected:false},{id:'image-a',kind:'image',selected:false},
+    {id:'image-b',kind:'image',selected:false},{id:'image-c',kind:'image',selected:false},
+  ]});
+  for(const id of ['photo-a','image-a','image-b','image-c']) call(page,'toggleReference',{currentTarget:{dataset:{id}}});
+  assert.equal(page.data.selectedCount,3);
+  const pending=call(page,'generate');
+  await call(page,'generate');
+  assert.equal(selected.length,1);
+  assert.deepEqual(selected[0].referencePhotoIds,['photo-a']);
+  assert.deepEqual(selected[0].referenceImageIds,['image-a','image-b']);
+  resolveJob({jobId:'job',status:'failed',message:'读取超时',chapterId:'book-cover',purpose:'cover',imageId:'',createdAtMs:1});
+  await pending;
+  assert.equal(page.data.submitting,false);
+  assert.equal(page.data.notice,'读取超时');
+});
+
+test("封面生成授权拒绝后不调用云函数，不擅自使用用户图片",async context=>{
+  let cloudCalls=0;
+  const env=installWx({showModal:({success}:{success:(r:{confirm:boolean})=>void})=>success({confirm:false}),cloud:{callFunction:()=>{cloudCalls++;}}});
+  context.after(env.restore);env.setApp(true);
+  await assert.rejects(storyCoverApi.submit({storyId:'story-one',referenceImageIds:[],referencePhotoIds:['photo-a']}),{code:'CONSENT_DECLINED'});
+  assert.equal(cloudCalls,0);
+});
+
+test("封面选用需审核通过且携带故事版本，刷新后同步显示选用结果",async context=>{
+  const env=installWx();env.setApp(false);
+  const original={...storyCoverApi};
+  const calls:unknown[]=[];
+  storyCoverApi.select=async(...args)=>{calls.push(args);return {ok:true};};
+  context.after(()=>{Object.assign(storyCoverApi,original);env.restore();});
+  const page=instantiate(await pageDefinition('story-cover'));
+  page.setData({storyId:'story-one',version:7,covers:[{imageId:'pending',ready:false,selected:false},{imageId:'cover-a',ready:true,selected:false}]});
+  page.refresh=async()=>{page.setData({coverImageId:'cover-a',version:8});};
+  await call(page,'choose',{currentTarget:{dataset:{id:'pending'}}});
+  assert.deepEqual(calls,[]);
+  await call(page,'choose',{currentTarget:{dataset:{id:'cover-a'}}});
+  assert.deepEqual(calls,[['story-one','cover-a',7]]);
+  assert.equal(page.data.coverImageId,'cover-a');
+  assert.match(String(page.data.notice),/首页.*同步/);
+  assert.equal(page.data.selecting,false);
 });

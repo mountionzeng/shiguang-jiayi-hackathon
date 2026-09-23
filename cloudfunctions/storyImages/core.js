@@ -9,8 +9,10 @@ const BOOK_LIMIT = 30;
 const COUNTED_STATUSES = ["submitted", "queued", "generating", "generated", "storing", "stored", "unknown", "expired"];
 const ACTIVE_STATUSES = ["submitted", "queued", "generating", "generated", "storing"];
 const PURPOSES = ["illustration", "backdrop", "cover"];
-/** Chapter illustrations and backdrops are open; covers wait for stable story records. */
-const ENABLED_PURPOSES = ["illustration", "backdrop"];
+/** Covers use the current saved story revision, with explicit reference selection. */
+const ENABLED_PURPOSES = ["illustration", "backdrop", "cover"];
+const COVER_CHAPTER_ID = "book-cover";
+const MAX_BOOK_TEXT = 120000;
 const QUALITY_ISSUE_KEYS = ["readableText", "pseudoText", "watermarkOrLogo", "signature"];
 const QUALITY_ISSUE_LABELS = {
   readableText: "有文字",
@@ -87,7 +89,7 @@ function normalizeSubmitInput(event) {
   const familyId = String(input.familyId || "").trim();
   const memberId = String(input.memberId || "").trim();
   const storyId = String(input.storyId || "").trim();
-  const chapterId = String(input.chapterId || "").trim();
+  const chapterId = input.purpose === "cover" ? COVER_CHAPTER_ID : String(input.chapterId || "").trim();
   const requestId = String(input.requestId || "").trim();
   const purpose = String(input.purpose || "illustration");
   const referenceImageId = String(input.referenceImageId || "").trim();
@@ -101,6 +103,19 @@ function normalizeSubmitInput(event) {
   }
   if (referenceImageId && purpose !== "illustration") {
     throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图可以参考旧图再画");
+  }
+  if (purpose === "cover") {
+    if (!ID_PATTERN.test(storyId)) throw new StoryImageError("INVALID_STORY", "请先把这份书稿保存为故事书");
+    if (input.coverConsent !== true) throw new StoryImageError("CONSENT_REQUIRED", "请先确认本次封面使用的文字和参考图片");
+    const referenceImageIds = Array.isArray(input.referenceImageIds) ? input.referenceImageIds : [];
+    const referencePhotoIds = Array.isArray(input.referencePhotoIds) ? input.referencePhotoIds : [];
+    const ids = [...referenceImageIds, ...referencePhotoIds];
+    if (ids.length > 3 || new Set(ids).size !== ids.length ||
+      !referenceImageIds.every(id => typeof id === "string" && STORY_IMAGE_ID_PATTERN.test(id)) ||
+      !referencePhotoIds.every(id => typeof id === "string" && /^photo-[0-9a-z-]{1,80}$/.test(id))) {
+      throw new StoryImageError("INVALID_REFERENCE_IMAGE", "最多选 3 张本书的图片作为参考");
+    }
+    return { familyId, memberId: "", storyId, chapterId, requestId, purpose, referenceImageId: "", referenceImageIds, referencePhotoIds };
   }
   return { familyId, memberId, storyId, chapterId, requestId, purpose, referenceImageId };
 }
@@ -165,6 +180,20 @@ function chapterSource(draft, chapterId) {
     textLength: text.length,
     characterContext: bookCharacterContext(draft, chapterId),
   };
+}
+
+/** Every saved chapter is sent in order; never silently truncate a book. */
+function bookSource(draft) {
+  const chapters = Array.isArray(draft?.chapters) ? draft.chapters : [];
+  const sections = chapters.map((chapter, index) => {
+    const body = (chapter.content || []).map(item => typeof item?.text === "string" ? item.text : "").join("").trim();
+    return body ? `第${index + 1}章 ${String(chapter.title || "")}\n${body}` : "";
+  }).filter(Boolean);
+  if (!sections.length) throw new StoryImageError("BOOK_EMPTY", "先写下并保存一些正文，再来生成封面");
+  const text = sections.join("\n\n");
+  if (text.length > MAX_BOOK_TEXT) throw new StoryImageError("BOOK_TOO_LONG", "这本书超过了单次封面阅读长度，暂时无法完整处理");
+  return { title: String(draft.title || "").slice(0, 80), text, textLength: text.length,
+    characterContext: "", scope: "book", chapterCount: chapters.length };
 }
 
 /**
@@ -324,6 +353,10 @@ function parseSceneJson(content) {
 }
 
 const STYLES = {
+  cover: {
+    lead: "竖版文学书籍封面画，纸本淡彩水彩与细腻宣纸纹理，暖白与柔和墨绿为基调。围绕整本书的共同主题组织一个简洁意象，画面完整铺满封面，构图安静克制，上方三分之一留出干净浅色区域供书名排版，画面由纯粹的图像元素组成。",
+    width: 768, height: 1024, maxObjects: 4, withScene: true, withFigures: true,
+  },
   illustration: {
     lead: "纸本淡彩水彩插画，暖白色宣纸底，笔触轻柔，留白充足，画面安静。",
     width: 1024,
@@ -402,6 +435,7 @@ function publicJob(job) {
     purpose: job.purpose,
     imageId: job.imageId || "",
     ...(job.referenceImageId ? { referenceApplied: true, referenceImageId: job.referenceImageId } : {}),
+    ...(job.purpose === "cover" ? { referenceApplied: true, referenceImageIds: job.referenceImageIds || [], referencePhotoIds: job.referencePhotoIds || [] } : {}),
     createdAtMs: job.createdAtMs,
   };
 }
@@ -446,6 +480,9 @@ module.exports = {
   alignSceneFigures,
   alignVisualReference,
   chapterSource,
+  bookSource,
+  COVER_CHAPTER_ID,
+  MAX_BOOK_TEXT,
   chinaDayKey,
   classifyGenerateError,
   cleanText,

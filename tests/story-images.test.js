@@ -122,7 +122,7 @@ function memoryRepo() {
       if(!context)throw new core.StoryImageError('STORY_NOT_FOUND','这本故事书已不可用');
       if(context.revision.id!==job.sourceRevisionId)throw new core.StoryImageError('REVISION_CHANGED','书稿版本已经变化');
       core.assertUnrestrictedStory(context.story,context.draft);
-      if(core.textHash(core.chapterSource(context.draft,job.chapterId).text)!==job.source?.textHash)
+      if(core.textHash((job.purpose === "cover" ? core.bookSource(context.draft) : core.chapterSource(context.draft,job.chapterId)).text)!==job.source?.textHash)
         throw new core.StoryImageError('REVISION_CHANGED','章节内容已经变化');
     },
     async createImage(id, data) { images.set(id, { ...data, _id: id }); },
@@ -327,7 +327,7 @@ test("只有记忆之家的主人能生成配图", () => {
 test("章节插图和底图都能提交，封面要等故事有稳定编号", () => {
   assert.equal(core.normalizeSubmitInput(submitEvent()).purpose, "illustration");
   assert.equal(core.normalizeSubmitInput({ ...submitEvent(), purpose: "backdrop" }).purpose, "backdrop");
-  assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "cover" }), error => error.code === "PURPOSE_NOT_YET");
+  assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "cover" }), error => error.code === "INVALID_STORY");
   assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), purpose: "poster" }), error => error.code === "INVALID_PURPOSE");
   assert.throws(() => core.normalizeSubmitInput({ ...submitEvent(), requestId: "../x" }), error => error.code === "INVALID_REQUEST");
   const referenceImageId = `${FAMILY}_img_req-20260913-old00001`;
@@ -1565,4 +1565,26 @@ test("每天看图额度按微信账号统计，同一请求不会重复调用",
   await fresh.handler.caption(ctx, captionEvent("req-caption-same"));
   await assert.rejects(fresh.handler.caption(ctx, captionEvent("req-caption-same")), error => error.code === "DUPLICATE_REQUEST");
   assert.equal(fresh.calls.ask.length, 1);
+});
+
+test("全书封面复用出图状态机，带末章上下文且同请求重试不重复付费", async () => {
+  const h = harness({deps:{coverServices:{prepare:async()=>[]}}});
+  const storyId = 'story-cover-book';
+  h.repo.setDrafts([{familyId:FAMILY,storyId,draftType:'story-revision',revision:{id:'revision-cover',storyId,savedAt:'2026-09-23',draft:{title:'全书',chapters:[CHAPTER,{id:'last',title:'结尾',content:[{text:'成年后在海边安家。'}]}]}}}]);
+  const event={familyId:FAMILY,storyId,purpose:'cover',coverConsent:true,requestId:'req-cover-12345678',referenceImageIds:[],referencePhotoIds:[]};
+  const first=await h.handlers.submit(ctx,event);
+  assert.equal(first.job.status,'queued');
+  assert.match(h.calls.scene[0].text,/海边安家/);
+  assert.equal(h.calls.scene[0].scope,'book');
+  await h.handlers.submit(ctx,event);
+  assert.equal(h.calls.scene.length,1);
+  await assert.rejects(h.handlers.submit(ctx,{...event,referencePhotoIds:['photo-other']}),{code:'REQUEST_CONFLICT'});
+  const result=await h.handlers.status(ctx,{familyId:FAMILY,storyId,jobId:first.job.jobId});
+  assert.equal(result.job.status,'stored');
+  assert.equal(result.image.purpose,'cover');
+  assert.equal(h.calls.generate[0].width,768);
+  assert.equal(h.calls.generate[0].height,1024);
+  assert.equal(h.calls.aigc.length,1);
+  await h.handlers.status(ctx,{familyId:FAMILY,storyId,jobId:first.job.jobId});
+  assert.equal(h.calls.generate.length,1);
 });

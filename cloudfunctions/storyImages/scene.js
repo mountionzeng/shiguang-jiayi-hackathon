@@ -19,13 +19,15 @@ const SYSTEM_PROMPT = [
   "不得补造正文没有的人名、地点、年份、事件或物件。只输出 JSON，不要输出说明。",
 ].join("\n");
 
-function buildSceneMessages({ title, text, characterContext = "" }) {
+const COVER_SYSTEM_PROMPT = SYSTEM_PROMPT + "\n本次任务是整本书的封面，不是某一章插图。用户提供了按顺序排列的全部已保存正文。通读全部章节，概括贯穿全书的情绪、主题与代表意象，形成一个适合竖版书封的画面；不要只取第一章，不要把每章拼成连环画。书名由页面另外排版，画面只描绘图像。参考图只用于视觉风格，正文事实以全书为准。";
+
+function buildSceneMessages({ title, text, characterContext = "", scope }) {
   const continuity = characterContext
     ? `\n\n同一本书其他章节的人物连续性资料（只用于辨认人物，不是当前画面）：\n${characterContext}`
     : "";
   return [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: `章名：${title || "（无章名）"}\n\n当前章节正文：\n${text}${continuity}` },
+    { role: "system", content: scope === "book" ? COVER_SYSTEM_PROMPT : SYSTEM_PROMPT },
+    { role: "user", content: scope === "book" ? `书名：${title || "（未命名）"}\n\n整本书的全部正文：\n${text}` : `章名：${title || "（无章名）"}\n\n当前章节正文：\n${text}${continuity}` },
   ];
 }
 
@@ -34,7 +36,7 @@ function createSceneExtractor({ apiKey, model, baseUrl, fetchImpl = defaultFetch
   return async function extractScene(source) {
     if (!apiKey || !model) throw new StoryImageError("AI_NOT_CONFIGURED", "在线 AI 还没配置好");
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), source.scope === "book" ? Math.max(timeoutMs, 30000) : timeoutMs);
     let response;
     try {
       response = await fetchImpl(`${root}/chat/completions`, {

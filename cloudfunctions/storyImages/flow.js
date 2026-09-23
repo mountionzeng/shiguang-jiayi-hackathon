@@ -33,13 +33,16 @@ function createStoryImageHandlers(deps) {
     aigcMetadata,
     qualityChecker,
     referenceAnalyzer,
+    coverServices,
     now = () => Date.now(),
     log = console,
   } = deps;
   const qualityEnabled = Boolean(qualityChecker && qualityChecker.configured);
   const assertSameRequest = (existing,input) => {
     if (String(existing.storyId || "") !== input.storyId || existing.memberId !== input.memberId || existing.chapterId !== input.chapterId ||
-      existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId) {
+      existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId ||
+      JSON.stringify(existing.referenceImageIds || []) !== JSON.stringify(input.referenceImageIds || []) ||
+      JSON.stringify(existing.referencePhotoIds || []) !== JSON.stringify(input.referencePhotoIds || [])) {
       throw new core.StoryImageError("REQUEST_CONFLICT", "这次请求的章节或参考图已经变化，请重新操作");
     }
   };
@@ -48,7 +51,7 @@ function createStoryImageHandlers(deps) {
     if(typeof repo.assertStoryImageSource!=='function')throw new core.StoryImageError("IMAGE_REPOSITORY_CONFIG_REQUIRED","故事配图服务尚未准备好");
     try{await repo.assertStoryImageSource(job);return "";}
     catch(error){
-      if(!["STORY_PROTOCOL_REQUIRED","STORY_NOT_FOUND","REVISION_CHANGED","CHAPTER_NOT_FOUND","CHAPTER_EMPTY"].includes(error?.code))throw error;
+      if(!["STORY_PROTOCOL_REQUIRED","STORY_NOT_FOUND","REVISION_CHANGED","CHAPTER_NOT_FOUND","CHAPTER_EMPTY","BOOK_EMPTY","BOOK_TOO_LONG"].includes(error?.code))throw error;
       await repo.updateJob(job._id,{status:"failed",errorCode:error.code,prompt:"",updatedAtMs:now()});
       return error.code;
     }
@@ -78,7 +81,15 @@ function createStoryImageHandlers(deps) {
       core.assertUnrestrictedStory(storyContext.story,storyContext.draft);
     }
     const draft = input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
-    const source = core.chapterSource(draft, input.chapterId);
+    const source = input.purpose === "cover" ? core.bookSource(draft) : core.chapterSource(draft, input.chapterId);
+    let coverReferenceUrls = [];
+    if (input.purpose === "cover") {
+      if (!coverServices) throw new core.StoryImageError("COVER_NOT_CONFIGURED", "封面服务尚未准备好");
+      if ((input.referenceImageIds.length || input.referencePhotoIds.length) && !referenceAnalyzer?.configured) {
+        throw new core.StoryImageError("REFERENCE_NOT_CONFIGURED", "参考图服务还没配置好");
+      }
+      coverReferenceUrls = await coverServices.prepare(ctx, input, storyContext);
+    }
     let referenceUrl = "";
     if (input.referenceImageId) {
       if (!referenceAnalyzer || !referenceAnalyzer.configured) {
@@ -127,8 +138,9 @@ function createStoryImageHandlers(deps) {
         textLength: source.textLength,
         characterContextLength: source.characterContext.length,
       },
-      referencePhotoCount: 0,
-      referenceImageCount: input.referenceImageId ? 1 : 0,
+      referencePhotoCount: input.referencePhotoIds?.length || 0,
+      referenceImageCount: input.referenceImageIds?.length || (input.referenceImageId ? 1 : 0),
+      ...(input.purpose === "cover" ? { referenceImageIds: input.referenceImageIds, referencePhotoIds: input.referencePhotoIds } : {}),
       ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
       status: "submitted",
       dayKey,
@@ -149,7 +161,8 @@ function createStoryImageHandlers(deps) {
     try {
       const [extracted, extractedReference] = await Promise.all([
         extractScene(source),
-        referenceUrl ? referenceAnalyzer.analyze(referenceUrl) : Promise.resolve(undefined),
+        coverReferenceUrls.length ? referenceAnalyzer.analyzeCover(coverReferenceUrls)
+          : referenceUrl ? referenceAnalyzer.analyze(referenceUrl) : Promise.resolve(undefined),
       ]);
       scene = extracted;
       scene = core.alignSceneFigures(scene, source);

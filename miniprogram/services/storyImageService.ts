@@ -119,7 +119,7 @@ function callFailure(error: unknown): StoryImageServiceError {
   return new StoryImageServiceError("CLOUD_FAILED", "配图服务暂时出错，请稍后再试");
 }
 
-async function callStoryImages<T>(action: string, data: Record<string, unknown>, requireImageAi = true): Promise<T> {
+export async function callStoryImages<T>(action: string, data: Record<string, unknown>, requireImageAi = true): Promise<T> {
   if (!cloudReady() || (requireImageAi && !imageAiReady())) {
     throw new StoryImageServiceError("CLOUD_NOT_READY", "微信云开发还没连上，请重新打开小程序");
   }

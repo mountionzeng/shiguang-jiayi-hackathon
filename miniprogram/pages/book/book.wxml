@@ -54,7 +54,10 @@
   <scroll-view class="reading-panel contents-view" scroll-y hidden="{{!draft || panel || view !== 'contents'}}">
     <view class="panel-content contents-content">
       <view class="contents-head">
-        <image class="contents-cover" src="/assets/illustrations/story-book-cover.png" mode="aspectFit" aria-hidden="true"></image>
+        <button class="contents-cover-button" bindtap="openCover" disabled="{{protectedCopy || saving || generating}}" aria-label="制作或更换这本书的封面">
+          <image class="contents-cover {{coverUrl ? 'has-custom-cover' : ''}}" src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}" mode="aspectFit"></image>
+          <text wx:if="{{!protectedCopy}}" class="contents-cover-caption">{{coverUrl ? '更换封面' : '制作封面'}}</text>
+        </button>
         <view class="title-field contents-title-field">
           <view class="field-label">书名</view>
           <input class="manuscript-title serif" value="{{editTitle}}" maxlength="80" bindinput="onEditTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{protectedCopy || saving || generating}}" placeholder="写一个标题" />

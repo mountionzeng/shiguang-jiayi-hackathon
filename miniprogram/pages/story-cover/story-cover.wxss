@@ -1,0 +1,25 @@
+page { background: #fbf8f1; color: #303b34; }
+.cover-page { padding: 36rpx 36rpx 80rpx; }
+.cover-eyebrow { color: #788074; font-size: 24rpx; margin-bottom: 18rpx; }
+.cover-heading { font-size: 42rpx; line-height: 1.45; }
+.cover-description { color: #727669; font-size: 27rpx; line-height: 1.8; margin: 18rpx 0 24rpx; }
+.cover-section { display: flex; align-items: center; justify-content: space-between; margin-top: 42rpx; font-size: 32rpx; }
+.cover-count { color: #64816d; font-size: 24rpx; }
+.reference-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14rpx; margin: 24rpx 0; }
+.reference-choice { position: relative; padding: 0; margin: 0; line-height: 1; border: 3rpx solid transparent; border-radius: 10rpx; background: #eeeadd; overflow: hidden; }
+.reference-choice::after { border: none; }
+.reference-choice.is-selected { border-color: #5d826c; }
+.reference-choice image { display: block; width: 100%; height: 190rpx; }
+.reference-check { position: absolute; top: 8rpx; right: 8rpx; border-radius: 50%; background: rgba(255,253,246,.94); color: #5d826c; font-size: 26rpx; width: 36rpx; height: 36rpx; line-height: 36rpx; }
+.is-selected .reference-check { color: white; background: #5d826c; }
+.reference-kind { position: absolute; left: 6rpx; bottom: 6rpx; font-size: 20rpx; background: rgba(255,253,246,.92); color: #626c60; padding: 6rpx 8rpx; border-radius: 4rpx; }
+.cover-generate { background: #5d826c; color: #fffdf6; margin-top: 30rpx; border-radius: 10rpx; font-size: 30rpx; }
+.cover-generate[disabled] { background: #e8eadf; color: #8b968a; }
+.cover-hint { font-size: 23rpx; line-height: 1.6; color: #7d8477; margin-top: 14rpx; }
+.cover-empty, .cover-job { font-size: 26rpx; line-height: 1.8; padding: 22rpx 0; color: #727669; }
+.cover-results { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28rpx 22rpx; margin-top: 24rpx; }
+.cover-art { width: 100%; height: 410rpx; border-radius: 6rpx; background: #efeade; box-shadow: 3rpx 7rpx 14rpx rgba(40,50,40,.1); }
+.cover-result-label { font-size: 25rpx; color: #64816d; margin: 14rpx 0 8rpx; }
+.cover-quality { font-size: 23rpx; color: #9b7250; line-height: 1.5; }
+.cover-use { margin-top: 10rpx; }
+.cover-reset { margin-top: 38rpx; }

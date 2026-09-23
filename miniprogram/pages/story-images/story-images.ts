@@ -113,7 +113,7 @@ Page({
         };
       }),
       // A chapter can be deleted after it got pictures; its pictures stay manageable here.
-      otherImages: list.images.filter(image => !known.has(image.chapterId)).map(image => card(image)),
+      otherImages: list.images.filter(image => image.purpose !== "cover" && !known.has(image.chapterId)).map(image => card(image)),
       usageLabel: `共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
       limitsLabel: `每天最多画 ${list.limits.daily} 张，这本书最多 ${list.limits.book} 张；没画成的不算。`,
       loading: false,

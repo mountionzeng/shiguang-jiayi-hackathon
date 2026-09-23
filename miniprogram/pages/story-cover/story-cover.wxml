@@ -1,0 +1,33 @@
+<view class="cover-page">
+  <view class="cover-eyebrow">{{title || '我的书'}} · 封面</view>
+  <view class="cover-heading serif">为这本书画一张封面</view>
+  <view class="cover-description" wx:if="{{!loading && !loadError}}">读完已保存的 {{chapterCount}} 章正文，再为全书提炼一个画面。</view>
+  <view class="notice" wx:if="{{loadError || notice}}">{{loadError || notice}}</view>
+  <button class="tool-button" wx:if="{{loadError}}" bindtap="retry">重新加载</button>
+  <view class="cover-description" wx:if="{{loading}}">正在读取这本书…</view>
+  <block wx:if="{{!loading && !loadError}}">
+    <view class="cover-section"><text class="serif">参考哪些图片</text><text class="cover-count">已选 {{selectedCount}} / 3</text></view>
+    <view class="cover-description">选中的照片或插图用于参考画风、配色和物件。不选也可以，只按全书文字来画。</view>
+    <view class="reference-grid" wx:if="{{references.length}}">
+      <button class="reference-choice {{item.selected ? 'is-selected' : ''}}" wx:for="{{references}}" wx:key="id" data-id="{{item.id}}" bindtap="toggleReference" disabled="{{submitting || selecting}}" aria-label="{{item.selected ? '取消选择' : '选择'}}{{item.kind === 'photo' ? '照片' : '插图'}}作为封面参考">
+        <image src="{{item.url}}" mode="aspectFill" />
+        <view class="reference-check">{{item.selected ? '✓' : '+'}}</view>
+        <text class="reference-kind">{{item.kind === 'photo' ? '照片' : 'AI 图片'}}</text>
+      </button>
+    </view>
+    <view class="cover-empty" wx:else>本书还没有可参考的图片，可以先用文字生成。</view>
+    <button class="cover-generate" bindtap="generate" loading="{{submitting}}" disabled="{{submitting || selecting || activeJob}}">{{submitting ? '正在构思封面' : '生成一张封面'}}</button>
+    <view class="cover-hint">生成会使用一次配图额度。只在你点「设为封面」后替换。</view>
+    <view class="cover-job" wx:for="{{jobs}}" wx:key="jobId">{{item.message}}</view>
+    <view class="cover-section" wx:if="{{covers.length}}"><text class="serif">画好的封面</text></view>
+    <view class="cover-results">
+      <view class="cover-result" wx:for="{{covers}}" wx:key="imageId">
+        <image class="cover-art" src="{{item.url}}" mode="aspectFit" data-url="{{item.url}}" bindtap="preview" aria-label="查看封面大图" />
+        <view class="cover-result-label">{{item.selected ? '正在使用' : 'AI 生成'}}<text wx:if="{{item.moderationLabel}}"> · {{item.moderationLabel}}</text></view>
+        <view class="cover-quality" wx:if="{{item.qualityLabel}}">{{item.qualityLabel}}</view>
+        <button class="cover-use tool-button" data-id="{{item.imageId}}" bindtap="choose" disabled="{{selecting || submitting || !item.ready || item.selected}}">{{item.selected ? '已是封面' : (!item.ready ? '等待审核' : '设为封面')}}</button>
+      </view>
+    </view>
+    <button class="cover-reset tool-button" wx:if="{{coverImageId}}" data-id="" bindtap="choose" disabled="{{selecting || submitting}}">恢复纸本封面</button>
+  </block>
+</view>

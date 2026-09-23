@@ -93,3 +93,9 @@ page { height: 100%; overflow: hidden; }
 .chapter-original { height: 360rpx; background: #f5f1e9; border-radius: 16rpx; padding: 24rpx; box-sizing: border-box; white-space: pre-wrap; line-height: 1.9; font-size: 28rpx; }
 .insertion-picker { padding: 24rpx; border: 1rpx solid #c8bfae; border-radius: 14rpx; font-size: 28rpx; line-height: 1.6; }
 .insertion-preview { padding: 24rpx 0; white-space: pre-wrap; line-height: 1.9; font-size: 30rpx; }
+
+.contents-cover-button { flex: none; margin: 0; padding: 0; width: 132rpx; background: transparent; line-height: 1; overflow: visible; }
+.contents-cover-button::after { border: none; }
+.contents-cover-button .contents-cover { display: block; }
+.contents-cover-caption { display: block; margin-top: 14rpx; font-size: 22rpx; line-height: 1.4; color: #64816d; }
+.contents-cover.has-custom-cover { border-radius: 4rpx; }

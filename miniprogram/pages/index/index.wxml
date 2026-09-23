@@ -51,8 +51,8 @@
         <view class="book-pages-under"></view>
         <view class="book-cover-leaf">
           <image
-            class="ancient-book-art"
-            src="/assets/illustrations/story-book-cover.png"
+            class="ancient-book-art {{coverUrl ? 'custom-book-art' : ''}}"
+            src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}"
             mode="aspectFit"
             aria-hidden="true"
           ></image>

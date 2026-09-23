@@ -1088,3 +1088,5 @@
 .recent-timeline::before { position: absolute; top: 20rpx; bottom: 20rpx; left: 47rpx; width: 2rpx; background: rgba(79, 127, 107, 0.26); content: ""; }
 .timeline-row { position: relative; display: flex; align-items: stretch; margin-top: 22rpx; }
 .timeline-row:active { opacity: 0.72; }
+
+.custom-book-art { left: 11%; top: 1.5%; width: 81%; height: 94%; border-radius: 10rpx 20rpx 20rpx 10rpx; box-shadow: 6rpx 8rpx 18rpx rgba(48,56,45,.18); }

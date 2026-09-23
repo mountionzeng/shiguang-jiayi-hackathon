@@ -1,3 +1,4 @@
+import { storyCoverApi } from "../../services/storyCoverService";
 import {
   accountOwner,
   contributionRelatedMemberIds,
@@ -199,12 +200,15 @@ function interviewUrl(
  */
 Page({
   recommendationOffset: 0,
+  coverRefreshId: 0,
 
   data: {
     hasProfile: false,
     ownerAvatarText: "",
     // 书封就是正在聊的那个故事；所有故事的目录在底部的「人生之书」。
     coverTitle: "",
+    coverUrl: "",
+    coverImageId: "",
     coverSubtitle: "",
     storyKey: "",
     storyId: "",
@@ -235,6 +239,7 @@ Page({
   },
 
   async refresh(state?: FamilyRoomState) {
+    const coverRefreshId = ++this.coverRefreshId;
     const currentState = state ?? await loadRoomStateRemoteFirst();
     const current = await loadCurrentMemberRemoteFirst(currentState);
     const owner = accountOwner(currentState.members) ?? (current.id ? current : undefined);
@@ -273,7 +278,10 @@ Page({
       });
     });
 
+    if (coverRefreshId !== this.coverRefreshId) return;
+    const coverStory = (currentState.stories || []).find(story => story.id === currentStory?.storyId && !story.deletedAt);
     this.setData({
+      coverUrl: "", coverImageId: coverStory?.coverImageId || "",
       hasProfile: Boolean(owner),
       ownerAvatarText: owner?.avatarText ?? "",
       coverTitle: currentStoryTitle || "先随便聊聊",
@@ -304,6 +312,11 @@ Page({
       hasRecentStories: recentStories.length > 0,
     });
 
+    if (coverStory?.coverImageId) {
+      void storyCoverApi.resolveUrl(coverStory.id, coverStory.coverImageId).then(url => {
+        if (coverRefreshId === this.coverRefreshId && this.data.storyId === coverStory.id) this.setData({coverUrl:url});
+      }).catch(() => undefined);
+    }
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
   },
 

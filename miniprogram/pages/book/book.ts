@@ -1,3 +1,4 @@
+import { storyCoverApi } from "../../services/storyCoverService";
 import {
   accountOwner, BiographyDraft, buildLocalChapterDraft, contributionStoryTitle, createContribution, isActiveMember, isRecordingProfile, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution, Story,
   memoryAiLabel, memorySegmentCount, memoryPool, personalBookSourceFingerprint,
@@ -52,6 +53,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 
 Page({
   data: {
+    coverUrl: "", coverImageId: "",
     organizeMethod: "insert" as "insert" | "blend", organizeOriginal: "", insertionPoint: "end",
     insertionPoints: [] as ChapterInsertionPoint[], insertionIndex: 0,
     previewInsertion: false, insertionText: "",
@@ -268,6 +270,7 @@ Page({
       });
     }
     this.setData({
+      coverImageId: story?.coverImageId || "", coverUrl: "",
       editTitle: this.titleBuffer, editBody: this.bodyBuffer, editChapterTitle: this.chapterTitleBuffer, view,
       organizeBooks, organizeBookKey, organizeBookTitle: organizeBooks.find(item => item.id === organizeBookKey)?.title || "",
       protagonistName: member.name, memberId: member.id, storyId: story?.id || "", savedRevisionId: current.revisionId || "", writingMode: story?.writingMode || "creative",
@@ -281,6 +284,11 @@ Page({
       history: manuscriptHistory(state, bookId), storageLabel: roomDataModeLabel(), loadError: "",
       ...this.chapterData(),
     });
+    if (story?.coverImageId) {
+      void storyCoverApi.resolveUrl(story.id, story.coverImageId).then(url => {
+        if (!this.unloaded && refreshId === this.refreshId) this.setData({coverUrl:url});
+      }).catch(() => undefined);
+    }
     this.seedEditor();
     if (this.openOrganizeOnLoad || this.requestedMemoryIds.length) {
       this.openOrganizeOnLoad = false;
@@ -301,6 +309,12 @@ Page({
       });
       this.updateOrganizeTarget(this.data.organizeTarget);
     }
+  },
+  openCover() {
+    if (this.data.protectedCopy || this.data.saving || this.data.generating) return;
+    if (this.data.editing) { this.setData({saveNotice:"请先保存书稿，再制作封面"}); return; }
+    if (!this.data.storyId || !this.data.savedRevisionId) { this.setData({saveNotice:"请先保存这本书，再制作封面"}); return; }
+    wx.navigateTo({url:"/pages/story-cover/story-cover?storyId=" + encodeURIComponent(this.data.storyId)});
   },
   /** Point the editing buffers at the active chapter's saved text and name. */
   loadActiveChapter() {
