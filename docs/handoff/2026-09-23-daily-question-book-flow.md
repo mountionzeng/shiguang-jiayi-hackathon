@@ -24,4 +24,4 @@
 - 隔离预览目录：`/private/tmp/shiguang-ai-flow-fix-preview-20260923`；仅该目录 `CLOUD_AI_RELEASE_READY=true`，仓库默认仍 false。
 - 目标企业 AppID：`wx86ae3e9d507ce52d`；环境：`cloud1-d5ghzk30ve609f544`。既有三个文字 AI 服务端开关保持 true，personalMemory 仍关闭。
 - `chatInterview/index.js` 单文件增量部署请求：`confirmation_cloud_fn_inc_deploy_d02caf30-99a5-4f65-a280-8b199670a582`。当前等待用户在开发者工具确认，尚不能报告新追问提示词已部署。用户继续时查询此原请求，不重新提交。
-- 新预览二维码生成请求已提交，待结果。尚未公开发布；真机连续追问与真实写入效果待用户试用。双账号仍为公开上线前待办。
+- 新预览二维码生成成功（`ok=true`、`success=true`，总包 1,855,305 字节）：`/private/tmp/shiguang-ai-flow-fix-preview-20260923/ai-flow-fixed.jpg`。该二维码替代此前预览；尚未公开发布。真机连续追问与真实写入效果待用户试用，双账号仍为公开上线前待办。
