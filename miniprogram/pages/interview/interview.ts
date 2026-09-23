@@ -190,7 +190,6 @@ Page({
     storyTitle: "",
     selectedStoryKey: "",
     storyId: "", writingMode: "creative" as "objective" | "creative",
-    guidedQuestion: false,
     storyOptions: [] as StoryOptionView[],
     relatedMemberIds: [] as string[],
     relatedOptions: [] as MemberOptionView[],
@@ -284,7 +283,6 @@ Page({
       storyTitle,
       storyId: requestedStory?.id || "",
       writingMode: requestedStory?.writingMode || "creative",
-      guidedQuestion: Boolean(requestedQuestion),
       selectedStoryKey: requestedStory?.id || "",
       storyOptions: sharedFamilyId
         ? storyOptionsFor(state.contributions, storyTitle, true, (state.deletedStories ?? []).map(story => story.title))
@@ -414,12 +412,6 @@ Page({
       message: "退出时会尝试保存。为避免网络失败，请先完成保存并确认成功。",
     });
 
-    if (this.data.writingMode === "objective" && this.data.storyId && !this.data.guidedQuestion) {
-      this.setData({ asking: false });
-      wx.showToast({ title: "已记下，可以继续补充或完成", icon: "none" });
-      return;
-    }
-
     try {
       const prompt = await generateInterviewPrompt({
         answer,
@@ -428,7 +420,7 @@ Page({
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
-        // Daily questions can guide a conversation without reading or rewriting an objective book.
+        // Both entry points can guide the user's own answers without reading or rewriting an objective book.
         storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
         previousAnswers,
         conversation,

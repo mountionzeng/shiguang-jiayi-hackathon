@@ -1076,7 +1076,7 @@ test("chat always saves under the account owner, whichever book was open last", 
   assert.equal(storage.currentMemberId(), "member-1", "chatting switches nothing else");
 });
 
-test("objective story interview records answers without calling any AI function", async context => {
+test("objective story keeps asking local follow-ups when online AI is unavailable", async context => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const previousApp = (globalThis as any).getApp;
@@ -1091,7 +1091,7 @@ test("objective story interview records answers without calling any AI function"
   assert.equal(aiCalls, 0);
   assert.deepEqual(page.data.answers, ["只记录这句事实。"]);
   assert.equal(page.data.asking, false);
-  assert.ok(!(page.data.messages as Array<{ kind: string }>).some(message => message.kind === "followup"));
+  assert.equal((page.data.messages as Array<{ kind: string }>).filter(message => message.kind === "followup").length, 1);
 });
 
 test("daily question keeps guiding the next two answers even in an objective book", async context => {
@@ -1119,6 +1119,39 @@ test("daily question keeps guiding the next two answers even in an objective boo
   assert.ok(calls[1].conversation.some((turn: any) => turn.text === "阳台上的哪一点让你放松？"));
   assert.equal((page.data.messages as any[]).filter(message => message.kind === "followup").length, 2);
   assert.equal(page.data.writingMode, "objective");
+});
+
+test("continue chatting in an objective book keeps all three turns without modifying the book", async context => {
+  const state = createInitialRoomState();
+  state.stories = [{ id: "story-daily", familyId: "local", title: "日常", writingMode: "objective", memoryIds: [], protagonistMemberIds: [], createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z", version: 0 }];
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad", { storyId: "story-daily" });
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const calls: any[] = [];
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    if (name === "recordAiConsent") return { result: { success: true } };
+    assert.equal(name, "chatInterview"); calls.push(data);
+    return { result: { dimension: "feeling", text: calls.length === 1 ? "阳台上的哪一点让你放松？" : "这份自在和以前有什么不同？" } };
+  } };
+  page.setData({ inputText: "傍晚坐在阳台上，终于能歇一会儿。" });
+  await callPage(page, "send");
+  page.setData({ inputText: "我不用赶着去做下一件事。" });
+  await callPage(page, "send");
+  page.setData({ inputText: "我想给自己留一点慢下来的时间。" });
+  await callPage(page, "send");
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => !call.storyId), "objective book text is not used for AI rewriting");
+  assert.ok(calls[1].conversation.some((turn: any) => turn.text === "阳台上的哪一点让你放松？"));
+  assert.equal((page.data.messages as any[]).filter(message => message.kind === "followup").length, 3);
+  assert.equal(page.data.writingMode, "objective");
+  assert.equal(page.data.asking, false);
+  assert.equal(calls[2].previousAnswers.length, 2);
+  assert.equal(calls[2].conversation.filter((turn: any) => turn.role === "user").length, 2);
+  assert.deepEqual(storage.roomState(), state, "chatting must not rewrite or save the existing book");
 });
 
 test("organizing an unlinked memory survives choosing an empty story and writes only after preview confirmation", async context => {
