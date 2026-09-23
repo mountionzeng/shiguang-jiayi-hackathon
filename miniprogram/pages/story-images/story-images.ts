@@ -44,7 +44,7 @@ Page({
   data: {
     storyId: "", memberId: "", bookTitle: "", focusChapterId: "",
     groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
-    usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "",
+    usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
   },
   unloaded: false,
@@ -138,14 +138,15 @@ Page({
     for (const jobId of this.activeJobIds) {
       try {
         const { job } = await storyImageApi.checkImageJob(jobId,this.data.storyId || this.data.memberId);
+        if (!this.unloaded && !this.hidden && job.chapterId === this.data.noticeChapterId) this.setData({ notice: job.message });
         if (!isActiveJob(job)) changed = true;
       } catch (error) {
-        this.setData({ notice: messageOf(error, "暂时查不到进度，稍后会再看一次") });
+        this.setData({ notice: messageOf(error, "暂时查不到进度，稍后会再看一次"), noticeChapterId: "" });
       }
     }
     if (this.unloaded || this.hidden) return;
     if (changed) {
-      await this.refresh().catch(error => { logLoadError("story-images", error); this.setData({ notice: messageOf(error, "配图暂时没加载出来，请重试。") }); });
+      await this.refresh().catch(error => { logLoadError("story-images", error); this.setData({ notice: messageOf(error, "配图暂时没加载出来，请重试。"), noticeChapterId: "" }); });
     } else {
       this.schedulePoll();
     }
@@ -155,7 +156,10 @@ Page({
     const referenceImageId = event.currentTarget.dataset.reference;
     const purpose: StoryImagePurpose = event.currentTarget.dataset.purpose === "backdrop" ? "backdrop" : "illustration";
     if (this.data.submitting || this.data.savingBackdrop || !chapterId) return;
-    this.setData({ submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"), notice: "" });
+    this.setData({
+      submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"),
+      notice: "正在读取这一章，准备配图…", noticeChapterId: chapterId,
+    });
     try {
       const job = await storyImageApi.submitChapterImage({
         ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
@@ -179,7 +183,7 @@ Page({
     const chapterId = event.currentTarget.dataset.chapter;
     const imageId = event.currentTarget.dataset.image ?? "";
     if (this.data.savingBackdrop || !chapterId) return;
-    this.setData({ savingBackdrop: true, notice: "" });
+    this.setData({ savingBackdrop: true, notice: "", noticeChapterId: chapterId });
     try {
       await saveChapterBackdrop({ ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, imageId });
       if (this.unloaded) return;
@@ -226,7 +230,7 @@ Page({
       confirmText: "删除",
       success: async result => {
         if (result.confirm) {
-          this.setData({ removingId: imageId, notice: "" });
+          this.setData({ removingId: imageId, notice: "", noticeChapterId: "" });
           try {
             // Unlink first, so a chapter never points at a picture that is already gone.
             if (usedBy) await saveChapterBackdrop({ ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId: usedBy.id, imageId: "" });

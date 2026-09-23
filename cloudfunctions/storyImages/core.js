@@ -40,6 +40,12 @@ const MESSAGES = {
   expired: "画好了但没来得及保存",
 };
 
+const SCENE_FAILURE_MESSAGES = {
+  SCENE_TIMEOUT: "读取章节超时，还没有开始画图，请稍后重试",
+  SCENE_REQUEST_FAILED: "暂时无法读取章节画面，还没有开始画图，请稍后重试",
+  SCENE_PARSE_FAILED: "没能提炼出这一章的画面，还没有开始画图，请稍后重试",
+};
+
 class StoryImageError extends Error {
   constructor(code, message) {
     super(message);
@@ -391,7 +397,7 @@ function publicJob(job) {
   return {
     jobId: job._id,
     status: job.status,
-    message: MESSAGES[job.status] || "",
+    message: (job.status === "failed" && SCENE_FAILURE_MESSAGES[job.errorCode]) || MESSAGES[job.status] || "",
     chapterId: job.chapterId,
     purpose: job.purpose,
     imageId: job.imageId || "",

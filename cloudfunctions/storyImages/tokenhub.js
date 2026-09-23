@@ -3,8 +3,8 @@ const { defaultFetch } = require("./httpFetch");
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com";
 const IMAGE_PATH = "/v1/wand/hunyuan-image/v3-generation";
 const IMAGE_MODEL = "hy-image-v3";
-/** The visible label the law requires; sent explicitly rather than relying on a default. */
-const AI_FOOTNOTE = "图片由AI生成";
+/** Keep a compact, explicit AI label; the provider controls its typography. */
+const AI_FOOTNOTE = "AI生成";
 /** TokenHub allows each side in [512, 2048] and at most 1024×1024 pixels in total. */
 const MAX_IMAGE_AREA = 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

@@ -3,7 +3,7 @@ const { createVisionClient } = require("./vision");
 
 const QUALITY_PROMPT = [
   "你是图片质检员，请检查这张 AI 生成的插画。",
-  "右下角的「图片由AI生成」是规定必须保留的标识，不算问题。",
+  "右下角的「AI生成」或旧版「图片由AI生成」是保留的 AI 标识，不算问题。",
   "除此之外，检查画面里有没有：能读出来的文字、像文字的乱码笔画、水印、商标或 logo、签名或印章。",
   "只输出一个 JSON 对象，前四个字段必须是 true 或 false：",
   '{"readableText": 布尔, "pseudoText": 布尔, "watermarkOrLogo": 布尔, "signature": 布尔, "note": "一句话说明"}',

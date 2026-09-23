@@ -537,7 +537,7 @@ test("轮询到图画好后刷新列表，没有正在画的图就不再轮询�
   const checked: string[] = [];
   const restoreApi = withApi({
     listStoryImages: async () => { listCalls++; return listCalls === 1 ? listWith() : listWith({ pending: [] }); },
-    checkImageJob: async jobId => { checked.push(jobId); return { job: { ...listWith().pending[0], status: "stored" } }; },
+    checkImageJob: async jobId => { checked.push(jobId); return { job: { ...listWith().pending[0], status: "stored", message: "画好了" } }; },
   });
   context.after(() => { restoreApi(); timers.restore(); env.restore(); });
 
@@ -545,10 +545,12 @@ test("轮询到图画好后刷新列表，没有正在画的图就不再轮询�
   call(page, "onLoad", {});
   await call(page, "refresh");
   assert.equal(timers.scheduled.length, 1);
+  page.setData({ noticeChapterId: "chapter-b", notice: "正在画" });
   await call(page, "pollOnce");
   assert.deepEqual(checked, ["family_o-owner_req-b"]);
   assert.equal(listCalls, 2);
   assert.equal(timers.scheduled.length, 1, "图画好后不再安排下一次轮询");
+  assert.equal(page.data.notice, "画好了", "完成后不能继续显示正在画");
 
   const hidden = instantiate(await pageDefinition("story-images"));
   call(hidden, "onLoad", {});
@@ -621,6 +623,32 @@ test("插图可以回到来源章节的光标处，正文正在使用的原图�
   group.images[0].inText = true;
   await call(page, "remove", { currentTarget: { dataset: { id: "family_o-owner_img_req-aaaaaaaa" } } });
   assert.deepEqual(removed, [], "正文引用存在时保留云端原图");
+});
+
+test("配图等待和失败反馈留在点击的章节，等待期间重复点击不重复提交", async context => {
+  const env = installWx({}, stateWithBook());
+  env.setApp(false);
+  let rejectRequest!: (error: Error) => void;
+  let submitted = 0;
+  const restoreApi = withApi({
+    submitChapterImage: () => {
+      submitted++;
+      return new Promise((_resolve, reject) => { rejectRequest = reject; });
+    },
+  });
+  context.after(() => { restoreApi(); env.restore(); });
+  const page = instantiate(await pageDefinition("story-images"));
+  const event = { currentTarget: { dataset: { id: "chapter-b", purpose: "illustration" } } };
+  const pending = call(page, "generate", event);
+  assert.equal(page.data.noticeChapterId, "chapter-b");
+  assert.match(String(page.data.notice), /正在读取/);
+  await call(page, "generate", event);
+  assert.equal(submitted, 1);
+  rejectRequest(new StoryImageServiceError("CLOUD_FAILED", "配图服务暂时出错，请稍后再试"));
+  await pending;
+  assert.equal(page.data.noticeChapterId, "chapter-b");
+  assert.equal(page.data.notice, "配图服务暂时出错，请稍后再试");
+  assert.equal(page.data.submitting, "");
 });
 
 test("提交配图失败时把原因显示出来，按钮恢复可点", async context => {

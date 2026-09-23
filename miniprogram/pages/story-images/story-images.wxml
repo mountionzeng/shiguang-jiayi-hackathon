@@ -4,9 +4,9 @@
     <view class="images-title serif">这本书的图</view>
     <view class="images-usage" wx:if="{{usageLabel}}">{{usageLabel}}</view>
     <view class="images-note" wx:if="{{limitsLabel}}">{{limitsLabel}}</view>
-    <view class="images-note">画面以本章已经保存的文字为准，只会从同一本书其他章节提取少量人物线索，避免把女孩画成男性；不会用到你的照片。已有插图可点「参考这张再画」，延续人物外观、画风、配色和关键物件。底图会放在正文下方，插图可放进正文光标处。每张图右下角都带「图片由AI生成」。</view>
+    <view class="images-note">画面以本章已经保存的文字为准，只会从同一本书其他章节提取少量人物线索，避免把女孩画成男性；不会用到你的照片。已有插图可点「参考这张再画」，延续人物外观、画风、配色和关键物件。底图会放在正文下方，插图可放进正文光标处。每张图右下角都保留 AI 生成标识。</view>
   </view>
-  <view class="notice" wx:if="{{notice || loadError}}">{{notice || loadError}}</view>
+  <view class="notice" wx:if="{{loadError || (notice && !noticeChapterId)}}">{{loadError || notice}}</view>
   <button wx:if="{{loadError}}" class="tool-button" bindtap="retryLoad">重新加载</button>
   <view wx:if="{{loading && !loadError}}" class="images-note images-loading">正在读取…</view>
   <view wx:elif="{{!loadError && !groups.length}}" class="images-note images-loading">这本书还没有章节。先在书稿里新开一章、写几句并保存，再来配图。</view>
@@ -16,13 +16,14 @@
       <text class="group-name serif">{{group.label}}{{group.title ? '　' + group.title : ''}}</text>
     </view>
     <view class="group-actions">
-      <button class="tool-button" data-id="{{group.id}}" data-purpose="illustration" bindtap="generate" disabled="{{submitting || savingBackdrop ? true : false}}">
+      <button class="tool-button" data-id="{{group.id}}" data-purpose="illustration" bindtap="generate" loading="{{submitting === group.id + ':illustration'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
         <view class="action-icon icon-ai" aria-hidden="true"></view>{{submitting === group.id + ':illustration' ? '提交中' : '配一张插图'}}
       </button>
-      <button class="tool-button" data-id="{{group.id}}" data-purpose="backdrop" bindtap="generate" disabled="{{submitting || savingBackdrop ? true : false}}">
+      <button class="tool-button" data-id="{{group.id}}" data-purpose="backdrop" bindtap="generate" loading="{{submitting === group.id + ':backdrop'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
         <view class="action-icon icon-photo" aria-hidden="true"></view>{{submitting === group.id + ':backdrop' ? '提交中' : '配一张底图'}}
       </button>
     </view>
+    <view class="notice" wx:if="{{notice && noticeChapterId === group.id}}">{{notice}}</view>
     <view class="backdrop-state" wx:if="{{group.backdropMissing}}">
       <text>这一章选的底图已经不在了。</text>
       <button class="tool-button" data-chapter="{{group.id}}" data-image="" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
@@ -42,7 +43,7 @@
           <text wx:if="{{image.inText}}">正文中使用</text>
         </view>
         <view class="card-actions">
-          <button wx:if="{{image.referenceReady}}" class="tool-button" data-id="{{group.id}}" data-purpose="illustration" data-reference="{{image.imageId}}" bindtap="generate" disabled="{{submitting || savingBackdrop ? true : false}}">
+          <button wx:if="{{image.referenceReady}}" class="tool-button" data-id="{{group.id}}" data-purpose="illustration" data-reference="{{image.imageId}}" bindtap="generate" loading="{{submitting === group.id + ':illustration:' + image.imageId}}" disabled="{{submitting || savingBackdrop ? true : false}}">
             <view class="action-icon icon-ai" aria-hidden="true"></view>{{submitting === group.id + ':illustration:' + image.imageId ? '提交中' : '参考这张再画'}}
           </button>
           <button wx:if="{{!image.isBackdrop && group.id === focusChapterId}}" class="tool-button" data-id="{{image.imageId}}" data-chapter="{{group.id}}" data-url="{{image.url}}" bindtap="insertIntoBook" disabled="{{image.inText}}">
