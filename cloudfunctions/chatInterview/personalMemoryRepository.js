@@ -9,7 +9,7 @@ function createRepository(db) {
         try { return (await database.collection(table).doc(id).get()).data || null; }
         catch (err) {
           // Missing documents are normal. Missing collections/permissions/network are not.
-          if (/DOCUMENT_NOT_FOUND|document (?:does not exist|not found)|\bdocument\.get:fail -1\b/i.test(String(err?.errMsg || err?.message || ''))) return null;
+          if (/DOCUMENT_NOT_FOUND|document (?:does not exist|not found)|\bdocument\.get:fail document with _id \S+ does not exist\b|\bdocument\.get:fail -1\b/i.test(String(err?.errMsg || err?.message || ''))) return null;
           throw err;
         }
       },

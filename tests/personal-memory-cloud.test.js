@@ -17,7 +17,7 @@ function fixture() {
   records.set('memories:family_alice_m2',{familyId:'family_alice',frontendContributionId:'m2',authorMemberId:'owner',scope:'personal',text:'今天我走进了一家书店。',createdAt:'2026-09-22'});
   records.set('memories:family_alice_family',{familyId:'family_alice',frontendContributionId:'family',authorMemberId:'owner',scope:'family',text:'不能从家庭投稿学习'});
   const db={collection(name){return {
-    doc(id){return {async get(){const value=records.get(name+':'+id);if(!value)throw new Error('document does not exist');return {data:structuredClone({_id:id,...value})};},
+    doc(id){return {async get(){const value=records.get(name+':'+id);if(!value)throw new Error('document.get:fail document with _id '+id+' does not exist');return {data:structuredClone({_id:id,...value})};},
       async set({data}){assert.equal(data._id,undefined);records.set(name+':'+id,structuredClone(data));},async update({data}){records.set(name+':'+id,{...records.get(name+':'+id),...data});}};},
     where(filter){let offset=0,count=100;const q={orderBy(){return q;},skip(n){offset=n;return q;},limit(n){count=n;return q;},async get(){return {data:[...records].filter(([k,v])=>k.startsWith(name+':')&&Object.entries(filter).every(([key,value])=>v[key]===value)).map(([k,v])=>structuredClone({_id:k.slice(name.length+1),...v})).slice(offset,offset+count)};}};return q;},
   };},async runTransaction(fn){const before=structuredClone(records);try{return await fn(db);}catch(e){records.clear();for(const[k,v]of before)records.set(k,v);throw e;}}};
@@ -30,6 +30,19 @@ function env(context) {
   const old={...process.env};Object.assign(process.env,values);
   context.after(()=>{for(const key of Object.keys(values)){if(old[key]===undefined)delete process.env[key];else process.env[key]=old[key];}});
 }
+test('first visit defaults to disabled when CloudBase reports the control document does not exist',async context=>{
+  env(context);const f=fixture();
+  assert.deepEqual(await memoryCloud.main({action:'list'},{cloud:f.cloud}),{enabled:false,insights:[]});
+  assert.equal([...f.records.keys()].some(key=>key.startsWith('personal_memory_controls:')),false);
+});
+test('repository does not treat permission, network, or missing collection errors as absent documents',async()=>{
+  const {createRepository}=require('../cloudfunctions/personalMemory/personalMemoryRepository');
+  for(const message of ['document.get:fail permission denied','document.get:fail network timeout','collection personal_memory_controls does not exist']) {
+    const failure=new Error(message);
+    const repo=createRepository({collection(){return {doc(){return {async get(){throw failure;}};}};}});
+    await assert.rejects(repo.get('personal_memory_controls','test-account'),error=>error===failure);
+  }
+});
 test('real cloud entry resolves account ownership; another account cannot extract or forget private understanding',async context=>{
   env(context);const f=fixture();await f.learn();
   const alice=await memoryCloud.main({action:'list'},{cloud:f.cloud});assert.equal(alice.insights.length,1);
