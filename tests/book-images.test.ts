@@ -2,8 +2,44 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   contentFromDelta, contentToDelta, discardLocalPhotos, isStoryImageId, isStoryImageReference,
-  readLocalPhoto, saveLocalPhoto, storyImageReferenceId, validateContent,
+  readLocalPhoto, readLocalPhotos, saveLocalPhoto, storyImageReferenceId, validateContent,
 } from "../miniprogram/services/bookImages";
+
+test('book photo reads deduplicate I/O, use at most four workers and preserve document mapping order', async context => {
+  const previous = (globalThis as any).wx;
+  context.after(() => { (globalThis as any).wx = previous; });
+  const ids = Array.from({ length: 9 }, (_, i) => `photo-${i}`);
+  const pending: Array<() => void> = [];
+  let active = 0, peak = 0, reads = 0;
+  (globalThis as any).wx = {
+    env: { USER_DATA_PATH: 'wxfile://usr' },
+    getStorageSync: () => { reads++; return 'wxfile://store_shared.jpg'; },
+    getFileSystemManager: () => ({
+      getSavedFileList: ({ success }: any) => {
+        active++; peak = Math.max(peak, active);
+        pending.push(() => { active--; success({ fileList: [{ filePath: 'wxfile://store_shared.jpg' }] }); });
+      },
+      accessSync: () => undefined,
+    }),
+  };
+  const loading = readLocalPhotos([...ids, ids[0], 'invalid']);
+  assert.equal(pending.length, 4, 'independent reads start together');
+  let batches = 0;
+  while (pending.length) {
+    batches++;
+    for (const finish of pending.splice(0).reverse()) finish();
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  const result = await loading;
+  assert.equal(reads, 9, 'a repeated photo is read only once');
+  assert.equal(peak, 4);
+  assert.equal(batches, 3, 'nine sequential waits become three bounded batches');
+  assert.equal(result.imageIds['wxfile://store_shared.jpg'], ids[0], 'last document occurrence wins regardless of completion order');
+  assert.equal(Object.keys(result.photoPaths).length, 9);
+  assert.equal(result.photoPaths.invalid, undefined);
+  (wx as any).getStorageSync = () => { throw new Error('unavailable'); };
+  assert.deepEqual(await readLocalPhotos(['photo-missing']), { photoPaths: {}, imageIds: {} });
+});
 
 test("native editor photo stays between text blocks and never serializes a device path", () => {
   const content = contentFromDelta({ ops: [{ insert: "前文\n" }, { insert: { image: "wxfile://saved/p.jpg" } }, { insert: "\n后文\n" }] }, { "wxfile://saved/p.jpg": "photo-123-a" });

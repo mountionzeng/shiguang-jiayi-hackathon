@@ -8,7 +8,7 @@ import { BiographyFallbackReason, generateBiographyWithStatus } from "../../serv
 import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, usesCloudStorage } from "../../services/roomRepository";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import {
-  contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, saveLocalPhoto,
+  contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, readLocalPhotos, saveLocalPhoto,
   storyImageReferenceId, validateContent,
 } from "../../services/bookImages";
 import { StoryImage, storyImageApi } from "../../services/storyImageService";
@@ -18,6 +18,7 @@ import {
 } from "../../services/chapters";
 import { chapterInsertionPoints, ChapterInsertionPoint, insertChapterText } from "../../services/chapterInsertion";
 import { logLoadError } from "../../services/loadErrorLog";
+import { measurePerformance, startPerformanceMeasure } from '../../services/performanceLog';
 import { activeStory, linkStoryMemories, storyAiContext, storySourceFingerprint, updateStoryBook } from "../../services/storyBooks";
 import { loadCurrentStoryId, saveCurrentStoryId } from "../../services/storySelection";
 import { audioCreatePath } from "../../services/storyAudioService";
@@ -97,6 +98,8 @@ Page({
   contentBuffer: [] as ManuscriptContent[],
   chapters: [] as ManuscriptChapter[],
   activeChapterId: "",
+  bookImagesReady: undefined as Promise<void> | undefined,
+  chapterOpenId: 0,
   excerptRequestId: "",
   appendOwnRequestId: "",
   returnOwnRequestId: "",
@@ -183,6 +186,16 @@ Page({
     }
   },
   async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+    const finish = startPerformanceMeasure('book.refresh');
+    let outcome: 'ok' | 'error' = 'error';
+    try {
+      await this.refreshBook(nextState);
+      outcome = 'ok';
+    } finally {
+      finish(outcome);
+    }
+  },
+  async refreshBook(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
     const refreshId = ++this.refreshId;
     const storyId = this.requestedStoryKey || loadCurrentStoryId();
     const state = nextState ?? await loadRoomStateRemoteFirst();
@@ -210,7 +223,7 @@ Page({
       .filter(memory => !this.storyScopeMemoryIds || this.storyScopeMemoryIds.has(memory.id));
     const bookId = story?.id || member.id;
     let current = currentManuscript(state, bookId);
-    const localDraftKey = chapterDraftKey(await chapterDraftScope(), bookId);
+    const localDraftKey = chapterDraftKey(await measurePerformance('book.identity', chapterDraftScope), bookId);
     let backup = story?.sourcePolicyRequired ? undefined : readChapterDraft(localDraftKey);
     const acknowledged = backup?.pendingSave?.id === current.revisionId;
     if (backup && acknowledged && JSON.stringify(backup.draft) === JSON.stringify(backup.pendingSave?.draft)) {
@@ -223,54 +236,63 @@ Page({
     }
     if (this.data.editing || this.data.pickingPhoto || this.unloaded) return;
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
-    const photoPaths: Record<string, string> = {};
-    const imageIds: Record<string, string> = {};
-    for (const item of chapters.flatMap(chapter => chapter.content)) {
-      if (item.photoId) {
-        if (isStoryImageReference(item.photoId)) continue;
-        const path = await readLocalPhoto(item.photoId);
-        if (path) { photoPaths[item.photoId] = path; imageIds[path] = item.photoId; }
-      }
+    const visibleChapters = this.visibleChapters(chapters);
+    let activeChapterId = backup?.chapterId || this.activeChapterId;
+    let view = backup?.view || this.data.view;
+    if (!visibleChapters.length) view = "contents";
+    else if (!view) {
+      view = visibleChapters.length === 1 ? "chapter" : "contents";
+      if (visibleChapters.length === 1) activeChapterId = visibleChapters[0].id;
     }
+    if (view === "chapter" && !visibleChapters.some(chapter => chapter.id === activeChapterId)) view = "contents";
+    const localPhotoIds = chapters.flatMap(chapter => chapter.content)
+      .flatMap(item => item.photoId && !isStoryImageReference(item.photoId) ? [item.photoId] : []);
     const storyImageReferences = new Set(chapters.flatMap(chapter => chapter.content)
       .flatMap(item => item.photoId && isStoryImageReference(item.photoId) ? [item.photoId] : []));
     const backdropImageIds = new Set(chapters.flatMap(chapter => chapter.backdropImageId ? [chapter.backdropImageId] : []));
-    let cloudImages: StoryImage[] = [];
-    if (storyImageReferences.size || backdropImageIds.size) {
-      try {
-        const list = await storyImageApi.listStoryImages(bookId);
-        cloudImages = list.images;
-      } catch {
-        // Keep an opaque recoverable marker in the editor when a temporary URL is unavailable.
-      }
-    }
-    cloudImages.forEach(image => {
-      const referenceId = storyImageReferenceId(image.imageId);
-      if (storyImageReferences.has(referenceId) && image.url) {
-        photoPaths[referenceId] = image.url;
-        imageIds[image.url] = referenceId;
-      }
+    const images = Promise.all([
+      measurePerformance('book.photos', () => readLocalPhotos(localPhotoIds)),
+      storyImageReferences.size || backdropImageIds.size
+        ? measurePerformance('book.images', () => storyImageApi.listStoryImages(bookId)).then(list => list.images).catch(() => [] as StoryImage[])
+        : Promise.resolve([] as StoryImage[]),
+    ]).then(([{ photoPaths, imageIds }, cloudImages]) => {
+      // Unavailable URLs retain their opaque recoverable markers in the editor.
+      cloudImages.forEach(image => {
+        const referenceId = storyImageReferenceId(image.imageId);
+        if (storyImageReferences.has(referenceId) && image.url) {
+          photoPaths[referenceId] = image.url;
+          imageIds[image.url] = referenceId;
+        }
+      });
+      const backdropUrls = Object.fromEntries(cloudImages
+        .filter(image => backdropImageIds.has(image.imageId) && image.url)
+        .map(image => [image.imageId, image.url]));
+      return { photoPaths, imageIds, backdropUrls };
     });
-    const backdropUrls = Object.fromEntries(cloudImages
-      .filter(image => backdropImageIds.has(image.imageId) && image.url)
-      .map(image => [image.imageId, image.url]));
+    // Only an editor opening with inline photos needs their URL-to-ID mappings.
+    // Contents and plain text can render while decoration/unopened photos load.
+    const needsInlineImages = view === "chapter" && chapters
+      .find(chapter => chapter.id === activeChapterId)?.content.some(item => item.photoId);
+    const { photoPaths, imageIds, backdropUrls } = needsInlineImages
+      ? await images : { photoPaths: {}, imageIds: {}, backdropUrls: {} };
     if (this.unloaded || refreshId !== this.refreshId || this.data.editing || this.data.pickingPhoto) return;
     this.localDraftKey = localDraftKey;
     this.localDraftToken = backup?.token || "";
     this.editorError = backup?.editorError || "";
     if (backup) {
-      this.activeChapterId = backup.chapterId;
       this.pendingSave = acknowledged ? undefined : backup.pendingSave;
     }
     const visibleChapters = this.visibleChapters(chapters, story);
+    let activeChapterId = backup?.chapterId || this.activeChapterId;
     let view = backup?.view || this.data.view;
     if (!visibleChapters.length) view = "contents";
     else if (!view) {
       // A single-chapter book (every older book) opens straight into its text, as before.
       view = visibleChapters.length === 1 ? "chapter" : "contents";
-      if (visibleChapters.length === 1) this.activeChapterId = visibleChapters[0].id;
+      if (visibleChapters.length === 1) activeChapterId = visibleChapters[0].id;
     }
-    if (view === "chapter" && !visibleChapters.some(chapter => chapter.id === this.activeChapterId)) view = "contents";
+    if (view === "chapter" && !visibleChapters.some(chapter => chapter.id === activeChapterId)) view = "contents";
+    this.activeChapterId = activeChapterId;
     this.revisionId = current.revisionId;
     this.sourceFingerprint = current.sourceFingerprint;
     this.story = backup && !acknowledged && story ? {...story, version:backup.storyVersion} : story;
@@ -319,6 +341,16 @@ Page({
       history: manuscriptHistory(state, bookId), storageLabel: roomDataModeLabel(), loadError: "",
       ...this.chapterData(),
     });
+    this.bookImagesReady = images.then(result => {
+      if (this.unloaded || refreshId !== this.refreshId) return;
+      // Preserve any newly inserted photo mappings. Never re-seed the editor
+      // or replace its buffers when a background request finishes.
+      this.photoPaths = { ...result.photoPaths, ...this.photoPaths };
+      this.imageIds = { ...result.imageIds, ...this.imageIds };
+      this.backdropUrls = { ...result.backdropUrls, ...this.backdropUrls };
+      const backdropUrl = this.activeBackdropUrl();
+      if (backdropUrl !== this.data.backdropUrl) this.setData({ backdropUrl });
+    }).catch(error => logLoadError('book.images', error));
     if (story?.coverImageId) {
       void storyCoverApi.resolveUrl(story.id, story.coverImageId).then(url => {
         if (!this.unloaded && refreshId === this.refreshId) this.setData({coverUrl:url});
@@ -579,15 +611,26 @@ Page({
     return this.canLeaveEditor();
   },
   async backToContents() {
+    this.chapterOpenId++;
     if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
     if (!this.canLeaveEditor()) return;
     this.setData({ view: "contents", moreOpen: false, panel: "" });
   },
   async openChapter(event: { currentTarget: { dataset: { id: string } } }) {
+    const openId = ++this.chapterOpenId;
     if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
-    if (!this.canLeaveEditor()) return;
+    if (openId !== this.chapterOpenId || !this.canLeaveEditor()) return;
     const id = event.currentTarget.dataset.id;
-    if (!this.chapters.some(chapter => chapter.id === id)) return;
+    const chapter = this.chapters.find(chapter => chapter.id === id);
+    if (!chapter) return;
+    if (chapter.content.some(item => item.photoId) && this.bookImagesReady) {
+      const refreshId = this.refreshId;
+      const sequence = this.editSequence;
+      const panel = this.data.panel;
+      await this.bookImagesReady;
+      if (this.unloaded || refreshId !== this.refreshId || openId !== this.chapterOpenId ||
+          sequence !== this.editSequence || panel !== this.data.panel || !this.canLeaveEditor()) return;
+    }
     this.activeChapterId = id;
     this.loadActiveChapter();
     this.setData({ view: "chapter", panel: "", moreOpen: false, editChapterTitle: this.chapterTitleBuffer, ...this.chapterData() });

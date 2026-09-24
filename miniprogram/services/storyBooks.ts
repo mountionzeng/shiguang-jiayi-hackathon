@@ -43,8 +43,8 @@ export async function ensureStoryBooks(): Promise<FamilyRoomState> {
   state = core.migrate(state,'local'); saveRoomState(state); return state;
 }
 export async function storyCommand(command: Record<string,unknown>): Promise<FamilyRoomState> {
-  const state = await loadRoomStateRemoteFirst();
   if (usesCloudStorage()) { await call(String(command.action),command); return loadRoomStateRemoteFirst(); }
+  const state = await loadRoomStateRemoteFirst();
   const next = core.apply(state,command); saveRoomState(next); return next;
 }
 export async function createStoryBook(input:{title:string;writingMode:'objective'|'creative';memoryIds?:string[];storyId?:string;requestId?:string}) {

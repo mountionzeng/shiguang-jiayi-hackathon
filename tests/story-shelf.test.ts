@@ -10,6 +10,7 @@ import {
 } from "../miniprogram/domain/biography";
 import { shelfStoryLabel, storyShelf } from "../miniprogram/services/storyShelf";
 import { createDemoRoomStateForTests } from "./fixtures";
+import { createManuscriptReader, currentManuscript, manuscriptHistory, memoryPlacements } from '../miniprogram/services/manuscript';
 
 function revision(memberId: string, title: string, savedAt: string, chapters = 1): ManuscriptRevision {
   const draft: BiographyDraft = {
@@ -87,4 +88,56 @@ test("each profile's manuscript is a story, merged with the same-named story", (
   const deleted = { ...state, members: state.members.map((member) => member.id === "member-1" ? { ...member, deletedAt: "2026-09-11T00:00:00.000Z" } : member) };
   assert.ok(!storyShelf(deleted).some((story) => story.manuscriptMemberId === "member-1"), "a deleted profile's book is hidden, not removed");
   assert.equal(deleted.manuscriptRevisions?.length, 3);
+});
+
+test('indexed manuscripts retain explicit revision selection, legacy fallbacks, tie order and errors', () => {
+  const state = createDemoRoomStateForTests();
+  const first = { ...revision('owner', '指定旧版本', '2026-09-01'), id: 'revision-a', storyId: 'story-a' };
+  const second = { ...revision('owner', '较新版本', '2026-09-02'), id: 'revision-b', storyId: 'story-a' };
+  const unrelated = { ...second, id: 'revision-other', storyId: 'story-other' };
+  state.stories = [{ id: 'story-a', title: '测试', familyId: 'fixture', protagonistMemberIds: [], memoryIds: [],
+    createdAt: '', updatedAt: '', currentRevisionId: first.id }];
+  state.manuscriptRevisions = [second, first, unrelated,
+    { ...revision('owner', '同日A', '2026-09-03'), id: 'legacy-a' },
+    { ...revision('owner', '同日B', '2026-09-03'), id: 'legacy-b' }];
+  state.legacyPersonalDrafts = { 'member-1': revision('member-1', '旧档案', '').draft };
+  const before = JSON.stringify(state);
+  const reader = createManuscriptReader(state);
+  for (const id of ['story-a', 'owner', 'member-1', 'member-2']) {
+    assert.deepEqual(reader.current(id), currentManuscript(state, id));
+    assert.deepEqual(reader.history(id), manuscriptHistory(state, id));
+  }
+  assert.equal(reader.current('story-a').draft?.title, '指定旧版本');
+  assert.equal(reader.current('owner').draft?.title, '同日B');
+  assert.equal(JSON.stringify(state), before, 'indexing must not sort or edit source arrays');
+  assert.throws(() => reader.current('story-missing'), /不可用/);
+  const missing = { ...state, manuscriptRevisions: [second] };
+  assert.throws(() => createManuscriptReader(missing).current('story-a'), /未加载完整/);
+  const deleted = { ...state, stories: state.stories.map(story => ({ ...story, deletedAt: '2026-09-24' })) };
+  assert.throws(() => createManuscriptReader(deleted).current('story-a'), /不可用/);
+  state.stories[0].currentRevisionId = second.id;
+  assert.equal(createManuscriptReader(state).current('story-a').draft?.title, '较新版本', 'next render uses fresh data');
+});
+
+test('independent shelf preserves contribution excerpt order, repeated IDs and current chapter placement', () => {
+  const state = createDemoRoomStateForTests();
+  const memory = state.contributions[0];
+  state.contributions = [
+    { ...memory, id: 'first', text: '按素材顺序选摘要' },
+    { ...memory, id: 'second', text: '故事列表排在前面的素材' },
+    { ...memory, id: 'deleted', deletedAt: '2026-09-24' },
+  ];
+  state.stories = [{ id: 'story-a', title: '测试', familyId: 'fixture', protagonistMemberIds: [],
+    memoryIds: ['second', 'first', 'second', 'deleted', 'missing'], createdAt: '', updatedAt: '' }];
+  state.storyMigration = { version: 1, status: 'active', pending: [] };
+  assert.deepEqual(storyShelf(state)[0].memoryIds, ['second', 'first', 'second']);
+  assert.equal(storyShelf(state)[0].excerpt, '按素材顺序选摘要');
+  const saved = { ...revision('owner', '书稿', '2026-09-24'), id: 'current', storyId: 'story-a' };
+  saved.draft.chapters![0].memoryIds = ['first', 'second'];
+  state.manuscriptRevisions = [saved];
+  state.stories[0].currentRevisionId = saved.id;
+  assert.equal(memoryPlacements(state).get('first')?.[0].storyId, 'story-a');
+  state.stories[0].deletedAt = '2026-09-25';
+  assert.deepEqual(storyShelf(state), []);
+  assert.equal(memoryPlacements(state).size, 0);
 });

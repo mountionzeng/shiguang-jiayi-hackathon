@@ -1,0 +1,11 @@
+<view class="page">
+  <view class="title">加载速度测量</view>
+  <view class="note">仅用于这次性能排查，不修改书稿，不调用 AI。</view>
+  <view class="status">{{status}}</view>
+  <button class="run" bindtap="run" loading="{{running}}" disabled="{{running}}">开始测量</button>
+  <view class="row" wx:for="{{rows}}" wx:key="index">
+    <text>{{index + 1}} · {{item.label}}</text><text>{{item.ms}} 毫秒 · {{item.kb}} KB</text>
+  </view>
+  <button wx:if="{{report}}" bindtap="copy">复制测量结果</button>
+  <view class="note">结果只包含运行环境、请求编号、耗时、数量与大小，不包含书稿正文或账号标识。KB 为未压缩 JSON 大小，不是实际网络流量。</view>
+</view>

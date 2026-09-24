@@ -1,0 +1,7 @@
+page { background: #fbf8f1; color: #29352f; }
+.page { padding: 40rpx; }
+.title { font-size: 42rpx; font-weight: 600; margin-bottom: 24rpx; }
+.note { font-size: 27rpx; line-height: 1.65; color: #677269; margin: 24rpx 0; }
+.status { font-size: 30rpx; line-height: 1.65; margin: 30rpx 0; }
+.run { background: #4e806d; color: white; }
+.row { display: flex; justify-content: space-between; gap: 16rpx; padding: 22rpx 0; border-bottom: 1rpx solid #dcded4; font-size: 28rpx; }
