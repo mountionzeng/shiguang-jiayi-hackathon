@@ -3,11 +3,17 @@
     <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '目录' : '返回'}}</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button" bindtap="addPhoto" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}</button>
     <button wx:if="{{!protectedCopy && storyImageSelected}}" class="tool-button" catchtouchstart="placeSelectedStoryImage" disabled="{{!editorReady || refreshingStoryImage || saving || generating || pickingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{refreshingStoryImage ? '准备插图' : '插入插图'}}</button>
-    <button wx:if="{{!protectedCopy}}" class="tool-button" catchtouchstart="openShareSelection" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady || sharingExcerpt}}">发给家人</button>
+    <button wx:if="{{!protectedCopy && view === 'contents'}}" class="tool-button send-toggle" bindtap="toggleSend" disabled="{{!draft || panel || preparingSend || generating || pickingPhoto}}">{{preparingSend ? '准备中' : '发送'}}<text class="send-chevron">⌄</text></button>
+    <button wx:elif="{{!protectedCopy}}" class="tool-button" catchtouchstart="openShareSelection" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady || sharingExcerpt}}">发给家人</button>
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button save-button" bindtap="openAppendOwn" disabled="{{panel || appendingOwn}}">补充经历</button>
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button" bindtap="returnOwnExperience" disabled="{{panel || returningOwn || appendingOwn}}">{{returningOwn ? '发送中' : '发回原作者'}}</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}"><view class="action-icon icon-save" aria-hidden="true"></view>{{saving ? '保存中' : '保存'}}</button>
     <button class="tool-button" bindtap="showMore" disabled="{{saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-more" aria-hidden="true"></view>更多</button>
+  </view>
+  <view wx:if="{{sendOpen}}" class="send-dismiss" bindtap="closeSend" aria-label="收起发送菜单"></view>
+  <view wx:if="{{sendOpen}}" class="send-menu">
+    <button class="send-option" data-destination="family" bindtap="chooseSend">发送给家人<text>›</text></button>
+    <button class="send-option" data-destination="social" bindtap="chooseSend">发送到社交媒体<text>›</text></button>
   </view>
   <view class="top-tools" wx:if="{{moreOpen}}">
     <button wx:if="{{storyId && savedRevisionId && !editing}}" class="tool-button" data-action="invite" bindtap="selectTool">亲友阅读与权限</button>

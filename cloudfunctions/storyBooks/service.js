@@ -9,6 +9,7 @@ const { receiveTextCopy, appendOwnExperience } = require('./copies');
 const { receiveMediaCopy } = require('./copyMedia');
 const { sendOwnReturn, listReturns, decideReturn } = require('./returns');
 const { listShareCardSource, previewShareCard, exportShareCard } = require('./exports');
+const { previewBookExport, exportBookImages } = require('./bookExports');
 
 function accessError(code) {
   return Object.assign(new Error(code === 'STORY_ACCESS_NOT_READY' ? '故事权限服务尚未准备好' : '故事共享尚未开放'), { code });
@@ -33,6 +34,7 @@ function createStoryService(repo, options = {}) {
         excerptShare: accessEnabled && options.excerptSharingEnabled === true && canaryFamilies.has(ctx.familyId),
         sharedEdit: accessEnabled && options.sharedEditEnabled === true && canaryFamilies.has(ctx.familyId),
         copy: accessEnabled && options.copyReceiveEnabled === true && canaryFamilies.has(ctx.familyId),
+        bookExport: accessEnabled && options.shareCardEnabled === true && canaryFamilies.has(ctx.familyId),
         shareCard: accessEnabled && options.shareCardEnabled === true && canaryFamilies.has(ctx.familyId), forward: false, publish: false };
     }
     if (action.startsWith('invite')) {
@@ -89,6 +91,13 @@ function createStoryService(repo, options = {}) {
       const input={storyId:event.storyId,revisionId:event.revisionId,expectedVersion:event.expectedVersion,
         chapterId:event.chapterId,text:event.text,recipientMemberIds:event.recipientMemberIds,requestId:event.requestId};
       return shareExcerpt(repo,ctx,input,{approve:options.approveExcerpt});
+    }
+    if (action === 'bookExportPreview' || action === 'bookExportImages') {
+      if (!accessEnabled || options.shareCardEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      const input = { familyId: ctx.familyId, storyId: event.storyId, revisionId: event.revisionId, expectedVersion: event.expectedVersion,
+        scope: event.scope, chapterIds: event.chapterIds, ...(event.excerpt !== undefined ? { excerpt: event.excerpt } : {}) };
+      return action === 'bookExportPreview' ? previewBookExport(repo, ctx, input, { approve: options.approveShareCard })
+        : exportBookImages(repo, ctx, { ...input, descriptorId: event.descriptorId }, { approve: options.approveShareCard, sign: options.signMedia });
     }
     if (action === 'shareCardSource') {
       if (!accessEnabled || options.shareCardEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');

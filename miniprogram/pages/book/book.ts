@@ -54,7 +54,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 
 Page({
   data: {
-    coverUrl: "", coverImageId: "",
+    coverUrl: "", coverImageId: "", sendOpen: false, preparingSend: false,
     organizeMethod: "insert" as "insert" | "blend", organizeOriginal: "", insertionPoint: "end",
     insertionPoints: [] as ChapterInsertionPoint[], insertionIndex: 0,
     previewInsertion: false, insertionText: "",
@@ -88,6 +88,7 @@ Page({
   localDraftKey: "",
   localDraftToken: "",
   editSequence: 0,
+  sendEpoch: 0,
   editorError: "",
   editSave: undefined as Promise<boolean> | undefined,
   titleBuffer: "",
@@ -157,6 +158,8 @@ Page({
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
   onHide() {
+    this.sendEpoch++;
+    this.setData({ sendOpen: false });
     if (this.data.editing) {
       this.backupEdits();
       void this.saveEdits(true);
@@ -600,7 +603,35 @@ Page({
   showMore() {
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
-    this.setData({ moreOpen: !this.data.moreOpen });
+    this.setData({ moreOpen: !this.data.moreOpen, sendOpen: false });
+  },
+  toggleSend() {
+    if (this.data.protectedCopy || !this.data.draft || this.data.view !== 'contents' || this.data.panel || this.data.preparingSend || this.data.generating || this.data.pickingPhoto) return;
+    wx.hideKeyboard();
+    this.setData({ sendOpen: !this.data.sendOpen, moreOpen: false });
+  },
+  closeSend() { this.setData({ sendOpen: false }); },
+  async chooseSend(event: WechatMiniprogram.TouchEvent) {
+    const destination = event.currentTarget.dataset.destination;
+    if (destination !== 'family' && destination !== 'social') return;
+    if (this.data.protectedCopy || this.data.preparingSend || !this.data.draft || this.data.view !== 'contents' || this.data.panel) return;
+    const epoch = ++this.sendEpoch;
+    this.setData({ preparingSend: true, sendOpen: false });
+    try {
+      if (!await this.finishEditing() || this.unloaded || epoch !== this.sendEpoch || this.data.view !== 'contents' || this.data.panel) return;
+      const story = this.story;
+      if (!story || story.sourcePolicyRequired || !this.data.savedRevisionId || !Number.isSafeInteger(story.version) || (story.version || 0) < 1) {
+        this.setData({ saveNotice: '请从书架打开已保存的自有故事，再准备发送' }); return;
+      }
+      const base = '/packages/story-sharing/pages/' + (destination === 'family' ? 'invite' : 'social') + '/index';
+      const url = base + '?storyId=' + encodeURIComponent(story.id) + (destination === 'social'
+        ? '&revisionId=' + encodeURIComponent(this.data.savedRevisionId) + '&version=' + story.version : '');
+      await new Promise<void>((resolve, reject) => wx.navigateTo({ url, success: () => resolve(), fail: reject }));
+    } catch {
+      if (!this.unloaded && epoch === this.sendEpoch) this.setData({ saveNotice: '发送页面暂未打开，请重试。已有书稿不受影响。' });
+    } finally {
+      if (!this.unloaded) this.setData({ preparingSend: false });
+    }
   },
   selectTool(event: { currentTarget: { dataset: { action: string } } }) {
     if (this.data.saving || this.data.generating) return;

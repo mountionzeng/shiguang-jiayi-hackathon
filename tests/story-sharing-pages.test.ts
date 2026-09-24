@@ -7,7 +7,7 @@ async function capture(path:string) { let definition:Definition|undefined;const 
 function instance(d:Definition):Definition {const p:Definition={...d,data:structuredClone(d.data)};p.setData=(v:Definition)=>Object.assign(p.data,v);return p;}
 test('sharing uses a dedicated subpackage',()=>{
   const app=JSON.parse(readFileSync('miniprogram/app.json','utf8'));
-  assert.deepEqual(app.subPackages.find((p:any)=>p.root==='packages/story-sharing')?.pages,['pages/invite/index','pages/read/index','pages/receive/index','pages/card/index']);
+  assert.deepEqual(app.subPackages.find((p:any)=>p.root==='packages/story-sharing')?.pages,['pages/invite/index','pages/read/index','pages/receive/index','pages/card/index','pages/social/index']);
 });
 test('protected received stories use append-only own text instead of the legacy manuscript save',()=>{
   const page=readFileSync('miniprogram/pages/book/book.ts','utf8'),view=readFileSync('miniprogram/pages/book/book.wxml','utf8');

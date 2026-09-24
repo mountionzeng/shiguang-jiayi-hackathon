@@ -176,4 +176,5 @@ async function exportShareCard(repo, ctx, raw, { approve, sign } = {}) {
   return { descriptor: after.descriptor, media };
 }
 
-module.exports = { listShareCardSource, previewShareCard, exportShareCard, normalizeShareCardSelection: normalizeSelection };
+module.exports = { listShareCardSource, previewShareCard, exportShareCard, normalizeShareCardSelection: normalizeSelection,
+  loadAuthorizedExportStory: loadStory, blockPublishable };

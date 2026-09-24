@@ -1,7 +1,8 @@
 <view class="sharing-page">
-  <view class="eyebrow">拾光家忆 · 亲友阅读</view>
-  <view class="heading serif">{{recipient ? '一份故事邀请' : '让亲友读到这一章'}}</view>
-  <view class="intro">{{recipient ? '先告诉主人你是谁。主人确认之前，这里不会展示故事内容。' : '只分享你选中的章节。每份邀请仅限一人，由你确认后才能阅读。'}}</view>
+  <view class="eyebrow">拾光家忆 · 发送给家人</view>
+  <view class="heading serif">{{recipient ? '一份故事邀请' : '和家人一起，留住故事'}}</view>
+  <view class="intro">{{recipient ? '先告诉主人你是谁。主人确认之前，这里不会展示故事内容。' : '每位家人使用各自的权限。选择要分享的章节，再为这位家人设置阅读、改写等权限。'}}</view>
+  <view class="invite-letter" wx:if="{{!recipient}}"><view class="caption">一份故事邀请</view><view class="letter-heading serif">有些日子，想和你再回味。</view><view class="intro">你可以让家人阅读，也可以允许他一起改写。每份邀请的权限分别设置。</view></view>
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <view class="intro" wx:if="{{loading}}">正在确认访问权限…</view>
   <block wx:if="{{available && !recipient}}">
@@ -11,13 +12,14 @@
       <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{busy}}" color="#4f7f6b"/><text>{{item.title || '未命名章节'}}</text></label>
     </checkbox-group>
     <view class="intro" wx:if="{{!chapters.length}}">请先回到故事，保存至少一个章节。</view>
-    <view class="section-title serif">这位亲友可以做什么</view>
+    <view class="section-title serif">这位家人可以做什么</view>
     <view class="permission"><text>阅读选中的原稿</text><text>允许</text></view>
-    <view class="permission" wx:if="{{editAvailable}}"><text>编辑选中的原稿</text><switch checked="{{edit}}" disabled="{{busy}}" bindchange="chooseEdit" color="#4f7f6b"/></view>
+    <view class="permission" wx:if="{{editAvailable}}"><text>改写选中的原稿</text><switch checked="{{edit}}" disabled="{{busy}}" bindchange="chooseEdit" color="#4f7f6b"/></view>
+    <view class="caption" wx:if="{{!editAvailable}}">改写权限当前未开放，开放后可为这位家人单独设置。</view>
     <view class="permission" wx:if="{{copyAvailable}}"><text>收入自己的故事，继续补充</text><switch checked="{{copy}}" disabled="{{busy}}" bindchange="chooseCopy" color="#4f7f6b"/></view>
     <view class="permission"><text>申请再邀请一位亲友</text><switch checked="{{forward}}" disabled="{{busy}}" bindchange="chooseForward" color="#4f7f6b"/></view>
     <view class="caption">再邀请仍需你确认，不会自动放行下一位。</view>
-    <view class="permission muted"><text>公开发布</text><text>后续开放</text></view>
+    <view class="caption">以上设置只用于这份新邀请，不改变其他家人的已有权限。</view>
     <button class="primary" bindtap="create" loading="{{busy}}" disabled="{{busy || loading || !chapters.length}}">生成阅读邀请</button>
     <button wx:if="{{shareReady}}" class="primary" open-type="share">把邀请发给亲友</button>
     <view class="caption" wx:if="{{shareReady}}">邀请链接不含书名和正文。离开后不保留链接；可撤销旧邀请再生成。</view>
@@ -34,6 +36,7 @@
     <view class="intro" wx:if="{{!invitations.length}}">还没有邀请。发出后，点下方刷新查看申请。</view>
     <view class="invitation" wx:for="{{invitations}}" wx:key="invitationId" wx:for-item="inv">
       <view class="permission"><text>{{inv.chapterIds.length}} 个章节 · {{inv.label}}</text><button class="small danger" wx:if="{{inv.status !== 'revoked'}}" disabled="{{busy}}" data-invitation-id="{{inv.invitationId}}" bindtap="revoke">撤销</button></view>
+      <view class="caption">{{inv.permissions.edit ? '可以阅读和改写' : '仅可阅读'}}{{inv.permissions.copy ? ' · 可以收入自己的故事' : ''}}{{inv.permissions.forward ? ' · 可以申请再邀请' : ''}}</view>
       <view class="applicant" wx:for="{{inv.applicants}}" wx:key="applicantId" wx:for-item="person">
         <view>{{person.displayName}}</view>
         <view class="caption">{{person.status === 'approved' ? '已授权' : person.status === 'rejected' ? '未通过' : '称呼由申请人填写，请核对本人'}}</view>

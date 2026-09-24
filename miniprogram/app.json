@@ -21,7 +21,7 @@
     {
       "root": "packages/story-sharing",
       "name": "story-sharing",
-      "pages": ["pages/invite/index", "pages/read/index", "pages/receive/index", "pages/card/index"]
+      "pages": ["pages/invite/index", "pages/read/index", "pages/receive/index", "pages/card/index", "pages/social/index"]
     },
     {
       "root": "packages/audio",
