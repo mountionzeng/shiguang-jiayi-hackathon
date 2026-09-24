@@ -96,9 +96,7 @@
       <input class="manuscript-title serif" value="{{editChapterTitle}}" maxlength="40" bindinput="onEditChapterTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{protectedCopy || saving || generating}}" placeholder="给这一章起个名字（可以不填）" />
     </view>
     <view class="body-field">
-      <image wx:if="{{backdropUrl}}" class="chapter-backdrop" src="{{backdropUrl}}" mode="aspectFill" aria-hidden="true" />
-      <!-- The fade and keyboard can hide the watermark inside the picture, so the page labels it too. -->
-      <view wx:if="{{backdropUrl}}" class="backdrop-ai-label">图片 AI 生成</view>
+      <image wx:if="{{backdropUrl}}" class="chapter-backdrop" src="{{backdropUrl}}" mode="aspectFill" aria-label="AI 生成的本章底图" />
       <view class="field-label">正文</view>
       <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
       <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{false}}" show-img-resize="{{false}}"></editor>
