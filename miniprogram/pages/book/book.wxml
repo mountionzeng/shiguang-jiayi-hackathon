@@ -13,6 +13,7 @@
     <button wx:if="{{storyId && savedRevisionId && !editing}}" class="tool-button" data-action="invite" bindtap="selectTool">亲友阅读与权限</button>
     <button wx:if="{{storyId && savedRevisionId && !editing}}" class="tool-button" data-action="share-card" bindtap="selectTool">制作公开故事卡</button>
     <button wx:if="{{protectedCopy && draft}}" class="tool-button" data-action="history" bindtap="selectTool"><view class="action-icon icon-history" aria-hidden="true"></view>历史版本</button>
+    <button wx:if="{{editing}}" class="tool-button" data-action="copy-draft" bindtap="selectTool">复制当前正文</button>
     <button wx:if="{{editing}}" class="tool-button" data-action="discard" bindtap="selectTool"><view class="action-icon icon-undo" aria-hidden="true"></view>放弃修改</button>
     <block wx:elif="{{!protectedCopy && view === 'chapter'}}">
       <button class="tool-button" data-action="memories" bindtap="selectTool"><view class="action-icon icon-memories" aria-hidden="true"></view>本章记忆</button>
