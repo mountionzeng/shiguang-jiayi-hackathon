@@ -1,0 +1,30 @@
+type Operation = 'room.load' | 'room.cloud' | 'story.shelf';
+
+export interface PerformanceMetrics {
+  route?: 'local' | 'cloud' | 'identity' | 'story-service' | 'client-fallback';
+  fallback?: 'legacy-response' | 'service-unavailable';
+  clientPageReads?: number;
+  members?: number;
+  memories?: number;
+  revisions?: number;
+  stories?: number;
+}
+
+/** Fixed metadata only: never log account IDs, memory text, fingerprints or errors. */
+export function startPerformanceMeasure(operation: Operation) {
+  const startedAt = Date.now();
+  let page = '';
+  try {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    const route = pages[pages.length - 1]?.route;
+    if (route && /^[a-zA-Z0-9_/-]{1,100}$/.test(route)) page = route;
+  } catch { /* Diagnostics cannot prevent a load. */ }
+  return (outcome: 'ok' | 'error', metrics: PerformanceMetrics = {}) => {
+    try {
+      if (typeof wx === 'undefined' || typeof wx.getRealtimeLogManager !== 'function') return;
+      wx.getRealtimeLogManager().info('[performance]', {
+        operation, page, outcome, durationMs: Math.max(0, Date.now() - startedAt), ...metrics,
+      });
+    } catch { /* Diagnostics cannot change the result or error of a load. */ }
+  };
+}

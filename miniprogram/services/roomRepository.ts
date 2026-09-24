@@ -1,4 +1,5 @@
 import { learnFromSavedMemory } from './personalMemory';
+import { startPerformanceMeasure } from './performanceLog';
 import type { ShiguangAppOptions } from "../app";
 import {
   BiographyDraft,
@@ -66,11 +67,17 @@ export function roomDataModeLabel(): string {
 }
 
 export async function loadRoomStateRemoteFirst(): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) {
-    return await loadCloudRoomState();
+  const finish = startPerformanceMeasure('room.load');
+  let outcome: 'ok' | 'error' = 'error';
+  let route: 'local' | 'cloud' | undefined;
+  try {
+    route = shouldUseCloudDatabase() ? 'cloud' : 'local';
+    const state = route === 'cloud' ? await loadCloudRoomState() : loadRoomState();
+    outcome = 'ok';
+    return state;
+  } finally {
+    finish(outcome, { route });
   }
-
-  return loadRoomState();
 }
 
 export async function loadCurrentMemberRemoteFirst(

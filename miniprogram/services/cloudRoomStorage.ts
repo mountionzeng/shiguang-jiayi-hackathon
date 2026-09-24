@@ -30,6 +30,7 @@ import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
 import { loadCurrentMember } from "./roomStorage";
 import { checkTextContent } from "./contentSecurityService";
+import { PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
 
 export const CLOUD_COLLECTIONS = {
   families: "families",
@@ -161,9 +162,10 @@ function definedFields(data: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
 }
 
-async function loadAllWhere(collectionName: string, filter: Record<string, unknown>) {
+async function loadAllWhere(collectionName: string, filter: Record<string, unknown>, metrics?: PerformanceMetrics) {
   const data: any[] = [];
   for (let offset = 0; ; offset += 20) {
+    if (metrics) metrics.clientPageReads = (metrics.clientPageReads ?? 0) + 1;
     const response = await collection(collectionName).where(filter)
       .orderBy("_id", "asc").skip(offset).limit(20).get();
     data.push(...response.data);
@@ -171,8 +173,8 @@ async function loadAllWhere(collectionName: string, filter: Record<string, unkno
   }
 }
 
-async function loadAll(collectionName: string, familyId: string) {
-  return loadAllWhere(collectionName, { familyId });
+async function loadAll(collectionName: string, familyId: string, metrics?: PerformanceMetrics) {
+  return loadAllWhere(collectionName, { familyId }, metrics);
 }
 
 type LoadedCloudMemory = CloudMemory & { _id?: string; frontendContributionId?: string };
@@ -489,7 +491,23 @@ function normalizeStoryServiceRoomState(result: StoryServiceRoomState): FamilyRo
 }
 
 export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): Promise<FamilyRoomState> {
+  const finish = startPerformanceMeasure('room.cloud');
+  const metrics: PerformanceMetrics = { route: 'identity', clientPageReads: 0 };
+  let outcome: 'ok' | 'error' = 'error';
+  try {
+    const state = await readCloudRoomState(options, metrics);
+    Object.assign(metrics, { members: state.members.length, memories: state.contributions.length,
+      revisions: state.manuscriptRevisions?.length ?? 0, stories: state.stories?.length ?? 0 });
+    outcome = 'ok';
+    return state;
+  } finally {
+    finish(outcome, metrics);
+  }
+}
+
+async function readCloudRoomState(options: { readOnly?: boolean }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
+  metrics.route = 'story-service';
   let storyServiceState: StoryServiceRoomState | undefined;
   try {
     storyServiceState = await loadStoryServiceRoomState();
@@ -497,9 +515,12 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
       if (!isCompleteStoryServiceRoomState(storyServiceState)) throw new Error("故事服务返回不完整，请稍后重试");
       return normalizeStoryServiceRoomState(storyServiceState);
     }
+    metrics.fallback = 'legacy-response';
   } catch (error) {
     if (!missingStoryService(error) && (error as { code?: string } | undefined)?.code !== "STORY_NOT_FOUND") throw error;
+    metrics.fallback = 'service-unavailable';
   }
+  metrics.route = 'client-fallback';
   let family: CloudFamily | undefined;
   try {
     const response = await collection(CLOUD_COLLECTIONS.families).doc(familyId).get();
@@ -514,9 +535,9 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
   }
 
   const [membersResponse, memoriesResponse, draftResponse] = await Promise.all([
-    loadAll(CLOUD_COLLECTIONS.familyMembers, familyId),
-    loadAll(CLOUD_COLLECTIONS.memories, familyId),
-    loadAll(CLOUD_COLLECTIONS.biographyDrafts, familyId),
+    loadAll(CLOUD_COLLECTIONS.familyMembers, familyId, metrics),
+    loadAll(CLOUD_COLLECTIONS.memories, familyId, metrics),
+    loadAll(CLOUD_COLLECTIONS.biographyDrafts, familyId, metrics),
   ]);
 
   const members = (membersResponse.data as CloudFamilyMember[])

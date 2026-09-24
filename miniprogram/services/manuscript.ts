@@ -20,9 +20,10 @@ export interface MemoryPlacement {
  */
 export function memoryPlacements(state: FamilyRoomState): Map<string, MemoryPlacement[]> {
   const placements = new Map<string, MemoryPlacement[]>();
+  const manuscripts = createManuscriptReader(state);
   if (state.storyMigration?.status === 'active') {
     for (const story of (state.stories ?? []).filter(s=>!s.deletedAt)) {
-      const current = currentStoryManuscript(state,story.id);
+      const current = manuscripts.currentStory(story.id);
       (current.draft?.chapters ?? []).forEach((chapter,index)=>chapter.memoryIds.forEach(memoryId=>{
         placements.set(memoryId,[...(placements.get(memoryId) ?? []),{storyId:story.id,memberId:'',bookName:story.title,bookTitle:story.bookTitle || story.title,chapterId:chapter.id,chapter:chapterLabel(index+1)}]);
       }));
@@ -30,7 +31,7 @@ export function memoryPlacements(state: FamilyRoomState): Map<string, MemoryPlac
     return placements;
   }
   for (const member of state.members.filter(isRecordingProfile)) {
-    const current = currentManuscript(state, member.id);
+    const current = manuscripts.current(member.id);
     if (!current.draft) continue;
     chaptersOf(current.draft, current.sourceFingerprint).forEach((chapter, index) => {
       for (const memoryId of chapter.memoryIds) {
@@ -78,6 +79,34 @@ export function currentManuscript(state: FamilyRoomState, memberId: string): {
     draft: state.personalDrafts?.[memberId] ?? state.legacyPersonalDrafts?.[memberId],
     sourceFingerprint: "",
     revisionId: "",
+  };
+}
+
+/** Per-render index only; never retain it across edits, reloads or account changes. */
+export function createManuscriptReader(state: FamilyRoomState) {
+  const storyRevisions = new Map<string, ManuscriptRevision[]>();
+  const memberRevisions = new Map<string, ManuscriptRevision[]>();
+  for (const revision of state.manuscriptRevisions ?? []) {
+    const groups = revision.storyId ? storyRevisions : memberRevisions;
+    const key = revision.storyId || revision.memberId;
+    const group = groups.get(key);
+    if (group) group.push(revision);
+    else groups.set(key, [revision]);
+  }
+  const stories = new Map<string, NonNullable<FamilyRoomState['stories']>[number]>();
+  for (const story of state.stories ?? []) {
+    if (!stories.has(story.id)) stories.set(story.id, story);
+  }
+  const scopedState = (id: string): FamilyRoomState => {
+    const story = stories.get(id);
+    return { ...state, stories: story ? [story] : [],
+      manuscriptRevisions: (id.startsWith('story-') ? storyRevisions : memberRevisions).get(id) ?? [] };
+  };
+  return {
+    // Keep canonical validation, currentRevisionId selection and legacy fallbacks.
+    current: (id: string) => currentManuscript(scopedState(id), id),
+    currentStory: (id: string) => currentStoryManuscript(scopedState(id), id),
+    history: (id: string) => manuscriptHistory(scopedState(id), id),
   };
 }
 

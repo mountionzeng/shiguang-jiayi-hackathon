@@ -4,7 +4,8 @@ import {
   isRecordingProfile,
   memoryPool,
 } from "../domain/biography";
-import { currentManuscript, manuscriptHistory } from "./manuscript";
+import { createManuscriptReader } from "./manuscript";
+import { startPerformanceMeasure } from './performanceLog';
 
 /**
  * 「人生之书」里的一个故事。书就是故事：记忆库里同一个故事名的记忆算一个故事，
@@ -30,12 +31,37 @@ export interface ShelfStory {
 export const UNTITLED_MANUSCRIPT = "还没取名的书稿";
 
 export function storyShelf(state: FamilyRoomState): ShelfStory[] {
+  const finish = startPerformanceMeasure('story.shelf');
+  let outcome: 'ok' | 'error' = 'error';
+  try {
+    const shelf = buildStoryShelf(state);
+    outcome = 'ok';
+    return shelf;
+  } finally {
+    finish(outcome, { memories: state.contributions.length, revisions: state.manuscriptRevisions?.length ?? 0,
+      stories: state.stories?.length ?? 0 });
+  }
+}
+
+function buildStoryShelf(state: FamilyRoomState): ShelfStory[] {
+  const reader = createManuscriptReader(state);
+  const activeMemoryIds = new Set(state.contributions.filter(memory => !memory.deletedAt).map(memory => memory.id));
+  // Preserve the existing excerpt order (contribution order, not story.memoryIds).
+  const firstMemories = new Map<string, { index: number; text: string }>();
+  state.contributions.forEach((memory, index) => {
+    if (!firstMemories.has(memory.id)) firstMemories.set(memory.id, { index, text: memory.text });
+  });
   const independent: ShelfStory[] = (state.stories ?? []).filter(s=>!s.deletedAt).map(story=>{
-    const current = currentManuscript(state,story.id);
+    const current = reader.current(story.id);
     const draft = current.draft;
-    const memoryIds = story.memoryIds.filter(id=>state.contributions.some(m=>m.id===id && !m.deletedAt));
+    const memoryIds = story.memoryIds.filter(id => activeMemoryIds.has(id));
+    let firstMemory: { index: number; text: string } | undefined;
+    for (const id of memoryIds) {
+      const memory = firstMemories.get(id);
+      if (memory && (!firstMemory || memory.index < firstMemory.index)) firstMemory = memory;
+    }
     return {key:story.id,storyId:story.id,title:story.title,bookTitle:story.bookTitle || story.title,writingMode:story.writingMode || 'objective',memoryIds,latestAt:story.updatedAt,
-      excerpt:(draft?.paragraphs[0] || state.contributions.find(m=>memoryIds.includes(m.id))?.text || '').slice(0,64),
+      excerpt:(draft?.paragraphs[0] || firstMemory?.text || '').slice(0,64),
       manuscriptMemberId:story.id,chapterCount:draft?.chapters?.length ?? 0};
   }).sort((a,b)=>b.latestAt.localeCompare(a.latestAt));
   if (state.storyMigration?.status === 'active') return independent;
@@ -63,11 +89,11 @@ export function storyShelf(state: FamilyRoomState): ShelfStory[] {
 
   const manuscripts: ShelfStory[] = [];
   state.members.filter(isRecordingProfile).forEach((member) => {
-    const { draft } = currentManuscript(state, member.id);
+    const { draft } = reader.current(member.id);
     if (!draft) return;
     const title = draft.title.trim() || UNTITLED_MANUSCRIPT;
     const chapterCount = draft.chapters?.length || 1;
-    const savedAt = manuscriptHistory(state, member.id)[0]?.savedAt ?? draft.generatedAt ?? "";
+    const savedAt = reader.history(member.id)[0]?.savedAt ?? draft.generatedAt ?? "";
     const named = byTitle.get(title);
     if (named && !named.manuscriptMemberId) {
       named.manuscriptMemberId = member.id;

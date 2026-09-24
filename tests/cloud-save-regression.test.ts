@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createContribution, personalBookSourceFingerprint } from "../miniprogram/domain/biography";
+import { createContribution, createEmptyRoomState, personalBookSourceFingerprint } from "../miniprogram/domain/biography";
 // Cloud storage remains the default; exercise both cloud boundaries and public repositories.
 import { addCloudFamilyMember, appendCloudContribution as appendContributionRemoteFirst, appendCloudContributions, deleteCloudContribution as deleteContributionRemoteFirst, loadCloudRoomState as loadRoomStateRemoteFirst } from "../miniprogram/services/cloudRoomStorage";
 import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
-import { ensureStoryBooks } from "../miniprogram/services/storyBooks";
+import { ensureStoryBooks, storyCommand } from "../miniprogram/services/storyBooks";
 
 // Synthetic wx I/O only: repository, cloud storage and domain code all run unmocked.
 function fixture() {
@@ -66,6 +66,72 @@ function fixture() {
 }
 
 const memory = () => createContribution({ authorMemberId: "owner", authorName: "测试者", relation: "自己", text: "仅供测试的虚构记录。", scope: "personal", visibility: "private" });
+
+test('cloud story commands perform one authoritative read after the write and preserve failure boundaries', async () => {
+  const f = fixture();
+  try {
+    const calls: string[] = [];
+    let failWrite = false;
+    let failRead = false;
+    const complete = { ...createEmptyRoomState(), roomStateVersion: 1, roomName: '保存之后',
+      manuscriptRevisions: [], stories: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {} };
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: any) => {
+      if (name === 'getOpenId') return { result: { openid: 'fixture-user' } };
+      calls.push(data.action);
+      if (data.action === 'update' && failWrite) return { result: { error: 'denied', message: '写入失败' } };
+      if (data.action === 'state' && failRead) throw new Error('读取失败');
+      return { result: data.action === 'state' ? complete : { ok: true } };
+    };
+    assert.equal((await storyCommand({ action: 'update' })).roomName, '保存之后');
+    assert.deepEqual(calls, ['update', 'state']);
+    calls.length = 0;
+    failWrite = true;
+    await assert.rejects(storyCommand({ action: 'update' }), /写入失败/);
+    assert.deepEqual(calls, ['update'], 'failed writes never return stale room data');
+    calls.length = 0;
+    failWrite = false;
+    failRead = true;
+    await assert.rejects(storyCommand({ action: 'update' }), /读取失败/);
+    assert.deepEqual(calls, ['update', 'state']);
+    calls.length = 0;
+    (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
+    await assert.rejects(storyCommand({ action: 'update' }), /尚未就绪/);
+    assert.deepEqual(calls, [], 'cloud readiness must be checked before any write');
+  } finally { f.restore(); }
+});
+
+test('room performance logs identify legacy paging without exposing account or story contents', async () => {
+  const f = fixture();
+  try {
+    const logs: any[] = [];
+    (globalThis as any).wx.getRealtimeLogManager = () => ({ info: (_label: string, detail: any) => logs.push(detail) });
+    await localRepository.loadRoomStateRemoteFirst();
+    const cloud = logs.find(item => item.operation === 'room.cloud');
+    assert.equal(cloud.route, 'client-fallback');
+    assert.equal(cloud.fallback, 'legacy-response');
+    assert.equal(cloud.clientPageReads, 3);
+    assert.equal(cloud.outcome, 'ok');
+    assert.ok(cloud.durationMs >= 0);
+    assert.equal(logs.find(item => item.operation === 'room.load').outcome, 'ok');
+    assert.doesNotMatch(JSON.stringify(logs), /fixture-user|测试者|测试房间/);
+    logs.length = 0;
+    (globalThis as any).wx.cloud.callFunction = async ({ name }: any) => ({ result: name === 'getOpenId'
+      ? { openid: 'fixture-user' } : { roomStateVersion: 1 } });
+    await assert.rejects(localRepository.loadRoomStateRemoteFirst(), /返回不完整/);
+    const failed = logs.find(item => item.operation === 'room.cloud');
+    assert.equal(failed.route, 'story-service');
+    assert.equal(failed.outcome, 'error');
+    assert.equal(failed.clientPageReads, 0, 'invalid versioned responses never silently fall back');
+  } finally { f.restore(); }
+});
+
+test('unavailable performance logging does not prevent cloud reads', async () => {
+  const f = fixture();
+  try {
+    (globalThis as any).wx.getRealtimeLogManager = () => { throw new Error('日志不可用'); };
+    assert.equal((await localRepository.loadRoomStateRemoteFirst()).members[0].name, '测试者');
+  } finally { f.restore(); }
+});
 
 test("normal loading restores existing cloud people without overwriting local-only records", async () => {
   const f = fixture();
