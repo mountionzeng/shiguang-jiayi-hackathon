@@ -219,6 +219,23 @@ test("the invitation poster draws packaged assets and exports a scannable-size c
   assert.equal(exportOptions?.quality, 0.95);
 });
 
+test("an invitation poster can be saved to the photo album after it is rendered", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const saved: string[] = [];
+  Object.assign(wx as any, {
+    saveImageToPhotosAlbum: ({ filePath, success }: { filePath: string; success: () => void }) => {
+      saved.push(filePath); success();
+    },
+  });
+  const page = instantiate(await pageDefinition("invite"));
+  page.setData({ posterPath: "/tmp/invite.jpg" });
+  await callPage(page, "savePoster");
+  assert.deepEqual(saved, ["/tmp/invite.jpg"]);
+  assert.equal(page.data.albumSaving, false);
+  assert.deepEqual(storage.toasts, ["已保存到相册"]);
+});
+
 test("an invited WeChat member enters only the shared family room", async (context) => {
   const sharedState = createInitialRoomState();
   const storage = installWxMock(sharedState, "owner");

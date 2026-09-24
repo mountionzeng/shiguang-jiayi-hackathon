@@ -49,6 +49,7 @@
       <image class="poster-preview" src="{{posterPath}}" mode="widthFix" bindtap="previewPoster"></image>
       <view class="poster-tip">图片已生成。发送给好友后，请他长按识别图中的小程序码。</view>
       <button class="invite-primary" bindtap="sharePoster">发送邀请图片</button>
+      <button class="invite-secondary" bindtap="savePoster" loading="{{albumSaving}}" disabled="{{albumSaving}}">{{albumSaving ? '保存中…' : '保存邀请图片到相册'}}</button>
       <button class="invite-secondary" open-type="share">也可以直接转发小程序</button>
     </view>
   </block>

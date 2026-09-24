@@ -165,6 +165,14 @@ test('导出未开放时不读取云端导出素材、不渲染图片', async ()
   await page.generateImages(); assert.deepEqual(page.data.imagePaths,[]);
 });
 
+test('没有封面时可以从图片预览进入 AI 封面制作页', async () => {
+  const page = await socialPage(); const urls: string[] = [];
+  (globalThis as any).wx = { navigateTo: ({ url }: any) => urls.push(url) };
+  page.makeCover();
+  assert.equal(page.returningFromCover, true);
+  assert.deepEqual(urls, ['/pages/story-cover/story-cover?storyId=story-test']);
+});
+
 test('相册部分失败后续存只保存剩余图片，每次重试重新核对权限', async () => {
   const page=await socialPage();const {bookExportApi}=await import('../miniprogram/services/bookExport');
   const original=bookExportApi.material; let verified=0;const saved:string[]=[];

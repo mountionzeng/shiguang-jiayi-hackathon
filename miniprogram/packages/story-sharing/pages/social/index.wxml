@@ -31,6 +31,11 @@
     </view>
     <view wx:if="{{preview}}">
       <view class="preview-controls"><view class="caption">{{selectedCount}} {{scope === 'text' ? '段' : '章'}} · {{characterCount}} 字</view><button class="reselect" bindtap="backToSelection">重新选择</button></view>
+      <view class="cover-model" wx:if="{{!coverUrl}}">
+        <view class="cover-model-title serif">想给这次分享配一张专属封面？</view>
+        <view class="caption">可以先让 AI 根据已保存的整本书制作封面；生成前会说明将发送哪些内容，你确认后才会开始。</view>
+        <button class="cover-model-action" bindtap="makeCover" disabled="{{exportBusy || albumSaving}}">先制作 AI 封面</button>
+      </view>
       <view class="section-title serif">图片排版</view>
       <view class="scope-options"><button class="scope {{layout === 'pages' ? 'selected' : ''}}" data-layout="pages" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving}}">分页图片</button><button class="scope {{layout === 'long' ? 'selected' : ''}}" data-layout="long" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving}}">一张长图</button></view>
       <picker range="{{['紧凑','标准','大字']}}" value="{{fontSize === 28 ? 0 : fontSize === 32 ? 1 : 2}}" bindchange="chooseFont" disabled="{{exportBusy || albumSaving}}"><view class="chapter-picker">字号：{{fontSize === 28 ? '紧凑' : fontSize === 32 ? '标准' : '大字'}}　⌄</view></picker>

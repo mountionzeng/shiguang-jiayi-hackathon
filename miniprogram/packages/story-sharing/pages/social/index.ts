@@ -22,6 +22,7 @@ Page({
   exportSelection: undefined as BookExportSelection | undefined,
   descriptor: undefined as BookExportDescriptor | undefined,
   renderTask: undefined as Promise<string[]> | undefined,
+  returningFromCover: false,
   onLoad(options: { storyId?: string; revisionId?: string; version?: string } = {}) {
     const version = Number(options.version);
     if (options.storyId && options.revisionId && Number.isSafeInteger(version) && version >= 1) {
@@ -29,7 +30,10 @@ Page({
     }
     wx.hideShareMenu();
   },
-  onShow() { this.hidden = false; void this.refresh(); },
+  onShow() {
+    this.hidden = false;
+    void (this.returningFromCover ? this.refreshAfterCover() : this.refresh());
+  },
   onHide() {
     this.hidden = true; this.epoch++; this.editorSeed++; this.snapshot = undefined; this.resetImages();
     this.editor?.clear();
@@ -66,6 +70,27 @@ Page({
     } catch {
       if (!this.hidden && epoch === this.epoch) this.setData({ coverNotice: '已有封面暂未读到，可稍后重新加载' });
     }
+  },
+  /** Cover selection increments the story version. Refresh the send snapshot with that new version on return. */
+  async refreshAfterCover() {
+    this.returningFromCover = false;
+    const expected = this.expected;
+    if (expected) {
+      try {
+        const source = await storyCoverApi.sources(expected.storyId);
+        if (source.storyId === expected.storyId && source.revisionId && Number.isSafeInteger(source.version) && source.version >= 1) {
+          this.expected = { storyId: expected.storyId, revisionId: source.revisionId, version: source.version };
+        }
+      } catch {
+        // refresh below gives the person a normal retry path if the cover page is no longer available.
+      }
+    }
+    await this.refresh();
+  },
+  makeCover() {
+    if (this.busy() || !this.snapshot?.storyId) return;
+    this.returningFromCover = true;
+    wx.navigateTo({ url: "/pages/story-cover/story-cover?storyId=" + encodeURIComponent(this.snapshot.storyId) });
   },
   chooseScope(event: WechatMiniprogram.TouchEvent) {
     if (this.data.loading || this.busy()) return;

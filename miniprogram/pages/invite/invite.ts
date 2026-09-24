@@ -59,6 +59,7 @@ Page({
     invitationAvatarText: "忆",
     posterPath: "",
     codeReady: false,
+    albumSaving: false,
     errorMessage: "",
   },
 
@@ -240,6 +241,29 @@ Page({
 
   previewPoster() {
     if (this.data.posterPath) wx.previewImage({ urls: [this.data.posterPath] });
+  },
+
+  async savePoster() {
+    const posterPath = this.data.posterPath;
+    if (!posterPath || this.data.albumSaving) return;
+    this.setData({ albumSaving: true, errorMessage: "" });
+    try {
+      await new Promise<void>((resolve, reject) => wx.saveImageToPhotosAlbum({
+        filePath: posterPath,
+        success: () => resolve(),
+        fail: reject,
+      }));
+      wx.showToast({ title: "已保存到相册", icon: "success" });
+    } catch (error) {
+      const reason = String((error as { errMsg?: string })?.errMsg || error || "");
+      const message = /auth|deny|permission/i.test(reason)
+        ? "请在小程序设置中允许保存到相册"
+        : "邀请图片暂时没保存成功，请重试";
+      this.setData({ errorMessage: message });
+      wx.showToast({ title: message, icon: "none" });
+    } finally {
+      this.setData({ albumSaving: false });
+    }
   },
 
   async acceptInvitation() {
