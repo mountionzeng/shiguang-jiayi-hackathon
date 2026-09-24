@@ -47,7 +47,7 @@
       <view class="reading-chapter" wx:for="{{previewChapters}}" wx:key="id"><view class="section-title serif">{{item.title}}</view><text class="paragraph" selectable>{{item.text || '本章没有文字'}}</text></view>
       <button class="secondary" bindtap="backToSelection">重新选择内容</button>
     </view>
-    
+
   </block>
   <button class="secondary" wx:if="{{!loading && !checking && !title}}" bindtap="refresh">重新加载</button>
   <button class="secondary" bindtap="goBack" disabled="{{checking || exportBusy || albumSaving}}">回到书稿</button>
