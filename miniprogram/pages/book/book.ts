@@ -236,7 +236,7 @@ Page({
     }
     if (this.data.editing || this.data.pickingPhoto || this.unloaded) return;
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
-    const visibleChapters = this.visibleChapters(chapters);
+    const visibleChapters = this.visibleChapters(chapters, story);
     let activeChapterId = backup?.chapterId || this.activeChapterId;
     let view = backup?.view || this.data.view;
     if (!visibleChapters.length) view = "contents";
@@ -282,16 +282,6 @@ Page({
     if (backup) {
       this.pendingSave = acknowledged ? undefined : backup.pendingSave;
     }
-    const visibleChapters = this.visibleChapters(chapters, story);
-    let activeChapterId = backup?.chapterId || this.activeChapterId;
-    let view = backup?.view || this.data.view;
-    if (!visibleChapters.length) view = "contents";
-    else if (!view) {
-      // A single-chapter book (every older book) opens straight into its text, as before.
-      view = visibleChapters.length === 1 ? "chapter" : "contents";
-      if (visibleChapters.length === 1) activeChapterId = visibleChapters[0].id;
-    }
-    if (view === "chapter" && !visibleChapters.some(chapter => chapter.id === activeChapterId)) view = "contents";
     this.activeChapterId = activeChapterId;
     this.revisionId = current.revisionId;
     this.sourceFingerprint = current.sourceFingerprint;
