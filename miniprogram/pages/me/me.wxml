@@ -32,9 +32,18 @@
       <view class="compute-balance serif">{{computeBalance}}</view>
     </view>
     <view class="compute-copy">
-      <text>{{computeRate}}</text>
-      <text>新微信账号固定赠送 10 算力</text>
+      <text>首次登录赠送 10 算力，同一账号仅领取一次</text>
+      <text>绑定同一账号后，手机和电脑共用算力</text>
       <text wx:if="{{computeBalance === '0.00 算力'}}">余额用完后，AI 功能暂停；故事仍可查看和编辑</text>
+    </view>
+  </view>
+
+  <view class="text-compute-section">
+    <view class="compute-label">最近文字算力</view>
+    <view class="text-compute-hint">{{textComputeHint}}</view>
+    <view class="text-compute-row" wx:for="{{textComputeRows}}" wx:key="id">
+      <view class="text-compute-title"><text>{{item.label}}</text><text class="text-compute-time">{{item.time}}</text></view>
+      <view class="text-compute-detail">{{item.detail}}</view>
     </view>
   </view>
 

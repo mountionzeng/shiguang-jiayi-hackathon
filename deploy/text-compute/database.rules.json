@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "collections": {
+    "text_compute_operations": { "read": false, "write": false }
+  },
+  "note": "Only authenticated cloud functions may access usage metadata. Apply and verify before enabling TEXT_COMPUTE_USAGE_ENABLED. No client direct access."
+}

@@ -12,7 +12,8 @@ import {
   saveRoomProfileRemoteFirst,
 } from "../../services/roomRepository";
 import { clearAiConsent, requestAiConsent } from "../../services/aiConsent";
-import { formatComputeBalance, loadCurrentAccount, saveCurrentAccountName } from "../../services/accountService";
+import { loadTextComputeUsage, TextComputeRow } from "../../services/textComputeUsageService";
+import { formatComputeBalance, loadCurrentAccount, loadSharedComputeBalance, saveCurrentAccountName } from "../../services/accountService";
 import { JoinedFamilyRoom, loadJoinedFamilyRooms } from "../../services/familyInviteService";
 import { logLoadError } from "../../services/loadErrorLog";
 import { clearPhotoUploadQueue, deleteMyCloudPhotos, loadCloudPhotoSummary, pendingPhotoUploads } from "../../services/photoCloud";
@@ -42,8 +43,10 @@ Page({
     roomNameInput: "",
     protagonistNameInput: "",
     roomSaving: false,
-    computeBalance: "0.00 算力",
-    computeRate: "¥1 = 2 算力",
+    computeBalance: "正在读取…",
+    computeRate: "",
+    textComputeRows: [] as TextComputeRow[],
+    textComputeHint: "正在读取文字用量…",
     joinedRooms: [] as JoinedFamilyRoom[],
     cloudPhotoCount: 0,
     cloudPhotoBytes: "0 KB",
@@ -53,7 +56,48 @@ Page({
   },
 
   onShow() {
+    this._computeVisible = true;
+    this._computeEpoch += 1;
+    this.setData({ computeBalance: "正在读取…", textComputeRows: [], textComputeHint: "正在读取文字用量…" });
+    clearInterval(this._computeTimer);
+    void this.refreshCompute();
+    void this.refreshTextCompute();
+    this._computeTimer = setInterval(() => { void this.refreshCompute(); void this.refreshTextCompute(); }, 5000);
     void this.refresh().catch((error) => { logLoadError("me", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
+  },
+
+  _computeTimer: undefined as ReturnType<typeof setInterval> | undefined,
+  _computeReading: false,
+  _textComputeReading: false,
+  _computeVisible: false,
+  _computeEpoch: 0,
+  onHide() { this._computeVisible = false; this._computeEpoch += 1; clearInterval(this._computeTimer); this._computeTimer = undefined; },
+  onUnload() { this._computeVisible = false; this._computeEpoch += 1; clearInterval(this._computeTimer); this._computeTimer = undefined; },
+  async refreshTextCompute() {
+    if (this._textComputeReading) return;
+    this._textComputeReading = true;
+    const epoch = this._computeEpoch;
+    try {
+      const view = await loadTextComputeUsage();
+      if (this._computeVisible && epoch === this._computeEpoch) this.setData({
+        textComputeRows: view.rows,
+        textComputeHint: !view.enabled ? "文字用量记录尚未开启"
+          : view.rows.length ? "按 2026-09-23 价格记录预估，尚未扣减余额；最近 10 次文字调用，不含图片和语音" : "暂无已记录的文字调用",
+      });
+    } catch {
+      if (this._computeVisible && epoch === this._computeEpoch) this.setData({ textComputeRows: [], textComputeHint: "文字用量暂未读到，请稍后重试" });
+    } finally { this._textComputeReading = false; }
+  },
+  async refreshCompute() {
+    if (this._computeReading) return;
+    this._computeReading = true;
+    const epoch = this._computeEpoch;
+    try {
+      const computeBalance = formatComputeBalance(await loadSharedComputeBalance());
+      if (this._computeVisible && epoch === this._computeEpoch) this.setData({ computeBalance });
+    }
+    catch { if (this._computeVisible && epoch === this._computeEpoch) this.setData({ computeBalance: "暂不可用，请稍后重试" }); }
+    finally { this._computeReading = false; }
   },
 
   async refresh(state?: FamilyRoomState) {
@@ -100,8 +144,6 @@ Page({
         accountAvatarText: account.avatarText || member.avatarText,
         accountNameInput: account.displayName || member.name,
         accountAvatarPreview: account.avatarText || member.avatarText,
-        computeBalance: formatComputeBalance(account.computeBalanceMicros),
-        computeRate: account.computeRate,
       });
       try {
         this.setData({ joinedRooms: await loadJoinedFamilyRooms() });

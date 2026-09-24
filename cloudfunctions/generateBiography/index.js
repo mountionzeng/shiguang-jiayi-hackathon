@@ -1,6 +1,7 @@
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
 const { defaultFetch } = require("./httpFetch.js");
+const { createTextMeter } = require("./textComputeUsage");
 const STORY_ID = /^story-[a-z0-9-]{1,100}$/;
 const {
   AI_CONSENT_VERSION,
@@ -200,11 +201,12 @@ async function main(event, dependencies = {}) {
     await reserveAiRequest(db, identity, "generateBiography", dependencies.nowMs);
   }
 
+  const meter = createTextMeter({ db, identity, kind: "generateBiography", model, baseUrl, fetcher: defaultFetch });
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20_000);
   let response;
   try {
-    response = await defaultFetch(`${baseUrl}/chat/completions`, {
+    response = await meter.fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -242,7 +244,7 @@ async function main(event, dependencies = {}) {
     await moderateText(cloud, identity.openid, [result.title, ...result.paragraphs].join("\n"), "AI 书稿输出");
     await assertIdentityStillActive(db, identity);
   }
-  return { ...result, aiDisclosure: "文字 AI 生成" };
+  return { ...result, aiDisclosure: "文字 AI 生成", computeUsage: meter.snapshot() };
 }
 
 module.exports = {

@@ -1,4 +1,5 @@
 const CORE_COLLECTIONS = [
+  "text_compute_operations",
   "personal_memory_controls",
   "personal_memory_insights",
   "personal_memory_evidence",
