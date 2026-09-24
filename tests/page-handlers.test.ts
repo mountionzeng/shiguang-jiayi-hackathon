@@ -2186,6 +2186,34 @@ test("opening insertion does not preselect memories already written into a chapt
   assert.equal(page.data.organizeCount, 0);
 });
 
+test("an independent story shows every saved chapter even when some have no linked memory", async context => {
+  const state = createInitialRoomState();
+  const chapters = [
+    { id: "chapter-linked", title: "有记忆", memoryIds: ["demo-personal-rain"], content: [{ text: "已关联的章节。" }] },
+    { id: "chapter-unlinked", title: "亲手写的章节", memoryIds: [], content: [{ text: "没有关联记忆的正文。" }] },
+    { id: "chapter-other", title: "原有章节", memoryIds: ["old-source"], content: [{ text: "迁移前留下的正文。" }] },
+  ];
+  const draft = { title: "完整的书", paragraphs: [], sourceCount: 1, generatedAt: "2026-09-24T00:00:00Z", generationMode: "local-demo" as const, chapters };
+  state.storyMigration = { version: 1, status: "active", pending: [] };
+  state.stories = [{ id: "story-complete", familyId: "local", title: "完整的书", writingMode: "objective", memoryIds: ["demo-personal-rain"], protagonistMemberIds: [], createdAt: "2026-09-24T00:00:00Z", updatedAt: "2026-09-24T00:00:00Z", version: 1, currentRevisionId: "revision-complete" }];
+  state.manuscriptRevisions = [{ ...makeRevision("owner", draft, "", "draft", "原稿"), id: "revision-complete", storyId: "story-complete" }];
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  page.requestedStoryKey = "story-complete";
+  await callPage(page, "refresh");
+  assert.deepEqual((page.data.chapterRows as any[]).map(row => [row.id, row.label]), [
+    ["chapter-linked", "第一章"], ["chapter-unlinked", "第二章"], ["chapter-other", "第三章"],
+  ]);
+  await callPage(page, "openChapter", {currentTarget:{dataset:{id:"chapter-unlinked"}}});
+  assert.equal(page.data.view, "chapter");
+  assert.equal(page.bodyBuffer, "没有关联记忆的正文。");
+  assert.equal(storage.roomState().manuscriptRevisions?.[0].draft.chapters?.length, 3, "opening is read-only");
+  state.stories![0].sourcePolicyRequired = true;
+  await callPage(page, "refresh");
+  assert.equal(page.data.protectedCopy, true);
+  assert.equal((page.data.chapterRows as any[]).length, 3, "protected copies also show every chapter in their own revision");
+});
+
 test("inserting into a scoped chapter uses the chapter number displayed in its picker", async context => {
   const state = createInitialRoomState();
   state.personalDrafts = { owner: { title: "测试书", paragraphs: ["另一故事", "目标章节"], sourceCount: 1, generatedAt: "", generationMode: "local-demo", chapters: [
