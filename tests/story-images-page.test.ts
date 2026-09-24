@@ -144,6 +144,7 @@ test('book loads local photos and cloud images together without overwriting edit
       const page = instantiate(await pageDefinition('book'));
       const loading = call(page, 'refresh', state);
       await new Promise(resolve => setImmediate(resolve));
+      const imagesReady = page.bookImagesReady;
       assert.equal(pending.length, 2);
       assert.equal(cloudReads, 1, 'cloud images do not wait for local paths');
       if (scenario === 'editing') {
@@ -156,10 +157,11 @@ test('book loads local photos and cloud images together without overwriting edit
         newer.manuscriptRevisions![0].draft.title = '较新的刷新';
         await call(page, 'refresh', newer);
       }
-      const before = JSON.stringify(page.data);
+      const before = JSON.stringify({ ...page.data, backdropUrl: '' });
       for (const finish of pending.reverse()) finish();
       await loading;
-      assert.equal(JSON.stringify(page.data), before, `${scenario}: late photo responses must not render stale data`);
+      await imagesReady;
+      assert.equal(JSON.stringify({ ...page.data, backdropUrl: '' }), before, `${scenario}: late photo responses must not render stale text`);
       if (scenario === 'editing') assert.equal(page.bodyBuffer, '刚刚输入的文字');
       if (scenario === 'superseded') assert.equal((page.data.draft as BiographyDraft).title, '较新的刷新');
     } finally { restoreApi(); env.restore(); }
@@ -174,6 +176,106 @@ function captureTimers() {
   globalThis.clearTimeout = (() => undefined) as unknown as typeof clearTimeout;
   return { scheduled, restore() { globalThis.setTimeout = previousSet; globalThis.clearTimeout = previousClear; } };
 }
+
+test('book contents and plain text render before background images without re-seeding an edited chapter', async context => {
+  const env = installWx({}, stateWithBook(BACKDROP_ID));
+  let resolveImages!: (value: StoryImageList) => void;
+  const images = new Promise<StoryImageList>(resolve => { resolveImages = resolve; });
+  const restoreApi = withApi({ listStoryImages: () => images });
+  context.after(() => { resolveImages(listWith()); restoreApi(); env.restore(); });
+  const page = instantiate(await pageDefinition('book'));
+  let completed = false;
+  const loading = Promise.resolve(call(page, 'refresh')).then(() => { completed = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(completed, true, 'the table of contents must not wait for decoration');
+  assert.equal(page.data.view, 'contents');
+  let seeded = 0;
+  page.editorContext = { setContents: ({ success }: any) => { seeded++; success(); } };
+  await call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-a' } } });
+  call(page, 'onEditorInput', { detail: { delta: { ops: [{ insert: '等待背景图时输入的新正文\n' }] }, text: '等待背景图时输入的新正文\n' } });
+  const before = JSON.stringify(page.contentBuffer);
+  const seedCount = seeded;
+  resolveImages(listWith());
+  await loading;
+  await page.bookImagesReady;
+  assert.equal(page.data.backdropUrl, 'https://tmp.example/b.png');
+  assert.equal(JSON.stringify(page.contentBuffer), before);
+  assert.equal(page.data.editing, true);
+  assert.equal(seeded, seedCount, 'late backgrounds must never call editor.setContents');
+});
+
+test('opening an illustrated chapter waits for image mappings and a later chapter selection wins', async context => {
+  const state = stateWithBook();
+  state.manuscriptRevisions![0].draft.chapters![0].content.push({ photoId: 'photo-ai-req-aaaaaaaa' });
+  const env = installWx({}, state);
+  let resolveImages!: (value: StoryImageList) => void;
+  const images = new Promise<StoryImageList>(resolve => { resolveImages = resolve; });
+  const restoreApi = withApi({ listStoryImages: () => images });
+  context.after(() => { resolveImages(listWith()); restoreApi(); env.restore(); });
+  const page = instantiate(await pageDefinition('book'));
+  let completed = false;
+  const loading = Promise.resolve(call(page, 'refresh')).then(() => { completed = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(completed, true, 'inline images in unopened chapters must not delay the contents');
+  const opening = call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-a' } } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(page.data.view, 'contents', 'do not mount an image editor before its URL-to-ID mapping exists');
+  await call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-b' } } });
+  resolveImages(listWith());
+  await opening;
+  await loading;
+  assert.equal(page.activeChapterId, 'chapter-b', 'late image response cannot undo the newer selection');
+  await call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-a' } } });
+  assert.equal(page.activeChapterId, 'chapter-a');
+  assert.equal((page.photoPaths as Record<string, string>)['photo-ai-req-aaaaaaaa'], 'https://tmp.example/a.png');
+});
+
+test('direct entry to an illustrated chapter still waits before seeding the native editor', async context => {
+  const state = stateWithBook();
+  state.manuscriptRevisions![0].draft.chapters![0].content.push({ photoId: 'photo-ai-req-aaaaaaaa' });
+  const env = installWx({}, state);
+  let resolveImages!: (value: StoryImageList) => void;
+  const images = new Promise<StoryImageList>(resolve => { resolveImages = resolve; });
+  const restoreApi = withApi({ listStoryImages: () => images });
+  context.after(() => { resolveImages(listWith()); restoreApi(); env.restore(); });
+  const page = instantiate(await pageDefinition('book'));
+  page.activeChapterId = 'chapter-a';
+  page.setData({ view: 'chapter' });
+  const deltas: any[] = [];
+  page.editorContext = { setContents: ({ delta, success }: any) => { deltas.push(delta); success(); } };
+  let completed = false;
+  const loading = Promise.resolve(call(page, 'refresh')).then(() => { completed = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(completed, false);
+  assert.equal(deltas.length, 0);
+  resolveImages(listWith());
+  await loading;
+  assert.equal(deltas.length, 1);
+  assert.ok(deltas[0].ops.some((op: any) => op.insert?.image === 'https://tmp.example/a.png'));
+  assert.equal((page.imageIds as Record<string, string>)['https://tmp.example/a.png'], 'photo-ai-req-aaaaaaaa');
+});
+
+test('late image mappings preserve newly inserted photos and a cancelled chapter never opens', async context => {
+  const state = stateWithBook();
+  state.manuscriptRevisions![0].draft.chapters![0].content.push({ photoId: 'photo-ai-req-aaaaaaaa' });
+  const env = installWx({}, state);
+  let resolveImages!: (value: StoryImageList) => void;
+  const images = new Promise<StoryImageList>(resolve => { resolveImages = resolve; });
+  const restoreApi = withApi({ listStoryImages: () => images });
+  context.after(() => { resolveImages(listWith()); restoreApi(); env.restore(); });
+  const page = instantiate(await pageDefinition('book'));
+  await call(page, 'refresh');
+  const opening = call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-a' } } });
+  await call(page, 'backToContents');
+  (page.photoPaths as Record<string, string>)['photo-new'] = 'wxfile://usr/new.jpg';
+  (page.imageIds as Record<string, string>)['wxfile://usr/new.jpg'] = 'photo-new';
+  resolveImages(listWith());
+  await opening;
+  await page.bookImagesReady;
+  assert.equal(page.data.view, 'contents');
+  assert.equal((page.photoPaths as Record<string, string>)['photo-new'], 'wxfile://usr/new.jpg');
+  assert.equal((page.imageIds as Record<string, string>)['wxfile://usr/new.jpg'], 'photo-new');
+});
 
 // ---------- 服务层 ----------
 

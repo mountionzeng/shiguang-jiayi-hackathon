@@ -1,4 +1,5 @@
-type Operation = 'room.load' | 'room.cloud' | 'story.shelf' | 'book.refresh';
+type Operation = 'room.load' | 'room.cloud' | 'room.identity' | 'room.state' | 'story.shelf'
+  | 'book.refresh' | 'book.identity' | 'book.photos' | 'book.images';
 
 export interface PerformanceMetrics {
   route?: 'local' | 'cloud' | 'identity' | 'story-service' | 'client-fallback';
@@ -29,4 +30,16 @@ export function startPerformanceMeasure(operation: Operation) {
       wx.getRealtimeLogManager().info('[performance]', detail);
     } catch { /* Diagnostics cannot change the result or error of a load. */ }
   };
+}
+
+export async function measurePerformance<T>(operation: Operation, work: () => Promise<T>): Promise<T> {
+  const finish = startPerformanceMeasure(operation);
+  let outcome: 'ok' | 'error' = 'error';
+  try {
+    const value = await work();
+    outcome = 'ok';
+    return value;
+  } finally {
+    finish(outcome);
+  }
 }
