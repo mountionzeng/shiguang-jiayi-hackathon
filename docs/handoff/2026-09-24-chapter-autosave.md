@@ -33,3 +33,10 @@
 ## 后续协调
 
 性能任务 01a0d148-ce57-7b50-a102-785f41f35cd8 暂不改 book.ts；整合后再优化照片读取，必须保留编辑中禁止 refresh 覆盖、账号隔离恢复、串行保存和版本锁。
+
+## 最终交付
+
+- 自动保存提交 `724bf61` 整合为 main `b9957ec`，已 push；与最终预览的 book.ts/WXML/WXSS/chapterDraft.ts 逐文件摘要一致。
+- 最终代码再次通过真实输入标记 → 点目录自动保存 → 返回首页 → 重开确认 → 仅移除标记 → 保存 → 返回首页重开。最终清理版本 `revision-1790218612030-3ftp8mjv`；所有章节 title/content 与测试前基线完全一致，editing=false，本故事本机草稿已清除，控制台 error 过滤为空。
+- 官方 create_preview_qrcode 返回 ok=true、success=true。二维码为 `/Users/yuandai/Documents/ChatGPT/DK—小程序/artifacts/chapter-autosave-20260924/chapter-autosave-verified.jpg`，46,715 字节，首页入口。此为开发预览，未发布上线。
+- 个人正文、比较基线与完整日志仅存本机 `/private/tmp/shiguang-autosave-*.json`，不入仓库，未提交给小程序的文字或图片 AI 接口。
