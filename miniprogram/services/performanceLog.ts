@@ -1,4 +1,4 @@
-type Operation = 'room.load' | 'room.cloud' | 'story.shelf';
+type Operation = 'room.load' | 'room.cloud' | 'story.shelf' | 'book.refresh';
 
 export interface PerformanceMetrics {
   route?: 'local' | 'cloud' | 'identity' | 'story-service' | 'client-fallback';
@@ -22,9 +22,11 @@ export function startPerformanceMeasure(operation: Operation) {
   return (outcome: 'ok' | 'error', metrics: PerformanceMetrics = {}) => {
     try {
       if (typeof wx === 'undefined' || typeof wx.getRealtimeLogManager !== 'function') return;
-      wx.getRealtimeLogManager().info('[performance]', {
+      const detail = {
         operation, page, outcome, durationMs: Math.max(0, Date.now() - startedAt), ...metrics,
-      });
+      };
+      console.info('[performance]', detail);
+      wx.getRealtimeLogManager().info('[performance]', detail);
     } catch { /* Diagnostics cannot change the result or error of a load. */ }
   };
 }

@@ -8,7 +8,7 @@ import { BiographyFallbackReason, generateBiographyWithStatus } from "../../serv
 import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, usesCloudStorage } from "../../services/roomRepository";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import {
-  contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, saveLocalPhoto,
+  contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, readLocalPhotos, saveLocalPhoto,
   storyImageReferenceId, validateContent,
 } from "../../services/bookImages";
 import { StoryImage, storyImageApi } from "../../services/storyImageService";
@@ -18,6 +18,7 @@ import {
 } from "../../services/chapters";
 import { chapterInsertionPoints, ChapterInsertionPoint, insertChapterText } from "../../services/chapterInsertion";
 import { logLoadError } from "../../services/loadErrorLog";
+import { startPerformanceMeasure } from '../../services/performanceLog';
 import { activeStory, linkStoryMemories, storyAiContext, storySourceFingerprint, updateStoryBook } from "../../services/storyBooks";
 import { loadCurrentStoryId, saveCurrentStoryId } from "../../services/storySelection";
 import { audioCreatePath } from "../../services/storyAudioService";
@@ -180,6 +181,16 @@ Page({
     }
   },
   async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+    const finish = startPerformanceMeasure('book.refresh');
+    let outcome: 'ok' | 'error' = 'error';
+    try {
+      await this.refreshBook(nextState);
+      outcome = 'ok';
+    } finally {
+      finish(outcome);
+    }
+  },
+  async refreshBook(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
     const refreshId = ++this.refreshId;
     const storyId = this.requestedStoryKey || loadCurrentStoryId();
     const state = nextState ?? await loadRoomStateRemoteFirst();
@@ -220,27 +231,18 @@ Page({
     }
     if (this.data.editing || this.data.pickingPhoto || this.unloaded) return;
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
-    const photoPaths: Record<string, string> = {};
-    const imageIds: Record<string, string> = {};
-    for (const item of chapters.flatMap(chapter => chapter.content)) {
-      if (item.photoId) {
-        if (isStoryImageReference(item.photoId)) continue;
-        const path = await readLocalPhoto(item.photoId);
-        if (path) { photoPaths[item.photoId] = path; imageIds[path] = item.photoId; }
-      }
-    }
+    const localPhotoIds = chapters.flatMap(chapter => chapter.content)
+      .flatMap(item => item.photoId && !isStoryImageReference(item.photoId) ? [item.photoId] : []);
     const storyImageReferences = new Set(chapters.flatMap(chapter => chapter.content)
       .flatMap(item => item.photoId && isStoryImageReference(item.photoId) ? [item.photoId] : []));
     const backdropImageIds = new Set(chapters.flatMap(chapter => chapter.backdropImageId ? [chapter.backdropImageId] : []));
-    let cloudImages: StoryImage[] = [];
-    if (storyImageReferences.size || backdropImageIds.size) {
-      try {
-        const list = await storyImageApi.listStoryImages(bookId);
-        cloudImages = list.images;
-      } catch {
-        // Keep an opaque recoverable marker in the editor when a temporary URL is unavailable.
-      }
-    }
+    const [{ photoPaths, imageIds }, cloudImages] = await Promise.all([
+      readLocalPhotos(localPhotoIds),
+      storyImageReferences.size || backdropImageIds.size
+        ? storyImageApi.listStoryImages(bookId).then(list => list.images).catch(() => [] as StoryImage[])
+        : Promise.resolve([] as StoryImage[]),
+    ]);
+    // Unavailable URLs retain their opaque recoverable markers in the editor.
     cloudImages.forEach(image => {
       const referenceId = storyImageReferenceId(image.imageId);
       if (storyImageReferences.has(referenceId) && image.url) {

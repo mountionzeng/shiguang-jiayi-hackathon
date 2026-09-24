@@ -94,6 +94,26 @@ export async function discardLocalPhotos(photos: Array<{ id: string; path: strin
   })));
 }
 
+/** Resolve each photo once, cap I/O concurrency, then build mappings in document order. */
+export async function readLocalPhotos(ids: string[]): Promise<{
+  photoPaths: Record<string, string>; imageIds: Record<string, string>;
+}> {
+  const uniqueIds = [...new Set(ids)];
+  const paths = new Map<string, string>();
+  for (let offset = 0; offset < uniqueIds.length; offset += 4) {
+    const batch = await Promise.all(uniqueIds.slice(offset, offset + 4).map(async id =>
+      [id, await readLocalPhoto(id)] as const));
+    for (const [id, path] of batch) paths.set(id, path);
+  }
+  const photoPaths: Record<string, string> = {};
+  const imageIds: Record<string, string> = {};
+  for (const id of ids) {
+    const path = paths.get(id);
+    if (path) { photoPaths[id] = path; imageIds[path] = id; }
+  }
+  return { photoPaths, imageIds };
+}
+
 export async function readLocalPhoto(id: string): Promise<string> {
   if (!LOCAL_PHOTO_ID.test(id)) return "";
   try {

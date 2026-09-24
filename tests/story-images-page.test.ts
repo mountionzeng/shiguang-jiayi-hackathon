@@ -125,6 +125,47 @@ function listWith(overrides: Partial<StoryImageList> = {}): StoryImageList {
   };
 }
 
+test('book loads local photos and cloud images together without overwriting editing, unloaded or newer pages', async () => {
+  for (const scenario of ['editing', 'unloaded', 'superseded']) {
+    const state = stateWithBook(BACKDROP_ID);
+    state.manuscriptRevisions![0].draft.chapters![0].content.push({ photoId: 'photo-a' }, { photoId: 'photo-b' });
+    const pending: Array<() => void> = [];
+    let cloudReads = 0;
+    const env = installWx({
+      env: { USER_DATA_PATH: 'wxfile://usr' },
+      getStorageSync: (key: string) => key.startsWith('shiguang-local-photo-') ? 'wxfile://store_shared.jpg' : undefined,
+      getFileSystemManager: () => ({
+        getSavedFileList: ({ success }: any) => pending.push(() => success({ fileList: [{ filePath: 'wxfile://store_shared.jpg' }] })),
+        accessSync: () => undefined,
+      }),
+    });
+    const restoreApi = withApi({ listStoryImages: async () => { cloudReads++; return listWith(); } });
+    try {
+      const page = instantiate(await pageDefinition('book'));
+      const loading = call(page, 'refresh', state);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(pending.length, 2);
+      assert.equal(cloudReads, 1, 'cloud images do not wait for local paths');
+      if (scenario === 'editing') {
+        page.bodyBuffer = '刚刚输入的文字';
+        page.setData({ editing: true });
+      } else if (scenario === 'unloaded') {
+        page.unloaded = true;
+      } else {
+        const newer = stateWithBook();
+        newer.manuscriptRevisions![0].draft.title = '较新的刷新';
+        await call(page, 'refresh', newer);
+      }
+      const before = JSON.stringify(page.data);
+      for (const finish of pending.reverse()) finish();
+      await loading;
+      assert.equal(JSON.stringify(page.data), before, `${scenario}: late photo responses must not render stale data`);
+      if (scenario === 'editing') assert.equal(page.bodyBuffer, '刚刚输入的文字');
+      if (scenario === 'superseded') assert.equal((page.data.draft as BiographyDraft).title, '较新的刷新');
+    } finally { restoreApi(); env.restore(); }
+  }
+});
+
 function captureTimers() {
   const previousSet = globalThis.setTimeout;
   const previousClear = globalThis.clearTimeout;
