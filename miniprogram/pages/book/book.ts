@@ -262,7 +262,7 @@ Page({
       this.activeChapterId = backup.chapterId;
       this.pendingSave = acknowledged ? undefined : backup.pendingSave;
     }
-    const visibleChapters = this.visibleChapters(chapters);
+    const visibleChapters = this.visibleChapters(chapters, story);
     let view = backup?.view || this.data.view;
     if (!visibleChapters.length) view = "contents";
     else if (!view) {
@@ -365,11 +365,11 @@ Page({
     this.chapterTitleBuffer = active?.title ?? "";
     this.bodyBuffer = plainText(this.contentBuffer).replace(/\n+$/, "");
   },
-  /** Story selection narrows the view without removing other chapters from the saved manuscript. */
-  visibleChapters(chapters?: ManuscriptChapter[]): ManuscriptChapter[] {
+  /** Independent story revisions already contain only their own chapters; virtual legacy stories still need filtering. */
+  visibleChapters(chapters?: ManuscriptChapter[], story?: Story): ManuscriptChapter[] {
     const source = chapters ?? this.chapters;
     const scope = this.storyScopeMemoryIds;
-    if (!scope) return source;
+    if ((chapters ? story : this.story) || !scope) return source;
     return source.filter((chapter: ManuscriptChapter) => (
       chapter.title.trim() === this.requestedStoryTitle
       || chapter.memoryIds.some(memoryId => scope.has(memoryId))
