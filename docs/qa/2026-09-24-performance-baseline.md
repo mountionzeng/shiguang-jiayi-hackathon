@@ -98,9 +98,42 @@
 - 在隔离开发工具实走：打开同一本书 → 点击纯文字章节 → 点目录 → 重开章节 → 返回上页 → 重开书稿；目录与正文截图已查看，无加载错误，没有输入或保存用户正文。截图仅存本机 `/private/tmp/shiguang-render-first-contents.png` 和 `/private/tmp/shiguang-render-first-chapter.png`，不提交仓库。
 - 自动保存、账号隔离、草稿恢复、冲突与版本锁依赖现有回归测试；本批未实测真实写入流程。含正文图片的原生编辑器时序由受控测试覆盖，当前真实样本没有可用正文照片路径，仍需真机补验。
 
+## 第四批：服务端分段计时与一轮独立查询并行
+
+### 代码证据与边界
+
+`storyBooks.state` 原先在完成身份解析、读前 owner 校验之后，先单独等 `families`，再并行读 `stories`、`biography_drafts`、`story_migration_items`、`memories`、`family_members`，最后再次校验 owner。五个集合原本就并行，不应误判为逐集合串行。首次 identity bootstrap 和已有关联身份的路径也不同，不能拿后者替代首次登录验收。
+
+本批只将 **state 的房间资料与五个集合同时读取**；查询仍使用服务端身份得到的稳定 familyId。缺失房间、任一集合读取失败都拒绝整个结果，不返回空状态。命令、迁移和 AI 上下文的房间读取顺序保持原状；未改身份实现、事务、迁移映射、权限开关或返回结构。并行组最多由 5 个读取增至 6 个，实际服务器收益和负载仍待观察。
+
+### 新日志
+
+云函数内新增 `[performance]`，每条只有固定 `operation`、`outcome`、`durationMs`：
+
+- `state.identity`：解析/首次建立 alias、principal、space 身份，包含身份事务。
+- `state.authorize.before` / `state.authorize.after`：读取前后的 owner 复核。
+- `state.query.families`、`state.query.stories`、`state.query.biography_drafts`、`state.query.story_migration_items`、`state.query.memories`、`state.query.family_members`：各次读取；集合计时包含服务端分页全部读取。
+- `state.load`：上述并行读取及状态组装。
+- `state.total`：整个 state 分发，包含上述三个权限阶段；不包含云函数冷启动、网络传输及平台响应序列化。
+
+日志使用云平台本身的请求上下文分组，不额外输出账号、家庭、故事、正文、查询条件或原始错误。日志失败不改变原始返回值或异常。`state.query.*` 相互重叠，不能相加；`state.load` 已包含它们，不能与其相加。启用身份权限时正常请求共 11 条日志，失败时只记录已执行阶段。权限功能关闭时保持旧路径，省略身份和 owner 三条日志。
+
+### 受控证据与检查
+
+先写测试，把房间读取挂起，确认改前只启动 `families`，其余五类尚未开始；改后六类全部启动，释放等待后完整返回内容一致。
+
+合成对照：`node scripts/benchmark-story-state.cjs`，模拟已建立身份的账户、7 本故事与 7 条记忆，每次数据库读取附加 20 ms 延迟，3 次样本。改前耗时 303.71 / 303.81 / 301.29 ms，改后 280.28 / 273.66 / 283.28 ms；这只是本机人工延迟实验，不是生产或真机速度。
+
+- 前后每次仍为 18 次数据库读取；其中 alias 4 次、principal 3 次、space 3 次、family 3 次、集合读取 5 次，权限检查未省略。
+- 单页集合条件下，依赖链从 14 轮等待减为 13 轮；数据读取阶段从两轮减为一轮。单轮实际耗时因数据库与网络而异，不能据此推断线上 4.4 秒会降至多少。
+- 六次返回内容 SHA-256 均为 `ce0ae5987f313a608010dd65eeb669fe4fcf336737bd2ed5fed8e82c3d1e6f4b`。
+- 类型检查及完整测试：**857 通过 / 0 失败**。新增 6 项，覆盖并行启动和结果一致、缺失房间/各集合失败、伪造 familyId 与稳定迁移空间、完整身份检查次数、读取中撤销 alias/principal/space/ownership、日志隐私与故障不影响结果；现有首次身份建立、写入版本锁及迁移回归全部通过。
+
+本批仅在独立工作树保存云函数代码，**没有部署，也没有用旧云函数的真实调用冒充新代码回归**。下一次受控部署应完整包含 `storyBooks/performance.js` 及服务/读取改动，不只替换入口；先只读验证首页、书架、同一本书及重开流程，核对响应与撤权行为，并将客户端 `room.state` 与同一云请求的上述阶段对应。真实新账号、双端手机与真实写入验收仍未完成。不能把本批标记为云端 4.4 秒问题已解决。
+
 ## 剩余优化与验收
 
-下一步优先定位 `storyBooks.state` 内部数据库与鉴权阶段的耗时，并检查新账号初始化路径。完整验收还需补“整理记忆 → 切标签”、首次登录、iOS / Android 真机及修改前后同流程对照，才能给出整体提速结论。
+下一步在受控部署后用新增分段日志定位 `storyBooks.state` 内部数据库与鉴权阶段的真实耗时，并检查新账号初始化路径。完整验收还需补“整理记忆 → 切标签”、首次登录、iOS / Android 真机及修改前后同流程对照，才能给出整体提速结论。
 
 日志检查：实时日志搜索 `[performance]`，按 `operation` 和 `page` 比较。`room.cloud.route=story-service`、`clientPageReads=0` 表示走完整云函数状态；`client-fallback` 必须核对原因；分页次数仅统计客户端集合分页尝试，不包含身份查询、单文档查询和云函数内部数据库读取。`room.load` 已包含 `room.cloud` 的耗时，两者不能相加。
 

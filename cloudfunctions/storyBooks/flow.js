@@ -1,4 +1,5 @@
 const core = require('./core');
+const { measurePerformance } = require('./performance');
 const { assertLegacyWritable, protocolError } = require('./provenance');
 const docId = (familyId,id) => familyId+'_'+id;
 const MIGRATION_BATCH_SIZE=80;
@@ -263,16 +264,28 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     legacyImageJobs:[...(source.legacyImageJobs || [])].filter(job=>!job.storyId).sort((a,b)=>String(a._id).localeCompare(String(b._id))),
   });
   const sourceDigest = source => core.hash(core.stable(legacySource(source)));
-  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false}={}) {
-    const family = await repo.get('families',ctx.familyId);
-    if (!family) throw new Error('没有找到你的记录空间');
-    const [stories,drafts,pending,memories,members,legacyImages,legacyImageJobs] = await Promise.all([
-      repo.all('stories',ctx.familyId),repo.all('biography_drafts',ctx.familyId),repo.all('story_migration_items',ctx.familyId),
-      includeMemories ? repo.all('memories',ctx.familyId) : [],
-      includeMembers || includeMemories ? repo.all('family_members',ctx.familyId) : [],
+  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false}={}) {
+    const measure = readState ? measurePerformance : (_operation,work)=>work();
+    const readFamily = async () => {
+      const family = await measure('state.query.families',()=>repo.get('families',ctx.familyId));
+      if (!family) throw new Error('没有找到你的记录空间');
+      return family;
+    };
+    const readCollections = () => Promise.all([
+      measure('state.query.stories',()=>repo.all('stories',ctx.familyId)),
+      measure('state.query.biography_drafts',()=>repo.all('biography_drafts',ctx.familyId)),
+      measure('state.query.story_migration_items',()=>repo.all('story_migration_items',ctx.familyId)),
+      includeMemories ? measure('state.query.memories',()=>repo.all('memories',ctx.familyId)) : [],
+      includeMembers || includeMemories ? measure('state.query.family_members',()=>repo.all('family_members',ctx.familyId)) : [],
       includeMigrationSources ? repo.all('story_images',ctx.familyId) : [],
       includeMigrationSources ? repo.all('image_jobs',ctx.familyId) : [],
     ]);
+    // With access enabled, the service's owner check precedes these reads.
+    // They only depend on ctx.familyId; keep command/migration ordering unchanged.
+    const [family,rows] = readState
+      ? await Promise.all([readFamily(),readCollections()])
+      : [await readFamily(),await readCollections()];
+    const [stories,drafts,pending,memories,members,legacyImages,legacyImageJobs] = rows;
     const membersById=new Map(members.map(member=>[storedMemberId(member),member]));
     const contributions=memories.map(memory=>{
       const member=membersById.get(memory.authorMemberId);
@@ -294,7 +307,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     return state;
   }
   async function state(ctx) {
-    const loaded=await load(ctx,{includeMemories:true,includeMembers:true});
+    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true});
     const membersById=new Map(loaded.members.map(member=>[member.id,member]));
     return {
       roomStateVersion:1,

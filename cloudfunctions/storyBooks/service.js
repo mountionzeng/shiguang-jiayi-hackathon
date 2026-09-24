@@ -1,4 +1,5 @@
 const { createHandlers } = require('./flow');
+const { measurePerformance } = require('./performance');
 const { resolveStoryIdentity, assertSpaceOwner, identityError } = require('./identity');
 const { readAuthorizedStory } = require('./access');
 const { createInvitationService } = require('./invitations');
@@ -18,11 +19,12 @@ function createStoryService(repo, options = {}) {
   const accessEnabled = options.accessEnabled === true;
   const canaryFamilies = new Set(options.sharedReadFamilyIds || []);
   const invitations = createInvitationService(repo, options);
-  return async function dispatch(context, event = {}) {
+  async function dispatch(context, event = {}) {
+    const measure = event?.action === 'state' ? measurePerformance : (_operation,work)=>work();
     if (!context || typeof context.OPENID !== 'string' || !/^[0-9A-Za-z_-]{1,128}$/.test(context.OPENID)) throw identityError('AUTH_REQUIRED');
     if (accessEnabled && options.rulesReady !== true) throw accessError('STORY_ACCESS_NOT_READY');
     const ctx = accessEnabled
-      ? {...await resolveStoryIdentity(repo, context, { bootstrapAppId: options.bootstrapAppId }),verifiedOpenid:context.OPENID}
+      ? {...await measure('state.identity',()=>resolveStoryIdentity(repo, context, { bootstrapAppId: options.bootstrapAppId })),verifiedOpenid:context.OPENID}
       : { familyId: `family_${context.OPENID}` };
     const action = String(event?.action || '');
     if (action === 'capabilities') {
@@ -108,7 +110,7 @@ function createStoryService(repo, options = {}) {
         chapterId:event.chapterId,blockIds:event.blockIds,photoIds:event.photoIds,descriptorId:event.descriptorId},
       {approve:options.approveShareCard,sign:options.signMedia});
     }
-    if (accessEnabled) await assertSpaceOwner(repo, ctx);
+    if (accessEnabled) await measure('state.authorize.before',()=>assertSpaceOwner(repo, ctx));
     // Existing commands remain owner-only. Revalidate on EVERY transaction,
     // including migration batches and idempotent replay, not just at dispatch.
     const guardedRepo = accessEnabled ? { ...repo, transaction: operation => repo.transaction(async tx => {
@@ -117,7 +119,7 @@ function createStoryService(repo, options = {}) {
     }) } : repo;
     const handlers = createHandlers(guardedRepo, options);
     let result;
-    if (action === 'state') result = await handlers.state(ctx);
+    if (action === 'state') result = await measure('state.load',()=>handlers.state(ctx));
     else if (action === 'migrate') result = await handlers.migrate(ctx);
     else if (action === 'context') result = await handlers.aiContext(ctx, event);
     else if (action === 'memberAdd') result = await handlers.memberAdd(ctx, event);
@@ -128,9 +130,12 @@ function createStoryService(repo, options = {}) {
     else result = await handlers.command(ctx, event);
     // Reads and already-acknowledged operations can return without a write
     // transaction. Do not release data if identity was revoked during the read.
-    if (accessEnabled) await assertSpaceOwner(repo, ctx);
+    if (accessEnabled) await measure('state.authorize.after',()=>assertSpaceOwner(repo, ctx));
     return result;
-  };
+  }
+  return (context,event={}) => event?.action === 'state'
+    ? measurePerformance('state.total',()=>dispatch(context,event))
+    : dispatch(context,event);
 }
 
 module.exports = { createStoryService };
