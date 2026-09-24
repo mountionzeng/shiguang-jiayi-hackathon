@@ -18,7 +18,7 @@ test("账号服务只接受已完成服务端绑定的微信身份", () => {
   assert.equal(account.displayName, "岱");
   assert.equal(account.profileComplete, true);
   assert.equal(account.computeBalanceMicros, 10_000_000);
-  assert.equal(account.computeRate, "¥1 = 2 算力");
+  assert.equal(account.computeRate, "");
   assert.throws(() => accountServiceTest.parseAccount({ accountLinked: false }), /暂未关联/);
 });
 

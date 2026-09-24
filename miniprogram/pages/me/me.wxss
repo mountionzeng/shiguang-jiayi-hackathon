@@ -254,3 +254,9 @@
 
 /* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
 .me-row.me-row { width: 100%; margin-left: 0; margin-right: 0; }
+.text-compute-section { margin: 24rpx 32rpx; color: var(--ink); }
+.text-compute-hint { margin-top: 10rpx; color: var(--ink-soft); font-size: 24rpx; line-height: 1.6; }
+.text-compute-row { padding: 18rpx 0; border-bottom: 1rpx solid rgba(111,79,58,.12); }
+.text-compute-title { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; font-size: 27rpx; }
+.text-compute-time { font-size: 22rpx; color: var(--ink-soft); }
+.text-compute-detail { margin-top: 6rpx; font-size: 25rpx; line-height: 1.6; font-variant-numeric: tabular-nums; }

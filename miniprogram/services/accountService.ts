@@ -25,7 +25,7 @@ function parseAccount(result: unknown): ShiguangAccount {
     computeBalanceMicros: Number.isSafeInteger(account.computeBalanceMicros)
       ? Math.max(0, Number(account.computeBalanceMicros))
       : 0,
-    computeRate: "¥1 = 2 算力",
+    computeRate: "",
   };
   if (!response.accountLinked || !parsed.accountId || !parsed.primaryFamilyId) {
     throw new Error("微信账号暂未关联，请稍后重试");
@@ -49,6 +49,18 @@ async function callAccount(action: "get" | "updateProfile", displayName = ""): P
 
 export function loadCurrentAccount(): Promise<ShiguangAccount> {
   return callAccount("get");
+}
+
+export async function loadSharedComputeBalance(): Promise<number> {
+  if (!wx.cloud) throw new Error("算力暂不可用");
+  const response = await wx.cloud.callFunction({
+    name: "getOpenId", data: { action: "computeBalance" },
+  });
+  const result = response.result as { version?: number; unit?: string; availableMicros?: number };
+  if (result?.version !== 1 || result.unit !== "compute" ||
+      !Number.isSafeInteger(result.availableMicros) || Number(result.availableMicros) < 0)
+    throw new Error("算力暂不可用");
+  return Number(result.availableMicros);
 }
 
 export function saveCurrentAccountName(displayName: string): Promise<ShiguangAccount> {

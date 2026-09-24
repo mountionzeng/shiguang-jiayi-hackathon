@@ -4,6 +4,7 @@ const {formatContext} = require('./personalMemoryCore');
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
 const { defaultFetch } = require("./httpFetch.js");
+const { createTextMeter } = require("./textComputeUsage");
 const MEMORY_TYPES = ["note", "memoir"];
 const {
   AI_CONSENT_VERSION,
@@ -206,11 +207,12 @@ async function main(event, dependencies = {}) {
     await reserveAiRequest(db, identity, "organizeMemory", dependencies.nowMs);
   }
 
+  const meter = createTextMeter({ db, identity, kind: "organizeMemory", model, baseUrl, fetcher: defaultFetch });
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 28_000);
   let response;
   try {
-    response = await defaultFetch(`${baseUrl}/chat/completions`, {
+    response = await meter.fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -235,7 +237,7 @@ async function main(event, dependencies = {}) {
     if (error && error.name === "AbortError") {
       const fallback = buildLocalCard(transcript, memoryType);
       if (!dependencies.skipGuard) await assertIdentityStillActive(db, identity);
-      return fallback;
+      return { ...fallback, computeUsage: meter.snapshot() };
     }
     throw error;
   } finally {
@@ -254,7 +256,7 @@ async function main(event, dependencies = {}) {
     await assertIdentityStillActive(db, identity);
   }
   if (personalContext) await commitContext(memoryRepo, identity, personalContext);
-  return { ...result, personalMemorySelectorVersion: personalContext?.selectorVersion, aiDisclosure: result.generationMode === "cloud-ai" ? "文字 AI 生成" : "" };
+  return { ...result, personalMemorySelectorVersion: personalContext?.selectorVersion, aiDisclosure: result.generationMode === "cloud-ai" ? "文字 AI 生成" : "", computeUsage: meter.snapshot() };
 }
 
 module.exports = {

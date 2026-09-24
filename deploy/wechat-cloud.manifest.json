@@ -205,7 +205,7 @@
       "deploymentClass": "base",
       "defaultDeploy": true,
       "timeoutSeconds": 10,
-      "environmentVariables": []
+      "environmentVariables": ["WECHAT_APP_ID", "TEXT_COMPUTE_USAGE_ENABLED", "SHIGUANG_COMPUTE_ENABLED", "DRINKING_TIME_BRIDGE_BASE_URL", "DRINKING_TIME_BRIDGE_SECRET"]
     },
     "resetCurrentUserRoom": {
       "deploymentClass": "base",
@@ -226,6 +226,7 @@
       "timeoutSeconds": 60,
       "environmentVariables": [
         "CHAT_AI_API_KEY",
+        "TEXT_COMPUTE_USAGE_ENABLED",
         "CHAT_AI_BASE_URL",
         "CHAT_AI_MODEL",
         "AI_API_KEY",
@@ -244,7 +245,7 @@
       "defaultDeploy": false,
       "activationRequirements": ["Configure AI_API_KEY, AI_BASE_URL, and AI_MODEL", "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation", "Confirm provider entitlement, quota, and billing mode", "Verify input/output moderation and one controlled request before enabling both release gates"],
       "timeoutSeconds": 60,
-      "environmentVariables": ["AI_API_KEY", "AI_BASE_URL", "AI_MODEL", "WECHAT_APP_ID", "AI_SERVER_RELEASE_READY", "AI_DAILY_REQUEST_LIMIT", "AI_MIN_INTERVAL_MS"]
+      "environmentVariables": ["AI_API_KEY", "AI_BASE_URL", "AI_MODEL", "WECHAT_APP_ID", "AI_SERVER_RELEASE_READY", "AI_DAILY_REQUEST_LIMIT", "AI_MIN_INTERVAL_MS", "TEXT_COMPUTE_USAGE_ENABLED"]
     },
     "organizeMemory": {
       "deploymentClass": "configured",
@@ -258,6 +259,7 @@
       "timeoutSeconds": 60,
       "environmentVariables": [
         "ORGANIZE_AI_API_KEY",
+        "TEXT_COMPUTE_USAGE_ENABLED",
         "ORGANIZE_AI_BASE_URL",
         "ORGANIZE_AI_MODEL",
         "CHAT_AI_API_KEY",
@@ -297,6 +299,7 @@
     }
   },
   "collections": {
+    "text_compute_operations": ["account_started: accountId ascending, startedAt descending"],
     "personal_memory_controls": ["user_id: userId, _id"],
     "personal_memory_insights": ["user_id: userId, _id"],
     "personal_memory_evidence": ["user_id: userId, _id"],

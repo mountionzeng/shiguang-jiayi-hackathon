@@ -4,6 +4,7 @@ const {formatContext} = require('./personalMemoryCore');
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const TOKENHUB_BASE_URL = "https://tokenhub.tencentmaas.com/v1";
 const { defaultFetch } = require("./httpFetch.js");
+const { createTextMeter } = require("./textComputeUsage");
 const {
   AI_CONSENT_VERSION,
   aiError,
@@ -410,9 +411,9 @@ function buildOutputMessages({
   ];
 }
 
-async function requestChatCompletion({ baseUrl, apiKey, model, messages, temperature, signal }) {
+async function requestChatCompletion({ baseUrl, apiKey, model, messages, temperature, signal, fetcher }) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await defaultFetch(`${baseUrl}/chat/completions`, {
+    const response = await fetcher(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -518,6 +519,7 @@ async function main(event, dependencies = {}) {
     await reserveAiRequest(db, identity, "chatInterview", dependencies.nowMs);
   }
 
+  const meter = createTextMeter({ db, identity, kind: "chatInterview", model, baseUrl, fetcher: defaultFetch });
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20_000);
   try {
@@ -528,6 +530,7 @@ async function main(event, dependencies = {}) {
       model,
       temperature: 0.7,
       signal: controller.signal,
+      fetcher: meter.fetch,
       messages,
     });
     const result = parseInterviewPrompt(content, fallbackDimension);
@@ -536,7 +539,7 @@ async function main(event, dependencies = {}) {
       await assertIdentityStillActive(db, identity);
     }
     if (personalContext) await commitContext(memoryRepo, identity, personalContext);
-    return { ...result, personalMemorySelectorVersion: personalContext?.selectorVersion, aiDisclosure: "文字 AI 生成" };
+    return { ...result, personalMemorySelectorVersion: personalContext?.selectorVersion, aiDisclosure: "文字 AI 生成", computeUsage: meter.snapshot() };
   } finally {
     clearTimeout(timeoutId);
   }

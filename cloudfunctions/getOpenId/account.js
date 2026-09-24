@@ -121,7 +121,7 @@ async function linkCurrentAccount(db, context) {
     computeBalanceMicros: Number.isSafeInteger(accountData.computeBalanceMicros)
       ? accountData.computeBalanceMicros
       : Math.max(0, Number(existingAccount && existingAccount.computeBalanceMicros) || 0),
-    computeRate: "¥1 = 2 算力",
+    computeRate: "",
   };
 }
 
