@@ -542,9 +542,10 @@ assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
 - `npm run check`：926 项通过。
 - `git diff --check`：通过。
 - 安全复核与正确性复核：均无阻塞发现。
-- 微信开发者工具真实流程：打开测试书《临时图片测试簿》→ 进入封面页 → 选择 1 张已有 AI 插图作为参考 → 生成封面 → 真实调用 TokenHub 出图 → 转存云存储 → 平台审核通过 → 质检通过 → 设为封面 → 回首页确认首页封面同步更新。新图 `imageId` 为 `family_oHtZs3YqeRqjIGF5dYGJe-xF9AqE_img_req-mugol41o-lq41rwa6`。
+- 微信开发者工具真实流程一：打开测试书《临时图片测试簿》→ 进入封面页 → 选择 1 张已有 AI 插图作为参考 → 留空手写美术想法 → 生成封面 → 真实调用 TokenHub 出图 → 转存云存储 → 平台审核通过 → 质检通过 → 设为封面 → 回首页确认首页封面同步更新。新图 `imageId` 为 `family_oHtZs3YqeRqjIGF5dYGJe-xF9AqE_img_req-mugol41o-lq41rwa6`。
+- 微信开发者工具真实流程二：部署手写美术想法审核修复后，重新进入同一本测试书 → 选择 1 张已有 AI 插图作为参考 → 输入 `淡墨与暖黄的纸本插画` → 确认生成 → 任务返回 `ideaApplied: true` 与 `referenceApplied: true` → 真实调用 TokenHub 出图 → 转存云存储 → 平台审核通过 → 质检通过 → 设为封面 → 回首页确认首页封面同步更新。新图 `imageId` 为 `family_oHtZs3YqeRqjIGF5dYGJe-xF9AqE_img_req-mugp4xiz-xt4uzvg9`。
 
 限制：
 
 - 本次电脑端验收覆盖了微信开发者工具模拟器流程；真机扫码体验仍由二维码交付后继续反馈。
-- 因当天测试额度有限，手写“美术想法”修复会在部署后做一次轻量验证，优先验证可排队与真实生成，不再做大规模前后对比。
+- 因当天测试额度有限，本轮只做了两次真实封面生成验证，没有做大规模前后对比。
