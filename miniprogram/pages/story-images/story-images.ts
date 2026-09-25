@@ -46,6 +46,7 @@ Page({
     groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
+    artDirections: {} as Record<string, string>,
   },
   unloaded: false,
   hidden: false,
@@ -164,6 +165,7 @@ Page({
       const job = await storyImageApi.submitChapterImage({
         ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
         ...(referenceImageId ? { referenceImageId } : {}),
+        ...(this.data.artDirections[chapterId]?.trim() ? { artDirection: this.data.artDirections[chapterId].trim() } : {}),
       });
       if (this.unloaded) return;
       this.setData({ notice: job.message });
@@ -177,6 +179,11 @@ Page({
     } finally {
       if (!this.unloaded) this.setData({ submitting: "" });
     }
+  },
+  onArtDirectionInput(event: { currentTarget: { dataset: { id: string } }; detail: { value: string } }) {
+    const chapterId = event.currentTarget.dataset.id;
+    if (!chapterId) return;
+    this.setData({ artDirections: { ...this.data.artDirections, [chapterId]: event.detail.value } });
   },
   /** Chooses a backdrop picture for a chapter, or clears it when the image id is empty. */
   async setBackdrop(event: { currentTarget: { dataset: { chapter: string; image?: string } } }) {

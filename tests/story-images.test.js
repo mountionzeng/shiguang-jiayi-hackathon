@@ -122,7 +122,8 @@ function memoryRepo() {
       if(!context)throw new core.StoryImageError('STORY_NOT_FOUND','这本故事书已不可用');
       if(context.revision.id!==job.sourceRevisionId)throw new core.StoryImageError('REVISION_CHANGED','书稿版本已经变化');
       core.assertUnrestrictedStory(context.story,context.draft);
-      if(core.textHash((job.purpose === "cover" ? core.bookSource(context.draft) : core.chapterSource(context.draft,job.chapterId)).text)!==job.source?.textHash)
+      const source=job.purpose === "cover" ? core.bookSource(context.draft) : core.chapterSource(context.draft,job.chapterId);
+      if((source.fullTextHash || core.textHash(source.text))!==job.source?.textHash)
         throw new core.StoryImageError('REVISION_CHANGED','章节内容已经变化');
     },
     async createImage(id, data) { images.set(id, { ...data, _id: id }); },
@@ -239,14 +240,14 @@ test("TokenHub 出图：同步接口、API Key 鉴权、关闭改写、明确带
     },
   });
   assert.equal(client.configured, true);
-  const result = await client.generate({ prompt: "画面", width: 1024, height: 768 });
+  const result = await client.generate({ prompt: "画面", width: 1024, height: 768, seed: 12345 });
   assert.deepEqual(result, {
     resultUrl: "https://aigc-image.cos.myqcloud.com/x/result.png", revisedPrompt: "改写后", providerJobId: "4-WandImage-abc", usageTokens: 1024,
   });
   assert.equal(sent.url, "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation");
   assert.equal(sent.init.method, "POST");
   assert.equal(sent.init.headers.Authorization, "Bearer sk-test");
-  assert.deepEqual(JSON.parse(sent.init.body), { model: "hy-image-v3", prompt: "画面", size: "1024x768", revise: false, footnote: "AI生成" });
+  assert.deepEqual(JSON.parse(sent.init.body), { model: "hy-image-v3", prompt: "画面", size: "1024x768", seed: 12345, revise: false, footnote: "AI生成" });
   assert.equal(tokenhub.createTokenHubImageClient({ apiKey: "" }).configured, false);
 });
 
@@ -257,6 +258,7 @@ test("TokenHub 出图：拒绝的请求带着 HTTP 状态码抛出，成功却�
   await assert.rejects(empty.generate({ prompt: "p", width: 1024, height: 768 }), error => error.httpStatus === undefined && error.message === "TOKENHUB_NO_IMAGE");
   const tooBig = tokenhub.createTokenHubImageClient({ apiKey: "k", fetchImpl: async () => { throw new Error("should not call"); } });
   await assert.rejects(tooBig.generate({ prompt: "p", width: 2048, height: 1024 }), error => error.httpStatus === 400);
+  await assert.rejects(tooBig.generate({ prompt: "p", width: 1024, height: 768, seed: 0 }), error => error.httpStatus === 400);
 });
 
 test("两种配图尺寸都在 TokenHub 允许的范围内", () => {
@@ -400,6 +402,22 @@ test("已经排队的故事在付费出图前重新检查来源状态",async()=>
   assert.equal(h.calls.generate.length,0);
 });
 
+test("长章节前 4000 字不变、后半段改动时，付费出图前拒绝旧请求", async () => {
+  const h = harness(), storyId = "story-long-chapter";
+  const prefix = "院中的日常。".repeat(600);
+  const record = body => ({ familyId: FAMILY, storyId, draftType: "story-revision",
+    revision: { id: "revision-long", storyId, savedAt: "2026-09-18", draft: {
+      chapters: [{ id: CHAPTER.id, content: [{ text: `${prefix}${body}` }] }],
+    } } });
+  h.repo.setDrafts([record("1983年的冬天。")]);
+  const event = { familyId: FAMILY, storyId, chapterId: CHAPTER.id, requestId: "req-long-era-0001", purpose: "illustration" };
+  assert.equal((await h.handlers.submit(ctx, event)).job.status, "queued");
+  h.repo.setDrafts([record("1984年的冬天。")]);
+  const result = await h.handlers.status(ctx, { familyId: FAMILY, storyId, jobId: `${FAMILY}_${event.requestId}` });
+  assert.equal(result.job.status, "failed");
+  assert.equal(h.calls.generate.length, 0);
+});
+
 test("迁移图片链接支持本书参考和删除，同时拒绝另一故事操作",async()=>{
   const h=harness(), storyId="story-book-a", imageId=`${FAMILY}_img_req-linked001`;
   h.repo.setDrafts([{
@@ -492,11 +510,72 @@ test("插图提示词只用肯定式描述，不列禁止画的东西", () => {
     "illustration",
   );
   assert.deepEqual([width, height], [1024, 768]);
-  assert.match(prompt, /纸本淡彩水彩插画/);
+  assert.match(prompt, /纸本手绘插画/);
+  assert.match(prompt, /纸面的纤维/);
   assert.match(prompt, /画中有竹竿、棉被。/);
   assert.match(prompt, /人物以远景或局部呈现：远景中的背影。/);
   assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
   assert.doesNotMatch(prompt, /时代感/);
+});
+
+test("已保存的全书文字只提炼媒介线索，当前章仍控制画面事实与年代", () => {
+  const draft = { chapters: [
+    { id: "c1", content: [{ text: "我在窗前想起那一天。" }] },
+    { id: "c2", content: [{ text: "村里的旧院子有一口井。" }] },
+    { id: "c3", content: [{ text: "乡间集市散后，我们走过田地。" }] },
+  ] };
+  const source = core.chapterSource(draft, "c1");
+  assert.equal(source.bookLifeCategory, "local");
+  const prompt = core.buildImagePrompt({ scene: "窗前", setting: "窗前", objects: [], light: "", mood: "怀旧", eraHint: "", figures: [] }, "illustration", undefined, source).prompt;
+  assert.match(prompt, /淡墨皴擦与薄水彩/);
+  assert.match(prompt, /视点贴近讲述者/);
+  assert.match(prompt, /叠笔与擦洗/);
+  assert.doesNotMatch(prompt, /旧院子|集市|田地|年代质地/);
+});
+
+test("被正文否定的情绪不会变成画法；明确年代才进入提示词", () => {
+  const scene = { scene: "窗前的桌子", setting: "窗前", objects: ["桌子"], light: "", mood: "怀旧", eraHint: "", figures: [] };
+  const source = { text: "我不想再沉在怀旧里，今天只想看窗前的桌子。" };
+  const prompt = core.buildImagePrompt(scene, "illustration", undefined, source).prompt;
+  assert.doesNotMatch(prompt, /被时间轻轻洗过|年代质地/);
+  const dated = core.buildImagePrompt({ ...scene, eraHint: "1980年代" }, "cover", undefined, { text: "1980年代的家里" }).prompt;
+  assert.match(dated, /正文明确写出的1980年代/);
+});
+
+test("长章节后半段的明确年代仍进入美术提示词，且完整正文参与来源校验", () => {
+  const body = `${"院子里的日常。".repeat(600)}后来写到1983 年冬天。`;
+  const source = core.chapterSource({ chapters: [{ id: "long", content: [{ text: body }] }] }, "long");
+  assert.equal(source.text.length, 4000);
+  assert.doesNotMatch(source.text, /1983/);
+  assert.equal(source.fullTextHash, core.textHash(body));
+  const scene = { scene: "院子", setting: "院子", objects: [], light: "", mood: "安静", eraHint: "", figures: [] };
+  const prompt = core.buildImagePrompt(scene, "illustration", undefined, source).prompt;
+  assert.match(prompt, /正文明确写出的1983 年/);
+  const changed = core.chapterSource({ chapters: [{ id: "long", content: [{ text: body.replace("1983", "1984") }] }] }, "long");
+  assert.notEqual(changed.fullTextHash, source.fullTextHash);
+});
+
+test("正文跨越多个明确年代时，不把其中之一当作全书年代", () => {
+  const source = { text: "1983年的小院。1998年的城市。" };
+  const scene = { scene: "小院", setting: "小院", objects: [], light: "", mood: "", eraHint: "1983年", figures: [] };
+  const prompt = core.buildImagePrompt(scene, "cover", undefined, source).prompt;
+  assert.doesNotMatch(prompt, /年代质地/);
+});
+
+test("美术想法在排队前必须审核，重复请求不能改写原想法", async () => {
+  const checks = [];
+  const h = harness({ deps: { textChecker: { async check(input) { checks.push(input); return { ok: true }; } } } });
+  const event = { ...submitEvent("req-art-direction-0001"), artDirection: "暖黄彩铅和粗纸" };
+  await h.handlers.submit(ctx, event);
+  assert.deepEqual(checks, [{ text: event.artDirection, openid: OWNER_OPENID }]);
+  assert.match(h.repo.jobs.get(`${FAMILY}_${event.requestId}`).prompt, /用户的美术偏好：暖黄彩铅和粗纸/);
+  await assert.rejects(h.handlers.submit(ctx, { ...event, artDirection: "青色水墨" }), error => error.code === "REQUEST_CONFLICT");
+  assert.equal(checks.length, 1);
+  assert.throws(() => core.normalizeSubmitInput({ ...event, artDirection: "不要油画" }), error => error.code === "INVALID_ART_DIRECTION");
+  const blocked = harness({ deps: { textChecker: { async check() { return { ok: false, risky: true }; } } } });
+  await assert.rejects(blocked.handlers.submit(ctx, event), error => error.code === "ART_DIRECTION_BLOCKED");
+  assert.equal(blocked.repo.jobs.size, 0);
+  await assert.rejects(harness().handlers.submit(ctx, event), error => error.code === "ART_DIRECTION_CHECK_FAILED");
 });
 
 test("参考图只提取有限的视觉连续性信息，并写进新图提示词", async () => {
@@ -762,7 +841,7 @@ test("页面查进度时才出图：画好先记下链接，再转存云存储�
   const queuedPrompt = repo.jobs.get(job.jobId).prompt;
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(calls.generate.length, 1);
-  assert.deepEqual(calls.generate[0], { prompt: queuedPrompt, width: 1024, height: 768 });
+  assert.deepEqual(calls.generate[0], { prompt: queuedPrompt, width: 1024, height: 768, seed: core.imageSeed(FAMILY, submitEvent().requestId) });
   assert.deepEqual(calls.download, ["https://result.example/1.png"]);
   assert.equal(calls.aigc.length, 1);
   assert.equal(calls.aigc[0].contentType, "image/png");

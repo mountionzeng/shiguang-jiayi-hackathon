@@ -9,7 +9,7 @@ Page({
   data: {
     storyId: '', title: '', coverImageId: '', version: 0, chapterCount: 0, textLength: 0,
     references: [] as ReferenceCard[], selectedCount: 0, covers: [] as CoverCard[], jobs: [] as StoryImageJob[],
-    loading: true, submitting: false, selecting: false, activeJob: false, notice: '', loadError: '',
+    loading: true, submitting: false, selecting: false, activeJob: false, notice: '', loadError: '', artDirection: '',
   },
   hidden: false, unloaded: false, refreshId: 0,
   timer: undefined as ReturnType<typeof setTimeout> | undefined,
@@ -69,6 +69,7 @@ Page({
     const references = this.data.references.map(item => item.id === target.id ? {...item,selected:!item.selected} : item);
     this.setData({references, selectedCount:references.filter(item => item.selected).length, notice:''});
   },
+  onArtDirectionInput(event: {detail:{value:string}}) { this.setData({artDirection:event.detail.value}); },
   async generate() {
     if (this.data.submitting || this.data.selecting || this.data.loading || this.data.jobs.some(isActiveJob)) return;
     this.setData({submitting:true, notice:'正在阅读整本书，构思封面…'});
@@ -76,7 +77,8 @@ Page({
     try {
       const job = await storyCoverApi.submit({storyId:this.data.storyId,
         referenceImageIds:selected.filter(item => item.kind === 'image').map(item => item.id),
-        referencePhotoIds:selected.filter(item => item.kind === 'photo').map(item => item.id)});
+        referencePhotoIds:selected.filter(item => item.kind === 'photo').map(item => item.id),
+        ...(this.data.artDirection.trim() ? {artDirection:this.data.artDirection.trim()} : {})});
       if (this.unloaded) return;
       this.setData({notice:job.message});
       await this.refresh();

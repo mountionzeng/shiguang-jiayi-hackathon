@@ -145,7 +145,7 @@ const repo = {
         throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
       assertUnrestrictedStory(story,record.revision.draft);
       const source=job.purpose === "cover" ? bookSource(record.revision.draft) : chapterSource(record.revision.draft,job.chapterId);
-      if(textHash(source.text)!==job.source?.textHash)throw new StoryImageError("REVISION_CHANGED","章节内容已经变化，请重新配图");
+      if((source.fullTextHash || textHash(source.text))!==job.source?.textHash)throw new StoryImageError("REVISION_CHANGED","章节内容已经变化，请重新配图");
     });
   },
   async isActiveStory(familyId,storyId) {
@@ -309,8 +309,10 @@ const photoReader = createPhotoReader({
   internalToken: process.env.PHOTO_ACCESS_INTERNAL_TOKEN,
 });
 const coverServices = createCoverServices({repo, storage, readPhotos: input => photoReader.read(input)});
+// Optional user art directions are checked before a paid image job is queued.
+const textChecker = createTextChecker({ callFunction: options => cloud.callFunction(options) });
 const handlers = createStoryImageHandlers({
-  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker, referenceAnalyzer, coverServices,
+  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker, referenceAnalyzer, coverServices, textChecker,
   async forwardPhotoModeration({ traceId, suggest, label }) {
     const response = await cloud.callFunction({
       name: "photoAccess",
@@ -334,7 +336,6 @@ const captionVision = createVisionClient({
   baseUrl: process.env.VISION_BASE_URL,
 });
 // Text checks go through problem three's shared contentSecurityCheck function.
-const textChecker = createTextChecker({ callFunction: options => cloud.callFunction(options) });
 const captions = createCaptionHandler({
   repo,
   vision: { ...captionVision, model: process.env.VISION_MODEL || "hy-vision-2.0-instruct" },

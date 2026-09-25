@@ -720,15 +720,16 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   const page = instantiate(await pageDefinition("story-images"));
   call(page, "onLoad", {});
   await call(page, "refresh");
+  call(page, "onArtDirectionInput", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: "暖黄彩铅" } });
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-b", purpose: "backdrop" } } });
   await call(page, "generate", { currentTarget: { dataset: {
     id: "chapter-a", purpose: "illustration", reference: "family_o-owner_img_req-aaaaaaaa",
   } } });
   assert.deepEqual(submitted, [
-    { memberId: "owner", chapterId: "chapter-a", purpose: "illustration" },
+    { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", artDirection: "暖黄彩铅" },
     { memberId: "owner", chapterId: "chapter-b", purpose: "backdrop" },
-    { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa" },
+    { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa", artDirection: "暖黄彩铅" },
   ]);
   assert.equal(page.data.notice, "正在画，大约 20–60 秒。可以先离开，回来接着看");
   assert.equal(page.data.submitting, "");
@@ -1041,7 +1042,7 @@ test("云端取不到底图时书稿照常打开，只是不显示底图", async
 test("封面参考支持照片与插图混选，最多三张，等待期间重复点击不重复生成", async context => {
   const env=installWx();env.setApp(false);
   const original={...storyCoverApi};
-  const selected:Array<{referencePhotoIds:string[];referenceImageIds:string[]}>=[];
+  const selected:Array<{referencePhotoIds:string[];referenceImageIds:string[];artDirection?:string}>=[];
   let resolveJob!: (value: {jobId:string;status:'failed';message:string;chapterId:string;purpose:string;imageId:string;createdAtMs:number}) => void;
   storyCoverApi.submit=async input=>{selected.push(input);return new Promise(resolve=>{resolveJob=resolve;});};
   context.after(()=>{Object.assign(storyCoverApi,original);env.restore();});
@@ -1052,12 +1053,14 @@ test("封面参考支持照片与插图混选，最多三张，等待期间重�
     {id:'image-b',kind:'image',selected:false},{id:'image-c',kind:'image',selected:false},
   ]});
   for(const id of ['photo-a','image-a','image-b','image-c']) call(page,'toggleReference',{currentTarget:{dataset:{id}}});
+  call(page,'onArtDirectionInput',{detail:{value:'粗纸上的淡墨'}});
   assert.equal(page.data.selectedCount,3);
   const pending=call(page,'generate');
   await call(page,'generate');
   assert.equal(selected.length,1);
   assert.deepEqual(selected[0].referencePhotoIds,['photo-a']);
   assert.deepEqual(selected[0].referenceImageIds,['image-a','image-b']);
+  assert.equal(selected[0].artDirection,'粗纸上的淡墨');
   resolveJob({jobId:'job',status:'failed',message:'读取超时',chapterId:'book-cover',purpose:'cover',imageId:'',createdAtMs:1});
   await pending;
   assert.equal(page.data.submitting,false);

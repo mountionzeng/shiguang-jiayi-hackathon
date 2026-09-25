@@ -14,6 +14,8 @@
 .chapter-group.is-focus { border-color: var(--jade); }
 .group-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
 .group-name { flex: 1; min-width: 0; font-size: 32rpx; line-height: 1.5; color: var(--ink); }
+.art-direction-input { box-sizing: border-box; width: 100%; height: 76rpx; margin-top: 16rpx; padding: 0 18rpx; color: var(--ink); background: var(--paper); border: 1rpx solid var(--line); border-radius: 10rpx; font-size: 27rpx; }
+.art-direction-hint { margin-top: 6rpx; color: var(--ink-soft); font-size: 22rpx; line-height: 1.5; }
 .job-row { margin-top: 12rpx; padding: 12rpx 16rpx; font-size: 26rpx; line-height: 1.6; color: var(--ink); background: var(--paper-sunk); border-radius: 10rpx; }
 .job-row.is-active { color: var(--jade); background: var(--jade-soft); }
 .image-grid { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 16rpx; }

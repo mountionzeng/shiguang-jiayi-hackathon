@@ -16,6 +16,8 @@
       </button>
     </view>
     <view class="cover-empty" wx:else>本书还没有可参考的图片，可以先用文字生成。</view>
+    <input class="cover-art-direction" value="{{artDirection}}" maxlength="80" placeholder="想画成什么样子（可不填）" aria-label="封面的美术想法" bindinput="onArtDirectionInput" />
+    <view class="cover-description">例如：淡墨与暖黄的纸本插画。封面的内容仍以整本书为准。</view>
     <button class="cover-generate" bindtap="generate" loading="{{submitting}}" disabled="{{submitting || selecting || activeJob}}">{{submitting ? '正在构思封面' : '生成一张封面'}}</button>
     <view class="cover-hint">生成会使用一次配图额度。只在你点「设为封面」后替换。</view>
     <view class="cover-job" wx:for="{{jobs}}" wx:key="jobId">{{item.message}}</view>

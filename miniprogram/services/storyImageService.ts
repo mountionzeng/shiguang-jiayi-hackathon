@@ -146,7 +146,7 @@ function isJob(value: unknown): value is StoryImageJob {
   return Boolean(job && typeof job.jobId === "string" && typeof job.status === "string" && typeof job.message === "string");
 }
 
-async function submitChapterImage(input: { storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string }): Promise<StoryImageJob> {
+async function submitChapterImage(input: { storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string; artDirection?: string }): Promise<StoryImageJob> {
   if (!await requestAiConsent()) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图要把这一章的文字发给 AI 服务");
   }
@@ -173,6 +173,7 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
     requestId: input.requestId ?? newImageRequestId(),
     purpose: input.purpose,
     ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
+    ...(input.artDirection?.trim() ? { artDirection: input.artDirection.trim() } : {}),
   });
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
   if (result.job.chapterId !== input.chapterId || result.job.purpose !== input.purpose) {

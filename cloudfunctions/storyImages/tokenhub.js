@@ -31,9 +31,12 @@ function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = defaultFetch, 
   const root = String(baseUrl || TOKENHUB_BASE_URL).replace(/\/$/, "");
   return {
     configured: Boolean(apiKey),
-    async generate({ prompt, width, height }) {
+    async generate({ prompt, width, height, seed }) {
       if (width < 512 || height < 512 || width > 2048 || height > 2048 || width * height > MAX_IMAGE_AREA) {
         throw httpError(400, "IMAGE_SIZE_OUT_OF_RANGE");
+      }
+      if (seed !== undefined && (!Number.isInteger(seed) || seed < 1 || seed > 4294967295)) {
+        throw httpError(400, "IMAGE_SEED_OUT_OF_RANGE");
       }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -47,6 +50,7 @@ function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = defaultFetch, 
             model: IMAGE_MODEL,
             prompt,
             size: `${width}x${height}`,
+            ...(seed !== undefined ? { seed } : {}),
             // Rewriting adds time and may add things the chapter never said.
             revise: false,
             footnote: AI_FOOTNOTE,

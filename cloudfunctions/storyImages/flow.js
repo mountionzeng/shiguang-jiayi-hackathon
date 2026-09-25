@@ -34,6 +34,7 @@ function createStoryImageHandlers(deps) {
     qualityChecker,
     referenceAnalyzer,
     coverServices,
+    textChecker,
     now = () => Date.now(),
     log = console,
   } = deps;
@@ -41,6 +42,7 @@ function createStoryImageHandlers(deps) {
   const assertSameRequest = (existing,input) => {
     if (String(existing.storyId || "") !== input.storyId || existing.memberId !== input.memberId || existing.chapterId !== input.chapterId ||
       existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId ||
+      String(existing.artDirectionHash || "") !== (input.artDirection ? core.textHash(input.artDirection) : "") ||
       JSON.stringify(existing.referenceImageIds || []) !== JSON.stringify(input.referenceImageIds || []) ||
       JSON.stringify(existing.referencePhotoIds || []) !== JSON.stringify(input.referencePhotoIds || [])) {
       throw new core.StoryImageError("REQUEST_CONFLICT", "这次请求的章节或参考图已经变化，请重新操作");
@@ -71,6 +73,15 @@ function createStoryImageHandlers(deps) {
     if (existing) {
       assertSameRequest(existing,input);
       return { job: core.publicJob(existing) };
+    }
+
+    if (input.artDirection) {
+      if (!textChecker) throw new core.StoryImageError("ART_DIRECTION_CHECK_FAILED", "美术想法暂时无法审核，请稍后重试");
+      const verdict = await textChecker.check({ text: input.artDirection, openid: ctx.openid });
+      if (!verdict.ok) throw new core.StoryImageError(
+        verdict.risky ? "ART_DIRECTION_BLOCKED" : "ART_DIRECTION_CHECK_FAILED",
+        verdict.risky ? "这段美术想法没通过平台审核，请改写后再试" : "美术想法暂时无法审核，请稍后重试",
+      );
     }
 
     let storyContext;
@@ -131,15 +142,17 @@ function createStoryImageHandlers(deps) {
       purpose: input.purpose,
       provider: provider.name,
       model: provider.model,
+      seed: core.imageSeed(input.familyId, input.requestId),
       prompt: "",
       source: {
         chapterId: input.chapterId,
-        textHash: core.textHash(source.text),
+        textHash: source.fullTextHash || core.textHash(source.text),
         textLength: source.textLength,
         characterContextLength: source.characterContext.length,
       },
       referencePhotoCount: input.referencePhotoIds?.length || 0,
       referenceImageCount: input.referenceImageIds?.length || (input.referenceImageId ? 1 : 0),
+      ...(input.artDirection ? { artDirectionHash: core.textHash(input.artDirection) } : {}),
       ...(input.purpose === "cover" ? { referenceImageIds: input.referenceImageIds, referencePhotoIds: input.referencePhotoIds } : {}),
       ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
       status: "submitted",
@@ -167,7 +180,7 @@ function createStoryImageHandlers(deps) {
       scene = extracted;
       scene = core.alignSceneFigures(scene, source);
       const visualReference = core.alignVisualReference(extractedReference, source, scene);
-      const { prompt, width, height } = core.buildImagePrompt(scene, input.purpose, visualReference);
+      const { prompt, width, height } = core.buildImagePrompt(scene, input.purpose, visualReference, source, input.artDirection);
       const patch = {
         status: "queued", prompt, scene, width, height, queuedAtMs: now(), updatedAtMs: now(),
       };
@@ -223,7 +236,7 @@ function createStoryImageHandlers(deps) {
     }
     let result;
     try {
-      result = await provider.generate({ prompt: job.prompt, width: job.width, height: job.height });
+      result = await provider.generate({ prompt: job.prompt, width: job.width, height: job.height, seed: job.seed });
     } catch (error) {
       const outcome = core.classifyGenerateError(error);
       log.error("storyImages generate", outcome.errorCode, String(error && error.message));
