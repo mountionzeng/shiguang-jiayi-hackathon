@@ -85,6 +85,7 @@ const ID_PATTERN = /^[0-9A-Za-z_-]{1,80}$/;
 const REQUEST_ID_PATTERN = /^req-[0-9a-z-]{8,60}$/;
 const STORY_IMAGE_ID_PATTERN = /^family_[0-9A-Za-z_-]{1,120}_img_req-[0-9a-z-]{8,60}$/;
 const PHOTO_ID_PATTERN = /^photo-(?!ai-)[0-9a-z-]{1,80}$/;
+const STORY_IMAGE_REFERENCE_PATTERN = /^photo-ai-(req-[0-9a-z-]{8,60})$/;
 const MAX_ART_DIRECTION = 80;
 
 function normalizeArtDirection(value) {
@@ -240,6 +241,18 @@ function chapterPhotoIds(chapter) {
   return [...new Set(ids)].slice(0, 3);
 }
 
+function storyImageReferenceIds(chapter) {
+  const ids = (Array.isArray(chapter?.content) ? chapter.content : [])
+    .map(item => typeof item?.photoId === "string" ? item.photoId : "")
+    .filter(id => STORY_IMAGE_REFERENCE_PATTERN.test(id));
+  return [...new Set(ids)].slice(0, 3);
+}
+
+function storyImageIdFromReference(familyId, referenceId) {
+  const match = String(referenceId || "").match(STORY_IMAGE_REFERENCE_PATTERN);
+  return match ? `${familyId}_img_${match[1]}` : "";
+}
+
 /** The chapter's own words from the saved book. User photos stay opaque until a separate AI-reference consent is granted. */
 function chapterSource(draft, chapterId, memories = []) {
   const chapters = draft && Array.isArray(draft.chapters) ? draft.chapters : [];
@@ -253,6 +266,7 @@ function chapterSource(draft, chapterId, memories = []) {
   if (!text) throw new StoryImageError("CHAPTER_EMPTY", "这一章还没有文字，先写几句再配图");
   const artText = combinedArtText(text, chapterMemories(chapter, memories));
   const photoIds = chapterPhotoIds(chapter);
+  const storyImageRefs = storyImageReferenceIds(chapter);
   return {
     title: String(chapter.title || "").trim().slice(0, 40),
     text: text.slice(0, MAX_CHAPTER_TEXT),
@@ -262,6 +276,8 @@ function chapterSource(draft, chapterId, memories = []) {
     fullTextHash: textHash(artText),
     photoIds,
     photoHash: textHash(photoIds.join("\n")),
+    storyImageReferenceIds: storyImageRefs,
+    storyImageReferenceHash: textHash(storyImageRefs.join("\n")),
     characterContext: bookCharacterContext(draft, chapterId),
     bookLifeCategory: bookLifeCategory(draft),
   };
@@ -290,8 +306,23 @@ const LIFE_CUES = {
   nature: /山林|山坡|河流|海边|森林|树林|树下|树木|草地|花朵|鲜花|草木/,
 };
 
+function lifeScores(text) {
+  const source = String(text || "");
+  return Object.fromEntries(Object.entries(LIFE_CUES).map(([key, cue]) => {
+    const matches = source.match(new RegExp(cue.source, "g")) || [];
+    return [key, matches.length];
+  }));
+}
+
+function highestLifeCategory(counts) {
+  const ordered = Object.entries(counts).sort((left, right) => right[1] - left[1]);
+  const top = ordered[0];
+  if (!top || top[1] === 0) return "";
+  return ordered[1] && ordered[1][1] === top[1] ? "" : top[0];
+}
+
 function lifeCategory(text) {
-  return Object.keys(LIFE_CUES).find(key => LIFE_CUES[key].test(text)) || "";
+  return highestLifeCategory(lifeScores(text));
 }
 
 /** A book-wide cue is distilled locally; other chapters are not sent to scene extraction for a chapter. */
@@ -299,10 +330,9 @@ function bookLifeCategory(draft) {
   const counts = Object.fromEntries(Object.keys(LIFE_CUES).map(key => [key, 0]));
   for (const chapter of Array.isArray(draft?.chapters) ? draft.chapters : []) {
     const text = (Array.isArray(chapter?.content) ? chapter.content : []).map(item => typeof item?.text === "string" ? item.text : "").join("");
-    for (const [key, cue] of Object.entries(LIFE_CUES)) if (cue.test(text)) counts[key] += 1;
+    for (const [key, count] of Object.entries(lifeScores(text))) counts[key] += count;
   }
-  if (!Object.values(counts).some(Boolean)) return "";
-  return Object.keys(counts).sort((left, right) => counts[right] - counts[left])[0];
+  return highestLifeCategory(counts);
 }
 
 /** Keep only one explicitly written period; a book spanning periods has no single era style. */
@@ -405,9 +435,15 @@ function textHash(text) {
   return crypto.createHash("sha256").update(String(text)).digest("hex").slice(0, 32);
 }
 
-/** Stable for one paid request; a deliberate new drawing receives a different seed. */
-function imageSeed(familyId, requestId) {
-  return Number.parseInt(textHash(`${familyId}:${requestId}`).slice(0, 8), 16) || 1;
+/** Stable for a story's base style; a deliberate reference redraw receives a different seed. */
+function imageSeed(familyId, requestId, scope = {}) {
+  const storyId = String(scope.storyId || "").trim();
+  const referenceImageId = String(scope.referenceImageId || "").trim();
+  const purpose = String(scope.purpose || "").trim();
+  const basis = storyId && !referenceImageId
+    ? `${familyId}:story:${storyId}:${purpose || "image"}`
+    : `${familyId}:request:${requestId}:${referenceImageId}`;
+  return Number.parseInt(textHash(basis).slice(0, 8), 16) || 1;
 }
 
 /** Daily limits reset at midnight Beijing time. */
@@ -475,11 +511,11 @@ function parseSceneJson(content) {
 
 const STYLES = {
   cover: {
-    lead: "竖版文学书籍封面画，以暖白纸面和有层次的手绘媒介作画。纸纤维承接深浅不同的色层，轮廓经过概括，局部擦洗留下制作痕迹。围绕整本书共同的主题组织一个简洁意象，画面完整铺满封面，上方三分之一保留干净浅色区域供书名排版，画面由纯粹的图像元素组成。",
+    lead: "竖版文学书籍封面画。围绕整本书共同的主题组织一个简洁意象，上方三分之一保留干净浅色区域供书名排版，画面由纯粹的图像元素组成。",
     width: 768, height: 1024, maxObjects: 4, withScene: true, withFigures: true,
   },
   illustration: {
-    lead: "纸本手绘插画，暖白纸面的纤维清晰可见。笔触有轻重，颜色一层层叠上去，边缘保留纸面阻力；形体经过概括取舍，留白承载画面的呼吸。",
+    lead: "纸本手绘插画。形体经过概括取舍，画面保留手工笔触和纸面呼吸。",
     width: 1024,
     height: 768,
     maxObjects: 6,
@@ -488,7 +524,7 @@ const STYLES = {
   },
   // A backdrop sits under the chapter text: scenery only, pale, with an empty top half.
   backdrop: {
-    lead: "安静的纸本淡彩底图，暖白宣纸有细微纤维与稀薄的水彩渗色。上方大面积是接近纯白的宣纸留白，景物只占画面下方三分之一和两侧边角。颜色轻薄，墨色浓淡分出远近，边缘随纸吸水轻柔晕开；线条简洁，纹样稀少，画面由景物与器物构成。",
+    lead: "安静的纸本淡彩底图。上方大面积是接近纯白的宣纸留白，景物只占画面下方三分之一和两侧边角。画面由景物与器物构成。",
     width: 1248,
     height: 832,
     maxObjects: 3,
@@ -498,11 +534,17 @@ const STYLES = {
 };
 
 const EMOTION_PAINT = [
+  { words: /安静|沉静/, paint: "细线和浅色面保持停顿，物件之间的距离留出安稳的呼吸。" },
+  { words: /宁静|平静/, paint: "大面积浅色慢慢铺开，边缘过渡柔和，光落在空处保持平稳。" },
+  { words: /平淡|日常|普通/, paint: "笔触贴近器物表面，少量重复纹理承接日常的节奏。" },
+  { words: /踏实|安稳|安心|温暖|温馨|亲切/, paint: "低饱和暖色压在物件受光处，让桌椅衣物显得有重量。" },
+  { words: /热闹|喧闹|忙碌/, paint: "较小色块沿动作方向排列，局部高明度颜色形成来往的节奏。" },
+  { words: /怅然|惆怅|难过|悲伤|失落/, paint: "边缘颜色轻轻沉下去，稀疏笔触和空白保留回望的余韵。" },
+  { words: /释然|放下|舒展/, paint: "水色从主体边缘缓缓铺开，光落在空处形成松开的节奏。" },
   { words: /怀旧|思念|回忆|惦念/, paint: "颜色像被时间轻轻洗过，局部叠笔与擦洗留下记忆的层次。" },
   { words: /孤独|寂寞|孤单/, paint: "主体在环境中占较小尺度，周围的大块空白承接独处的重量。" },
-  { words: /温暖|温馨|亲切|安稳/, paint: "光从场景中可辨认的方向落在物件上，暖色薄涂使物件有温度。" },
   { words: /欢喜|喜悦|开心|快乐/, paint: "色块在疏朗的节奏中轻轻跳动，局部明亮而纸面仍然透气。" },
-  { words: /难过|悲伤|失落/, paint: "颜色在边缘轻轻沉下去，稀疏笔触和空白保留情绪的余韵。" },
+  { words: /焦虑|紧张|慌乱/, paint: "短线在主体周围收紧，色面边缘微微颤动，画面重心向动作处聚拢。" },
 ];
 const NEGATED_EMOTION_PREFIX = /(?:不要|并非|不是|不想|不再|并不|没有|避免|拒绝|禁止|不|without|not|no)\s*[^，。！？\n]{0,18}$/i;
 
@@ -511,25 +553,27 @@ function hasAffirmedEmotion(words, sourceText) {
   return mentions.some(match => !NEGATED_EMOTION_PREFIX.test(String(sourceText).slice(Math.max(0, match.index - 24), match.index)));
 }
 
+const DEFAULT_EMOTION_PAINT = "以物件之间的距离、光的落点和边缘轻重组织画面情绪。";
+
 function emotionPaint(mood, sourceText) {
   const text = String(sourceText || "");
   const matching = EMOTION_PAINT.find(item => item.words.test(mood || ""));
   if (matching) {
     const mentions = [...text.matchAll(new RegExp(matching.words.source, "g"))];
-    if (mentions.length && mentions.every(match => NEGATED_EMOTION_PREFIX.test(text.slice(Math.max(0, match.index - 24), match.index)))) return "";
+    if (mentions.length && mentions.every(match => NEGATED_EMOTION_PREFIX.test(text.slice(Math.max(0, match.index - 24), match.index)))) return DEFAULT_EMOTION_PAINT;
     return matching.paint;
   }
   const inferred = EMOTION_PAINT.find(item => hasAffirmedEmotion(item.words, text));
-  return inferred ? inferred.paint : "";
+  return inferred ? inferred.paint : DEFAULT_EMOTION_PAINT;
 }
 
 const PHYSICAL_REALISM_REQUIREMENT = "硬性要求：画面符合客观物理规律；出现的主体、书本、树木和其他物件的前后遮挡按真实三维空间排序，接触点、握持、翻阅、坐姿、重心和投影相互自洽，主体与书本等物件的接触和受力关系清楚可读。";
 
 const LIFE_PAINT = {
   family: { medium: "柔软彩铅颗粒与薄水彩在纸上相叠，保留铅笔底稿的细线。", texture: "家庭内部的生活质地由物件之间的距离和细微叠色承载。" },
-  local: { medium: "淡墨皴擦与薄水彩在粗纸上交汇，器物边缘带一点干笔。", texture: "地方生活的日常质地落在器物的手感与纸面颗粒里。" },
-  urban: { medium: "细笔描线配合浅色手工套印，色块边缘有轻微错位。", texture: "城市日常的节奏由直线与疏密错落的色块组织。" },
-  nature: { medium: "淡墨渗色与水彩湿画相接，纸面吸水的边缘形成空气感。", texture: "自然景物以疏密不同的笔触和纸面留白组织空间。" },
+  local: { medium: "粗纸上的干笔墨线与赭色水粉相压，器物边缘留出擦过的毛边。", texture: "地方生活的质地落在器物重量、墙面粗粝和手边工具的磨痕里。" },
+  urban: { medium: "硬边套色版画与平涂色块组织画面，直线轮廓清楚，颜色块面有轻微错版。", texture: "城市日常的节奏由直线秩序、块面叠压和人车间距承载。" },
+  nature: { medium: "留白水墨与局部重墨并置，远处以淡染退开，近处枝叶用湿墨压出浓淡。", texture: "自然景物以浓淡层次、枝叶疏密和空气深度组织空间。" },
 };
 
 /** Affirmative wording only: image models have no notion of "don't draw". */
@@ -556,9 +600,9 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
   }
   const eraHint = explicitEraHint(text);
   if (eraHint) parts.push(`${purpose === "backdrop" ? "景物与器物" : "服装与器物"}的年代质地依据正文明确写出的${eraHint}。`);
-  if (purpose === "illustration") parts.push("主体略偏于画面一侧，大块暖白留白与有来源的自然光组成安静的构图。局部保留叠笔、纸面阻力与轻微未覆盖的底色。");
-  if (purpose === "cover") parts.push("主体与留白构成可读的封面骨架，光线来自画面内的时节与环境。局部保留叠笔、擦洗与未覆盖的纸色。");
-  if (purpose === "backdrop") parts.push("淡淡的渗色与纸纤维只在景物附近显现，正文所在的留白保持清朗。");
+  if (purpose === "illustration") parts.push("主体略偏于画面一侧，光线来自场景内可辨认的方向。");
+  if (purpose === "cover") parts.push("主体与留白构成可读的封面骨架，图像元素围绕书名区下方展开。");
+  if (purpose === "backdrop") parts.push("正文所在留白保持清朗，景物附近保留少量纸纤维和淡彩渗色。");
   parts.push(PHYSICAL_REALISM_REQUIREMENT);
   if (artDirection) parts.push(`用户的美术偏好：${artDirection}。优先体现在色彩、材料与笔触中，画面事实仍以正文为准。`);
   if (visualReference) {
@@ -657,6 +701,8 @@ module.exports = {
   chapterSource,
   bookSource,
   chapterPhotoIds,
+  storyImageReferenceIds,
+  storyImageIdFromReference,
   COVER_CHAPTER_ID,
   MAX_BOOK_TEXT,
   chinaDayKey,
