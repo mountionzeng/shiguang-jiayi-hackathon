@@ -463,8 +463,9 @@ assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
 
 ## 十、共同约束
 
-1. **先切到 `main` = `45da79b`。** 当前 checkout 停在 `chore/migrate-enterprise-miniprogram`
-   （`d83f1ed`，落后 108 个提交），`storyImages` 的代码结构不同，在上面改是白费。
+1. **从当前 `main` 创建独立工作树。** 本轮已从 `main@4a484f6` 建立
+   `codex/miniprogram-art-direction`；不要在旧的 `chore/migrate-enterprise-miniprogram`
+   checkout 上改 `storyImages`，两处代码结构不同。合主线前重新核对 `main` 是否前进。
 2. **不要 reset / checkout / 清理任何未提交改动。** 工作树有别人的 9 个文件改动
    （`README.md`、`cloudfunctions/drinkingTimeBridge/core.js`、`cloudfunctions/ensureCloudCollections/bootstrap.js`、
    `docs/backend-ai-handoff.md`、`miniprogram/app.ts`、`miniprogram/config/runtime.ts`、
@@ -476,8 +477,8 @@ assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
    「本方案独立实现，不复制 Drinking-Time 的任何代码、提示词或数据结构」。
    本次是**借美术判断的方法**，措辞要为混元和这个产品重写。
 5. **每批改动后跑 `npm run check`**（`tsc --noEmit` + `tsx --test`）。
-   **基线数字自己在 main 上跑一次记下来**：main 有 108 个测试文件、912 条 `test()` 声明，
-   仓库里 2026-09-23 的交接文档记载当时 830 项。通过数不许下降。
+   本轮 `main@4a484f6` 的实际基线为 913 项，当前分支为 919 项，全部通过；
+   合主线后仍须在合并结果上重跑，通过数不许下降。
 6. **`tests/story-images.test.js` 有 61 处与出图 prompt 相关的断言**，改 `lead` 必然撞红一批。
    撞红的处理原则：**断言里锁死的是「产品语义」还是「具体措辞」？**
    - 锁语义的必须继续通过，例如 `:538` 底图不出现人物、`:498/:539` 无否定词、
@@ -496,9 +497,9 @@ assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
 
 ## 十一、本次未能确认的事项
 
-- **没有看过任何一张实际生成的图。** 本文是对两端代码与官方接口文档的静态分析，
-  结论是「prompt 里缺哪几层美术判断」，不是「图上具体哪里难看」。
-  第九节的样张对比因此是必须做的第一步，不是可选项。
+- **尚未用新提示词生成实际样张。** 本文最初是对两端代码与官方接口文档的静态分析，
+  结论是「prompt 里缺哪几层美术判断」，不是「新图已经更好看」。
+  第九节的样张对比仍须完成，不能用单元测试代替。
 - **混元 v3 对长 prompt 的实际服从度未知。** 官方上限 8192 字符是确定的，
   但从 108 字扩到 400–900 字后，模型会不会像 MJ 那样把后半段权重看轻，**只能实测**。
   建议第一轮先扩到 ~400 字看效果，再决定要不要继续加。
