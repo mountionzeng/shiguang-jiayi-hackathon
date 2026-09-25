@@ -330,6 +330,47 @@ test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节�
   });
 });
 
+test("带美术想法生成会先确认云端能力，并验证想法确实被任务采用", async context => {
+  clearAiConsent();
+  const calls: Array<{ name: string; data: Record<string, unknown> }> = [];
+  const env = installWx({
+    cloud: { callFunction: async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
+      calls.push({ name, data });
+      if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      if (data.action === "capabilities") return { result: { apiVersion: 4, guidedGeneration: true } };
+      return { result: { job: {
+        jobId: "family_o-owner_req-idea", status: "queued", message: "正在画", chapterId: "chapter-a",
+        purpose: "illustration", imageId: "", ideaApplied: true, createdAtMs: 1,
+      } } };
+    } },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); });
+
+  await storyImageApi.submitChapterImage({
+    memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-idea-00000001",
+    artDirection: "傍晚暖光，人物只画背影",
+  });
+  assert.deepEqual(calls.filter(item => item.name === "storyImages").map(item => item.data.action), ["capabilities", "submit"]);
+  assert.equal(calls.find(item => item.data.action === "submit")?.data.artDirection, "傍晚暖光，人物只画背影");
+});
+
+test("旧版云端不能静默忽略用户的美术想法", async context => {
+  clearAiConsent();
+  const actions: unknown[] = [];
+  const env = installWx({ cloud: { callFunction: async ({ name, data }: { name: string; data?: Record<string, unknown> }) => {
+    if (name === "getOpenId") return { result: { openid: "o-owner" } };
+    if (name === "storyImages") actions.push(data?.action);
+    return { result: { apiVersion: 3, guidedGeneration: false } };
+  } } });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); });
+  await assert.rejects(storyImageApi.submitChapterImage({
+    memberId: "owner", chapterId: "chapter-a", purpose: "illustration", artDirection: "暖一点",
+  }), (error: unknown) => error instanceof StoryImageServiceError && error.code === "GUIDED_GENERATION_UNAVAILABLE");
+  assert.deepEqual(actions, ["capabilities"]);
+});
+
 test("图片专用发布闸门开放时可以真实走提交路径，同时文字 AI 仍保持关闭", async context => {
   clearAiConsent();
   clearPhotoAiConsent();
@@ -1065,6 +1106,20 @@ test("封面参考支持照片与插图混选，最多三张，等待期间重�
   await pending;
   assert.equal(page.data.submitting,false);
   assert.equal(page.data.notice,'读取超时');
+});
+
+test("封面的美术想法也要求云端确认已采用", async context=>{
+  const calls:Array<{name:string;data?:Record<string,unknown>}>=[];
+  const env=installWx({cloud:{callFunction:async({name,data}:{name:string;data?:Record<string,unknown>})=>{
+    calls.push({name,data});
+    if(name==='getOpenId')return {result:{openid:'o-owner'}};
+    if(data?.action==='capabilities')return {result:{apiVersion:4,guidedGeneration:true}};
+    return {result:{job:{jobId:'family_o-owner_req-cover',status:'queued',message:'正在画',chapterId:'book-cover',purpose:'cover',imageId:'',ideaApplied:true,createdAtMs:1}}};
+  }}});
+  context.after(()=>env.restore());env.setApp(true);
+  await storyCoverApi.submit({storyId:'story-one',referenceImageIds:[],referencePhotoIds:[],artDirection:'粗纸上的淡墨'});
+  assert.deepEqual(calls.filter(item=>item.name==='storyImages').map(item=>item.data?.action),['capabilities','submit']);
+  assert.equal(calls.find(item=>item.data?.action==='submit')?.data?.artDirection,'粗纸上的淡墨');
 });
 
 test("封面生成授权拒绝后不调用云函数，不擅自使用用户图片",async context=>{

@@ -5,6 +5,12 @@ const IMAGE_PATH = "/v1/wand/hunyuan-image/v3-generation";
 const IMAGE_MODEL = "hy-image-v3";
 /** Keep a compact, explicit AI label; the provider controls its typography. */
 const AI_FOOTNOTE = "AI生成";
+/**
+ * TokenHub commonly returns in 20-60 seconds. The deployed WeChat function has
+ * a 60-second deadline, so stop the provider call with enough time to record a
+ * returned link before a later invocation handles slower storage work.
+ */
+const IMAGE_GENERATE_TIMEOUT_MS = 52_000;
 /** TokenHub allows each side in [512, 2048] and at most 1024×1024 pixels in total. */
 const MAX_IMAGE_AREA = 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -27,7 +33,7 @@ function httpError(status, message) {
  * Errors carry httpStatus when TokenHub answered, so callers can tell a refusal
  * from a dropped connection that may already have cost money.
  */
-function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = defaultFetch, timeoutMs = 40_000 }) {
+function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = defaultFetch, timeoutMs = IMAGE_GENERATE_TIMEOUT_MS }) {
   const root = String(baseUrl || TOKENHUB_BASE_URL).replace(/\/$/, "");
   return {
     configured: Boolean(apiKey),
@@ -102,6 +108,7 @@ async function downloadResult(url, { fetchImpl = defaultFetch, timeoutMs = 15_00
 
 module.exports = {
   AI_FOOTNOTE,
+  IMAGE_GENERATE_TIMEOUT_MS,
   IMAGE_MODEL,
   IMAGE_PATH,
   MAX_IMAGE_AREA,

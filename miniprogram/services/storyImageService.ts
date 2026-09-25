@@ -31,6 +31,7 @@ export interface StoryImageJob {
   imageId: string;
   referenceApplied?: boolean;
   referenceImageId?: string;
+  ideaApplied?: boolean;
   createdAtMs: number;
 }
 
@@ -150,21 +151,31 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
   if (!await requestAiConsent()) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图要把这一章的文字发给 AI 服务");
   }
-  if (input.referenceImageId) {
-    let capabilities: { referenceIllustration?: unknown };
+  let capabilities: { referenceIllustration?: unknown; guidedGeneration?: unknown } | undefined;
+  const loadCapabilities = async (unavailable: () => StoryImageServiceError) => {
     try {
-      capabilities = await callStoryImages("capabilities", {});
+      if (!capabilities) capabilities = await callStoryImages("capabilities", {});
     } catch (error) {
-      if (error instanceof StoryImageServiceError && error.code === "UNKNOWN_ACTION") {
-        throw new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试");
-      }
+      if (error instanceof StoryImageServiceError && error.code === "UNKNOWN_ACTION") throw unavailable();
       throw error;
     }
+    return capabilities as { referenceIllustration?: unknown; guidedGeneration?: unknown };
+  };
+  if (input.referenceImageId) {
+    capabilities = await loadCapabilities(() =>
+      new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试"));
     if (capabilities.referenceIllustration !== true) {
       throw new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试");
     }
     if (!await requestIllustrationReferenceConsent(input.referenceImageId)) {
       throw new StoryImageServiceError("CONSENT_DECLINED", "这次没有允许 AI 读取参考插图；你可以直接生成不带参考的配图");
+    }
+  }
+  if (input.artDirection?.trim()) {
+    const supported = await loadCapabilities(() =>
+      new StoryImageServiceError("GUIDED_GENERATION_UNAVAILABLE", "配图服务还没更新到画面想法功能，请稍后再试"));
+    if (supported.guidedGeneration !== true) {
+      throw new StoryImageServiceError("GUIDED_GENERATION_UNAVAILABLE", "配图服务还没更新到画面想法功能，请稍后再试");
     }
   }
   const result = await callStoryImages<{ job?: unknown }>("submit", {
@@ -181,6 +192,9 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
   }
   if (input.referenceImageId && (result.job.referenceApplied !== true || result.job.referenceImageId !== input.referenceImageId)) {
     throw new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试");
+  }
+  if (input.artDirection?.trim() && result.job.ideaApplied !== true) {
+    throw new StoryImageServiceError("GUIDED_GENERATION_UNAVAILABLE", "配图服务没有使用你的画面想法，请稍后再试");
   }
   return result.job;
 }

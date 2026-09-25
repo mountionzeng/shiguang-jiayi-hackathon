@@ -59,6 +59,11 @@ function createStoryImageHandlers(deps) {
     }
   }
 
+  async function storyArtMemories(familyId, storyContext) {
+    if (!storyContext || typeof repo.listStoryMemories !== "function") return [];
+    return await repo.listStoryMemories(familyId, storyContext.story);
+  }
+
   async function submit(ctx, event) {
     const input = core.normalizeSubmitInput(event);
     core.requireOwner(ctx.openid, input.familyId);
@@ -92,7 +97,8 @@ function createStoryImageHandlers(deps) {
       core.assertUnrestrictedStory(storyContext.story,storyContext.draft);
     }
     const draft = input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
-    const source = input.purpose === "cover" ? core.bookSource(draft) : core.chapterSource(draft, input.chapterId);
+    const artMemories = await storyArtMemories(input.familyId, storyContext);
+    const source = input.purpose === "cover" ? core.bookSource(draft, artMemories) : core.chapterSource(draft, input.chapterId, artMemories);
     let coverReferenceUrls = [];
     if (input.purpose === "cover") {
       if (!coverServices) throw new core.StoryImageError("COVER_NOT_CONFIGURED", "封面服务尚未准备好");
@@ -148,6 +154,7 @@ function createStoryImageHandlers(deps) {
         chapterId: input.chapterId,
         textHash: source.fullTextHash || core.textHash(source.text),
         textLength: source.textLength,
+        artTextLength: source.artTextLength || source.textLength,
         characterContextLength: source.characterContext.length,
       },
       referencePhotoCount: input.referencePhotoIds?.length || 0,

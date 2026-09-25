@@ -22,6 +22,7 @@ const IMAGES = "story_images";
 const CAPTION_LOGS = "photo_caption_logs";
 const DRAFTS = "biography_drafts";
 const STORIES = "stories";
+const MEMORIES = "memories";
 const IMAGE_LINKS = "story_image_links";
 const JOB_LINKS = "story_image_job_links";
 const ACTIVE_STATUSES = ["submitted", "queued", "generating", "generated", "storing"];
@@ -91,6 +92,13 @@ async function getTransactionDoc(transaction,collectionName,id) {
 }
 
 const repo = {
+  async listStoryMemories(familyId, story) {
+    const ids = [...new Set(Array.isArray(story?.memoryIds) ? story.memoryIds : [])]
+      .filter(id => typeof id === "string" && id.length <= 120);
+    const rows = await Promise.all(ids.map(id => getDoc(MEMORIES, `${familyId}_${id}`)));
+    return rows.filter(memory => memory?.familyId === familyId && !memory.deletedAt &&
+      !memory.sourcePolicyRequired && !memory.sourceIds);
+  },
   async listStoryPhotoIds(familyId, storyId, current) {
     const ids = new Set((current.draft.chapters || []).flatMap(chapter => (chapter.content || []).map(item => item.photoId)));
     for (const id of current.story.memoryIds || []) {
@@ -144,7 +152,8 @@ const repo = {
       if(record?.familyId!==job.familyId||record.storyId!==job.storyId||record.revision?.id!==job.sourceRevisionId||record.revision.storyId!==job.storyId)
         throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
       assertUnrestrictedStory(story,record.revision.draft);
-      const source=job.purpose === "cover" ? bookSource(record.revision.draft) : chapterSource(record.revision.draft,job.chapterId);
+      const memories = await repo.listStoryMemories(job.familyId, story);
+      const source=job.purpose === "cover" ? bookSource(record.revision.draft, memories) : chapterSource(record.revision.draft,job.chapterId, memories);
       if((source.fullTextHash || textHash(source.text))!==job.source?.textHash)throw new StoryImageError("REVISION_CHANGED","章节内容已经变化，请重新配图");
     });
   },
@@ -363,7 +372,7 @@ async function main(event = {}) {
   const ctx = { openid: String(context.OPENID || "").trim() };
   try {
     switch (event.action) {
-      case "capabilities": return { apiVersion: 3, referenceIllustration: referenceAnalyzer.configured, bookCover: true };
+      case "capabilities": return { apiVersion: 4, referenceIllustration: referenceAnalyzer.configured, guidedGeneration: true, bookCover: true };
       case "coverSources": return await coverServices.sources(ctx, event);
       case "selectCover": return await coverServices.select(ctx, event);
       case "submit": return await handlers.submit(ctx, event);

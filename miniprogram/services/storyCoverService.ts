@@ -9,6 +9,18 @@ export interface CoverInput { storyId: string; referenceImageIds: string[]; refe
 async function submit(input: CoverInput): Promise<StoryImageJob> {
   const count = input.referenceImageIds.length + input.referencePhotoIds.length;
   if (count > 3) throw new Error('最多选 3 张参考图');
+  if (input.artDirection?.trim()) {
+    let capabilities: {guidedGeneration?: unknown};
+    try {
+      capabilities = await callStoryImages<{guidedGeneration?: unknown}>('capabilities', {});
+    } catch (error) {
+      if (error instanceof StoryImageServiceError && error.code === 'UNKNOWN_ACTION') {
+        throw new StoryImageServiceError('GUIDED_GENERATION_UNAVAILABLE', '封面服务还没更新到画面想法功能，请稍后再试');
+      }
+      throw error;
+    }
+    if (capabilities.guidedGeneration !== true) throw new StoryImageServiceError('GUIDED_GENERATION_UNAVAILABLE', '封面服务还没更新到画面想法功能，请稍后再试');
+  }
   const allowed = await new Promise<boolean>(resolve => wx.showModal({
     title: '生成这本书的封面？',
     content: `会把整本书已保存的正文${count ? `和你选中的 ${count} 张参考图片` : ''}${input.artDirection?.trim() ? '，以及你写的美术想法' : ''}发送给腾讯云 TokenHub 上的 AI 服务，提炼全书主题${count ? '、画风与配色' : ''}后生成封面。照片只发送压缩小图，不识别人脸身份。会消耗一次配图额度，服务商日志留存政策仍适用。生成后由你决定是否使用。`,
@@ -21,6 +33,7 @@ async function submit(input: CoverInput): Promise<StoryImageJob> {
   });
   const job = result.job;
   if (!job || job.purpose !== 'cover' || !job.jobId || !job.status) throw new Error('封面服务返回内容不完整');
+  if (input.artDirection?.trim() && job.ideaApplied !== true) throw new StoryImageServiceError('GUIDED_GENERATION_UNAVAILABLE', '封面服务没有使用你的画面想法，请稍后再试');
   return job;
 }
 async function sources(storyId: string) {

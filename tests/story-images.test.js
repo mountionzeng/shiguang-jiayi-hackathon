@@ -53,6 +53,7 @@ function memoryRepo() {
   const jobs = new Map();
   const images = new Map();
   const stories = new Map();
+  const memories = new Map();
   const imageLinks = new Map();
   const jobLinks = new Map();
   let drafts = [];
@@ -60,6 +61,7 @@ function memoryRepo() {
     jobs,
     images,
     stories,
+    memories,
     imageLinks,
     jobLinks,
     beforeSoftDelete: undefined,
@@ -71,6 +73,11 @@ function memoryRepo() {
       }
     },
     setStory(storyId,patch={}) { stories.set(storyId,{familyId:FAMILY,id:storyId,...stories.get(storyId),...patch}); },
+    setMemory(id,patch={}) { memories.set(id,{familyId:FAMILY,id,...memories.get(id),...patch}); },
+    async listStoryMemories(familyId,story) {
+      const ids = new Set(Array.isArray(story?.memoryIds) ? story.memoryIds : []);
+      return [...memories.values()].filter(memory => memory.familyId === familyId && ids.has(memory.id) && !memory.deletedAt && !memory.sourcePolicyRequired && !memory.sourceIds);
+    },
     linkImage(storyId,imageId) { imageLinks.set(storyId+'|'+imageId,{familyId:FAMILY,storyId,imageId}); },
     linkJob(storyId,jobId) { jobLinks.set(storyId+'|'+jobId,{familyId:FAMILY,storyId,jobId}); },
     async isActiveStory(familyId,storyId) { const story=stories.get(storyId);return Boolean(story && story.familyId===familyId && !story.deletedAt); },
@@ -122,7 +129,8 @@ function memoryRepo() {
       if(!context)throw new core.StoryImageError('STORY_NOT_FOUND','这本故事书已不可用');
       if(context.revision.id!==job.sourceRevisionId)throw new core.StoryImageError('REVISION_CHANGED','书稿版本已经变化');
       core.assertUnrestrictedStory(context.story,context.draft);
-      const source=job.purpose === "cover" ? core.bookSource(context.draft) : core.chapterSource(context.draft,job.chapterId);
+      const memories=await this.listStoryMemories(job.familyId,context.story);
+      const source=job.purpose === "cover" ? core.bookSource(context.draft,memories) : core.chapterSource(context.draft,job.chapterId,memories);
       if((source.fullTextHash || core.textHash(source.text))!==job.source?.textHash)
         throw new core.StoryImageError('REVISION_CHANGED','章节内容已经变化');
     },
@@ -249,6 +257,14 @@ test("TokenHub 出图：同步接口、API Key 鉴权、关闭改写、明确带
   assert.equal(sent.init.headers.Authorization, "Bearer sk-test");
   assert.deepEqual(JSON.parse(sent.init.body), { model: "hy-image-v3", prompt: "画面", size: "1024x768", seed: 12345, revise: false, footnote: "AI生成" });
   assert.equal(tokenhub.createTokenHubImageClient({ apiKey: "" }).configured, false);
+});
+
+test("TokenHub 出图在云函数的 60 秒上限前停止并预留结果落库时间", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../deploy/wechat-cloud.manifest.json"), "utf8"));
+  const functionTimeoutMs = manifest.cloudFunctions.storyImages.timeoutSeconds * 1_000;
+  assert.equal(functionTimeoutMs, 60_000);
+  assert.ok(tokenhub.IMAGE_GENERATE_TIMEOUT_MS >= 50_000);
+  assert.ok(tokenhub.IMAGE_GENERATE_TIMEOUT_MS <= functionTimeoutMs - 8_000);
 });
 
 test("TokenHub 出图：拒绝的请求带着 HTTP 状态码抛出，成功却没有图片的算不确定", async () => {
@@ -418,6 +434,21 @@ test("长章节前 4000 字不变、后半段改动时，付费出图前拒绝�
   assert.equal(h.calls.generate.length, 0);
 });
 
+test("来源记忆参与提示词后，记忆改动也会在付费前拒绝旧请求", async () => {
+  const h = harness(), storyId = "story-memory-art";
+  const draft = { chapters: [{ ...CHAPTER, memoryIds: ["memory-a"] }] };
+  h.repo.setDrafts([{ familyId: FAMILY, storyId, draftType: "story-revision",
+    revision: { id: "revision-memory-art", storyId, savedAt: "2026-09-18", draft } }]);
+  h.repo.setStory(storyId, { memoryIds: ["memory-a"] });
+  h.repo.setMemory("memory-a", { text: "1983年冬天，村里的小院很安静。" });
+  const event = { familyId: FAMILY, storyId, chapterId: CHAPTER.id, requestId: "req-memory-art-0001", purpose: "illustration" };
+  assert.equal((await h.handlers.submit(ctx, event)).job.status, "queued");
+  h.repo.setMemory("memory-a", { text: "1984年冬天，村里的小院很安静。" });
+  const result = await h.handlers.status(ctx, { familyId: FAMILY, storyId, jobId: `${FAMILY}_${event.requestId}` });
+  assert.equal(result.job.status, "failed");
+  assert.equal(h.calls.generate.length, 0);
+});
+
 test("迁移图片链接支持本书参考和删除，同时拒绝另一故事操作",async()=>{
   const h=harness(), storyId="story-book-a", imageId=`${FAMILY}_img_req-linked001`;
   h.repo.setDrafts([{
@@ -533,6 +564,35 @@ test("已保存的全书文字只提炼媒介线索，当前章仍控制画面�
   assert.doesNotMatch(prompt, /旧院子|集市|田地|年代质地/);
 });
 
+test("同一本书的来源记忆参与美术提炼，但不改写当前画面事实", () => {
+  const draft = { chapters: [
+    { id: "c1", content: [{ text: "我在窗前看着桌上的搪瓷杯。" }], memoryIds: ["memory-a"] },
+    { id: "c2", content: [{ text: "城市里的楼房一排排亮着灯。" }], memoryIds: ["memory-b"] },
+  ] };
+  const memories = [
+    { id: "memory-a", familyId: FAMILY, text: "1983年冬天，村里的院子很安静，我总是怀旧地想起晒被子的日子。" },
+    { id: "memory-b", familyId: FAMILY, text: "1998年夏天，公交站旁人来人往。" },
+  ];
+  const source = core.chapterSource(draft, "c1", memories);
+  assert.equal(source.text, "我在窗前看着桌上的搪瓷杯。");
+  assert.match(source.artText, /1983年冬天/);
+  assert.doesNotMatch(source.artText, /1998年夏天/);
+  const prompt = core.buildImagePrompt({
+    scene: "窗前的搪瓷杯", setting: "窗前", objects: ["搪瓷杯"], light: "", mood: "", eraHint: "", figures: [],
+  }, "illustration", undefined, source).prompt;
+  assert.match(prompt, /淡墨皴擦与薄水彩/);
+  assert.match(prompt, /叠笔与擦洗/);
+  assert.match(prompt, /正文明确写出的1983年/);
+  assert.doesNotMatch(prompt, /晒被子|公交站|1998/);
+
+  const cover = core.bookSource(draft, memories);
+  const coverPrompt = core.buildImagePrompt({
+    scene: "窗边桌上的搪瓷杯与远处灯光", setting: "窗边", objects: ["搪瓷杯"], light: "", mood: "", eraHint: "", figures: [],
+  }, "cover", undefined, cover).prompt;
+  assert.doesNotMatch(coverPrompt, /年代质地/);
+  assert.match(coverPrompt, /主体与留白/);
+});
+
 test("被正文否定的情绪不会变成画法；明确年代才进入提示词", () => {
   const scene = { scene: "窗前的桌子", setting: "窗前", objects: ["桌子"], light: "", mood: "怀旧", eraHint: "", figures: [] };
   const source = { text: "我不想再沉在怀旧里，今天只想看窗前的桌子。" };
@@ -566,7 +626,8 @@ test("美术想法在排队前必须审核，重复请求不能改写原想法",
   const checks = [];
   const h = harness({ deps: { textChecker: { async check(input) { checks.push(input); return { ok: true }; } } } });
   const event = { ...submitEvent("req-art-direction-0001"), artDirection: "暖黄彩铅和粗纸" };
-  await h.handlers.submit(ctx, event);
+  const submitted = await h.handlers.submit(ctx, event);
+  assert.equal(submitted.job.ideaApplied, true);
   assert.deepEqual(checks, [{ text: event.artDirection, openid: OWNER_OPENID }]);
   assert.match(h.repo.jobs.get(`${FAMILY}_${event.requestId}`).prompt, /用户的美术偏好：暖黄彩铅和粗纸/);
   await assert.rejects(h.handlers.submit(ctx, { ...event, artDirection: "青色水墨" }), error => error.code === "REQUEST_CONFLICT");
@@ -863,6 +924,28 @@ test("页面查进度时才出图：画好先记下链接，再转存云存储�
   assert.equal(image.aigcProduceId, calls.aigc[0].produceId);
   assert.equal(image.moderation, "pending");
   assert.deepEqual(calls.moderation, [{ fileID: image.fileID, openid: OWNER_OPENID }]);
+});
+
+test("出图超过一分钟时先保存结果链接，下一次查询再转存", async () => {
+  let h;
+  h = harness({
+    provider: {
+      async generate(input) {
+        h.calls.generate.push(input);
+        h.tick(60_001);
+        return { resultUrl: "https://result.example/slow.png", revisedPrompt: "", providerJobId: "slow", usageTokens: 1 };
+      },
+    },
+  });
+  const { job } = await h.handlers.submit(ctx, submitEvent());
+  const first = await h.handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(first.job.status, "generated");
+  assert.equal(h.repo.jobs.get(job.jobId).resultUrl, "https://result.example/slow.png");
+  assert.equal(h.calls.upload.length, 0);
+
+  const second = await h.handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(second.job.status, "stored");
+  assert.equal(h.calls.generate.length, 1);
 });
 
 test("确定性的隐式标识写入失败进入终态，保留结果链接且不再重试", async () => {

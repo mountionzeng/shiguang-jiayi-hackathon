@@ -13,6 +13,7 @@ const PURPOSES = ["illustration", "backdrop", "cover"];
 const ENABLED_PURPOSES = ["illustration", "backdrop", "cover"];
 const COVER_CHAPTER_ID = "book-cover";
 const MAX_BOOK_TEXT = 120000;
+const MAX_MEMORY_ART_TEXT = 60000;
 const QUALITY_ISSUE_KEYS = ["readableText", "pseudoText", "watermarkOrLogo", "signature"];
 const QUALITY_ISSUE_LABELS = {
   readableText: "有文字",
@@ -177,8 +178,43 @@ function assertUnrestrictedStory(story,draft) {
     throw new StoryImageError("STORY_PROTOCOL_REQUIRED","这份故事包含来源限制，暂不支持生成配图");
 }
 
+function memoryIdOf(memory) {
+  const id = typeof memory?.id === "string" ? memory.id : "";
+  if (id) return id;
+  const raw = String(memory?._id || "");
+  const match = raw.match(/_(memory-[0-9A-Za-z_-]{1,120})$/);
+  return match ? match[1] : raw;
+}
+
+function memoryTextForArt(memory) {
+  if (!memory || memory.deletedAt || memory.sourcePolicyRequired || memory.sourceIds) return "";
+  return cleanText(memory.text, MAX_MEMORY_ART_TEXT);
+}
+
+function combinedArtText(primaryText, memories) {
+  const parts = [String(primaryText || "").trim()].filter(Boolean);
+  const existing = parts.join("\n");
+  let length = existing.length;
+  const seen = new Set(parts.map(item => item.replace(/\s+/g, " ").trim()).filter(Boolean));
+  for (const memory of Array.isArray(memories) ? memories : []) {
+    const text = memoryTextForArt(memory);
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized || seen.has(normalized) || existing.includes(normalized)) continue;
+    if (length + normalized.length > MAX_MEMORY_ART_TEXT) break;
+    parts.push(normalized);
+    seen.add(normalized);
+    length += normalized.length;
+  }
+  return parts.join("\n\n").slice(0, MAX_MEMORY_ART_TEXT);
+}
+
+function chapterMemories(chapter, memories) {
+  const ids = new Set(Array.isArray(chapter?.memoryIds) ? chapter.memoryIds : []);
+  return (Array.isArray(memories) ? memories : []).filter(memory => ids.has(memoryIdOf(memory)));
+}
+
 /** The chapter's own words from the saved book. Photos are local references and never read. */
-function chapterSource(draft, chapterId) {
+function chapterSource(draft, chapterId, memories = []) {
   const chapters = draft && Array.isArray(draft.chapters) ? draft.chapters : [];
   const chapter = chapters.find(item => item && item.id === chapterId);
   if (!chapter) throw new StoryImageError("CHAPTER_NOT_FOUND", "没找到这一章，请先保存书稿再配图");
@@ -188,19 +224,21 @@ function chapterSource(draft, chapterId) {
     .replace(/\s+/g, " ")
     .trim();
   if (!text) throw new StoryImageError("CHAPTER_EMPTY", "这一章还没有文字，先写几句再配图");
+  const artText = combinedArtText(text, chapterMemories(chapter, memories));
   return {
     title: String(chapter.title || "").trim().slice(0, 40),
     text: text.slice(0, MAX_CHAPTER_TEXT),
     textLength: text.length,
-    artText: text,
-    fullTextHash: textHash(text),
+    artText,
+    artTextLength: artText.length,
+    fullTextHash: textHash(artText),
     characterContext: bookCharacterContext(draft, chapterId),
     bookLifeCategory: bookLifeCategory(draft),
   };
 }
 
 /** Every saved chapter is sent in order; never silently truncate a book. */
-function bookSource(draft) {
+function bookSource(draft, memories = []) {
   const chapters = Array.isArray(draft?.chapters) ? draft.chapters : [];
   const sections = chapters.map((chapter, index) => {
     const body = (chapter.content || []).map(item => typeof item?.text === "string" ? item.text : "").join("").trim();
@@ -209,7 +247,9 @@ function bookSource(draft) {
   if (!sections.length) throw new StoryImageError("BOOK_EMPTY", "先写下并保存一些正文，再来生成封面");
   const text = sections.join("\n\n");
   if (text.length > MAX_BOOK_TEXT) throw new StoryImageError("BOOK_TOO_LONG", "这本书超过了单次封面阅读长度，暂时无法完整处理");
+  const artText = combinedArtText(text, memories);
   return { title: String(draft.title || "").slice(0, 80), text, textLength: text.length,
+    artText, artTextLength: artText.length, fullTextHash: textHash(artText),
     characterContext: "", scope: "book", chapterCount: chapters.length, bookLifeCategory: bookLifeCategory(draft) };
 }
 
@@ -436,12 +476,21 @@ const EMOTION_PAINT = [
 ];
 const NEGATED_EMOTION_PREFIX = /(?:不要|并非|不是|不想|不再|并不|没有|避免|拒绝|禁止|不|without|not|no)\s*[^，。！？\n]{0,18}$/i;
 
+function hasAffirmedEmotion(words, sourceText) {
+  const mentions = [...String(sourceText || "").matchAll(new RegExp(words.source, "g"))];
+  return mentions.some(match => !NEGATED_EMOTION_PREFIX.test(String(sourceText).slice(Math.max(0, match.index - 24), match.index)));
+}
+
 function emotionPaint(mood, sourceText) {
+  const text = String(sourceText || "");
   const matching = EMOTION_PAINT.find(item => item.words.test(mood || ""));
-  if (!matching) return "";
-  const mentions = [...String(sourceText || "").matchAll(new RegExp(matching.words.source, "g"))];
-  if (mentions.length && mentions.every(match => NEGATED_EMOTION_PREFIX.test(String(sourceText).slice(Math.max(0, match.index - 24), match.index)))) return "";
-  return matching.paint;
+  if (matching) {
+    const mentions = [...text.matchAll(new RegExp(matching.words.source, "g"))];
+    if (mentions.length && mentions.every(match => NEGATED_EMOTION_PREFIX.test(text.slice(Math.max(0, match.index - 24), match.index)))) return "";
+    return matching.paint;
+  }
+  const inferred = EMOTION_PAINT.find(item => hasAffirmedEmotion(item.words, text));
+  return inferred ? inferred.paint : "";
 }
 
 const LIFE_PAINT = {
@@ -526,6 +575,7 @@ function publicJob(job) {
     imageId: job.imageId || "",
     ...(job.referenceImageId ? { referenceApplied: true, referenceImageId: job.referenceImageId } : {}),
     ...(job.purpose === "cover" ? { referenceApplied: true, referenceImageIds: job.referenceImageIds || [], referencePhotoIds: job.referencePhotoIds || [] } : {}),
+    ...(job.artDirectionHash ? { ideaApplied: true } : {}),
     createdAtMs: job.createdAtMs,
   };
 }
