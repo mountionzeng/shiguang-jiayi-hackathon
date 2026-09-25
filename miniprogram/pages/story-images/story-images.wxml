@@ -18,10 +18,10 @@
     <input class="art-direction-input" data-id="{{group.id}}" value="{{artDirections[group.id] || ''}}" maxlength="80" placeholder="想画成什么样子（可不填）" aria-label="{{group.label}}的美术想法" bindinput="onArtDirectionInput" />
     <view class="art-direction-hint">例如：暖黄彩铅、粗纸纹理。画面内容仍以本章正文为准。{{group.referencePhotoLabel}}</view>
     <view class="group-actions">
-      <button class="tool-button" data-id="{{group.id}}" data-purpose="illustration" bindtap="generate" loading="{{submitting === group.id + ':illustration'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
+      <button class="tool-button {{group.id === focusChapterId && focusPurpose === 'illustration' ? 'is-route-focus' : ''}}" data-id="{{group.id}}" data-purpose="illustration" bindtap="generate" loading="{{submitting === group.id + ':illustration'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
         <view class="action-icon icon-ai" aria-hidden="true"></view>{{submitting === group.id + ':illustration' ? '提交中' : '配一张插图'}}
       </button>
-      <button class="tool-button" data-id="{{group.id}}" data-purpose="backdrop" bindtap="generate" loading="{{submitting === group.id + ':backdrop'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
+      <button class="tool-button {{group.id === focusChapterId && focusPurpose === 'backdrop' ? 'is-route-focus' : ''}}" data-id="{{group.id}}" data-purpose="backdrop" bindtap="generate" loading="{{submitting === group.id + ':backdrop'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
         <view class="action-icon icon-photo" aria-hidden="true"></view>{{submitting === group.id + ':backdrop' ? '提交中' : '配一张底图'}}
       </button>
     </view>

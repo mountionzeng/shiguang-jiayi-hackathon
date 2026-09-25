@@ -727,11 +727,12 @@ test("这本书的图：按章节分组，显示占用空间和正在画的图�
   context.after(() => { restoreApi(); timers.restore(); env.restore(); });
 
   const page = instantiate(await pageDefinition("story-images"));
-  call(page, "onLoad", { chapterId: encodeURIComponent("chapter-a") });
+  call(page, "onLoad", { chapterId: encodeURIComponent("chapter-a"), purpose: "backdrop" });
   await call(page, "refresh");
 
   const groups = page.data.groups as Array<{ id: string; title: string; images: Array<{ sizeLabel: string; moderationLabel: string; qualityLabel: string; purposeLabel: string; isBackdrop: boolean; inUse: boolean }>; pending: Array<{ active: boolean; purposeLabel: string }> }>;
   assert.equal(page.data.focusChapterId, "chapter-a");
+  assert.equal(page.data.focusPurpose, "backdrop");
   assert.equal(page.data.bookTitle, "外婆的书");
   assert.deepEqual(groups.map(group => group.id), ["chapter-a", "chapter-b"]);
   assert.equal(groups[0].title, "老院子");

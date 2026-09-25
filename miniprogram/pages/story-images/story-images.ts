@@ -24,6 +24,7 @@ interface ChapterGroup {
 
 const PURPOSE_LABELS: Record<string, string> = { illustration: "插图", backdrop: "底图", cover: "封面" };
 const LOCAL_PHOTO_ID = /^photo-(?!ai-)[a-z0-9-]{1,80}$/;
+const routePurpose = (value?: string): "" | "illustration" | "backdrop" => value === "illustration" || value === "backdrop" ? value : "";
 const chapterReferencePhotoIds = (chapter: ManuscriptChapter): string[] =>
   [...new Set(chapter.content
     .map((item): string => typeof item.photoId === "string" ? item.photoId : "")
@@ -48,7 +49,7 @@ const messageOf = (error: unknown, fallback: string) => error instanceof Error &
  */
 Page({
   data: {
-    storyId: "", memberId: "", bookTitle: "", focusChapterId: "",
+    storyId: "", memberId: "", bookTitle: "", focusChapterId: "", focusPurpose: "" as "" | "illustration" | "backdrop",
     groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
@@ -62,7 +63,7 @@ Page({
   requestedMemberId: "",
   requestedStoryId: "",
 
-  onLoad(options: { storyId?: string; memberId?: string; chapterId?: string } = {}) {
+  onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; purpose?: string } = {}) {
     this.unloaded = false;
     if (options.memberId) {
       try { this.requestedMemberId = decodeURIComponent(options.memberId); } catch { this.requestedMemberId = ""; }
@@ -72,7 +73,7 @@ Page({
     }
     if (!options.chapterId) return;
     try {
-      this.setData({ focusChapterId: decodeURIComponent(options.chapterId) });
+      this.setData({ focusChapterId: decodeURIComponent(options.chapterId), focusPurpose: routePurpose(options.purpose) });
     } catch {
       // 参数坏了就不高亮任何一章。
     }
