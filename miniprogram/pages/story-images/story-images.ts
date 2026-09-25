@@ -175,7 +175,7 @@ Page({
       const job = await storyImageApi.submitChapterImage({
         ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
         ...(referenceImageId ? { referenceImageId } : {}),
-        ...(purpose === "illustration" && !referenceImageId && group?.referencePhotoIds.length ? { referencePhotoIds: group.referencePhotoIds } : {}),
+        ...(!referenceImageId && group?.referencePhotoIds.length ? { referencePhotoIds: group.referencePhotoIds } : {}),
         ...(this.data.artDirections[chapterId]?.trim() ? { artDirection: this.data.artDirections[chapterId].trim() } : {}),
       });
       if (this.unloaded) return;

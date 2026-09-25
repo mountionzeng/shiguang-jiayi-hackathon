@@ -131,13 +131,13 @@ function normalizeSubmitInput(event) {
   if (referenceImageId && purpose !== "illustration") {
     throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图可以参考旧图再画");
   }
-  if (referencePhotoIds.length && purpose !== "illustration" && purpose !== "cover") {
-    throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图和封面可以参考照片");
+  if (referencePhotoIds.length && !["illustration", "backdrop", "cover"].includes(purpose)) {
+    throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图、底图和封面可以参考照片");
   }
   if (referencePhotoIds.length && purpose === "illustration" && referenceImageId) {
     throw new StoryImageError("INVALID_REFERENCE_IMAGE", "本章照片和旧插图一次只能选一种参考");
   }
-  if (referencePhotoIds.length && purpose === "illustration" && input.photoReferenceConsent !== true) {
+  if (referencePhotoIds.length && ["illustration", "backdrop"].includes(purpose) && input.photoReferenceConsent !== true) {
     throw new StoryImageError("CONSENT_REQUIRED", "请先确认本次配图使用的照片参考");
   }
   if (purpose === "cover") {
@@ -559,11 +559,11 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
   if (purpose === "backdrop") parts.push("淡淡的渗色与纸纤维只在景物附近显现，正文所在的留白保持清朗。");
   if (artDirection) parts.push(`用户的美术偏好：${artDirection}。优先体现在色彩、材料与笔触中，画面事实仍以正文为准。`);
   if (visualReference) {
-    if (visualReference.photoReference) parts.push("本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是本章视觉依据，转换为纸本手绘插画。");
+    if (visualReference.photoReference) parts.push(purpose === "backdrop" ? "本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是底图下方和两侧边角的视觉依据；正文留白仍保持清朗，但主体轮廓、配色或关键物件需要能看出来自原图。" : "本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是本章视觉依据，转换为纸本手绘插画。");
     const continuity = [];
     if (visualReference.style) continuity.push(`画风与材质延续${visualReference.style}`);
     if (visualReference.palette.length) continuity.push(`主要配色延续${visualReference.palette.join("、")}`);
-    if (style.withFigures && visualReference.figures.length) continuity.push(`主体可见外观延续${visualReference.figures.join("、")}`);
+    if ((style.withFigures || purpose === "backdrop") && visualReference.figures.length) continuity.push(`主体可见外观延续${visualReference.figures.join("、")}`);
     if (visualReference.objects.length) continuity.push(`相符的辨识物件延续${visualReference.objects.join("、")}`);
     if (continuity.length) parts.push(`参考图的视觉连续性：${continuity.join("；")}。`);
   }

@@ -126,9 +126,9 @@ function createStoryImageHandlers(deps) {
     const draft = input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
     const artMemories = await storyArtMemories(input.familyId, storyContext);
     const source = input.purpose === "cover" ? core.bookSource(draft, artMemories) : core.chapterSource(draft, input.chapterId, artMemories);
-    assertReferencePhotosInChapter(source, input.purpose === "illustration" ? input.referencePhotoIds : []);
+    assertReferencePhotosInChapter(source, input.purpose === "cover" ? [] : input.referencePhotoIds);
     let chapterReferenceUrls = [];
-    if (input.purpose === "illustration" && input.referencePhotoIds.length) {
+    if (["illustration", "backdrop"].includes(input.purpose) && input.referencePhotoIds.length) {
       if (!referenceAnalyzer?.configured) throw new core.StoryImageError("REFERENCE_NOT_CONFIGURED", "参考图服务还没配置好");
       chapterReferenceUrls = await readReferencePhotoUrls(ctx, input, input.referencePhotoIds);
     }

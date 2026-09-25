@@ -355,7 +355,7 @@ test("带美术想法生成会先确认云端能力，并验证想法确实被�
   assert.equal(calls.find(item => item.data.action === "submit")?.data.artDirection, "傍晚暖光，人物只画背影");
 });
 
-test("带本章照片生成会先确认云端能力与照片同意，并验证照片确实被采用", async context => {
+test("带本章照片生成插图和底图都会先确认能力与照片同意，并验证照片确实被采用", async context => {
   clearAiConsent();
   clearPhotoAiConsent();
   const calls: Array<{ name: string; data: Record<string, unknown> }> = [];
@@ -365,8 +365,8 @@ test("带本章照片生成会先确认云端能力与照片同意，并验证�
       if (name === "getOpenId") return { result: { openid: "o-owner" } };
       if (data.action === "capabilities") return { result: { apiVersion: 5, referencePhotos: true } };
       return { result: { job: {
-        jobId: "family_o-owner_req-photo", status: "queued", message: "正在画", chapterId: "chapter-a",
-        purpose: "illustration", imageId: "", referenceApplied: true, referencePhotoIds: ["photo-cat"], createdAtMs: 1,
+        jobId: `family_o-owner_${data.requestId}`, status: "queued", message: "正在画", chapterId: "chapter-a",
+        purpose: data.purpose, imageId: "", referenceApplied: true, referencePhotoIds: ["photo-cat"], createdAtMs: 1,
       } } };
     } },
   });
@@ -377,9 +377,15 @@ test("带本章照片生成会先确认云端能力与照片同意，并验证�
     memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-photo-00000001",
     referencePhotoIds: ["photo-cat"],
   });
-  assert.deepEqual(calls.filter(item => item.name === "storyImages").map(item => item.data.action), ["capabilities", "submit"]);
-  assert.deepEqual(calls.find(item => item.data.action === "submit")?.data.referencePhotoIds, ["photo-cat"]);
-  assert.equal(calls.find(item => item.data.action === "submit")?.data.photoReferenceConsent, true);
+  await storyImageApi.submitChapterImage({
+    memberId: "owner", chapterId: "chapter-a", purpose: "backdrop", requestId: "req-photo-00000002",
+    referencePhotoIds: ["photo-cat"],
+  });
+  assert.deepEqual(calls.filter(item => item.name === "storyImages").map(item => item.data.action), ["capabilities", "submit", "capabilities", "submit"]);
+  const submits = calls.filter(item => item.data.action === "submit").map(item => item.data);
+  assert.deepEqual(submits.map(item => item.purpose), ["illustration", "backdrop"]);
+  assert.deepEqual(submits.map(item => item.referencePhotoIds), [["photo-cat"], ["photo-cat"]]);
+  assert.deepEqual(submits.map(item => item.photoReferenceConsent), [true, true]);
 });
 
 test("旧版云端不能静默忽略用户的美术想法", async context => {
@@ -831,11 +837,13 @@ test("本章正文里的照片会随直接配图请求发送，AI 插图引用�
   const groups = page.data.groups as Array<{ referencePhotoIds: string[] }>;
   assert.deepEqual(groups[0].referencePhotoIds, ["photo-cat"]);
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
+  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "backdrop" } } });
   await call(page, "generate", { currentTarget: { dataset: {
     id: "chapter-a", purpose: "illustration", reference: "family_o-owner_img_req-aaaaaaaa",
   } } });
   assert.deepEqual(submitted, [
     { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referencePhotoIds: ["photo-cat"] },
+    { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop", referencePhotoIds: ["photo-cat"] },
     { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa" },
   ]);
 });

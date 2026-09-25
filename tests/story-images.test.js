@@ -659,31 +659,36 @@ test("正文跨越多个明确年代时，不把其中之一当作全书年代",
   assert.doesNotMatch(prompt, /年代质地/);
 });
 
-test("本章照片经授权后参与章节插图提示词，并在付费出图前重新传给 TokenHub", async () => {
-  const h = harness();
-  const event = {
-    ...submitEvent("req-photo-ref-0001"),
-    referencePhotoIds: ["photo-abc"],
-    photoReferenceConsent: true,
-  };
-  const submitted = await h.handlers.submit(ctx, event);
-  assert.equal(submitted.job.referenceApplied, true);
-  assert.deepEqual(submitted.job.referencePhotoIds, ["photo-abc"]);
-  assert.deepEqual(h.calls.readPhotos[0], {
-    familyId: FAMILY,
-    photoIds: ["photo-abc"],
-    variant: "display",
-    purpose: "ai-reference",
-    onBehalfOfOpenid: OWNER_OPENID,
-  });
-  const storedJob = h.repo.jobs.get(`${FAMILY}_${event.requestId}`);
-  assert.match(storedJob.prompt, /本章照片参考/);
-  assert.match(storedJob.prompt, /蓝眼睛白灰长毛猫/);
-  assert.equal(storedJob.source.photoHash, core.textHash("photo-abc"));
+test("本章照片经授权后参与章节插图和底图提示词，并在付费出图前重新传给 TokenHub", async () => {
+  for (const purpose of ["illustration", "backdrop"]) {
+    const h = harness();
+    const event = {
+      ...submitEvent(`req-photo-ref-${purpose}`),
+      purpose,
+      referencePhotoIds: ["photo-abc"],
+      photoReferenceConsent: true,
+    };
+    const submitted = await h.handlers.submit(ctx, event);
+    assert.equal(submitted.job.referenceApplied, true);
+    assert.deepEqual(submitted.job.referencePhotoIds, ["photo-abc"]);
+    assert.deepEqual(h.calls.readPhotos[0], {
+      familyId: FAMILY,
+      photoIds: ["photo-abc"],
+      variant: "display",
+      purpose: "ai-reference",
+      onBehalfOfOpenid: OWNER_OPENID,
+    });
+    const storedJob = h.repo.jobs.get(`${FAMILY}_${event.requestId}`);
+    assert.match(storedJob.prompt, /本章照片参考/);
+    assert.match(storedJob.prompt, /蓝眼睛白灰长毛猫/);
+    assert.equal(storedJob.source.photoHash, core.textHash("photo-abc"));
+    if (purpose === "backdrop") assert.match(storedJob.prompt, /底图下方/);
+    else assert.match(storedJob.prompt, /纸本手绘插画/);
 
-  await h.handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: submitted.job.jobId });
-  assert.deepEqual(h.calls.readPhotos[1], h.calls.readPhotos[0]);
-  assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/photo-abc.jpg"]);
+    await h.handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: submitted.job.jobId });
+    assert.deepEqual(h.calls.readPhotos[1], h.calls.readPhotos[0]);
+    assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/photo-abc.jpg"]);
+  }
 });
 
 test("章节照片参考必须来自本章正文，且必须先有照片 AI 同意", async () => {
@@ -693,8 +698,19 @@ test("章节照片参考必须来自本章正文，且必须先有照片 AI 同�
     referencePhotoIds: ["photo-other"],
     photoReferenceConsent: true,
   }), error => error.code === "REFERENCE_IMAGE_NOT_FOUND");
+  await assert.rejects(h.handlers.submit(ctx, {
+    ...submitEvent("req-photo-other-backdrop"),
+    purpose: "backdrop",
+    referencePhotoIds: ["photo-other"],
+    photoReferenceConsent: true,
+  }), error => error.code === "REFERENCE_IMAGE_NOT_FOUND");
   assert.throws(() => core.normalizeSubmitInput({
     ...submitEvent("req-photo-no-consent"),
+    referencePhotoIds: ["photo-abc"],
+  }), error => error.code === "CONSENT_REQUIRED");
+  assert.throws(() => core.normalizeSubmitInput({
+    ...submitEvent("req-photo-no-consent-backdrop"),
+    purpose: "backdrop",
     referencePhotoIds: ["photo-abc"],
   }), error => error.code === "CONSENT_REQUIRED");
 });
