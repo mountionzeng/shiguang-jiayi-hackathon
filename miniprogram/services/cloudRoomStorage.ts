@@ -30,7 +30,7 @@ import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
 import { loadCurrentMember } from "./roomStorage";
 import { checkTextContent } from "./contentSecurityService";
-import { measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
+import { jsonUtf8ByteLength, measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
 
 export const CLOUD_COLLECTIONS = {
   families: "families",
@@ -511,6 +511,9 @@ async function readCloudRoomState(options: { readOnly?: boolean }, metrics: Perf
   let storyServiceState: StoryServiceRoomState | undefined;
   try {
     storyServiceState = await measurePerformance('room.state', loadStoryServiceRoomState);
+    const responseAnalysisStarted = Date.now();
+    metrics.responseBytes = jsonUtf8ByteLength(storyServiceState);
+    metrics.responseAnalysisMs = Math.max(0, Date.now() - responseAnalysisStarted);
     if (storyServiceState.roomStateVersion === 1) {
       if (!isCompleteStoryServiceRoomState(storyServiceState)) throw new Error("故事服务返回不完整，请稍后重试");
       return normalizeStoryServiceRoomState(storyServiceState);
