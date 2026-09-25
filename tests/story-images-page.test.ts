@@ -355,6 +355,33 @@ test("带美术想法生成会先确认云端能力，并验证想法确实被�
   assert.equal(calls.find(item => item.data.action === "submit")?.data.artDirection, "傍晚暖光，人物只画背影");
 });
 
+test("带本章照片生成会先确认云端能力与照片同意，并验证照片确实被采用", async context => {
+  clearAiConsent();
+  clearPhotoAiConsent();
+  const calls: Array<{ name: string; data: Record<string, unknown> }> = [];
+  const env = installWx({
+    cloud: { callFunction: async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
+      calls.push({ name, data });
+      if (name === "getOpenId") return { result: { openid: "o-owner" } };
+      if (data.action === "capabilities") return { result: { apiVersion: 5, referencePhotos: true } };
+      return { result: { job: {
+        jobId: "family_o-owner_req-photo", status: "queued", message: "正在画", chapterId: "chapter-a",
+        purpose: "illustration", imageId: "", referenceApplied: true, referencePhotoIds: ["photo-cat"], createdAtMs: 1,
+      } } };
+    } },
+  });
+  env.setApp(true);
+  context.after(() => { env.restore(); clearAiConsent(); clearPhotoAiConsent(); });
+
+  await storyImageApi.submitChapterImage({
+    memberId: "owner", chapterId: "chapter-a", purpose: "illustration", requestId: "req-photo-00000001",
+    referencePhotoIds: ["photo-cat"],
+  });
+  assert.deepEqual(calls.filter(item => item.name === "storyImages").map(item => item.data.action), ["capabilities", "submit"]);
+  assert.deepEqual(calls.find(item => item.data.action === "submit")?.data.referencePhotoIds, ["photo-cat"]);
+  assert.equal(calls.find(item => item.data.action === "submit")?.data.photoReferenceConsent, true);
+});
+
 test("旧版云端不能静默忽略用户的美术想法", async context => {
   clearAiConsent();
   const actions: unknown[] = [];
@@ -781,6 +808,36 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
 
   call(page, "previewImage", { currentTarget: { dataset: { url: "https://tmp.example/a.png" } } });
   assert.deepEqual(env.previews, [{ current: "https://tmp.example/a.png", urls: ["https://tmp.example/a.png", "https://tmp.example/b.png"] }]);
+});
+
+test("本章正文里的照片会随直接配图请求发送，AI 插图引用不算本机照片", async context => {
+  const state = stateWithBook();
+  state.manuscriptRevisions![0].draft.chapters![0].content.push(
+    { photoId: "photo-cat" },
+    { photoId: "photo-ai-req-aaaaaaaa" },
+  );
+  const env = installWx({}, state);
+  env.setApp(false);
+  const submitted: unknown[] = [];
+  const restoreApi = withApi({
+    listStoryImages: async () => listWith({ images: [], pending: [] }),
+    submitChapterImage: async input => { submitted.push(input); return { ...listWith().pending[0], chapterId: input.chapterId, purpose: input.purpose }; },
+  });
+  context.after(() => { restoreApi(); env.restore(); });
+
+  const page = instantiate(await pageDefinition("story-images"));
+  call(page, "onLoad", {});
+  await call(page, "refresh");
+  const groups = page.data.groups as Array<{ referencePhotoIds: string[] }>;
+  assert.deepEqual(groups[0].referencePhotoIds, ["photo-cat"]);
+  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
+  await call(page, "generate", { currentTarget: { dataset: {
+    id: "chapter-a", purpose: "illustration", reference: "family_o-owner_img_req-aaaaaaaa",
+  } } });
+  assert.deepEqual(submitted, [
+    { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referencePhotoIds: ["photo-cat"] },
+    { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa" },
+  ]);
 });
 
 test("插图可以回到来源章节的光标处，正文正在使用的原图不能直接删除", async context => {

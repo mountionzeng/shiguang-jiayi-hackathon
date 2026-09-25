@@ -31,6 +31,7 @@ export interface StoryImageJob {
   imageId: string;
   referenceApplied?: boolean;
   referenceImageId?: string;
+  referencePhotoIds?: string[];
   ideaApplied?: boolean;
   createdAtMs: number;
 }
@@ -147,11 +148,11 @@ function isJob(value: unknown): value is StoryImageJob {
   return Boolean(job && typeof job.jobId === "string" && typeof job.status === "string" && typeof job.message === "string");
 }
 
-async function submitChapterImage(input: { storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string; artDirection?: string }): Promise<StoryImageJob> {
+async function submitChapterImage(input: { storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string; referencePhotoIds?: string[]; artDirection?: string }): Promise<StoryImageJob> {
   if (!await requestAiConsent()) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图要把这一章的文字发给 AI 服务");
   }
-  let capabilities: { referenceIllustration?: unknown; guidedGeneration?: unknown } | undefined;
+  let capabilities: { referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown } | undefined;
   const loadCapabilities = async (unavailable: () => StoryImageServiceError) => {
     try {
       if (!capabilities) capabilities = await callStoryImages("capabilities", {});
@@ -159,8 +160,9 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
       if (error instanceof StoryImageServiceError && error.code === "UNKNOWN_ACTION") throw unavailable();
       throw error;
     }
-    return capabilities as { referenceIllustration?: unknown; guidedGeneration?: unknown };
+    return capabilities as { referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown };
   };
+  const referencePhotoIds = [...new Set((input.referencePhotoIds || []).map(id => String(id || "").trim()).filter(Boolean))].slice(0, 3);
   if (input.referenceImageId) {
     capabilities = await loadCapabilities(() =>
       new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试"));
@@ -169,6 +171,16 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
     }
     if (!await requestIllustrationReferenceConsent(input.referenceImageId)) {
       throw new StoryImageServiceError("CONSENT_DECLINED", "这次没有允许 AI 读取参考插图；你可以直接生成不带参考的配图");
+    }
+  }
+  if (referencePhotoIds.length) {
+    capabilities = await loadCapabilities(() =>
+      new StoryImageServiceError("REFERENCE_PHOTOS_UNAVAILABLE", "配图服务还没更新到参考本章照片功能，请稍后再试"));
+    if (capabilities.referencePhotos !== true) {
+      throw new StoryImageServiceError("REFERENCE_PHOTOS_UNAVAILABLE", "配图服务还没更新到参考本章照片功能，请稍后再试");
+    }
+    if (!await requestPhotoAiConsent(referencePhotoIds.length, "illustration-reference")) {
+      throw new StoryImageServiceError("CONSENT_DECLINED", "这次没有允许 AI 读取本章照片；不会发送照片给配图服务");
     }
   }
   if (input.artDirection?.trim()) {
@@ -184,6 +196,7 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
     requestId: input.requestId ?? newImageRequestId(),
     purpose: input.purpose,
     ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
+    ...(referencePhotoIds.length ? { referencePhotoIds, photoReferenceConsent: true } : {}),
     ...(input.artDirection?.trim() ? { artDirection: input.artDirection.trim() } : {}),
   });
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
@@ -192,6 +205,12 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
   }
   if (input.referenceImageId && (result.job.referenceApplied !== true || result.job.referenceImageId !== input.referenceImageId)) {
     throw new StoryImageServiceError("REFERENCE_UNAVAILABLE", "配图服务还没更新到参考旧图功能，请稍后再试");
+  }
+  if (referencePhotoIds.length) {
+    const applied = Array.isArray(result.job.referencePhotoIds) ? result.job.referencePhotoIds : [];
+    if (result.job.referenceApplied !== true || JSON.stringify(applied) !== JSON.stringify(referencePhotoIds)) {
+      throw new StoryImageServiceError("REFERENCE_PHOTOS_UNAVAILABLE", "配图服务没有使用本章照片，请稍后再试");
+    }
   }
   if (input.artDirection?.trim() && result.job.ideaApplied !== true) {
     throw new StoryImageServiceError("GUIDED_GENERATION_UNAVAILABLE", "配图服务没有使用你的画面想法，请稍后再试");

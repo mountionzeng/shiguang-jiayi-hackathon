@@ -1,6 +1,6 @@
 import { saveChapterBackdrop } from "../../services/chapterBackdrop";
 import { chapterLabel, chaptersOf } from "../../services/chapters";
-import { isRecordingProfile } from "../../domain/biography";
+import { isRecordingProfile, ManuscriptChapter } from "../../domain/biography";
 import { currentManuscript } from "../../services/manuscript";
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst } from "../../services/roomRepository";
 import {
@@ -18,10 +18,16 @@ interface ImageCard {
 interface JobRow { jobId: string; message: string; active: boolean; purposeLabel: string }
 interface ChapterGroup {
   id: string; label: string; title: string; backdropImageId: string; backdropMissing: boolean;
+  referencePhotoIds: string[]; referencePhotoLabel: string;
   images: ImageCard[]; pending: JobRow[];
 }
 
 const PURPOSE_LABELS: Record<string, string> = { illustration: "插图", backdrop: "底图", cover: "封面" };
+const LOCAL_PHOTO_ID = /^photo-(?!ai-)[a-z0-9-]{1,80}$/;
+const chapterReferencePhotoIds = (chapter: ManuscriptChapter): string[] =>
+  [...new Set(chapter.content
+    .map((item): string => typeof item.photoId === "string" ? item.photoId : "")
+    .filter((id): id is string => LOCAL_PHOTO_ID.test(id)))].slice(0, 3);
 
 const card = (image: StoryImage, backdropImageId = "", textImageReferences = new Set<string>()): ImageCard => ({
   imageId: image.imageId, url: image.url, sizeLabel: formatBytes(image.bytes),
@@ -105,8 +111,11 @@ Page({
       groups: chapters.map((chapter, index) => {
         const backdropImageId = chapter.backdropImageId ?? "";
         const textImageReferences = new Set(chapter.content.flatMap(item => item.photoId && isStoryImageReference(item.photoId) ? [item.photoId] : []));
+        const referencePhotoIds = chapterReferencePhotoIds(chapter);
         return {
           id: chapter.id, label: chapterLabel(index + 1), title: chapter.title, backdropImageId,
+          referencePhotoIds,
+          referencePhotoLabel: referencePhotoIds.length ? `会先询问，再参考本章 ${referencePhotoIds.length} 张照片` : "没有本章照片参考",
           // The chosen picture was deleted or failed the platform check.
           backdropMissing: !!backdropImageId && !listed.has(backdropImageId),
           images: list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
@@ -156,6 +165,7 @@ Page({
     const chapterId = event.currentTarget.dataset.id;
     const referenceImageId = event.currentTarget.dataset.reference;
     const purpose: StoryImagePurpose = event.currentTarget.dataset.purpose === "backdrop" ? "backdrop" : "illustration";
+    const group = this.data.groups.find(item => item.id === chapterId);
     if (this.data.submitting || this.data.savingBackdrop || !chapterId) return;
     this.setData({
       submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"),
@@ -165,6 +175,7 @@ Page({
       const job = await storyImageApi.submitChapterImage({
         ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
         ...(referenceImageId ? { referenceImageId } : {}),
+        ...(purpose === "illustration" && !referenceImageId && group?.referencePhotoIds.length ? { referencePhotoIds: group.referencePhotoIds } : {}),
         ...(this.data.artDirections[chapterId]?.trim() ? { artDirection: this.data.artDirections[chapterId].trim() } : {}),
       });
       if (this.unloaded) return;

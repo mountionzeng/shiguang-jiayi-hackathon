@@ -155,6 +155,7 @@ const repo = {
       const memories = await repo.listStoryMemories(job.familyId, story);
       const source=job.purpose === "cover" ? bookSource(record.revision.draft, memories) : chapterSource(record.revision.draft,job.chapterId, memories);
       if((source.fullTextHash || textHash(source.text))!==job.source?.textHash)throw new StoryImageError("REVISION_CHANGED","章节内容已经变化，请重新配图");
+      if(job.source?.photoHash && source.photoHash!==job.source.photoHash)throw new StoryImageError("REVISION_CHANGED","章节照片已经变化，请重新配图");
     });
   },
   async isActiveStory(familyId,storyId) {
@@ -321,7 +322,7 @@ const coverServices = createCoverServices({repo, storage, readPhotos: input => p
 // Optional user art directions are checked before a paid image job is queued.
 const textChecker = createTextChecker({ msgSecCheck: request => cloud.openapi.security.msgSecCheck(request) });
 const handlers = createStoryImageHandlers({
-  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker, referenceAnalyzer, coverServices, textChecker,
+  repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker, referenceAnalyzer, coverServices, textChecker, readPhotos: input => photoReader.read(input),
   async forwardPhotoModeration({ traceId, suggest, label }) {
     const response = await cloud.callFunction({
       name: "photoAccess",
@@ -372,7 +373,7 @@ async function main(event = {}) {
   const ctx = { openid: String(context.OPENID || "").trim() };
   try {
     switch (event.action) {
-      case "capabilities": return { apiVersion: 4, referenceIllustration: referenceAnalyzer.configured, guidedGeneration: true, bookCover: true };
+      case "capabilities": return { apiVersion: 5, referenceIllustration: referenceAnalyzer.configured, referencePhotos: referenceAnalyzer.configured, guidedGeneration: true, bookCover: true };
       case "coverSources": return await coverServices.sources(ctx, event);
       case "selectCover": return await coverServices.select(ctx, event);
       case "submit": return await handlers.submit(ctx, event);

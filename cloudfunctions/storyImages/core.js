@@ -84,6 +84,7 @@ function requireOwner(openid, familyId) {
 const ID_PATTERN = /^[0-9A-Za-z_-]{1,80}$/;
 const REQUEST_ID_PATTERN = /^req-[0-9a-z-]{8,60}$/;
 const STORY_IMAGE_ID_PATTERN = /^family_[0-9A-Za-z_-]{1,120}_img_req-[0-9a-z-]{8,60}$/;
+const PHOTO_ID_PATTERN = /^photo-(?!ai-)[0-9a-z-]{1,80}$/;
 const MAX_ART_DIRECTION = 80;
 
 function normalizeArtDirection(value) {
@@ -98,6 +99,16 @@ function normalizeArtDirection(value) {
   return direction;
 }
 
+function normalizeReferencePhotoIds(value) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new StoryImageError("INVALID_REFERENCE_IMAGE", "参考照片信息无效，请重新选择");
+  const ids = value.map(id => String(id || "").trim());
+  if (ids.length > 3 || new Set(ids).size !== ids.length || !ids.every(id => PHOTO_ID_PATTERN.test(id))) {
+    throw new StoryImageError("INVALID_REFERENCE_IMAGE", "最多选 3 张本章照片作为参考");
+  }
+  return ids;
+}
+
 function normalizeSubmitInput(event) {
   const input = event || {};
   const familyId = String(input.familyId || "").trim();
@@ -107,6 +118,7 @@ function normalizeSubmitInput(event) {
   const requestId = String(input.requestId || "").trim();
   const purpose = String(input.purpose || "illustration");
   const referenceImageId = String(input.referenceImageId || "").trim();
+  const referencePhotoIds = normalizeReferencePhotoIds(input.referencePhotoIds);
   const artDirection = normalizeArtDirection(input.artDirection);
   if (!ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
   if (!ID_PATTERN.test(chapterId)) throw new StoryImageError("INVALID_CHAPTER", "章节信息不完整");
@@ -119,11 +131,19 @@ function normalizeSubmitInput(event) {
   if (referenceImageId && purpose !== "illustration") {
     throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图可以参考旧图再画");
   }
+  if (referencePhotoIds.length && purpose !== "illustration" && purpose !== "cover") {
+    throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图和封面可以参考照片");
+  }
+  if (referencePhotoIds.length && purpose === "illustration" && referenceImageId) {
+    throw new StoryImageError("INVALID_REFERENCE_IMAGE", "本章照片和旧插图一次只能选一种参考");
+  }
+  if (referencePhotoIds.length && purpose === "illustration" && input.photoReferenceConsent !== true) {
+    throw new StoryImageError("CONSENT_REQUIRED", "请先确认本次配图使用的照片参考");
+  }
   if (purpose === "cover") {
     if (!ID_PATTERN.test(storyId)) throw new StoryImageError("INVALID_STORY", "请先把这份书稿保存为故事书");
     if (input.coverConsent !== true) throw new StoryImageError("CONSENT_REQUIRED", "请先确认本次封面使用的文字和参考图片");
     const referenceImageIds = Array.isArray(input.referenceImageIds) ? input.referenceImageIds : [];
-    const referencePhotoIds = Array.isArray(input.referencePhotoIds) ? input.referencePhotoIds : [];
     const ids = [...referenceImageIds, ...referencePhotoIds];
     if (ids.length > 3 || new Set(ids).size !== ids.length ||
       !referenceImageIds.every(id => typeof id === "string" && STORY_IMAGE_ID_PATTERN.test(id)) ||
@@ -132,7 +152,7 @@ function normalizeSubmitInput(event) {
     }
     return { familyId, memberId: "", storyId, chapterId, requestId, purpose, referenceImageId: "", referenceImageIds, referencePhotoIds, artDirection };
   }
-  return { familyId, memberId, storyId, chapterId, requestId, purpose, referenceImageId, artDirection };
+  return { familyId, memberId, storyId, chapterId, requestId, purpose, referenceImageId, referencePhotoIds, artDirection };
 }
 
 function normalizeMemberInput(event) {
@@ -213,7 +233,14 @@ function chapterMemories(chapter, memories) {
   return (Array.isArray(memories) ? memories : []).filter(memory => ids.has(memoryIdOf(memory)));
 }
 
-/** The chapter's own words from the saved book. Photos are local references and never read. */
+function chapterPhotoIds(chapter) {
+  const ids = (Array.isArray(chapter?.content) ? chapter.content : [])
+    .map(item => typeof item?.photoId === "string" ? item.photoId : "")
+    .filter(id => PHOTO_ID_PATTERN.test(id));
+  return [...new Set(ids)].slice(0, 3);
+}
+
+/** The chapter's own words from the saved book. User photos stay opaque until a separate AI-reference consent is granted. */
 function chapterSource(draft, chapterId, memories = []) {
   const chapters = draft && Array.isArray(draft.chapters) ? draft.chapters : [];
   const chapter = chapters.find(item => item && item.id === chapterId);
@@ -225,6 +252,7 @@ function chapterSource(draft, chapterId, memories = []) {
     .trim();
   if (!text) throw new StoryImageError("CHAPTER_EMPTY", "这一章还没有文字，先写几句再配图");
   const artText = combinedArtText(text, chapterMemories(chapter, memories));
+  const photoIds = chapterPhotoIds(chapter);
   return {
     title: String(chapter.title || "").trim().slice(0, 40),
     text: text.slice(0, MAX_CHAPTER_TEXT),
@@ -232,6 +260,8 @@ function chapterSource(draft, chapterId, memories = []) {
     artText,
     artTextLength: artText.length,
     fullTextHash: textHash(artText),
+    photoIds,
+    photoHash: textHash(photoIds.join("\n")),
     characterContext: bookCharacterContext(draft, chapterId),
     bookLifeCategory: bookLifeCategory(draft),
   };
@@ -349,7 +379,7 @@ function alignSceneFigures(scene, source) {
 }
 
 /** The chosen picture may itself be wrong; current text still controls people and props. */
-function alignVisualReference(reference, source, scene) {
+function alignVisualReference(reference, source, scene, options = {}) {
   if (!reference) return undefined;
   let figures = alignSceneFigures({ figures: reference.figures || [] }, source).figures;
   if (genderEvidence(source && source.text) === "mixed") {
@@ -357,9 +387,9 @@ function alignVisualReference(reference, source, scene) {
   }
   const currentText = String((source && source.text) || "");
   const sceneObjects = new Set(Array.isArray(scene && scene.objects) ? scene.objects : []);
-  const objects = (reference.objects || []).filter(referenceObject =>
+  const objects = options.trustedChapterPhoto ? (reference.objects || []).slice(0, 4) : (reference.objects || []).filter(referenceObject =>
     referenceObject.length >= 2 && sceneObjects.has(referenceObject) && currentText.includes(referenceObject));
-  return { ...reference, figures, objects };
+  return { ...reference, figures, objects, ...((reference.photoReference === true || options.photoReference === true) ? { photoReference: true } : {}) };
 }
 
 function draftReferencesStoryImage(draft, imageId) {
@@ -529,10 +559,11 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
   if (purpose === "backdrop") parts.push("淡淡的渗色与纸纤维只在景物附近显现，正文所在的留白保持清朗。");
   if (artDirection) parts.push(`用户的美术偏好：${artDirection}。优先体现在色彩、材料与笔触中，画面事实仍以正文为准。`);
   if (visualReference) {
+    if (visualReference.photoReference) parts.push("本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是本章视觉依据，转换为纸本手绘插画。");
     const continuity = [];
     if (visualReference.style) continuity.push(`画风与材质延续${visualReference.style}`);
     if (visualReference.palette.length) continuity.push(`主要配色延续${visualReference.palette.join("、")}`);
-    if (style.withFigures && visualReference.figures.length) continuity.push(`人物可见外观延续${visualReference.figures.join("、")}`);
+    if (style.withFigures && visualReference.figures.length) continuity.push(`主体可见外观延续${visualReference.figures.join("、")}`);
     if (visualReference.objects.length) continuity.push(`相符的辨识物件延续${visualReference.objects.join("、")}`);
     if (continuity.length) parts.push(`参考图的视觉连续性：${continuity.join("；")}。`);
   }
@@ -574,6 +605,7 @@ function publicJob(job) {
     purpose: job.purpose,
     imageId: job.imageId || "",
     ...(job.referenceImageId ? { referenceApplied: true, referenceImageId: job.referenceImageId } : {}),
+    ...(Array.isArray(job.referencePhotoIds) && job.referencePhotoIds.length ? { referenceApplied: true, referencePhotoIds: job.referencePhotoIds } : {}),
     ...(job.purpose === "cover" ? { referenceApplied: true, referenceImageIds: job.referenceImageIds || [], referencePhotoIds: job.referencePhotoIds || [] } : {}),
     ...(job.artDirectionHash ? { ideaApplied: true } : {}),
     createdAtMs: job.createdAtMs,
@@ -621,6 +653,7 @@ module.exports = {
   alignVisualReference,
   chapterSource,
   bookSource,
+  chapterPhotoIds,
   COVER_CHAPTER_ID,
   MAX_BOOK_TEXT,
   chinaDayKey,

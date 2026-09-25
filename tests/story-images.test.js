@@ -133,6 +133,8 @@ function memoryRepo() {
       const source=job.purpose === "cover" ? core.bookSource(context.draft,memories) : core.chapterSource(context.draft,job.chapterId,memories);
       if((source.fullTextHash || core.textHash(source.text))!==job.source?.textHash)
         throw new core.StoryImageError('REVISION_CHANGED','章节内容已经变化');
+      if(job.source?.photoHash && source.photoHash!==job.source.photoHash)
+        throw new core.StoryImageError('REVISION_CHANGED','章节照片已经变化');
     },
     async createImage(id, data) { images.set(id, { ...data, _id: id }); },
     async getImage(id) { const image = images.get(id); return image && { ...image }; },
@@ -177,7 +179,7 @@ function harness({ provider = {}, deps = {} } = {}) {
   const repo = memoryRepo();
   repo.setDrafts([revisionRecord({ id: "revision-2", savedAt: "2026-09-12T10:00:00.000Z", chapters: [CHAPTER] })]);
   let clock = T0;
-  const calls = { scene: [], reference: [], tempUrls: [], generate: [], download: [], aigc: [], upload: [], uploadBuffers: [], remove: [], moderation: [] };
+  const calls = { scene: [], reference: [], tempUrls: [], generate: [], download: [], aigc: [], upload: [], uploadBuffers: [], remove: [], moderation: [], readPhotos: [] };
   const handlers = createStoryImageHandlers({
     repo,
     provider: {
@@ -201,6 +203,10 @@ function harness({ provider = {}, deps = {} } = {}) {
         calls.reference.push(url);
         return { style: "轻柔水彩", palette: ["暖白", "浅蓝"], figures: ["短发女孩，浅蓝外套"], objects: ["红围巾"] };
       },
+      async analyzeChapterPhotos(urls) {
+        calls.reference.push(urls);
+        return { style: "柔和照片光", palette: ["暖白", "灰褐"], figures: ["蓝眼睛白灰长毛猫"], objects: ["猫"], photoReference: true };
+      },
     },
     aigcMetadata: aigcMetadataFake(calls),
     storage: {
@@ -217,6 +223,10 @@ function harness({ provider = {}, deps = {} } = {}) {
     },
     moderation: { async check(input) { calls.moderation.push(input); return "trace-1"; } },
     async downloadImage(url) { calls.download.push(url); return { buffer: Buffer.from("png-bytes"), contentType: "image/png" }; },
+    async readPhotos(input) {
+      calls.readPhotos.push(input);
+      return input.photoIds.map(photoId => ({ photoId, status: "ok", url: `https://tmp.example/${photoId}.jpg` }));
+    },
     now: () => clock,
     log: { error() {} },
     ...deps,
@@ -257,6 +267,25 @@ test("TokenHub 出图：同步接口、API Key 鉴权、关闭改写、明确带
   assert.equal(sent.init.headers.Authorization, "Bearer sk-test");
   assert.deepEqual(JSON.parse(sent.init.body), { model: "hy-image-v3", prompt: "画面", size: "1024x768", seed: 12345, revise: false, footnote: "AI生成" });
   assert.equal(tokenhub.createTokenHubImageClient({ apiKey: "" }).configured, false);
+});
+
+test("TokenHub 出图可以携带最多三张参考图片 URL", async () => {
+  let sent;
+  const client = tokenhub.createTokenHubImageClient({
+    apiKey: "sk-test",
+    fetchImpl: async (url, init) => {
+      sent = { url, body: JSON.parse(init.body) };
+      return jsonResponse(200, { id: "4-WandImage-ref", data: [{ url: "https://aigc-image.cos.myqcloud.com/x/ref.png" }] });
+    },
+  });
+  await client.generate({
+    prompt: "画面",
+    width: 1024,
+    height: 768,
+    referenceImages: ["https://tmp.example/photo-cat.jpg"],
+  });
+  assert.deepEqual(sent.body.images, ["https://tmp.example/photo-cat.jpg"]);
+  await assert.rejects(client.generate({ prompt: "画面", width: 1024, height: 768, referenceImages: ["wxfile://local.jpg"] }), error => error.httpStatus === 400);
 });
 
 test("TokenHub 出图在云函数的 60 秒上限前停止并预留结果落库时间", () => {
@@ -615,11 +644,59 @@ test("长章节后半段的明确年代仍进入美术提示词，且完整正�
   assert.notEqual(changed.fullTextHash, source.fullTextHash);
 });
 
+test("章节正文里的本机照片引用会作为独立来源被记录", () => {
+  const source = core.chapterSource({ chapters: [CHAPTER] }, "chapter-1");
+  assert.deepEqual(source.photoIds, ["photo-abc"]);
+  assert.equal(source.photoHash, core.textHash("photo-abc"));
+  const duplicate = core.chapterSource({ chapters: [{ ...CHAPTER, content: [...CHAPTER.content, { photoId: "photo-abc" }, { photoId: "photo-ai-req-aaaaaaaa" }] }] }, "chapter-1");
+  assert.deepEqual(duplicate.photoIds, ["photo-abc"]);
+});
+
 test("正文跨越多个明确年代时，不把其中之一当作全书年代", () => {
   const source = { text: "1983年的小院。1998年的城市。" };
   const scene = { scene: "小院", setting: "小院", objects: [], light: "", mood: "", eraHint: "1983年", figures: [] };
   const prompt = core.buildImagePrompt(scene, "cover", undefined, source).prompt;
   assert.doesNotMatch(prompt, /年代质地/);
+});
+
+test("本章照片经授权后参与章节插图提示词，并在付费出图前重新传给 TokenHub", async () => {
+  const h = harness();
+  const event = {
+    ...submitEvent("req-photo-ref-0001"),
+    referencePhotoIds: ["photo-abc"],
+    photoReferenceConsent: true,
+  };
+  const submitted = await h.handlers.submit(ctx, event);
+  assert.equal(submitted.job.referenceApplied, true);
+  assert.deepEqual(submitted.job.referencePhotoIds, ["photo-abc"]);
+  assert.deepEqual(h.calls.readPhotos[0], {
+    familyId: FAMILY,
+    photoIds: ["photo-abc"],
+    variant: "display",
+    purpose: "ai-reference",
+    onBehalfOfOpenid: OWNER_OPENID,
+  });
+  const storedJob = h.repo.jobs.get(`${FAMILY}_${event.requestId}`);
+  assert.match(storedJob.prompt, /本章照片参考/);
+  assert.match(storedJob.prompt, /蓝眼睛白灰长毛猫/);
+  assert.equal(storedJob.source.photoHash, core.textHash("photo-abc"));
+
+  await h.handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: submitted.job.jobId });
+  assert.deepEqual(h.calls.readPhotos[1], h.calls.readPhotos[0]);
+  assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/photo-abc.jpg"]);
+});
+
+test("章节照片参考必须来自本章正文，且必须先有照片 AI 同意", async () => {
+  const h = harness();
+  await assert.rejects(h.handlers.submit(ctx, {
+    ...submitEvent("req-photo-other-0001"),
+    referencePhotoIds: ["photo-other"],
+    photoReferenceConsent: true,
+  }), error => error.code === "REFERENCE_IMAGE_NOT_FOUND");
+  assert.throws(() => core.normalizeSubmitInput({
+    ...submitEvent("req-photo-no-consent"),
+    referencePhotoIds: ["photo-abc"],
+  }), error => error.code === "CONSENT_REQUIRED");
 });
 
 test("美术想法在排队前必须审核，重复请求不能改写原想法", async () => {

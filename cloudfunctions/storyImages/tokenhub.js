@@ -33,17 +33,26 @@ function httpError(status, message) {
  * Errors carry httpStatus when TokenHub answered, so callers can tell a refusal
  * from a dropped connection that may already have cost money.
  */
+function cleanReferenceImages(images) {
+  if (images === undefined || images === null) return [];
+  if (!Array.isArray(images) || images.length > 3) throw httpError(400, "IMAGE_REFERENCES_OUT_OF_RANGE");
+  const urls = images.map(url => String(url || "").trim()).filter(Boolean);
+  if (urls.length !== images.length || !urls.every(url => /^https:\/\//.test(url))) throw httpError(400, "IMAGE_REFERENCE_INVALID");
+  return urls;
+}
+
 function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = defaultFetch, timeoutMs = IMAGE_GENERATE_TIMEOUT_MS }) {
   const root = String(baseUrl || TOKENHUB_BASE_URL).replace(/\/$/, "");
   return {
     configured: Boolean(apiKey),
-    async generate({ prompt, width, height, seed }) {
+    async generate({ prompt, width, height, seed, referenceImages }) {
       if (width < 512 || height < 512 || width > 2048 || height > 2048 || width * height > MAX_IMAGE_AREA) {
         throw httpError(400, "IMAGE_SIZE_OUT_OF_RANGE");
       }
       if (seed !== undefined && (!Number.isInteger(seed) || seed < 1 || seed > 4294967295)) {
         throw httpError(400, "IMAGE_SEED_OUT_OF_RANGE");
       }
+      const images = cleanReferenceImages(referenceImages);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       let response;
@@ -56,6 +65,7 @@ function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = defaultFetch, 
             model: IMAGE_MODEL,
             prompt,
             size: `${width}x${height}`,
+            ...(images.length ? { images } : {}),
             ...(seed !== undefined ? { seed } : {}),
             // Rewriting adds time and may add things the chapter never said.
             revise: false,

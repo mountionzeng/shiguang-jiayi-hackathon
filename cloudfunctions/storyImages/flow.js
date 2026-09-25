@@ -35,6 +35,7 @@ function createStoryImageHandlers(deps) {
     referenceAnalyzer,
     coverServices,
     textChecker,
+    readPhotos,
     now = () => Date.now(),
     log = console,
   } = deps;
@@ -62,6 +63,32 @@ function createStoryImageHandlers(deps) {
   async function storyArtMemories(familyId, storyContext) {
     if (!storyContext || typeof repo.listStoryMemories !== "function") return [];
     return await repo.listStoryMemories(familyId, storyContext.story);
+  }
+
+  function assertReferencePhotosInChapter(source, photoIds) {
+    if (!photoIds?.length) return;
+    const allowed = new Set(source.photoIds || []);
+    if (photoIds.some(id => !allowed.has(id))) {
+      throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "只能参考本章正文里的照片");
+    }
+  }
+
+  async function readReferencePhotoUrls(ctx, input, photoIds) {
+    if (!photoIds?.length) return [];
+    if (!readPhotos) throw new core.StoryImageError("REFERENCE_NOT_CONFIGURED", "参考照片服务还没配置好");
+    const photos = await readPhotos({
+      familyId: input.familyId, photoIds, variant: "display", purpose: "ai-reference", onBehalfOfOpenid: ctx.openid,
+    });
+    if (photos.length !== photoIds.length || photos.some(photo => photo.status !== "ok" || !photo.url)) {
+      throw new core.StoryImageError("REFERENCE_IMAGE_NOT_READY", "本章照片尚未上传或暂时无法用于 AI，请稍后再试");
+    }
+    return photos.map(photo => photo.url);
+  }
+
+  async function referenceImagesForJob(job) {
+    const photoIds = Array.isArray(job.referencePhotoIds) ? job.referencePhotoIds : [];
+    if (!photoIds.length) return [];
+    return await readReferencePhotoUrls({ openid: job.requesterOpenId }, job, photoIds);
   }
 
   async function submit(ctx, event) {
@@ -99,6 +126,12 @@ function createStoryImageHandlers(deps) {
     const draft = input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
     const artMemories = await storyArtMemories(input.familyId, storyContext);
     const source = input.purpose === "cover" ? core.bookSource(draft, artMemories) : core.chapterSource(draft, input.chapterId, artMemories);
+    assertReferencePhotosInChapter(source, input.purpose === "illustration" ? input.referencePhotoIds : []);
+    let chapterReferenceUrls = [];
+    if (input.purpose === "illustration" && input.referencePhotoIds.length) {
+      if (!referenceAnalyzer?.configured) throw new core.StoryImageError("REFERENCE_NOT_CONFIGURED", "参考图服务还没配置好");
+      chapterReferenceUrls = await readReferencePhotoUrls(ctx, input, input.referencePhotoIds);
+    }
     let coverReferenceUrls = [];
     if (input.purpose === "cover") {
       if (!coverServices) throw new core.StoryImageError("COVER_NOT_CONFIGURED", "封面服务尚未准备好");
@@ -156,10 +189,12 @@ function createStoryImageHandlers(deps) {
         textLength: source.textLength,
         artTextLength: source.artTextLength || source.textLength,
         characterContextLength: source.characterContext.length,
+        ...(source.photoIds?.length ? { photoHash: source.photoHash, photoCount: source.photoIds.length } : {}),
       },
       referencePhotoCount: input.referencePhotoIds?.length || 0,
       referenceImageCount: input.referenceImageIds?.length || (input.referenceImageId ? 1 : 0),
       ...(input.artDirection ? { artDirectionHash: core.textHash(input.artDirection) } : {}),
+      ...(input.referencePhotoIds?.length ? { referencePhotoIds: input.referencePhotoIds } : {}),
       ...(input.purpose === "cover" ? { referenceImageIds: input.referenceImageIds, referencePhotoIds: input.referencePhotoIds } : {}),
       ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
       status: "submitted",
@@ -182,11 +217,14 @@ function createStoryImageHandlers(deps) {
       const [extracted, extractedReference] = await Promise.all([
         extractScene(source),
         coverReferenceUrls.length ? referenceAnalyzer.analyzeCover(coverReferenceUrls)
+          : chapterReferenceUrls.length ? (referenceAnalyzer.analyzeChapterPhotos || referenceAnalyzer.analyzeCover)(chapterReferenceUrls)
           : referenceUrl ? referenceAnalyzer.analyze(referenceUrl) : Promise.resolve(undefined),
       ]);
       scene = extracted;
       scene = core.alignSceneFigures(scene, source);
-      const visualReference = core.alignVisualReference(extractedReference, source, scene);
+      const visualReference = core.alignVisualReference(extractedReference, source, scene, {
+        photoReference: chapterReferenceUrls.length > 0, trustedChapterPhoto: chapterReferenceUrls.length > 0,
+      });
       const { prompt, width, height } = core.buildImagePrompt(scene, input.purpose, visualReference, source, input.artDirection);
       const patch = {
         status: "queued", prompt, scene, width, height, queuedAtMs: now(), updatedAtMs: now(),
@@ -241,9 +279,20 @@ function createStoryImageHandlers(deps) {
       await repo.updateJob(job._id,{status:"queued",updatedAtMs:now()});
       throw error;
     }
+    let referenceImages;
+    try {
+      referenceImages = await referenceImagesForJob(job);
+    } catch (error) {
+      const patch = { status: "failed", errorCode: (error && error.code) || "REFERENCE_IMAGE_NOT_READY", prompt: "", updatedAtMs: now() };
+      await repo.updateJob(job._id, patch);
+      return { ...job, ...patch };
+    }
     let result;
     try {
-      result = await provider.generate({ prompt: job.prompt, width: job.width, height: job.height, seed: job.seed });
+      result = await provider.generate({
+        prompt: job.prompt, width: job.width, height: job.height, seed: job.seed,
+        ...(referenceImages.length ? { referenceImages } : {}),
+      });
     } catch (error) {
       const outcome = core.classifyGenerateError(error);
       log.error("storyImages generate", outcome.errorCode, String(error && error.message));
