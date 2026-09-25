@@ -37,7 +37,6 @@
       <view class="image-card" wx:for="{{group.images}}" wx:key="imageId" wx:for-item="image">
         <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />
         <view class="image-meta">
-          <text class="ai-badge">AI 生成</text>
           <text class="purpose-badge {{image.inUse ? 'is-in-use' : ''}}">{{image.inUse ? '本章底图' : image.purposeLabel}}</text>
           <text>{{image.sizeLabel}}</text>
           <text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
@@ -72,7 +71,6 @@
       <view class="image-card" wx:for="{{otherImages}}" wx:key="imageId" wx:for-item="image">
         <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />
         <view class="image-meta">
-          <text class="ai-badge">AI 生成</text>
           <text class="purpose-badge">{{image.purposeLabel}}</text>
           <text>{{image.sizeLabel}}</text>
           <text wx:if="{{image.qualityLabel}}" class="{{image.qualityFlawed ? 'quality-flawed' : ''}}">{{image.qualityLabel}}</text>
