@@ -6,6 +6,7 @@ import { addCloudFamilyMember, appendCloudContribution as appendContributionRemo
 import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
 import { ensureStoryBooks, storyCommand } from "../miniprogram/services/storyBooks";
+import { jsonUtf8ByteLength } from "../miniprogram/services/performanceLog";
 
 // Synthetic wx I/O only: repository, cloud storage and domain code all run unmocked.
 function fixture() {
@@ -123,6 +124,44 @@ test('room performance logs identify legacy paging without exposing account or s
     assert.equal(failed.outcome, 'error');
     assert.equal(failed.clientPageReads, 0, 'invalid versioned responses never silently fall back');
   } finally { f.restore(); }
+});
+
+test('room.state performance records UTF-8 response size without logging response contents', async () => {
+  const f = fixture();
+  try {
+    const logs: any[] = [];
+    (globalThis as any).wx.getRealtimeLogManager = () => ({ info: (_label: string, detail: any) => logs.push(detail) });
+    const state = {
+      roomStateVersion: 1,
+      roomName: "私密房间",
+      protagonistName: "私密名字",
+      members: [{ id: "private-member", name: "私密名字", relation: "朋友", avatarText: "私", role: "owner" }],
+      contributions: [{ id: "private-memory", authorMemberId: "private-member", text: "秘密正文🍶", createdAt: "2026-09-25", visibility: "private", reviewStatus: "approved" }],
+      draft: undefined,
+      draftSourceFingerprint: "private-fingerprint",
+      personalDrafts: {},
+      personalDraftSourceFingerprints: {},
+      deletedStories: [],
+      storyMigration: undefined,
+      stories: [],
+      manuscriptRevisions: [],
+    };
+    (globalThis as any).wx.cloud.callFunction = async ({ name }: any) => ({ result: name === "getOpenId" ? { openid: "fixture-user" } : state });
+
+    await loadRoomStateRemoteFirst();
+
+    const cloud = logs.find(item => item.operation === "room.cloud");
+    assert.equal(cloud.responseBytes, Buffer.byteLength(JSON.stringify(state), "utf8"));
+    assert.ok(cloud.responseAnalysisMs >= 0);
+    assert.doesNotMatch(JSON.stringify(logs), /私密房间|私密名字|秘密正文|private-member|private-fingerprint/);
+  } finally { f.restore(); }
+});
+
+test('JSON response byte counting handles UTF-8 and cannot fail a cloud read', () => {
+  const value = { ascii: "ok", chinese: "正文", emoji: "🍶" };
+  assert.equal(jsonUtf8ByteLength(value), Buffer.byteLength(JSON.stringify(value), "utf8"));
+  assert.equal(jsonUtf8ByteLength(undefined), undefined);
+  assert.equal(jsonUtf8ByteLength(1n), undefined);
 });
 
 test('unavailable performance logging does not prevent cloud reads', async () => {
