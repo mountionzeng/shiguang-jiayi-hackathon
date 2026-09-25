@@ -1165,6 +1165,51 @@ test("封面参考支持照片与插图混选，最多三张，等待期间重�
   assert.equal(page.data.notice,'读取超时');
 });
 
+test("分享封面候选只暴露已审核封面图，并保留封面任务", async context => {
+  const restoreApi = withApi({ listStoryImages: async bookId => {
+    assert.equal(bookId, 'story-one');
+    return listWith({
+      images: [
+        { imageId: 'cover-pass', chapterId: 'book-cover', purpose: 'cover', url: 'https://tmp.example/cover-pass.png', bytes: 10, moderation: 'pass', quality: 'pass', qualityIssues: [], aiGenerated: true, createdAtMs: 9 },
+        { imageId: 'cover-review', chapterId: 'book-cover', purpose: 'cover', url: 'https://tmp.example/cover-review.png', bytes: 10, moderation: 'review', quality: 'pass', qualityIssues: [], aiGenerated: true, createdAtMs: 8 },
+        { imageId: 'cover-empty-url', chapterId: 'book-cover', purpose: 'cover', url: '', bytes: 10, moderation: 'pass', quality: 'pass', qualityIssues: [], aiGenerated: true, createdAtMs: 7 },
+        { imageId: 'illustration-pass', chapterId: 'chapter-a', purpose: 'illustration', url: 'https://tmp.example/illustration.png', bytes: 10, moderation: 'pass', quality: 'pass', qualityIssues: [], aiGenerated: true, createdAtMs: 6 },
+      ],
+      pending: [
+        { jobId: 'job-cover', status: 'queued', message: '正在画封面', chapterId: 'book-cover', purpose: 'cover', imageId: '', createdAtMs: 5 },
+        { jobId: 'job-illustration', status: 'queued', message: '正在画插图', chapterId: 'chapter-a', purpose: 'illustration', imageId: '', createdAtMs: 4 },
+      ],
+    });
+  } });
+  context.after(restoreApi);
+
+  const result = await storyCoverApi.listShareCoverCandidates('story-one');
+
+  assert.deepEqual(result.candidates, [{ imageId: 'cover-pass', url: 'https://tmp.example/cover-pass.png', createdAtMs: 9 }]);
+  assert.deepEqual(result.pendingJobs.map(job => job.jobId), ['job-cover']);
+});
+
+test("分享封面任务查询只接受 cover job", async context => {
+  const calls: Array<{ jobId: string; bookId?: string }> = [];
+  const restoreApi = withApi({ checkImageJob: async (jobId, bookId) => {
+    calls.push({ jobId, bookId });
+    const purpose = jobId === 'job-cover' || jobId === 'job-cover-bad-image' ? 'cover' : 'illustration';
+    const imagePurpose = jobId === 'job-cover-bad-image' ? 'illustration' : purpose;
+    return {
+      job: { jobId, status: 'stored', message: '画好了', chapterId: purpose === 'cover' ? 'book-cover' : 'chapter-a', purpose, imageId: 'image-one', createdAtMs: 1 },
+      image: { imageId: 'image-one', chapterId: purpose === 'cover' ? 'book-cover' : 'chapter-a', purpose: imagePurpose, url: 'https://tmp.example/image.png', bytes: 10, moderation: 'pass', quality: 'pass', qualityIssues: [], aiGenerated: true, createdAtMs: 2 },
+    };
+  } });
+  context.after(restoreApi);
+
+  const job = await storyCoverApi.checkShareCoverJob('story-one', 'job-cover');
+
+  assert.equal(job.purpose, 'cover');
+  assert.deepEqual(calls[0], { jobId: 'job-cover', bookId: 'story-one' });
+  await assert.rejects(storyCoverApi.checkShareCoverJob('story-one', 'job-illustration'), { code: 'JOB_NOT_FOUND' });
+  await assert.rejects(storyCoverApi.checkShareCoverJob('story-one', 'job-cover-bad-image'), { code: 'JOB_NOT_FOUND' });
+});
+
 test("封面的美术想法也要求云端确认已采用", async context=>{
   const calls:Array<{name:string;data?:Record<string,unknown>}>=[];
   const env=installWx({cloud:{callFunction:async({name,data}:{name:string;data?:Record<string,unknown>})=>{
@@ -1174,9 +1219,10 @@ test("封面的美术想法也要求云端确认已采用", async context=>{
     return {result:{job:{jobId:'family_o-owner_req-cover',status:'queued',message:'正在画',chapterId:'book-cover',purpose:'cover',imageId:'',ideaApplied:true,createdAtMs:1}}};
   }}});
   context.after(()=>env.restore());env.setApp(true);
-  await storyCoverApi.submit({storyId:'story-one',referenceImageIds:[],referencePhotoIds:[],artDirection:'粗纸上的淡墨'});
+  await storyCoverApi.submit({storyId:'story-one',referenceImageIds:[],referencePhotoIds:[],artDirection:'粗纸上的淡墨',requestId:'req-cover-fixed'});
   assert.deepEqual(calls.filter(item=>item.name==='storyImages').map(item=>item.data?.action),['capabilities','submit']);
   assert.equal(calls.find(item=>item.data?.action==='submit')?.data?.artDirection,'粗纸上的淡墨');
+  assert.equal(calls.find(item=>item.data?.action==='submit')?.data?.requestId,'req-cover-fixed');
 });
 
 test("封面生成授权拒绝后不调用云函数，不擅自使用用户图片",async context=>{
