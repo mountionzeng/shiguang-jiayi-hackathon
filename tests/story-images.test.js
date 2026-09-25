@@ -1241,7 +1241,7 @@ test("内容安全检测判为违规的生成图会被隐藏并删除文件，�
 
 test("云函数配置：每分钟补做一次，申请内容安全接口，并从环境读取 AIGC 服务提供者编码", () => {
   const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/config.json"), "utf8"));
-  assert.deepEqual(config.permissions.openapi, ["security.mediaCheckAsync"]);
+  assert.deepEqual(config.permissions.openapi, ["security.mediaCheckAsync", "security.msgSecCheck"]);
   assert.equal(config.triggers[0].config, "0 * * * * * *");
   const index = fs.readFileSync(path.join(__dirname, "../cloudfunctions/storyImages/index.js"), "utf8");
   assert.match(index, /process\.env\.TOKENHUB_API_KEY/);
@@ -1706,12 +1706,14 @@ test("photoAccess 只认约定状态并保留请求顺序，不直接读照片�
   assert.deepEqual(photos.map(photo => [photo.photoId, photo.status]), [["photo-a", "ok"], ["photo-b", "risky"], ["photo-c", "not_found"]]);
 });
 
-test("生成文字统一调用 contentSecurityCheck，接口失败时按未通过处理", async () => {
+test("生成文字直接用当前用户 openid 审核，接口失败时按未通过处理", async () => {
   let sent;
-  const checker = createTextChecker({ async callFunction(options) { sent = options; return { result: { ok: true, suggest: "pass" } }; } });
-  assert.deepEqual(await checker.check({ text: "院子里晒着棉被", openid: OWNER_OPENID }), { ok: true, suggest: "pass", label: undefined });
-  assert.deepEqual(sent, { name: "contentSecurityCheck", data: { content: "院子里晒着棉被", scene: 3, openid: OWNER_OPENID } });
-  const broken = createTextChecker({ async callFunction() { throw new Error("offline"); } });
+  const checker = createTextChecker({ async msgSecCheck(options) { sent = options; return { result: { suggest: "pass", label: 100 } }; } });
+  assert.deepEqual(await checker.check({ text: "院子里晒着棉被", openid: OWNER_OPENID }), { ok: true, suggest: "pass", label: 100 });
+  assert.deepEqual(sent, { content: "院子里晒着棉被", version: 2, scene: 3, openid: OWNER_OPENID });
+  const risky = createTextChecker({ async msgSecCheck() { return { result: { suggest: "review", label: 200 } }; } });
+  assert.deepEqual(await risky.check({ text: "文字", openid: OWNER_OPENID }), { ok: false, risky: true, errorCode: "TEXT_RISKY", suggest: "review", label: 200 });
+  const broken = createTextChecker({ async msgSecCheck() { throw new Error("offline"); } });
   assert.equal((await broken.check({ text: "文字", openid: OWNER_OPENID })).ok, false);
 });
 

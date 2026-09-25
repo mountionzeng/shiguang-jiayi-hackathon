@@ -319,7 +319,7 @@ const photoReader = createPhotoReader({
 });
 const coverServices = createCoverServices({repo, storage, readPhotos: input => photoReader.read(input)});
 // Optional user art directions are checked before a paid image job is queued.
-const textChecker = createTextChecker({ callFunction: options => cloud.callFunction(options) });
+const textChecker = createTextChecker({ msgSecCheck: request => cloud.openapi.security.msgSecCheck(request) });
 const handlers = createStoryImageHandlers({
   repo, provider, extractScene, sceneConfigured, storage, moderation, downloadImage, aigcMetadata, qualityChecker, referenceAnalyzer, coverServices, textChecker,
   async forwardPhotoModeration({ traceId, suggest, label }) {

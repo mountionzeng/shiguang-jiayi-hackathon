@@ -1,7 +1,8 @@
 {
   "permissions": {
     "openapi": [
-      "security.mediaCheckAsync"
+      "security.mediaCheckAsync",
+      "security.msgSecCheck"
     ]
   },
   "triggers": [
