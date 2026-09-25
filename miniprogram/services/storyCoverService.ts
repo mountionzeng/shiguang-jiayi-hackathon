@@ -4,7 +4,9 @@ export interface CoverSources {
   storyId: string; title: string; revisionId: string; version: number; coverImageId: string;
   chapterCount: number; textLength: number; photos: Array<{photoId: string; url: string}>;
 }
-export interface CoverInput { storyId: string; referenceImageIds: string[]; referencePhotoIds: string[]; artDirection?: string }
+export interface CoverInput { storyId: string; referenceImageIds: string[]; referencePhotoIds: string[]; artDirection?: string; requestId?: string }
+export interface ShareCoverCandidate { imageId: string; url: string; createdAtMs: number }
+export interface ShareCoverCandidates { candidates: ShareCoverCandidate[]; pendingJobs: StoryImageJob[] }
 
 async function submit(input: CoverInput): Promise<StoryImageJob> {
   const count = input.referenceImageIds.length + input.referencePhotoIds.length;
@@ -29,7 +31,7 @@ async function submit(input: CoverInput): Promise<StoryImageJob> {
   }));
   if (!allowed) throw new StoryImageServiceError('CONSENT_DECLINED', '本次没有生成封面');
   const result = await callStoryImages<{job: StoryImageJob}>('submit', {
-    ...input, purpose: 'cover', coverConsent: true, requestId: newImageRequestId(),
+    ...input, purpose: 'cover', coverConsent: true, requestId: input.requestId ?? newImageRequestId(),
   });
   const job = result.job;
   if (!job || job.purpose !== 'cover' || !job.jobId || !job.status) throw new Error('封面服务返回内容不完整');
@@ -47,4 +49,23 @@ async function resolveUrl(storyId: string, imageId?: string): Promise<string> {
   const list = await storyImageApi.listStoryImages(storyId);
   return list.images.find(image => image.imageId === imageId && image.purpose === 'cover' && image.moderation === 'pass')?.url || '';
 }
-export const storyCoverApi = {submit, sources, select, resolveUrl};
+async function listShareCoverCandidates(storyId: string): Promise<ShareCoverCandidates> {
+  const list = await storyImageApi.listStoryImages(storyId);
+  return {
+    candidates: list.images
+      .filter(image => image.purpose === 'cover' && image.moderation === 'pass' && Boolean(image.url))
+      .map(image => ({ imageId: image.imageId, url: image.url, createdAtMs: image.createdAtMs })),
+    pendingJobs: list.pending.filter(job => job.purpose === 'cover'),
+  };
+}
+async function checkShareCoverJob(storyId: string, jobId: string): Promise<StoryImageJob> {
+  const result = await storyImageApi.checkImageJob(jobId, storyId);
+  if (!result.job || result.job.purpose !== 'cover') {
+    throw new StoryImageServiceError('JOB_NOT_FOUND', '没找到这次封面生成');
+  }
+  if (result.image && result.image.purpose !== 'cover') {
+    throw new StoryImageServiceError('JOB_NOT_FOUND', '没找到这次封面生成');
+  }
+  return result.job;
+}
+export const storyCoverApi = {submit, sources, select, resolveUrl, listShareCoverCandidates, checkShareCoverJob};
