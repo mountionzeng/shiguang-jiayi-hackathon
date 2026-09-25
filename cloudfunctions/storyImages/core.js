@@ -237,8 +237,8 @@ function bookLifeCategory(draft) {
 
 /** Keep only one explicitly written period; a book spanning periods has no single era style. */
 function explicitEraHint(text) {
-  const matches = String(text || "").match(/(?:18|19|20)\d{2}\s?年(?:代)?|(?:十八|十九|二十|二十一|18|19|20|21)世纪(?:[一二三四五六七八九十〇零\d]{1,3}年代)?|上世纪[三四五六七八九十\d]{1,3}年代|清末|民国(?:时期)?|改革开放初期/g) || [];
-  const periods = [...new Set(matches)];
+  const matches = String(text || "").match(/(?:18|19|20)\d{2}\s?年(?:代)?|[一二三四五六七八九〇零]{4}年|(?:十八|十九|二十|二十一|18|19|20|21)世纪(?:[一二三四五六七八九十〇零\d]{1,3}年代)?|上世纪[三四五六七八九十\d]{1,3}年代|清末|民国(?:时期)?|改革开放初期|文革时期|文化大革命时期/g) || [];
+  const periods = [...new Set(matches.map(item => item.replace(/\s+/g, "")))];
   return periods.length === 1 ? periods[0] : "";
 }
 

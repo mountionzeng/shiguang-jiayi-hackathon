@@ -550,7 +550,7 @@ test("长章节后半段的明确年代仍进入美术提示词，且完整正�
   assert.equal(source.fullTextHash, core.textHash(body));
   const scene = { scene: "院子", setting: "院子", objects: [], light: "", mood: "安静", eraHint: "", figures: [] };
   const prompt = core.buildImagePrompt(scene, "illustration", undefined, source).prompt;
-  assert.match(prompt, /正文明确写出的1983 年/);
+  assert.match(prompt, /正文明确写出的1983年/);
   const changed = core.chapterSource({ chapters: [{ id: "long", content: [{ text: body.replace("1983", "1984") }] }] }, "long");
   assert.notEqual(changed.fullTextHash, source.fullTextHash);
 });
