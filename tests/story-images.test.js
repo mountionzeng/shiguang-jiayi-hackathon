@@ -574,6 +574,10 @@ test("插图提示词只用肯定式描述，不列禁止画的东西", () => {
   assert.match(prompt, /纸面的纤维/);
   assert.match(prompt, /画中有竹竿、棉被。/);
   assert.match(prompt, /人物以远景或局部呈现：远景中的背影。/);
+  assert.match(prompt, /符合客观物理规律/);
+  assert.match(prompt, /前后遮挡/);
+  assert.match(prompt, /接触点、握持、翻阅、坐姿、重心和投影/);
+  assert.match(prompt, /接触和受力关系/);
   assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
   assert.doesNotMatch(prompt, /时代感/);
 });
@@ -620,6 +624,7 @@ test("同一本书的来源记忆参与美术提炼，但不改写当前画面�
   }, "cover", undefined, cover).prompt;
   assert.doesNotMatch(coverPrompt, /年代质地/);
   assert.match(coverPrompt, /主体与留白/);
+  assert.match(coverPrompt, /符合客观物理规律/);
 });
 
 test("被正文否定的情绪不会变成画法；明确年代才进入提示词", () => {
@@ -768,6 +773,8 @@ test("底图只画景物：上方留白、最多三个物件、没有人物，�
   assert.match(prompt, /上方大面积是接近纯白的宣纸留白/);
   assert.match(prompt, /景物：冬天的小院。/);
   assert.match(prompt, /画中有竹竿、棉被、木凳。/);
+  assert.match(prompt, /符合客观物理规律/);
+  assert.match(prompt, /前后遮挡/);
   assert.doesNotMatch(prompt, /瓦罐|奶奶|背影|人物/);
   assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
 });

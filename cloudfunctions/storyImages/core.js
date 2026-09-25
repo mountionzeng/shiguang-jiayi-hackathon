@@ -523,6 +523,8 @@ function emotionPaint(mood, sourceText) {
   return inferred ? inferred.paint : "";
 }
 
+const PHYSICAL_REALISM_REQUIREMENT = "硬性要求：画面符合客观物理规律；出现的主体、书本、树木和其他物件的前后遮挡按真实三维空间排序，接触点、握持、翻阅、坐姿、重心和投影相互自洽，主体与书本等物件的接触和受力关系清楚可读。";
+
 const LIFE_PAINT = {
   family: { medium: "柔软彩铅颗粒与薄水彩在纸上相叠，保留铅笔底稿的细线。", texture: "家庭内部的生活质地由物件之间的距离和细微叠色承载。" },
   local: { medium: "淡墨皴擦与薄水彩在粗纸上交汇，器物边缘带一点干笔。", texture: "地方生活的日常质地落在器物的手感与纸面颗粒里。" },
@@ -557,6 +559,7 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
   if (purpose === "illustration") parts.push("主体略偏于画面一侧，大块暖白留白与有来源的自然光组成安静的构图。局部保留叠笔、纸面阻力与轻微未覆盖的底色。");
   if (purpose === "cover") parts.push("主体与留白构成可读的封面骨架，光线来自画面内的时节与环境。局部保留叠笔、擦洗与未覆盖的纸色。");
   if (purpose === "backdrop") parts.push("淡淡的渗色与纸纤维只在景物附近显现，正文所在的留白保持清朗。");
+  parts.push(PHYSICAL_REALISM_REQUIREMENT);
   if (artDirection) parts.push(`用户的美术偏好：${artDirection}。优先体现在色彩、材料与笔触中，画面事实仍以正文为准。`);
   if (visualReference) {
     if (visualReference.photoReference) parts.push(purpose === "backdrop" ? "本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是底图下方和两侧边角的视觉依据；正文留白仍保持清朗，但主体轮廓、配色或关键物件需要能看出来自原图。" : "本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是本章视觉依据，转换为纸本手绘插画。");
