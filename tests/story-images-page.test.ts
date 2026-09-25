@@ -948,6 +948,140 @@ test("书稿页「更多」里能打开这一章的配图，未保存的修改�
   assert.ok(app.pages.includes("pages/story-images/story-images"));
 });
 
+test("书稿照片菜单把插图、底图和封面入口路由到对应后端页面", async context => {
+  const env = installWx({ hideKeyboard: () => undefined }, stateWithBook());
+  env.setApp(false);
+  context.after(env.restore);
+
+  const page = instantiate(await pageDefinition("book"));
+  const draft: BiographyDraft = { title: "外婆的书", paragraphs: [], sourceCount: 0, generatedAt: "", generationMode: "local-demo" };
+  page.chapters = [
+    { id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: "院子里晒着被子。\n" }] },
+    { id: "chapter-b", title: "渡口", memoryIds: [], content: [{ text: "渡口的风吹过来。\n" }] },
+  ];
+  page.activeChapterId = "chapter-a";
+  page.setData({
+    draft, view: "contents", storyId: "story special/一", savedRevisionId: "revision-a",
+    chapterRows: [
+      { id: "chapter-a", label: "第一章", title: "老院子", memoryCount: 0, photoCount: 0 },
+      { id: "chapter-b", label: "第二章", title: "渡口", memoryCount: 0, photoCount: 0 },
+    ],
+  });
+  page.finishEditing = async () => true;
+  const opened: string[] = [];
+  page.openChapter = async (event: { currentTarget: { dataset: { id: string } } }) => {
+    opened.push(event.currentTarget.dataset.id);
+    page.activeChapterId = event.currentTarget.dataset.id;
+    page.setData({ view: "chapter" });
+  };
+
+  await call(page, "choosePhotoAction", { currentTarget: { dataset: { action: "illustration" } } });
+  assert.equal(page.data.photoMenu, "chapters");
+  assert.equal(page.data.photoAction, "illustration");
+  await call(page, "choosePhotoChapter", { currentTarget: { dataset: { id: "chapter-b" } } });
+  assert.deepEqual(opened, ["chapter-b"]);
+  assert.equal(env.navigations[0], "/pages/story-images/story-images?storyId=story%20special%2F%E4%B8%80&chapterId=chapter-b&purpose=illustration");
+  assert.equal(page.data.preparingPhoto, false);
+
+  page.setData({ view: "chapter", photoMenu: "generate" });
+  page.activeChapterId = "chapter-b";
+  await call(page, "choosePhotoAction", { currentTarget: { dataset: { action: "backdrop" } } });
+  assert.equal(env.navigations[1], "/pages/story-images/story-images?storyId=story%20special%2F%E4%B8%80&chapterId=chapter-b&purpose=backdrop");
+
+  page.setData({ view: "contents", photoMenu: "generate" });
+  await call(page, "choosePhotoAction", { currentTarget: { dataset: { action: "cover" } } });
+  assert.equal(env.navigations[2], "/pages/story-cover/story-cover?storyId=story%20special%2F%E4%B8%80");
+});
+
+test("目录照片导入先切到目标章节，等编辑器准备好后才打开相册", async context => {
+  const env = installWx({ hideKeyboard: () => undefined }, stateWithBook());
+  env.setApp(false);
+  context.after(env.restore);
+
+  const page = instantiate(await pageDefinition("book"));
+  const draft: BiographyDraft = { title: "外婆的书", paragraphs: [], sourceCount: 0, generatedAt: "", generationMode: "local-demo" };
+  page.chapters = [
+    { id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: "院子里晒着被子。\n" }] },
+    { id: "chapter-b", title: "渡口", memoryIds: [], content: [{ text: "渡口的风吹过来。\n" }] },
+  ];
+  page.activeChapterId = "chapter-a";
+  page.setData({
+    draft, view: "contents",
+    chapterRows: [
+      { id: "chapter-a", label: "第一章", title: "老院子", memoryCount: 0, photoCount: 0 },
+      { id: "chapter-b", label: "第二章", title: "渡口", memoryCount: 0, photoCount: 0 },
+    ],
+  });
+  let imports = 0;
+  let finishCalls = 0;
+  let editorReady!: () => void;
+  page.finishEditing = async () => { finishCalls++; return true; };
+  page.addPhoto = async () => { imports++; };
+  page.editorContext = {
+    setContents: ({ success }: { success: () => void }) => { editorReady = success; },
+  };
+
+  await call(page, "choosePhotoAction", { currentTarget: { dataset: { action: "import" } } });
+  await call(page, "choosePhotoChapter", { currentTarget: { dataset: { id: "chapter-b" } } });
+  assert.equal(page.data.view, "chapter");
+  assert.equal(page.activeChapterId, "chapter-b");
+  assert.equal(page.pendingPhotoImportChapter, "chapter-b");
+  assert.equal(imports, 0);
+  assert.equal(finishCalls, 1);
+  assert.match(String(page.data.saveNotice), /编辑器准备好后/);
+
+  editorReady();
+  assert.equal(page.pendingPhotoImportChapter, "");
+  assert.equal(imports, 1);
+});
+
+test("照片菜单不会在保存失败、离页或受保护副本时启动图片流程", async context => {
+  const env = installWx({ hideKeyboard: () => undefined }, stateWithBook());
+  env.setApp(false);
+  context.after(env.restore);
+
+  const page = instantiate(await pageDefinition("book"));
+  const draft: BiographyDraft = { title: "外婆的书", paragraphs: [], sourceCount: 0, generatedAt: "", generationMode: "local-demo" };
+  page.chapters = [{ id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: "院子里晒着被子。\n" }] }];
+  page.activeChapterId = "chapter-a";
+  page.setData({ draft, view: "chapter", storyId: "story-a", savedRevisionId: "revision-a" });
+  let finishCalls = 0;
+  page.finishEditing = async () => { finishCalls++; return false; };
+  await call(page, "runPhotoAction", "illustration", "chapter-a");
+  assert.deepEqual(env.navigations, []);
+  assert.equal(page.data.preparingPhoto, false);
+
+  page.finishEditing = async () => { finishCalls++; return true; };
+  page.setData({ protectedCopy: true });
+  await call(page, "runPhotoAction", "backdrop", "chapter-a");
+  await call(page, "choosePhotoAction", { currentTarget: { dataset: { action: "cover" } } });
+  assert.equal(finishCalls, 1);
+  assert.deepEqual(env.navigations, []);
+});
+
+test("目录页用封面背景和正文摘录展示书的简介，不再显示制作封面小书壳", async () => {
+  const page = instantiate(await pageDefinition("book"));
+  const longText = Array.from({ length: 180 }, (_, index) => index % 2 ? "春" : "🌿").join("");
+  page.chapters = [
+    { id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: `  ${longText}  ` }, { photoId: "photo-secret" }] },
+    { id: "chapter-b", title: "渡口", memoryIds: [], content: [{ text: "第二章会继续写下去。\n" }] },
+  ];
+
+  const data = call(page, "chapterData") as { bookIntroduction: string };
+  assert.equal(Array.from(data.bookIntroduction).length, 161);
+  assert.ok(data.bookIntroduction.endsWith("…"));
+  assert.equal(data.bookIntroduction.includes("photo-secret"), false);
+
+  const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
+  assert.match(markup, /class="contents-cover-background"/);
+  assert.match(markup, /内容简介/);
+  assert.match(markup, /图片导入/);
+  assert.match(markup, /生成插图/);
+  assert.match(markup, /生成底图/);
+  assert.match(markup, /生成封面/);
+  assert.doesNotMatch(markup, /contents-cover-button|contents-cover-caption|story-book-cover\.png|制作封面/);
+});
+
 test("书稿接到选中的 AI 插图后按光标位置插入并保存为图片编号", async context => {
   const env = installWx({}, stateWithBook());
   env.setApp(false);

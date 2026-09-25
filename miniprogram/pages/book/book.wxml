@@ -1,7 +1,7 @@
 <view class="writing-page {{keyboardHeight ? 'keyboard-open' : ''}}" style="height: {{viewportHeight ? viewportHeight + 'px' : '100%'}};">
   <view class="writing-toolbar" wx:if="{{panel !== 'organize' && panel !== 'organize-preview'}}">
     <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '目录' : '返回'}}</button>
-    <button wx:if="{{!protectedCopy}}" class="tool-button" bindtap="addPhoto" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}</button>
+    <button wx:if="{{!protectedCopy}}" class="tool-button" bindtap="togglePhotoMenu" disabled="{{!draft || panel || saving || generating || pickingPhoto || preparingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}<text class="send-chevron">⌄</text></button>
     <button wx:if="{{!protectedCopy && storyImageSelected}}" class="tool-button" catchtouchstart="placeSelectedStoryImage" disabled="{{!editorReady || refreshingStoryImage || saving || generating || pickingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{refreshingStoryImage ? '准备插图' : '插入插图'}}</button>
     <button wx:if="{{!protectedCopy && view === 'contents'}}" class="tool-button send-toggle" bindtap="toggleSend" disabled="{{!draft || panel || preparingSend || generating || pickingPhoto}}">{{preparingSend ? '准备中' : '发送'}}<text class="send-chevron">⌄</text></button>
     <button wx:elif="{{!protectedCopy}}" class="tool-button" catchtouchstart="openShareSelection" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady || sharingExcerpt}}">发给家人</button>
@@ -9,6 +9,26 @@
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button" bindtap="returnOwnExperience" disabled="{{panel || returningOwn || appendingOwn}}">{{returningOwn ? '发送中' : '发回原作者'}}</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}"><view class="action-icon icon-save" aria-hidden="true"></view>{{saving ? '保存中' : '保存'}}</button>
     <button class="tool-button" bindtap="showMore" disabled="{{saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-more" aria-hidden="true"></view>更多</button>
+  </view>
+  <view wx:if="{{photoMenu}}" class="send-dismiss" bindtap="closePhotoMenu" aria-label="收起照片菜单"></view>
+  <view wx:if="{{photoMenu}}" class="photo-menu">
+    <block wx:if="{{photoMenu === 'main'}}">
+      <button class="photo-option" data-action="import" bindtap="choosePhotoAction">图片导入<text>›</text></button>
+      <button class="photo-option" bindtap="showPhotoGeneration">图片生成<text>›</text></button>
+    </block>
+    <block wx:elif="{{photoMenu === 'generate'}}">
+      <button class="photo-menu-back" bindtap="togglePhotoMenu">‹ 返回照片菜单</button>
+      <button class="photo-option" data-action="illustration" bindtap="choosePhotoAction">生成插图<text>›</text></button>
+      <button class="photo-option" data-action="backdrop" bindtap="choosePhotoAction">生成底图<text>›</text></button>
+      <button class="photo-option" data-action="cover" bindtap="choosePhotoAction">生成封面<text>›</text></button>
+    </block>
+    <block wx:else>
+      <view class="photo-menu-title">选择要配图的章节</view>
+      <scroll-view class="photo-chapter-list" scroll-y>
+        <button class="photo-option photo-chapter-option" wx:for="{{chapterRows}}" wx:key="id" data-id="{{item.id}}" bindtap="choosePhotoChapter"><text>{{item.label}} · {{item.title || '还没起名字'}}</text><text>›</text></button>
+      </scroll-view>
+      <view class="photo-menu-empty" wx:if="{{!chapterRows.length}}">先新开一章，再为它导入图片或生成配图。</view>
+    </block>
   </view>
   <view wx:if="{{sendOpen}}" class="send-dismiss" bindtap="closeSend" aria-label="收起发送菜单"></view>
   <view wx:if="{{sendOpen}}" class="send-menu">
@@ -60,15 +80,15 @@
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
   <scroll-view class="reading-panel contents-view" scroll-y hidden="{{!draft || panel || view !== 'contents'}}">
     <view class="panel-content contents-content">
-      <view class="contents-head">
-        <button class="contents-cover-button" bindtap="openCover" disabled="{{protectedCopy || saving || generating}}" aria-label="制作或更换这本书的封面">
-          <image class="contents-cover {{coverUrl ? 'has-custom-cover' : ''}}" src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}" mode="aspectFit"></image>
-          <text wx:if="{{!protectedCopy}}" class="contents-cover-caption">{{coverUrl ? '更换封面' : '制作封面'}}</text>
-        </button>
-        <view class="title-field contents-title-field">
+      <view class="contents-head {{coverUrl ? 'contents-head-covered' : ''}}">
+        <image wx:if="{{coverUrl}}" class="contents-cover-background" src="{{coverUrl}}" mode="aspectFill" binderror="onCoverError" aria-hidden="true"></image>
+        <view class="contents-cover-shade"></view>
+        <view class="contents-book-copy">
           <view class="field-label">书名</view>
           <input class="manuscript-title serif" value="{{editTitle}}" maxlength="80" bindinput="onEditTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{protectedCopy || saving || generating}}" placeholder="写一个标题" />
           <view class="contents-summary">{{chapterRows.length}} 章 · {{unassigned.length}} 段记忆还没写进</view>
+          <view class="contents-intro-label">内容简介<text wx:if="{{bookIntroduction}}"> · 摘自本书正文</text></view>
+          <view class="contents-introduction">{{bookIntroduction || '还没有正文。从一段记忆开始，慢慢写成这本书。'}}</view>
         </view>
       </view>
       <view class="contents-section serif">目录</view>

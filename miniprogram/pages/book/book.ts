@@ -55,6 +55,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 
 Page({
   data: {
+    photoMenu: "", photoAction: "", preparingPhoto: false, bookIntroduction: "",
     coverUrl: "", coverImageId: "", sendOpen: false, preparingSend: false,
     organizeMethod: "insert" as "insert" | "blend", organizeOriginal: "", insertionPoint: "end",
     insertionPoints: [] as ChapterInsertionPoint[], insertionIndex: 0,
@@ -90,6 +91,8 @@ Page({
   localDraftToken: "",
   editSequence: 0,
   sendEpoch: 0,
+  photoEpoch: 0,
+  pendingPhotoImportChapter: "",
   editorError: "",
   editSave: undefined as Promise<boolean> | undefined,
   titleBuffer: "",
@@ -161,6 +164,9 @@ Page({
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
   onHide() {
+    this.photoEpoch++;
+    this.pendingPhotoImportChapter = "";
+    this.setData({ photoMenu: "", preparingPhoto: false });
     this.sendEpoch++;
     this.setData({ sendOpen: false });
     if (this.data.editing) {
@@ -380,6 +386,54 @@ Page({
     if (!this.data.storyId || !this.data.savedRevisionId) { this.setData({saveNotice:"请先保存这本书，再制作封面"}); return; }
     wx.navigateTo({url:"/pages/story-cover/story-cover?storyId=" + encodeURIComponent(this.data.storyId)});
   },
+  onCoverError() { this.setData({ coverUrl: "" }); },
+  togglePhotoMenu() {
+    if (this.data.protectedCopy || !this.data.draft || this.data.panel || this.data.saving || this.data.generating || this.data.pickingPhoto || this.data.preparingPhoto) return;
+    wx.hideKeyboard();
+    this.setData({ photoMenu: this.data.photoMenu === "main" ? "" : "main", sendOpen: false, moreOpen: false });
+  },
+  closePhotoMenu() { this.setData({ photoMenu: "", photoAction: "" }); },
+  showPhotoGeneration() {
+    if (this.data.protectedCopy || !this.data.draft || this.data.panel || this.data.saving || this.data.generating || this.data.pickingPhoto || this.data.preparingPhoto) return;
+    this.setData({ photoMenu: "generate" });
+  },
+  async choosePhotoAction(event: { currentTarget: { dataset: { action: string } } }) {
+    const action = event.currentTarget.dataset.action;
+    if (!["import", "illustration", "backdrop", "cover"].includes(action) || this.data.protectedCopy || this.data.preparingPhoto || !this.data.draft || this.data.panel || this.data.generating || this.data.pickingPhoto) return;
+    if (action !== "cover" && this.data.view === "contents") {
+      this.setData({ photoAction: action, photoMenu: "chapters" });
+      return;
+    }
+    await this.runPhotoAction(action, this.activeChapterId);
+  },
+  async choosePhotoChapter(event: { currentTarget: { dataset: { id: string } } }) {
+    const id = event.currentTarget.dataset.id;
+    if (!this.data.chapterRows.some(chapter => chapter.id === id)) return;
+    await this.runPhotoAction(this.data.photoAction, id);
+  },
+  async runPhotoAction(action: string, chapterId: string) {
+    if (!["import", "illustration", "backdrop", "cover"].includes(action) || this.data.protectedCopy || this.data.preparingPhoto || !this.data.draft || this.data.panel || this.data.generating || this.data.pickingPhoto) return;
+    const epoch = ++this.photoEpoch;
+    this.setData({ preparingPhoto: true, photoMenu: "", photoAction: "" });
+    try {
+      if (!await this.finishEditing() || this.unloaded || epoch !== this.photoEpoch) return;
+      if (action === "cover") { this.openCover(); return; }
+      if (!this.visibleChapters().some(chapter => chapter.id === chapterId)) return;
+      if (this.data.view !== "chapter" || this.activeChapterId !== chapterId) {
+        await this.openChapter({ currentTarget: { dataset: { id: chapterId } } });
+      }
+      if (this.unloaded || epoch !== this.photoEpoch || this.data.view !== "chapter" || this.activeChapterId !== chapterId) return;
+      if (action === "import") {
+        if (this.data.editorReady && !this.editorLoading) await this.addPhoto();
+        else {
+          this.pendingPhotoImportChapter = chapterId;
+          this.setData({ saveNotice: "正在打开这一章，编辑器准备好后会继续导入图片。" });
+        }
+      } else this.openImages(action as "illustration" | "backdrop");
+    } finally {
+      if (!this.unloaded && epoch === this.photoEpoch) this.setData({ preparingPhoto: false });
+    }
+  },
   /** Point the editing buffers at the active chapter's saved text and name. */
   loadActiveChapter() {
     const active = this.chapters.find(chapter => chapter.id === this.activeChapterId);
@@ -407,6 +461,11 @@ Page({
       if (title) stories.set(title, (stories.get(title) ?? 0) + 1);
     });
     return {
+      bookIntroduction: (() => {
+        const text = visibleChapters.map(chapter => plainText(chapter.content).trim()).filter(Boolean).join(" ").replace(/\s+/g, " ");
+        const chars = Array.from(text);
+        return chars.length > 160 ? chars.slice(0, 160).join("") + "…" : text;
+      })(),
       chapterRows: visibleChapters.map((chapter, index) => ({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
         memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: imageCount(chapter.content),
@@ -457,8 +516,18 @@ Page({
     this.contentBuffer = contentFromDelta(delta, this.imageIds);
     this.editorContext.setContents({
       delta,
-      success: () => { this.editorLoading = false; this.setData({ editorReady: true }); },
-      fail: () => { this.editorLoading = false; this.setData({ editorReady: false, saveNotice: "图文编辑器加载失败，请重新打开书稿" }); },
+      success: () => {
+        this.editorLoading = false; this.setData({ editorReady: true });
+        if (this.pendingPhotoImportChapter === this.activeChapterId && this.data.view === "chapter") {
+          this.pendingPhotoImportChapter = "";
+          void this.addPhoto();
+        }
+      },
+      fail: () => {
+        this.editorLoading = false;
+        if (this.pendingPhotoImportChapter === this.activeChapterId) this.pendingPhotoImportChapter = "";
+        this.setData({ editorReady: false, saveNotice: "图文编辑器加载失败，请重新打开书稿" });
+      },
     });
   },
   onEditorInput(event: { detail: { delta: unknown; text: string } }) {
@@ -602,6 +671,7 @@ Page({
   },
   async backToContents() {
     this.chapterOpenId++;
+    this.pendingPhotoImportChapter = "";
     if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
     if (!this.canLeaveEditor()) return;
     this.setData({ view: "contents", moreOpen: false, panel: "" });
@@ -611,6 +681,7 @@ Page({
     if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
     if (openId !== this.chapterOpenId || !this.canLeaveEditor()) return;
     const id = event.currentTarget.dataset.id;
+    if (this.pendingPhotoImportChapter && this.pendingPhotoImportChapter !== id) this.pendingPhotoImportChapter = "";
     const chapter = this.chapters.find(chapter => chapter.id === id);
     if (!chapter) return;
     if (chapter.content.some(item => item.photoId) && this.bookImagesReady) {
@@ -636,11 +707,13 @@ Page({
   showMore() {
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
+    this.closePhotoMenu();
     this.setData({ moreOpen: !this.data.moreOpen, sendOpen: false });
   },
   toggleSend() {
     if (this.data.protectedCopy || !this.data.draft || this.data.view !== 'contents' || this.data.panel || this.data.preparingSend || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
+    this.closePhotoMenu();
     this.setData({ sendOpen: !this.data.sendOpen, moreOpen: false });
   },
   closeSend() { this.setData({ sendOpen: false }); },
@@ -1324,12 +1397,13 @@ Page({
   },
   startInterview() { wx.navigateTo({ url: "/pages/interview/interview?storyId=" + encodeURIComponent(this.data.storyId) }); },
   /** Pictures are drawn from the saved chapter; selectTool has already refused to leave unsaved edits. */
-  openImages() {
+  openImages(purpose?: "illustration" | "backdrop") {
     const chapterId = this.data.view === "chapter" ? this.activeChapterId : "";
     const query = [
       this.data.storyId ? "storyId=" + encodeURIComponent(this.data.storyId) : "",
       !this.data.storyId && this.data.memberId ? "memberId=" + encodeURIComponent(this.data.memberId) : "",
       chapterId ? "chapterId=" + encodeURIComponent(chapterId) : "",
+      purpose ? "purpose=" + purpose : "",
     ].filter(Boolean).join("&");
     wx.navigateTo({
       url: "/pages/story-images/story-images" + (query ? "?" + query : ""),
