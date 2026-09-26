@@ -14,17 +14,42 @@ function unavailable(reason,detail){
   console.error('[moderation] 内容安全检测不可用：',reason,detail||'');
   throw Object.assign(new Error('内容安全检测暂时不可用，请稍后再试'),{code:'MODERATION_UNAVAILABLE'});
 }
-function createTextModerator(security){
+function interpretResponse(response){
+  return response?.result?.suggest==='pass';
+}
+async function checkWithSharedFunction(callFunction,{content,title,scene,openid}){
+  if(typeof callFunction!=='function')unavailable('云开发 security 接口不可用');
+  let response;
+  try{
+    response=await callFunction({name:'contentSecurityCheck',data:{content,scene,openid,...(title?{title}:{})}});
+  }catch(error){
+    unavailable('共享内容安全云函数调用失败',error?.message||error?.errMsg||error);
+  }
+  const result=response?.result;
+  if(result?.ok===true)return true;
+  if(result?.error)unavailable('共享内容安全云函数不可用',result.error);
+  return false;
+}
+function createTextModerator(security,callFunction){
   return async (text,openid,title)=>{
-    if(!security || typeof security.msgSecCheck!=='function')unavailable('云开发 security 接口不可用');
     if(!OPENID.test(openid || ''))unavailable('调用方 openid 无效');
     const content=Array.from(String(text || '').trim());
     if(!content.length)return true;
     const safeTitle=Array.from(String(title || '').trim()).slice(0,100).join('');
     try{
       for(let offset=0;offset<content.length;offset+=2500){
-        const response=await security.msgSecCheck({content:content.slice(offset,offset+2500).join(''),version:2,scene:4,openid,...(safeTitle?{title:safeTitle}:{})});
-        if(response?.result?.suggest!=='pass')return false;
+        const chunk=content.slice(offset,offset+2500).join('');
+        let passed;
+        if(security && typeof security.msgSecCheck==='function'){
+          try{
+            passed=interpretResponse(await security.msgSecCheck({content:chunk,version:2,scene:4,openid,...(safeTitle?{title:safeTitle}:{})}));
+          }catch(error){
+            passed=await checkWithSharedFunction(callFunction,{content:chunk,title:safeTitle,scene:4,openid});
+          }
+        }else{
+          passed=await checkWithSharedFunction(callFunction,{content:chunk,title:safeTitle,scene:4,openid});
+        }
+        if(passed!==true)return false;
       }
       return true;
     }catch(error){

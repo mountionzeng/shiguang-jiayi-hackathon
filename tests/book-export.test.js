@@ -81,6 +81,27 @@ test('only approved current-story cover is signed; revoked and changed covers ar
   Object.assign(f.tables.get('story_images:image-cover'),{moderation:'pass',fileID:'cloud://env/story-images/family_owner/story-book/replaced.jpg'});
   await assert.rejects(exportBookImages(f.repo,f.owner,input,{approve,sign:async()=> 'https://media.example/cover'}),{code:'VERSION_CONFLICT'});
 });
+test('book export can sign multiple selected share covers without changing the permanent cover', async () => {
+  const f = await setup();
+  f.story.coverImageId = 'image-cover';
+  for (const [imageId, fileID] of [['image-cover', 'cloud://env/story-images/family_owner/story-book/cover.jpg'],
+    ['image-alt', 'cloud://env/story-images/family_owner/story-book/alt.webp']]) {
+    f.tables.set('story_images:' + imageId, { familyId:'family_owner', storyId:'story-book', purpose:'cover', moderation:'pass', fileID });
+  }
+  const selection = { ...f.input, coverImageIds:['image-alt','image-cover'], targetTextImageCount:2 };
+  const { descriptor } = await previewBookExport(f.repo, f.owner, selection, { approve });
+  assert.deepEqual(descriptor.coverImageIds, ['image-alt','image-cover']);
+  assert.equal(descriptor.coverImageId, 'image-alt');
+  assert.equal(descriptor.targetTextImageCount, 2);
+  assert.equal(f.story.coverImageId, 'image-cover');
+  const signed = [];
+  const exported = await exportBookImages(f.repo, f.owner, { ...selection, descriptorId: descriptor.id }, {
+    approve,
+    sign: async file => { signed.push(file); return 'https://media.example/' + signed.length + '.jpg'; },
+  });
+  assert.deepEqual(signed, ['cloud://env/story-images/family_owner/story-book/alt.webp', 'cloud://env/story-images/family_owner/story-book/cover.jpg']);
+  assert.deepEqual(exported.coverUrls, ['https://media.example/1.jpg', 'https://media.example/2.jpg']);
+});
 test('unsafe cover metadata is denied and the no-cover fallback exposes no private asset',async()=>{
   for(const patch of [{moderation:'pending'},{deletedAtMs:1},{storyId:'story-other'},{sourcePolicyRequired:true},{sourceIds:['source-a']},{fileID:'cloud://env/private/cover.jpg'}]){
     const f=await setup();Object.assign(f.cover(),patch);
@@ -104,4 +125,36 @@ test('every selected textual source must permit view, publish and export, includ
     f.tables.set('story_source_policies:'+sourceId,{version:1,parents:[],permissions:{view:true,publish:true,export:true,[permission]:false}});
     await assert.rejects(previewBookExport(f.repo,f.owner,{...f.input,scope:'text',excerpt:{chapterId:'chapter-one',start:0,end:2}},{approve}),{code:'STORY_FORBIDDEN'});
   }
+});
+
+test('memory export rebuilds the descriptor from the saved memory source and rejects stale versions', async () => {
+  const f = fixture(); f.account('owner');
+  const owner = await resolveStoryIdentity(f.repo, { APPID: 'wx-original', OPENID: 'owner' }, { bootstrapAppId: 'wx-original' });
+  f.tables.set('family_members:family_owner_owner', { familyId: 'family_owner', memberId: 'owner', relation: '自己', role: 'owner', kind: 'recording-profile' });
+  f.tables.set('memories:family_owner_memory-one', {
+    familyId: 'family_owner', frontendContributionId: 'memory-one', authorMemberId: 'owner',
+    scope: 'personal', visibility: 'private', reviewStatus: 'confirmed', title: '雨天',
+    text: '屋檐下听雨。',
+    aiRevisions: [{ id: 'revision-ai', kind: 'ai', title: '雨天', text: '屋檐下听雨。', createdAt: '2026-01-01T00:00:00.000Z' }],
+  });
+  const source = (await createStoryService(f.repo, { accessEnabled:true, rulesReady:true, bootstrapAppId:'wx-original',
+    shareCardEnabled:true, sharedReadFamilyIds:['family_owner'] })({ APPID:'wx-original', OPENID:'owner' },
+    { action:'memoryExportSource', memoryId:'memory-one', revisionId:'revision-ai', text:'伪造正文' })).source;
+  const input = { familyId:'family_owner', sourceKind:'memory', memoryId:'memory-one', revisionId:'revision-ai',
+    expectedSourceVersion: source.sourceVersion, targetTextImageCount:2 };
+  let approved = '';
+  const preview = await previewBookExport(f.repo, owner, input, { approve: async text => { approved = text; return true; } });
+  assert.equal(preview.descriptor.sourceKind, 'memory');
+  assert.equal(preview.descriptor.memoryId, 'memory-one');
+  assert.equal(preview.descriptor.targetTextImageCount, 2);
+  assert.equal(preview.descriptor.chapters[0].text, '屋檐下听雨。');
+  assert.match(approved, /屋檐下听雨/);
+  assert.equal(JSON.stringify(preview).includes('伪造正文'), false);
+  const servicePreview = await createStoryService(f.repo, { accessEnabled:true, rulesReady:true, bootstrapAppId:'wx-original',
+    shareCardEnabled:true, sharedReadFamilyIds:['family_owner'], approveShareCard: async () => true })({ APPID:'wx-original', OPENID:'owner' },
+    { action:'bookExportPreview', sourceKind:'memory', memoryId:'memory-one', revisionId:'revision-ai',
+      expectedSourceVersion: source.sourceVersion, targetTextImageCount:3 });
+  assert.equal(servicePreview.descriptor.targetTextImageCount, 3);
+  f.tables.get('memories:family_owner_memory-one').aiRevisions[0].text = '后来修改的记忆。';
+  await assert.rejects(previewBookExport(f.repo, owner, input, { approve }), { code:'VERSION_CONFLICT' });
 });

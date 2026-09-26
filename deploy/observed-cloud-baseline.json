@@ -1,0 +1,93 @@
+{
+  "observedAt": "2026-09-26T18:19:39.264933+08:00",
+  "environment": "cloud1-d5ghzk30ve609f544",
+  "method": "Downloaded deployed business source through WeChat DevTools CLI; excludes dependencies, config.json and lockfiles. Runtime configuration and app package release are not asserted.",
+  "functions": {
+    "storyBooks": {
+      "files": {
+        "moderation.js": "312b9159630f7382f9a6db4f001043a0732b5c2bc750c5a925eb02e50474ca90",
+        "copyMedia.js": "3e4e2744ec6ccfd4f5d504f4d5500aa03b365887aa386581b3129ffa3838b84f",
+        "returns.js": "ccb3513fd1db2ab2dff2d852f27959b2306797b877d1e2a8e6f241850d3b8931",
+        "flow.js": "4674704506733ce1b81e4a8d44871c7473f732dda8491bd4e98bb881c477720f",
+        "core.js": "645d26e3301395c42e228835fec0a3fab14f82a89d8ea3504abb17386ba0d76d",
+        "access.js": "ea841f4bed67e609c5819e1af5839ca0e381d9c7c072408035a515dcb1c050f9",
+        "media.js": "412f84ac8a74ac98828e39c276b9842db881351a8fddb07b8583d566162f0852",
+        "service.js": "a3be5b40154cf4a9c76eabbf944567ef7e1a1634d37f41c138fe3cddadfa73ec",
+        "exports.js": "4589c46ff7a557a3a2b2dbac5d02f1d1407378f134a9d3d6fe96c05dad5095c9",
+        "index.js": "f68191be61a7b40836c23030a4aa7b09fd97f96b4372dec249d06c7ffec7884c",
+        "copyAssets.js": "77651b30d33e76609a702636061581325449ca84dcb27149af9e7f82b013ca87",
+        "excerpts.js": "e09eef196b2df5a0693d47cc8f901022b6e05bb4a0e7029750237507ed921fdc",
+        "repository.js": "d89f594909667d28b9eb525f1f17d8b4c348286247eeffbd2b55ff7b20591d35",
+        "copies.js": "c924a39a3f4eebadcff51d249c70991d40f7c20c4cff6caadc73f5217c85b182",
+        "performance.js": "908f5a2ae479a3741ffcb934b58bfe8630152e58e0a68cde19da956b8bcf2fc4",
+        "copyStorage.js": "9dafee970f5de424cddf1e903c13a60b9ea6f8ccb1a9f96df72f51228ae5a46e",
+        "provenance.js": "9b8d339609a93d4871d26bc8a67915c8be7175ed9ab9a65e73f06adb7ab616c1",
+        "memoryExports.js": "63e5b1e743e7a0d130d43511a3f243fdccc5d10b20eacd5716e7324f7773f440",
+        "package.json": "413ee82fd3dde3e1cfd32e759f4ae2f7411e5ed385c2308a0d3f751f0d5f7646",
+        "errors.js": "75c533babeec9435f13ecd522df488acde5a71c1aba7bc3d7f4e8fc0761ed6fb",
+        "identity.js": "9310161016473feba9e9a40bc831ef7c8856ce7624ed86057c98fe06abeb7273",
+        "bookExports.js": "c12a843364e13a6cb1afe0e5c2d37589288f08cb37671172a14dd0521b304340",
+        "invitations.js": "167ac9c554cb861246659375375deebcadf3b6513c68d1ec298ec89f42f5d6a7",
+        "collaboration.js": "bd4bbc3bf69bfb73181daa1d8e05d981882947805f5ed991f3842b37690c2b6c"
+      }
+    },
+    "storyImages": {
+      "files": {
+        "diagnostics.js": "a8c3a0ce10eaf07e9bdea7cdc9d0358e7fdbc134be7653b4714cba031aa355a3",
+        "flow.js": "7f71dd5db547c3e97483294aa92243f46f10c4333eb2bf207d0e70df1980f4ab",
+        "core.js": "954a85a4020d862acda3ecbadcbf83d2a32f6ba827f5de3e615c6738c314a3c3",
+        "scene.js": "63102f2ed942e507e8d06ead1ac83382b55152af74390c1136a5971fa51726f1",
+        "cover.js": "e35e712be0e087cebd1e89f5cbeffaf0b3bb07c79f175852d92bbddb99413e2e",
+        "aigcMetadata.js": "457cd3fa86b1f36bb17d7a46c41838e7db5682c910088ad08b902e82f32ce09d",
+        "index.js": "1b6495a8638e3f6f98421eaf9b8aca4ae4314de91359b6442efd106414349de5",
+        "vision.js": "ff632d74741ca50e5332230bfda926ba0bd7c6ee5eaaf6e16f29bde589beff6c",
+        "quality.js": "3be0cac8f7b765007a9451234385e4297e1be396b18846b59c16c800d8d133ea",
+        "tokenhub.js": "a260d750836413a6fb2303ef5111aed74bc0d4ed53c290e02e49e690f1144b00",
+        "package.json": "a9f091410eb1b338a1fe296b819c9af8451da84a6058ca346a75eb1bd143a727",
+        "textCheck.js": "be73c89947f1caa9acbca321d2c62a6f45adc72157c51de5ebe518e4cb81576b",
+        "httpFetch.js": "d5320c418a147724a6f8f99d01bb78f24077423feb9ffd2a1b88029f912e5ead",
+        "caption.js": "a2627c8321d31ecfe900ad0dd3e902c2baac624474d12ac2d798dcedb1615f1a",
+        "reference.js": "ff9a71d7774362190aa6e126459ae001fc43be6cd7f34dc89fd3ea572a984b3e",
+        "photoReader.js": "d773de331591b722b29669eaa662e2a0bf457c6fab7ebe220ec72dc22c70a0bf"
+      }
+    },
+    "chatInterview": {
+      "files": {
+        "personalMemoryCore.js": "5f294de76b42be0a8a51ab99a75cf3e595f80d6dd31b8a8fb9fbd73347e92f1b",
+        "index.js": "b0a3c53cda8b79849d842cd50043f6b1494fa8053867f188ded15d718e7d2d29",
+        "personalMemoryContext.js": "a38452dc5d2d203a5f7fe331a8dd42e56cde52112117dbe85066e9a5157d70fc",
+        "package.json": "89886de3f3cc95403f7fed7c57fd0c64105d34f7f6acc6ca96505c73e71af5b1",
+        "aiGuard.js": "2c570302e204883f42e4a07308b97ce89739349f2069d2dc20ff964438668bed",
+        "personalMemoryRepository.js": "9a37d7d417469c88f718e6c233c941143314b924b02b8e7aba9c06aa73aa7209",
+        "httpFetch.js": "6beab23fc14ee458874a92bb0e8aea31651a0bcc4256185d10a63ea1c7b8d8df",
+        "textComputeUsage.js": "dce998355c138b42ebf53a505681b6b93dcd137071bc9f3805e6bb11e6cb708a"
+      }
+    },
+    "organizeMemory": {
+      "files": {
+        "personalMemoryCore.js": "5f294de76b42be0a8a51ab99a75cf3e595f80d6dd31b8a8fb9fbd73347e92f1b",
+        "index.js": "1b4db3dbd2110316fad619900cfb41a667fcc2422a8cdd6228936a1ab0e55266",
+        "personalMemoryContext.js": "a38452dc5d2d203a5f7fe331a8dd42e56cde52112117dbe85066e9a5157d70fc",
+        "package.json": "599c3551b0cffce1409aabcd7287b25732b521a330d70a6b4dc0fbd578caae74",
+        "aiGuard.js": "44e1edb17e14e7747b369adce35d32f090f82a83c6430973d2be6794b371ea1f",
+        "personalMemoryRepository.js": "9a37d7d417469c88f718e6c233c941143314b924b02b8e7aba9c06aa73aa7209",
+        "httpFetch.js": "6beab23fc14ee458874a92bb0e8aea31651a0bcc4256185d10a63ea1c7b8d8df",
+        "textComputeUsage.js": "dce998355c138b42ebf53a505681b6b93dcd137071bc9f3805e6bb11e6cb708a"
+      }
+    },
+    "contentSecurityCheck": {
+      "files": {
+        "core.js": "479633d6e21ff98d12a8d1279fcb78d336116d5210a16efc6ce8edb4d31570e2",
+        "index.js": "e3319bb237cdc64e99bc6d324f6f4e92914aaf5969605aeb1787cde61687ee09",
+        "package.json": "4fa37adbc8bbc7602666faff6149e09a78a5d79f5b141a179f82e2b157acae3b"
+      }
+    },
+    "familyInvite": {
+      "files": {
+        "core.js": "439236eb8be451d3a457d48f149c7efe72065867e08a6608a8125e767269af14",
+        "index.js": "91905f90d882a205501584ff71558b68ccaed397bc0a567cc6e5a5ee93df2387",
+        "package.json": "c3ea5445204a9ba79e51f4c2b15813bb3fbf04038658a51f20b7b94117fdf181"
+      }
+    }
+  }
+}
