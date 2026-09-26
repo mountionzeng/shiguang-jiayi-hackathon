@@ -53,6 +53,7 @@ test("execute deploys explicit names and verifies every function as Active", asy
     rootDir: root,
     cliPath: "/test/cli",
     runner,
+    inspectSource: () => ({ commit: 'checked-commit', branch: 'test', appId: 'test-app' }),
     stdout: { write: (chunk) => { output += chunk; } },
   });
 
@@ -73,6 +74,7 @@ test("false-success CLI output is rejected even with exit code zero", async () =
       rootDir: root,
       cliPath: "/test/cli",
       runner: async () => ({ exitCode: 0, stdout: "ResourceNotFound", stderr: "" }),
+      inspectSource: () => ({ commit: 'checked-commit' }),
       stdout: { write() {} },
     }),
     /reported a failure/,
@@ -84,4 +86,13 @@ test("preview emits structured JSON", async () => {
   const result = await run([], { rootDir: root, stdout: { write: (chunk) => { output += chunk; } } });
   assert.deepEqual(JSON.parse(output), result);
   assert.equal(result.mode, "preview");
+});
+
+test('source rejection stops before any cloud command', async () => {
+  let called = false;
+  await assert.rejects(run(['--execute', '--env', 'test-env'], {
+    rootDir: root, inspectSource() { throw new Error('dirty source'); },
+    runner: async () => { called = true; }, stdout: { write() {} },
+  }), /dirty source/);
+  assert.equal(called, false);
 });
