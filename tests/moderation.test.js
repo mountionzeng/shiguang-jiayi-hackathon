@@ -41,3 +41,26 @@ test('内容通过时返回 true，空内容不打扰检测服务', async () => 
   assert.equal(await moderate('   ', 'openid-1'), true);
   assert.equal(calls, 1, '空内容不应该调用检测接口');
 });
+
+test('storyBooks 直连检测不可用时复用共享内容安全云函数', async () => {
+  const calls = [];
+  const moderate = createTextModerator({
+    msgSecCheck: async () => { throw new Error('direct openapi unavailable'); },
+  }, async request => {
+    calls.push(request);
+    return { result: { ok: true, suggest: 'pass', label: 100 } };
+  });
+  assert.equal(await moderate('平常的一段回忆', 'openid-1', '公开故事卡片'), true);
+  assert.deepEqual(calls, [{
+    name: 'contentSecurityCheck',
+    data: { content: '平常的一段回忆', scene: 4, openid: 'openid-1', title: '公开故事卡片' },
+  }]);
+});
+
+test('共享内容安全云函数故障时仍然抛 MODERATION_UNAVAILABLE', async () => {
+  const moderate = createTextModerator(undefined, async () => ({ result: { ok: false, error: 'CHECK_UNAVAILABLE' } }));
+  await assert.rejects(
+    () => moderate('平常的一段回忆', 'openid-1', '公开故事卡片'),
+    error => error.code === 'MODERATION_UNAVAILABLE',
+  );
+});

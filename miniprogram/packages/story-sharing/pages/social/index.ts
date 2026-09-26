@@ -1,51 +1,63 @@
 import { loadSendSnapshot, selectSendText, SendChapter, SendScope, SendSnapshot, SendVersion } from '../../../../services/bookSend';
-import { storyCoverApi } from '../../../../services/storyCoverService';
-import { bookExportApi, bookExportSelection, BookExportSelection, BookExportDescriptor } from '../../../../services/bookExport';
+import { storyCoverApi, ShareCoverCandidate } from '../../../../services/storyCoverService';
+import { bookExportApi, bookExportSelection, memoryBookExportSelection, BookExportSelection, BookExportDescriptor } from '../../../../services/bookExport';
 import { renderBookImages, removeImageFiles } from '../../../../services/bookImageRenderer';
 import { ImageLayoutMode, ImageFontSize } from '../../../../services/bookImageLayout';
 import { sharingHome } from '../../../../services/storySharing';
+import { memoryExportApi, MemoryExportSource } from '../../../../services/memoryExport';
 
 Page({
   data: {
     loading: false, checking: false, exportBusy: false, albumSaving: false, exportAvailable: false, capabilityKnown: false,
     layout: 'pages' as ImageLayoutMode, fontSize: 32 as ImageFontSize, canvasHeight: 1080,
-    imagePaths: [] as string[], savedIndices: [] as number[], renderProgress: '',
+    imagePaths: [] as string[], savedIndices: [] as number[], renderProgress: '', coverImageCount: 0,
     notice: '', title: '', coverUrl: '', coverNotice: '',
+    sourceKind: 'story' as 'story' | 'memory',
+    coverCandidates: [] as ShareCoverCandidate[], selectedCoverImageIds: [] as string[],
+    textImageCountOptions: Array.from({ length: 12 }, (_, index) => String(index + 1)),
+    targetTextImageCount: 1,
     scope: 'chapters' as SendScope, chapters: [] as Array<SendChapter & { checked: boolean }>,
     textChapterIndex: 0, selectedText: '', editorReady: false,
     selectedCount: 0, characterCount: 0, preview: false, previewChapters: [] as SendChapter[],
   },
   expected: undefined as SendVersion | undefined,
+  expectedMemory: undefined as { memoryId: string; revisionId?: string } | undefined,
   snapshot: undefined as SendSnapshot | undefined,
+  memorySource: undefined as MemoryExportSource | undefined,
   editor: undefined as WechatMiniprogram.EditorContext | undefined,
   epoch: 0, hidden: true, editorSeed: 0,
   exportSelection: undefined as BookExportSelection | undefined,
   descriptor: undefined as BookExportDescriptor | undefined,
   renderTask: undefined as Promise<string[]> | undefined,
   returningFromCover: false,
-  onLoad(options: { storyId?: string; revisionId?: string; version?: string } = {}) {
+  onLoad(options: { storyId?: string; revisionId?: string; version?: string; memoryId?: string } = {}) {
     const version = Number(options.version);
-    if (options.storyId && options.revisionId && Number.isSafeInteger(version) && version >= 1) {
+    if (options.memoryId) {
+      this.expectedMemory = { memoryId: options.memoryId, ...(options.revisionId ? { revisionId: options.revisionId } : {}) };
+      this.expected = undefined;
+    } else if (options.storyId && options.revisionId && Number.isSafeInteger(version) && version >= 1) {
       this.expected = { storyId: options.storyId, revisionId: options.revisionId, version };
+      this.expectedMemory = undefined;
     }
     wx.hideShareMenu();
   },
   onShow() {
     this.hidden = false;
-    void (this.returningFromCover ? this.refreshAfterCover() : this.refresh());
+    void (this.returningFromCover ? this.refreshAfterCover() : (this.expectedMemory ? this.refreshMemory() : this.refresh()));
   },
   onHide() {
-    this.hidden = true; this.epoch++; this.editorSeed++; this.snapshot = undefined; this.resetImages();
+    this.hidden = true; this.epoch++; this.editorSeed++; this.snapshot = undefined; this.memorySource = undefined; this.resetImages();
     this.editor?.clear();
     this.editor = undefined;
-    this.setData({ loading: false, checking: false, exportBusy: false, albumSaving: false, exportAvailable: false, capabilityKnown: false, title: '', coverUrl: '', coverNotice: '', chapters: [], selectedText: '',
+    this.setData({ loading: false, checking: false, exportBusy: false, albumSaving: false, exportAvailable: false, capabilityKnown: false, title: '', coverUrl: '', coverNotice: '', sourceKind: 'story',
+      coverCandidates: [], selectedCoverImageIds: [], coverImageCount: 0, chapters: [], selectedText: '',
       editorReady: false, preview: false, previewChapters: [], selectedCount: 0, characterCount: 0 });
   },
-  onUnload() { this.onHide(); this.editor = undefined; this.expected = undefined; },
+  onUnload() { this.onHide(); this.editor = undefined; this.expected = undefined; this.expectedMemory = undefined; },
   async refresh() {
     const epoch = ++this.epoch;
     this.snapshot = undefined; this.resetImages();
-    this.setData({ loading: true, exportAvailable: false, capabilityKnown: false, notice: '', title: '', chapters: [], coverUrl: '', coverNotice: '', selectedText: '',
+    this.setData({ loading: true, exportAvailable: false, capabilityKnown: false, notice: '', title: '', sourceKind: 'story', chapters: [], coverUrl: '', coverNotice: '', selectedText: '',
       selectedCount: 0, characterCount: 0, preview: false, previewChapters: [], editorReady: false, textChapterIndex: 0 });
     try {
       if (!this.expected) throw new Error('请从书稿目录的“发送”重新进入');
@@ -55,6 +67,7 @@ Page({
       this.setData({ title: snapshot.title, chapters: snapshot.chapters.map(chapter => ({ ...chapter, checked: false })) });
       this.updateSelection(); this.seedEditor();
       void this.checkExportCapability(epoch);
+      void this.loadShareCoverCandidates(snapshot, epoch);
       // Cover arrival updates only the image. It must never reset the selected text.
       if (snapshot.coverImageId) void this.resolveCover(snapshot, epoch);
     } catch (error) {
@@ -63,12 +76,52 @@ Page({
       if (!this.hidden && epoch === this.epoch) this.setData({ loading: false });
     }
   },
+  async refreshMemory() {
+    const epoch = ++this.epoch;
+    this.snapshot = undefined; this.memorySource = undefined; this.resetImages();
+    this.setData({ loading: true, exportAvailable: false, capabilityKnown: false, notice: '', title: '', sourceKind: 'memory',
+      chapters: [], coverUrl: '', coverNotice: '记忆分享暂不生成 AI 封面', selectedText: '', selectedCount: 0, characterCount: 0,
+      preview: false, previewChapters: [], editorReady: false, textChapterIndex: 0 });
+    try {
+      if (!this.expectedMemory) throw new Error('请从记忆页面重新进入发送');
+      const result = await memoryExportApi.resolveSource(this.expectedMemory);
+      if (this.hidden || epoch !== this.epoch) return;
+      this.memorySource = result.source;
+      const chapter = this.memoryChapter(result.source);
+      this.setData({ title: result.source.title || '一段记忆', chapters: [{ ...chapter, checked: true }] });
+      this.updateSelection();
+      void this.checkExportCapability(epoch);
+    } catch (error) {
+      if (!this.hidden && epoch === this.epoch) this.setData({ notice: error instanceof Error ? error.message : '记忆暂时无法读取，请重试' });
+    } finally {
+      if (!this.hidden && epoch === this.epoch) this.setData({ loading: false });
+    }
+  },
+  memoryChapter(source: MemoryExportSource): SendChapter {
+    return {
+      id: 'memory-' + source.memoryId,
+      title: source.title || '一段记忆',
+      text: source.text,
+      characterCount: Array.from(source.text).length,
+    };
+  },
   async resolveCover(snapshot: SendSnapshot, epoch: number) {
     try {
       const url = await storyCoverApi.resolveUrl(snapshot.storyId, snapshot.coverImageId);
       if (!this.hidden && epoch === this.epoch) this.setData({ coverUrl: url, coverNotice: url ? '' : '已有封面暂未读到，可稍后重新加载' });
     } catch {
       if (!this.hidden && epoch === this.epoch) this.setData({ coverNotice: '已有封面暂未读到，可稍后重新加载' });
+    }
+  },
+  async loadShareCoverCandidates(snapshot: SendSnapshot, epoch: number) {
+    try {
+      const result = await storyCoverApi.listShareCoverCandidates(snapshot.storyId);
+      if (this.hidden || epoch !== this.epoch || this.snapshot !== snapshot) return;
+      const candidates = result.candidates;
+      const selected = snapshot.coverImageId && candidates.some(item => item.imageId === snapshot.coverImageId) ? [snapshot.coverImageId] : [];
+      this.setData({ coverCandidates: candidates, selectedCoverImageIds: selected });
+    } catch {
+      if (!this.hidden && epoch === this.epoch && this.snapshot === snapshot) this.setData({ coverNotice: '封面候选暂未读到，可继续使用默认封面' });
     }
   },
   /** Cover selection increments the story version. Refresh the send snapshot with that new version on return. */
@@ -88,7 +141,7 @@ Page({
     await this.refresh();
   },
   makeCover() {
-    if (this.busy() || !this.snapshot?.storyId) return;
+    if (this.busy() || this.data.sourceKind === 'memory' || !this.snapshot?.storyId) return;
     this.returningFromCover = true;
     wx.navigateTo({ url: "/pages/story-cover/story-cover?storyId=" + encodeURIComponent(this.snapshot.storyId) });
   },
@@ -149,6 +202,7 @@ Page({
     } });
   },
   selected(): SendChapter[] {
+    if (this.memorySource) return [this.memoryChapter(this.memorySource)];
     if (!this.snapshot) return [];
     return selectSendText(this.snapshot, { scope: this.data.scope,
       chapterIds: this.data.chapters.filter(chapter => chapter.checked).map(chapter => chapter.id),
@@ -159,7 +213,9 @@ Page({
     this.setData({ selectedCount: selected.length, characterCount: selected.reduce((sum, chapter) => sum + chapter.characterCount, 0) });
   },
   async previewSelection() {
-    if (this.data.loading || this.busy() || !this.snapshot || !this.expected) return;
+    if (this.data.loading || this.busy()) return;
+    if (this.memorySource && this.expectedMemory) return this.previewMemorySelection();
+    if (!this.snapshot || !this.expected) return;
     const epoch = this.epoch, snapshot = this.snapshot;
     const selected = this.selected();
     if (!selected.some(chapter => chapter.text.trim())) { this.setData({ notice: '请先选择要分享的文字' }); return; }
@@ -179,10 +235,30 @@ Page({
       if (!this.hidden && epoch === this.epoch) this.setData({ checking: false });
     }
   },
+  async previewMemorySelection() {
+    const epoch = this.epoch, source = this.memorySource, expected = this.expectedMemory;
+    if (!source || !expected) return;
+    this.setData({ checking: true, notice: '' });
+    try {
+      const fresh = await memoryExportApi.recheckSource({ ...expected, expectedSourceVersion: source.sourceVersion });
+      if (this.hidden || epoch !== this.epoch) return;
+      if (JSON.stringify(fresh.source) !== JSON.stringify(source)) throw new Error('这段记忆已有变化，请重新进入发送');
+      const selected = [this.memoryChapter(source)];
+      this.setData({ preview: true, previewChapters: selected, selectedCount: 1, characterCount: selected[0].characterCount });
+    } catch (error) {
+      if (!this.hidden && epoch === this.epoch) {
+        this.memorySource = undefined; this.resetImages();
+        this.setData({ title: '', coverUrl: '', coverNotice: '', chapters: [], selectedText: '', editorReady: false, selectedCount: 0,
+          characterCount: 0, preview: false, previewChapters: [], notice: error instanceof Error ? error.message : '未能确认当前记忆，请重试' });
+      }
+    } finally {
+      if (!this.hidden && epoch === this.epoch) this.setData({ checking: false });
+    }
+  },
   busy() { return this.data.checking || this.data.exportBusy || this.data.albumSaving; },
   async checkExportCapability(epoch: number) {
     try {
-      const available = await bookExportApi.available();
+      const available = await bookExportApi.available(this.data.sourceKind);
       if (!this.hidden && epoch === this.epoch) this.setData({ exportAvailable: available, capabilityKnown: true });
     } catch {
       if (!this.hidden && epoch === this.epoch) this.setData({ exportAvailable: false, capabilityKnown: true, notice: '暂时无法确认图片导出是否可用，请稍后重新加载' });
@@ -191,7 +267,21 @@ Page({
   resetImages() {
     removeImageFiles(this.data.imagePaths);
     this.exportSelection = undefined; this.descriptor = undefined;
-    this.setData({ imagePaths: [], savedIndices: [], renderProgress: '' });
+    this.setData({ imagePaths: [], savedIndices: [], renderProgress: '', coverImageCount: 0 });
+  },
+  chooseShareCovers(event: WechatMiniprogram.CustomEvent<{ value: string[] }>) {
+    if (this.busy()) return;
+    const selected = event.detail.value;
+    const ids = selected.slice(0, 6);
+    this.resetImages();
+    this.setData({ selectedCoverImageIds: ids, notice: selected.length > 6 ? '本次最多选择 6 张封面' : '' });
+  },
+  chooseTextImageCount(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
+    if (this.busy()) return;
+    const count = Number(event.detail.value) + 1;
+    if (!Number.isSafeInteger(count) || count < 1 || count > 12) return;
+    this.resetImages();
+    this.setData({ targetTextImageCount: count, notice: '' });
   },
   chooseLayout(event: WechatMiniprogram.TouchEvent) {
     if (this.busy()) return;
@@ -219,23 +309,47 @@ Page({
       throw error;
     }
   },
+  async verifyMemorySource(source: MemoryExportSource) {
+    try {
+      if (!this.expectedMemory) throw new Error('请重新进入发送');
+      const fresh = await memoryExportApi.recheckSource({ ...this.expectedMemory, expectedSourceVersion: source.sourceVersion });
+      if (JSON.stringify(fresh.source) !== JSON.stringify(source)) throw new Error('这段记忆已有变化，请重新进入发送');
+    } catch (error) {
+      if (this.memorySource === source) {
+        this.memorySource = undefined; this.resetImages();
+        this.setData({ title: '', coverUrl: '', chapters: [], selectedText: '', editorReady: false, selectedCount: 0,
+          characterCount: 0, preview: false, previewChapters: [] });
+      }
+      throw error;
+    }
+  },
   async generateImages() {
-    if (this.busy() || !this.snapshot || !this.data.preview || !this.data.exportAvailable) return;
-    const snapshot = this.snapshot, epoch = this.epoch;
+    if (this.busy() || !this.data.preview || !this.data.exportAvailable) return;
+    const source = this.memorySource, snapshot = this.snapshot;
+    if (!snapshot && !source) return;
+    const epoch = this.epoch;
     const active = () => !this.hidden && this.epoch === epoch;
     this.resetImages(); this.setData({ exportBusy: true, notice: '', renderProgress: '正在核对导出权限…' });
     let paths: string[] = [];
     try {
       await this.renderTask?.catch(() => undefined);
-      await this.verifySnapshot(snapshot); if (!active()) return;
-      const selection = bookExportSelection(snapshot, { scope: this.data.scope,
+      if (snapshot) await this.verifySnapshot(snapshot); else if (source) await this.verifyMemorySource(source);
+      if (!active()) return;
+      const selection = snapshot ? bookExportSelection(snapshot, { scope: this.data.scope,
         chapterIds: this.data.chapters.filter(c => c.checked).map(c => c.id),
-        textChapterId: snapshot.chapters[this.data.textChapterIndex]?.id || '', text: this.data.selectedText });
+        textChapterId: snapshot.chapters[this.data.textChapterIndex]?.id || '', text: this.data.selectedText }, {
+        coverImageIds: this.data.selectedCoverImageIds,
+        targetTextImageCount: this.data.targetTextImageCount,
+      })
+        : memoryBookExportSelection(source as MemoryExportSource, { targetTextImageCount: this.data.targetTextImageCount });
       const preview = await bookExportApi.preview(selection); if (!active()) return;
       const material = await bookExportApi.material(selection, preview.descriptor.id); if (!active()) return;
       const chosen = this.selected();
-      if (material.descriptor.storyId !== snapshot.storyId || material.descriptor.revisionId !== snapshot.revisionId ||
-        material.descriptor.storyVersion !== snapshot.version || material.descriptor.chapters.length !== chosen.length ||
+      if ((snapshot && (material.descriptor.storyId !== snapshot.storyId || material.descriptor.revisionId !== snapshot.revisionId ||
+        material.descriptor.storyVersion !== snapshot.version)) ||
+        (source && (material.descriptor.sourceKind !== 'memory' || material.descriptor.memoryId !== source.memoryId ||
+          material.descriptor.sourceVersion !== source.sourceVersion)) ||
+        material.descriptor.chapters.length !== chosen.length ||
         material.descriptor.chapters.some((chapter, i) => chapter.id !== chosen[i].id || chapter.text !== chosen[i].text)) {
         throw new Error('导出内容与所选版本不一致，请重新进入发送');
       }
@@ -245,11 +359,12 @@ Page({
       try { paths = await task; } finally { if (this.renderTask === task) this.renderTask = undefined; }
       if (!active()) { removeImageFiles(paths); return; }
       const checked = await bookExportApi.material(selection, preview.descriptor.id);
-      await this.verifySnapshot(snapshot);
+      if (snapshot) await this.verifySnapshot(snapshot); else if (source) await this.verifyMemorySource(source);
       if (!active()) { removeImageFiles(paths); return; }
       if (checked.descriptor.id !== material.descriptor.id) throw new Error('预览已变化，请重新生成');
       this.descriptor = material.descriptor; this.exportSelection = selection;
-      this.setData({ imagePaths: paths, savedIndices: [], notice: '请检查下面的全部图片，再保存到相册。' });
+      this.setData({ imagePaths: paths, savedIndices: [], coverImageCount: Math.max(1, material.descriptor.coverImageIds?.length || 0),
+        notice: '请检查下面的全部图片，再保存到相册。' });
     } catch (error) {
       removeImageFiles(paths);
       if (active()) this.setData({ notice: error instanceof Error ? error.message : '图片生成失败，请重试' });
@@ -258,13 +373,14 @@ Page({
     }
   },
   async saveImages() {
-    if (this.busy() || !this.snapshot || !this.descriptor || !this.exportSelection || !this.data.imagePaths.length) return;
-    const epoch = this.epoch, snapshot = this.snapshot, descriptor = this.descriptor, selection = this.exportSelection;
+    if (this.busy() || (!this.snapshot && !this.memorySource) || !this.descriptor || !this.exportSelection || !this.data.imagePaths.length) return;
+    const epoch = this.epoch, snapshot = this.snapshot, source = this.memorySource, descriptor = this.descriptor, selection = this.exportSelection;
     const active = () => !this.hidden && this.epoch === epoch;
     this.setData({ albumSaving: true, notice: '保存前正在核对版本和权限…' });
     let authorized = false;
     try {
-      await this.verifySnapshot(snapshot); if (!active()) return;
+      if (snapshot) await this.verifySnapshot(snapshot); else if (source) await this.verifyMemorySource(source);
+      if (!active()) return;
       const material = await bookExportApi.material(selection, descriptor.id); if (!active()) return;
       if (material.descriptor.id !== descriptor.id) throw new Error('预览已失效，请重新生成');
       authorized = true;
@@ -272,7 +388,14 @@ Page({
       for (let index = 0; index < paths.length; index++) {
         if (!active()) return;
         if (saved.has(index)) continue;
-        await new Promise<void>((resolve, reject) => wx.saveImageToPhotosAlbum({ filePath: paths[index], success: () => resolve(), fail: reject }));
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('保存到相册超时，请重试')), 20000);
+          wx.saveImageToPhotosAlbum({
+            filePath: paths[index],
+            success: () => { clearTimeout(timer); resolve(); },
+            fail: error => { clearTimeout(timer); reject(error); },
+          });
+        });
         if (!active()) return;
         saved.add(index); this.setData({ savedIndices: [...saved], notice: '已保存 ' + saved.size + ' / ' + paths.length + ' 张' });
       }

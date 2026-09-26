@@ -70,6 +70,9 @@ export interface GenerateInterviewPromptInput {
   previousAnswers?: string[];
   /** 本轮之前小忆问过的话和用户的回答，按顺序排列。 */
   conversation?: InterviewTurn[];
+  /** 仅当前被编辑的这段记忆；共创对话时不读取其他记忆上下文。 */
+  sourceText?: string;
+  sourceOnly?: boolean;
 }
 
 export async function generateInterviewPrompt(
@@ -91,6 +94,8 @@ export async function generateInterviewPrompt(
         storyId: input.storyId,
         previousAnswers: input.previousAnswers ?? [],
         conversation: input.conversation ?? [],
+        ...(input.sourceText !== undefined ? { sourceText: input.sourceText } : {}),
+        ...(input.sourceOnly === true ? { sourceOnly: true } : {}),
       },
     });
 

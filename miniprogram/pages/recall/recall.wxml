@@ -3,7 +3,7 @@
   <view class="archive-heading">
     <view class="archive-eyebrow typewriter">回忆录</view>
     <view class="archive-title serif">接着聊哪一段？</view>
-    <view class="archive-intro">挑一段你讲过的回忆，小忆接着这一段往下问。原来的记忆不会被改动。</view>
+    <view class="archive-intro">挑一段已保存的回忆先读全文，再决定要不要修改或和小忆继续聊。</view>
   </view>
 
   <view class="archive-empty" wx:if="{{loadError}}">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
@@ -20,13 +20,13 @@
         data-choice="{{item.needsStoryChoice}}"
         bindtap="continueMemory"
         hover-class="none"
-        aria-label="接着聊{{item.title}}"
+        aria-label="打开阅读{{item.title}}"
       >
         <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
         <view class="note-title serif">{{item.title}}</view>
         <view class="ai-label" wx:if="{{item.aiLabel}}">{{item.aiLabel}}</view>
         <view class="note-excerpt">{{item.excerpt}}</view>
-        <view class="note-archive">{{item.dateLabel}} · {{item.storyLabel}} · 接着聊</view>
+        <view class="note-archive">{{item.dateLabel}} · {{item.storyLabel}} · 打开全文</view>
       </button>
     </view>
   </block>

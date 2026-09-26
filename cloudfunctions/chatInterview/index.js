@@ -266,6 +266,7 @@ function buildAnalysisMessages({
   memberName,
   storyTitle,
   storyContext,
+  sourceText,
 }) {
   const brief = interviewBrief(memoryType);
   const history = previousAnswers.length > 0
@@ -289,6 +290,7 @@ function buildAnalysisMessages({
         `讲述者：${memberName}`,
         storyTitle ? `正在延续的故事：${storyTitle}` : "当前还没有故事名",
         storyContext ? `当前故事书的已有内容（只能用于避免重复和保持一致，不得引用为新事实）：\n${storyContext}` : "",
+        sourceText ? `当前共创的唯一记忆正文（只围绕这段正文和当前对话，不得引用其他记忆或补造事实）：\n${sourceText}` : "",
         `已追问方向：${collected}`,
         `对话历史：\n${history}`,
         `用户最新输入：${answer}`,
@@ -383,6 +385,7 @@ function buildOutputMessages({
   memberName,
   storyTitle,
   storyContext,
+  sourceText,
 }) {
   const brief = interviewBrief(memoryType);
 
@@ -400,6 +403,7 @@ function buildOutputMessages({
         `讲述者：${memberName}`,
         storyTitle ? `正在延续的故事：${storyTitle}` : "当前还没有故事名",
         storyContext ? `当前故事书的已有内容（只能用于避免重复和保持一致，不得引用为新事实）：\n${storyContext}` : "",
+        sourceText ? `当前共创的唯一记忆正文（只围绕这段正文和当前对话，不得引用其他记忆或补造事实）：\n${sourceText}` : "",
         brief.rule,
         `对话记录：\n${formatConversation(history)}`,
         `用户刚才说：${answer}`,
@@ -490,12 +494,13 @@ async function main(event, dependencies = {}) {
   const memoryType = validateMemoryType(event.memoryType);
   const memberName = sanitizeText(event.memberName, 40) || "讲述者";
   const storyTitle = sanitizeText(event.storyTitle, 40);
+  const sourceText = sanitizeText(event.sourceText, 500);
   if (!cloud && event.storyId) cloud = require("wx-server-sdk");
   if (cloud?.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
   const storyContext = await loadStoryContext(event, cloud, identity);
   let personalContext;
   const memoryRepo = db ? createMemoryRepository(db) : null;
-  if (!dependencies.skipGuard && process.env.PERSONAL_MEMORY_ENABLED === 'true' && mode === 'personal') {
+  if (!dependencies.skipGuard && event.sourceOnly !== true && process.env.PERSONAL_MEMORY_ENABLED === 'true' && mode === 'personal') {
     assertConsentVersion(identity.account, AI_CONSENT_VERSION);
     // A missing/failed memory store falls back to this conversation only.
     personalContext = await prepareContext(memoryRepo, identity).catch(() => undefined);
@@ -509,6 +514,7 @@ async function main(event, dependencies = {}) {
     memberName,
     storyTitle,
     storyContext,
+    sourceText,
   });
 
   if (personalContext?.promptContext.length) messages[1].content += '\n' + formatContext(personalContext.promptContext);

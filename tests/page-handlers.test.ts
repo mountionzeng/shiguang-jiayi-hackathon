@@ -1206,7 +1206,7 @@ test("organizing an unlinked memory survives choosing an empty story and writes 
   assert.equal(saved.contributions.find(memory => memory.id === "new-fragment")?.text, "我在阳台上坐了一会儿，终于不用赶时间。");
 });
 
-test("全部回忆 lists every memory and continues the chat from the one you pick", async (context) => {
+test("全部回忆 lists every memory and opens its full saved text before chat", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("recall"));
@@ -1218,15 +1218,13 @@ test("全部回忆 lists every memory and continues the chat from the one you pi
 
   callPage(page, "continueMemory", { currentTarget: { dataset: { id: items[0].id, title: items[0].storyTitle } } });
   const url = String(last(storage.navigations));
-  assert.match(url, /^\/pages\/interview\/interview\?/);
+  assert.match(url, /^\/pages\/archive\/archive\?/);
   const query = new URLSearchParams(url.split("?")[1]);
-  assert.equal(query.get("sourceId"), "demo-personal-rain");
-  assert.equal(query.get("storyTitle"), "外公接我放学");
-  assert.equal(query.get("memoryType"), "memoir");
+  assert.equal(query.get("id"), "demo-personal-rain");
   assert.equal(storage.roomState().contributions.length, createInitialRoomState().contributions.length, "picking one changes nothing");
 });
 
-test("全部回忆 uses the current or unique story id and never guesses between several books", async (context) => {
+test("全部回忆 opens a chosen memory regardless of placement ambiguity", async (context) => {
   const state = createInitialRoomState();
   state.storyMigration = { version: 1, status: "active", pending: [] };
   state.stories = [
@@ -1242,8 +1240,7 @@ test("全部回忆 uses the current or unique story id and never guesses between
   assert.equal(item.needsStoryChoice, true);
   callPage(page, "continueMemory", { currentTarget: { dataset: { id: item.id, title: "外公接我放学", story: "", choice: true } } });
   let query = new URLSearchParams(String(last(storage.navigations)).split("?")[1]);
-  assert.equal(query.get("storyId"), "story-rain-a");
-  assert.equal(query.get("sourceId"), "demo-personal-rain");
+  assert.equal(query.get("id"), "demo-personal-rain");
 
   wx.setStorageSync("shiguang-current-story-id-v1", "story-rain-b");
   await callPage(page, "refresh");
@@ -1252,8 +1249,7 @@ test("全部回忆 uses the current or unique story id and never guesses between
   assert.equal(item.needsStoryChoice, false);
   callPage(page, "continueMemory", { currentTarget: { dataset: { id: item.id, title: "外公接我放学", story: item.storyId, choice: false } } });
   query = new URLSearchParams(String(last(storage.navigations)).split("?")[1]);
-  assert.equal(query.get("storyId"), "story-rain-b");
-  assert.equal(query.get("sourceId"), "demo-personal-rain");
+  assert.equal(query.get("id"), "demo-personal-rain");
 });
 
 test("the memory archive lists quick notes from the shared memory pool", async (context) => {
@@ -1285,6 +1281,37 @@ test("the memory archive never offers a deleted story while editing a memory", a
   await callPage(page, "refresh");
 
   assert.deepEqual(page.data.storyOptions, []);
+});
+
+test("the memory archive filters story names and confirms a new story before organizing", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  callPage(page, "startDocumentEdit");
+
+  callPage(page, "onEditStory", { detail: { value: "外公" } });
+  assert.deepEqual(page.data.storySuggestions, ["外公接我放学"]);
+  assert.equal(page.data.storyCreateTitle, "外公");
+
+  callPage(page, "onEditStory", { detail: { value: "新的故事" } });
+  assert.deepEqual(page.data.storySuggestions, []);
+  assert.equal(page.data.storyCreateTitle, "新的故事");
+
+  callPage(page, "createEditStory");
+  assert.equal(page.data.editStory, "新的故事");
+  assert.equal(page.data.storyCreateTitle, "");
+
+  await callPage(page, "createDocumentPreview");
+  await callPage(page, "savePreview", { currentTarget: { dataset: { mode: "update-current" } } });
+  assert.equal(storage.roomState().contributions.find(item => item.id === "demo-personal-rain")?.storyTitle, "新的故事");
+
+  callPage(page, "organizeIntoBook");
+  const query = new URLSearchParams(String(last(storage.navigations)).split("?")[1]);
+  assert.equal(query.get("storyId"), "story:新的故事");
+  assert.equal(query.get("memoryIds"), "demo-personal-rain");
 });
 
 test("the memory archive supports swipe reveal and deleting a quick note", async (context) => {
@@ -1356,7 +1383,8 @@ test("memory edits and story assignment preserve originals and independent reade
   const original = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
   const count = storage.roomState().contributions.length;
   page.setData({ editTitle: "测试修改", editText: "这是修改后的虚构记忆。", editStory: "新的故事" });
-  await callPage(page, "saveEdit");
+  await callPage(page, "createDocumentPreview");
+  await callPage(page, "savePreview", { currentTarget: { dataset: { mode: "update-current" } } });
   assert.equal(storage.roomState().contributions.length, count);
   const updated = storage.roomState().contributions.find(item => item.id === original.id)!;
   assert.equal(updated.storyTitle, "新的故事");
@@ -1365,7 +1393,8 @@ test("memory edits and story assignment preserve originals and independent reade
   await callPage(stories, "refresh");
   assert.ok((stories.data.stories as Array<{ title: string }>).some(item => item.title === "新的故事"));
   page.setData({ editStory: "" });
-  await callPage(page, "saveEdit");
+  await callPage(page, "createDocumentPreview");
+  await callPage(page, "savePreview", { currentTarget: { dataset: { mode: "update-current" } } });
   assert.equal(storage.roomState().contributions.find(item => item.id === original.id)?.storyTitle, undefined);
 });
 
@@ -2007,7 +2036,8 @@ test("interview persist-first, manual save and archive restore keep the same mem
   assert.equal(archive.data.originalText, spoken.text);
   assert.equal(archive.data.canRevertToSpoken, true);
   callPage(archive, "onEditText", { detail: { value: "我和外婆坐在门边听雨。" } });
-  await callPage(archive, "saveEdit");
+  await callPage(archive, "createDocumentPreview");
+  await callPage(archive, "savePreview", { currentTarget: { dataset: { mode: "update-current" } } });
   assert.equal((archive.data.historyItems as unknown[]).length, 4);
   await callPage(archive, "confirmRevertToSpoken");
   const restored = storage.roomState().contributions.find(item => item.id === spoken.id)!;
@@ -2015,6 +2045,74 @@ test("interview persist-first, manual save and archive restore keep the same mem
   assert.deepEqual(memoryAiRevisions(restored).map(item => item.kind), ["spoken", "ai", "manual", "manual", "restore"]);
   assert.equal(archive.data.canRevertToSpoken, false);
   assert.equal(archive.data.reverting, false);
+});
+
+test("回忆录打开旧记忆先显示全文，整理预览取消后保留手改且不写回原文", async context => {
+  const state = createInitialRoomState();
+  const memory = createContribution({ id: "coedit-preview", authorMemberId: "owner", authorName: "林岚", relation: "自己",
+    text: "原来保存的院子里听雨。", scope: "personal", visibility: "private" });
+  state.contributions.push(memory);
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  callPage(page, "showEditor", memory);
+  assert.equal(page.data.editText, memory.text);
+  assert.equal(page.data.isEditingDocument, false, "阅读是初始状态");
+  callPage(page, "startDocumentEdit");
+  callPage(page, "onEditText", { detail: { value: "我和外婆坐在院子里听雨。" } });
+  page.setData({ chatMessages: [...page.data.chatMessages as any[], { id: "user-one", role: "user", text: "还记得雨点落在瓦片上。", label: "" }] });
+
+  await callPage(page, "createDocumentPreview");
+
+  assert.equal(page.data.previewOpen, true);
+  assert.match(page.data.previewText as string, /我和外婆坐在院子里听雨/);
+  assert.match(page.data.previewText as string, /雨点落在瓦片上/);
+  assert.match(page.data.previewNotice as string, /未完成|未获得/);
+  assert.equal(page.data.previewAiLabel, "", "本地回退不冒充 AI 整理");
+  assert.equal(storage.roomState().contributions.find(item => item.id === memory.id)?.text, memory.text, "预览不改已保存内容");
+
+  callPage(page, "closeDocumentPreview");
+  assert.equal(page.data.editText, "我和外婆坐在院子里听雨。", "取消预览仍保留文档草稿");
+});
+
+test("更新当前和另存日期版本都保留可重新打开的旧版本", async context => {
+  const state = createInitialRoomState();
+  const memory = createContribution({ id: "coedit-save", authorMemberId: "owner", authorName: "林岚", relation: "自己",
+    text: "屋檐下听雨。", scope: "personal", visibility: "private" });
+  state.contributions.push(memory);
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  callPage(page, "showEditor", memory);
+  callPage(page, "startDocumentEdit");
+  callPage(page, "onEditText", { detail: { value: "我和外婆在屋檐下听雨。" } });
+  await callPage(page, "createDocumentPreview");
+  await callPage(page, "savePreview", { currentTarget: { dataset: { mode: "update-current" } } });
+
+  const afterUpdate = storage.roomState().contributions.find(item => item.id === memory.id)!;
+  assert.equal(afterUpdate.text, "我和外婆在屋檐下听雨。");
+  assert.equal(memoryAiRevisions(afterUpdate)[0].text, "屋檐下听雨。", "更新当前仍保留保存前原文");
+  assert.equal(page.data.previewOpen, false, "重新读取已保存的更新结果后关闭预览");
+
+  callPage(page, "startDocumentEdit");
+  callPage(page, "onEditText", { detail: { value: "我和外婆坐在旧屋檐下，听雨落在青瓦上。" } });
+  await callPage(page, "createDocumentPreview");
+  await callPage(page, "savePreview", { currentTarget: { dataset: { mode: "dated-version" } } });
+
+  const dated = storage.roomState().contributions.find(item => item.id === memory.id)!;
+  const revisions = memoryAiRevisions(dated);
+  assert.equal(dated.text, "我和外婆坐在旧屋檐下，听雨落在青瓦上。");
+  assert.ok(revisions.some(revision => revision.versionLabel?.startsWith("2026年")), "日期版本有可见标签");
+  assert.equal(revisions[0].text, "屋檐下听雨。", "最初原版仍保留");
+
+  const reopened = instantiate(await pageDefinition("archive"));
+  await callPage(reopened, "openMemory", { currentTarget: { dataset: { id: memory.id } } });
+  assert.equal(reopened.data.editText, dated.text, "重新打开默认显示已保存的当前版本");
+  callPage(reopened, "toggleHistory");
+  callPage(reopened, "selectMemoryRevision", { currentTarget: { dataset: { id: revisions[0].id } } });
+  assert.equal(reopened.data.editText, "屋檐下听雨。", "可从历史选择并重新打开原版本");
+  callPage(reopened, "selectCurrentMemoryRevision");
+  assert.equal(reopened.data.editText, dated.text, "可返回当前日期版本");
 });
 
 test("interview local fallback preserves persisted speech without inventing AI revisions", async context => {

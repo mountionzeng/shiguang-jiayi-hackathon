@@ -11,6 +11,7 @@ const { receiveMediaCopy } = require('./copyMedia');
 const { sendOwnReturn, listReturns, decideReturn } = require('./returns');
 const { listShareCardSource, previewShareCard, exportShareCard } = require('./exports');
 const { previewBookExport, exportBookImages } = require('./bookExports');
+const { memoryExportSource } = require('./memoryExports');
 
 function accessError(code) {
   return Object.assign(new Error(code === 'STORY_ACCESS_NOT_READY' ? '故事权限服务尚未准备好' : '故事共享尚未开放'), { code });
@@ -26,7 +27,7 @@ function createStoryService(repo, options = {}) {
     if (accessEnabled && options.rulesReady !== true) throw accessError('STORY_ACCESS_NOT_READY');
     const ctx = accessEnabled
       ? {...await measure('state.identity',()=>resolveStoryIdentity(repo, context, { bootstrapAppId: options.bootstrapAppId })),verifiedOpenid:context.OPENID}
-      : { familyId: `family_${context.OPENID}` };
+      : { familyId: `family_${context.OPENID}`, verifiedOpenid: context.OPENID };
     const action = String(event?.action || '');
     if (action === 'capabilities') {
       return { apiVersion: 1, independentStories: true, identityVersion: accessEnabled ? 1 : 0,
@@ -37,6 +38,7 @@ function createStoryService(repo, options = {}) {
         sharedEdit: accessEnabled && options.sharedEditEnabled === true && canaryFamilies.has(ctx.familyId),
         copy: accessEnabled && options.copyReceiveEnabled === true && canaryFamilies.has(ctx.familyId),
         bookExport: accessEnabled && options.shareCardEnabled === true && canaryFamilies.has(ctx.familyId),
+        memoryBookExport: true,
         shareCard: accessEnabled && options.shareCardEnabled === true && canaryFamilies.has(ctx.familyId), forward: false, publish: false };
     }
     if (action.startsWith('invite')) {
@@ -95,11 +97,33 @@ function createStoryService(repo, options = {}) {
       return shareExcerpt(repo,ctx,input,{approve:options.approveExcerpt});
     }
     if (action === 'bookExportPreview' || action === 'bookExportImages') {
-      if (!accessEnabled || options.shareCardEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
-      const input = { familyId: ctx.familyId, storyId: event.storyId, revisionId: event.revisionId, expectedVersion: event.expectedVersion,
-        scope: event.scope, chapterIds: event.chapterIds, ...(event.excerpt !== undefined ? { excerpt: event.excerpt } : {}) };
+      const memoryExport = event.sourceKind === 'memory';
+      if (memoryExport) {
+        if (accessEnabled) await assertSpaceOwner(repo, ctx);
+      } else if (!accessEnabled || options.shareCardEnabled !== true || !canaryFamilies.has(ctx.familyId)) {
+        throw accessError('STORY_ACCESS_DISABLED');
+      }
+      const input = memoryExport
+        ? { familyId: ctx.familyId, sourceKind: 'memory', memoryId: event.memoryId,
+          ...(event.revisionId !== undefined ? { revisionId: event.revisionId } : {}),
+          expectedSourceVersion: event.expectedSourceVersion,
+          ...(event.targetTextImageCount !== undefined ? { targetTextImageCount: event.targetTextImageCount } : {}) }
+        : { familyId: ctx.familyId, storyId: event.storyId, revisionId: event.revisionId, expectedVersion: event.expectedVersion,
+          scope: event.scope, chapterIds: event.chapterIds, ...(event.excerpt !== undefined ? { excerpt: event.excerpt } : {}),
+          ...(event.coverImageIds !== undefined ? { coverImageIds: event.coverImageIds } : {}),
+          ...(event.targetTextImageCount !== undefined ? { targetTextImageCount: event.targetTextImageCount } : {}) };
       return action === 'bookExportPreview' ? previewBookExport(repo, ctx, input, { approve: options.approveShareCard })
         : exportBookImages(repo, ctx, { ...input, descriptorId: event.descriptorId }, { approve: options.approveShareCard, sign: options.signMedia });
+    }
+    if (action === 'memoryExportSource') {
+      if (accessEnabled) await assertSpaceOwner(repo, ctx);
+      const result = await memoryExportSource(repo, ctx, {
+        memoryId: event.memoryId,
+        ...(event.revisionId !== undefined ? { revisionId: event.revisionId } : {}),
+        ...(event.expectedSourceVersion !== undefined ? { expectedSourceVersion: event.expectedSourceVersion } : {}),
+      });
+      if (accessEnabled) await assertSpaceOwner(repo, ctx);
+      return result;
     }
     if (action === 'shareCardSource') {
       if (!accessEnabled || options.shareCardEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');

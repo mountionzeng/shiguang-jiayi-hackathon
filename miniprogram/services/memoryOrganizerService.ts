@@ -17,6 +17,7 @@ export interface OrganizedMemoryDraft {
   places: string[];
   memoryType: MemoryType;
   generationMode: OrganizationMode;
+  fallbackReason?: "cloud-not-ready" | "consent-declined" | "request-failed";
 }
 
 interface CloudOrganizedMemoryResult {
@@ -101,6 +102,9 @@ export interface OrganizeMemoryInput {
   storyTitle?: string;
   useAi?: boolean;
   memoryId?: string;
+  /** Editing an existing saved memory: require the cloud copy to still match this base text. */
+  expectedSavedText?: string;
+  expectedSourceRevisionId?: string;
 }
 
 export async function organizeMemory(
@@ -110,8 +114,8 @@ export async function organizeMemory(
   const fallback = localOrganizedDraft(transcript, input.memoryType);
   if (input.useAi === false) return fallback;
   if (!input.memoryId) return fallback;
-  if (!canUseCloudAi()) return fallback;
-  if (!await requestAiConsent()) return fallback;
+  if (!canUseCloudAi()) return { ...fallback, fallbackReason: "cloud-not-ready" };
+  if (!await requestAiConsent()) return { ...fallback, fallbackReason: "consent-declined" };
 
   try {
     const response = await wx.cloud.callFunction({
@@ -122,6 +126,12 @@ export async function organizeMemory(
         memberName: input.memberName,
         storyTitle: input.storyTitle,
         consentVersion: currentConsentVersion(),
+        ...(input.expectedSavedText !== undefined ? {
+          sourceOnly: true,
+          expectedText: input.expectedSavedText,
+          sourceRevisionId: input.expectedSourceRevisionId,
+          transcript,
+        } : {}),
       },
     });
     const cloudDraft = parseCloudDraft(response.result, fallback);
@@ -129,7 +139,8 @@ export async function organizeMemory(
     console.warn("AI 整理返回格式不完整，将保留原话草稿");
   } catch (error) {
     console.warn("AI 整理不可用，将保留原话草稿");
+    return { ...fallback, fallbackReason: "request-failed" };
   }
 
-  return fallback;
+  return { ...fallback, fallbackReason: "request-failed" };
 }

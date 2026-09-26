@@ -302,6 +302,17 @@ test("organizeMemory 按 memoryId 读服务端原话，拒绝伪造/越权/已�
   assert.deepEqual(source.transcript, ["原话内容甲"]);
   assert.equal(source.memberName, "甲");
 
+  const editedSource = await organizeMemoryTest.loadMemorySource({
+    memoryId: "memory-a", sourceOnly: true, expectedText: "整理后的文字",
+    transcript: ["用户手改后的正文", "聊天补充的细节"],
+  }, cloud, identity);
+  assert.deepEqual(editedSource.transcript, ["用户手改后的正文", "聊天补充的细节"]);
+  await assert.rejects(
+    () => organizeMemoryTest.loadMemorySource({ memoryId: "memory-a", sourceOnly: true, expectedText: "旧版内容", transcript: ["旧版内容"] }, cloud, identity),
+    /MEMORY_SOURCE_CHANGED/,
+    "云端当前源变化时，不应基于旧草稿整理",
+  );
+
   await assert.rejects(
     () => organizeMemoryTest.loadMemorySource({ memoryId: "forged-id" }, cloud, identity),
     /MEMORY_NOT_FOUND/,
@@ -902,6 +913,7 @@ test("interview prompt distinguishes a feeling pivot from an explicit goodbye", 
     memoryType: "note",
     memberName: "测试讲述者",
     storyTitle: "",
+    sourceText: "我和外婆坐在院子里听雨。",
   });
   assert.match(messages[0].content, /拒绝一个方向不等于结束整个对话/);
   assert.match(messages[0].content, /是在把话题转向感受，不是告别/);
@@ -913,4 +925,5 @@ test("interview prompt distinguishes a feeling pivot from an explicit goodbye", 
   assert.doesNotMatch(messages[0].content, /不要求每轮提问/);
   assert.match(messages[1].content, /没什么新鲜事，我想讲的是现在的心情/);
   assert.match(messages[1].content, /以前搬家总紧张/);
+  assert.match(messages[1].content, /我和外婆坐在院子里听雨/);
 });

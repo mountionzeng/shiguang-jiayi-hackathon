@@ -4,6 +4,7 @@ import { snapshotFromState, selectSendText, SendSelection } from '../miniprogram
 import { createDemoRoomStateForTests } from './fixtures';
 import { makeRevision } from '../miniprogram/services/manuscript';
 import { draftWithChapters } from '../miniprogram/services/chapters';
+import { createContribution, memoryAiRevisions } from '../miniprogram/domain/biography';
 
 function fixture() {
   const state = createDemoRoomStateForTests();
@@ -203,4 +204,94 @@ test('导出权限撤销后不写相册并清掉已有图片',async()=>{
   const removed:string[]=[];(globalThis as any).wx={getFileSystemManager:()=>({unlink:({filePath}:any)=>removed.push(filePath)}),saveImageToPhotosAlbum:()=>{throw new Error('must not save');}};
   bookExportApi.material=async()=>{throw new Error('权限已撤销');};
   try{await page.saveImages();assert.deepEqual(removed,['private']);assert.deepEqual(page.data.imagePaths,[]);assert.match(page.data.notice,/撤销/);}finally{bookExportApi.material=original;}
+});
+
+test('社交页可从记忆来源进入并在预览前重验云端版本', async () => {
+  const page = await socialPage();
+  const calls: any[] = [];
+  (globalThis as any).wx = {
+    hideShareMenu() {},
+    cloud: { callFunction: async ({ data }: any) => {
+      calls.push(data);
+      if (data.action === 'capabilities') return { result: { bookExport: true } };
+      assert.equal(data.memoryId, 'memory-one');
+      assert.equal(JSON.stringify(data).includes('伪造正文'), false);
+      return { result: { source: { kind: 'memory', memoryId: 'memory-one', revisionId: 'revision-ai',
+        sourceVersion: 'a'.repeat(64), title: '雨天', text: '屋檐下听雨。', containsAiText: true } } };
+    } },
+  };
+  page.onLoad({ memoryId: 'memory-one', revisionId: 'revision-ai', text: '伪造正文' });
+  page.hidden = false;
+  await page.refreshMemory();
+  assert.equal(page.data.sourceKind, 'memory');
+  assert.equal(page.data.title, '雨天');
+  assert.equal(page.data.characterCount, Array.from('屋檐下听雨。').length);
+  await page.previewSelection();
+  assert.equal(page.data.preview, true);
+  assert.equal(page.data.previewChapters[0].text, '屋檐下听雨。');
+  assert.deepEqual(calls.filter(call => call.action === 'memoryExportSource').map(call => call.expectedSourceVersion), [undefined, 'a'.repeat(64)]);
+});
+
+let archive: PageDefinition;
+async function archivePage() {
+  if (!archive) {
+    const previous = (globalThis as any).Page;
+    (globalThis as any).Page = (value: PageDefinition) => { archive = value; };
+    try { await import('../miniprogram/pages/archive/archive'); }
+    finally { (globalThis as any).Page = previous; }
+  }
+  const page: PageDefinition = { ...archive, data: structuredClone(archive.data) };
+  page.setData = (patch: PageDefinition) => Object.assign(page.data, patch);
+  return page;
+}
+
+test('归档页发送记忆只传来源标识；未保存草稿先预览保存，保存后继续发送', async () => {
+  const page = await archivePage();
+  const state = createDemoRoomStateForTests();
+  const memory = createContribution({ id: 'memory-one', authorMemberId: 'owner', authorName: '林岚', relation: '自己',
+    text: '屋檐下听雨。', scope: 'personal', visibility: 'private' });
+  state.contributions.push(memory);
+  const urls: string[] = [], toasts: string[] = [];
+  const stored = new Map<string, any>([
+    ['shiguang-family-room-v5', state],
+    ['shiguang-current-member-v1', 'owner'],
+  ]);
+  (globalThis as any).wx = {
+    getStorageSync: (key: string) => stored.get(key),
+    setStorageSync: (key: string, value: any) => stored.set(key, value),
+    navigateTo: ({ url }: any) => urls.push(url),
+    showToast: ({ title }: any) => toasts.push(title),
+  };
+  page.showEditor(memory);
+  page.sendMemorySocial();
+  assert.equal(urls.length, 1);
+  assert.match(urls[0], /memoryId=memory-one/);
+  assert.equal(urls[0].includes('屋檐'), false);
+
+  urls.length = 0;
+  page.startDocumentEdit();
+  page.onEditText({ detail: { value: '还没保存的新正文。' } });
+  page.setData({ chatMessages: page.data.chatMessages.concat([
+    { id: 'chat-user', role: 'user', text: '只作为聊天补充的线索。', label: '' },
+    { id: 'chat-ai', role: 'assistant', text: '未采纳的 AI 回答不能进正文。', label: '文字 AI 生成' },
+  ]) });
+  page.sendMemorySocial();
+  assert.deepEqual(urls, []);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(page.data.previewOpen, true);
+  assert.match(page.data.previewText, /还没保存的新正文/);
+  assert.match(page.data.previewText, /只作为聊天补充的线索/);
+  assert.equal(page.data.previewText.includes('未采纳的 AI 回答不能进正文'), false);
+  assert.match(toasts[toasts.length - 1], /保存后继续发送/);
+
+  await page.savePreview({ currentTarget: { dataset: { mode: 'update-current' } } });
+  assert.equal(urls.length, 1);
+  const routedUrl = urls[0] as string;
+  assert.match(routedUrl, /memoryId=memory-one/);
+  assert.match(routedUrl, /revisionId=revision-/);
+  assert.equal(routedUrl.includes('还没保存的新正文'), false);
+  assert.equal(routedUrl.includes('只作为聊天补充'), false);
+  const saved = (stored.get('shiguang-family-room-v5').contributions as any[]).find(item => item.id === 'memory-one');
+  assert.equal(memoryAiRevisions(saved).slice(-1)[0].id, decodeURIComponent(routedUrl.match(/revisionId=([^&]+)/)![1]));
+  assert.equal(saved.text.includes('未采纳的 AI 回答不能进正文'), false);
 });

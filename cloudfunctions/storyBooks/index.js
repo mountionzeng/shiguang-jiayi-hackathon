@@ -6,7 +6,7 @@ const {createTextModerator}=require('./moderation');
 cloud.init({env:cloud.DYNAMIC_CURRENT_ENV});
 const db=cloud.database();
 const ensuredCollections=new Set();
-const moderate=createTextModerator(cloud.openapi.security);
+const moderate=createTextModerator(cloud.openapi.security,cloud.callFunction.bind(cloud));
 const repo={...createDocumentAdapter(db),
   async all(table,familyId){const rows=[];for(let offset=0;;offset+=100){const result=await db.collection(table).where({familyId}).orderBy('_id','asc').skip(offset).limit(100).get();rows.push(...result.data);if(result.data.length<100)return rows;}},
   async transaction(fn){return db.runTransaction(async transaction=>fn(createDocumentAdapter(transaction)));},

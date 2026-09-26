@@ -78,6 +78,25 @@ test("cloud interview prompt uses chatInterview when available", async (context)
   ]);
 });
 
+test("coediting interview includes only the displayed memory and disables unrelated memory context", async (context) => {
+  let requestData: any;
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: true } }));
+  const restoreWx = installGlobal("wx", {
+    cloud: { callFunction: async (request: { name: string; data: any }) => {
+      requestData = request.data;
+      return { result: { dimension: "feeling", text: "那时听见雨声，你心里是什么感觉？" } };
+    } },
+  });
+  context.after(() => { restoreWx(); restoreGetApp(); });
+  await generateInterviewPrompt({
+    answer: "我想补充那时很安心。", askedDimensions: [], mode: "personal", memoryType: "note",
+    conversation: [{ role: "user", text: "我想补充那时很安心。" }],
+    sourceText: "我和外婆坐在院子里听雨。", sourceOnly: true,
+  });
+  assert.equal(requestData.sourceText, "我和外婆坐在院子里听雨。");
+  assert.equal(requestData.sourceOnly, true);
+});
+
 test("cloud interview prompt falls back to local rules", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({

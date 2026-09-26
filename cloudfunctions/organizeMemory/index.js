@@ -74,8 +74,19 @@ async function loadMemorySource(event, cloud, resolvedIdentity) {
   if (!memory || memory.familyId !== familyId || memory.deletedAt || memory.scope !== "personal") {
     throw new Error("MEMORY_NOT_FOUND");
   }
+  let transcript = [originalSpokenText(memory)];
+  if (event.sourceOnly === true) {
+    const expectedText = sanitizeText(event.expectedText, 500);
+    const sourceRevisionId = String(event.sourceRevisionId || "");
+    const storedSourceText = sourceRevisionId
+      ? (Array.isArray(memory.aiRevisions) ? memory.aiRevisions.find(item => item?.id === sourceRevisionId)?.text : undefined)
+      : memory.text;
+    if (!expectedText || typeof storedSourceText !== "string" || expectedText !== storedSourceText.trim()) throw new Error("MEMORY_SOURCE_CHANGED");
+    transcript = validateTranscript(event.transcript);
+    if (!transcript.length) throw new Error("MEMORY_SOURCE_CHANGED");
+  }
   return {
-    transcript: [originalSpokenText(memory)],
+    transcript,
     memberName: memory.authorName || "讲述者",
     memoryType: memory.memoryType,
     storyTitle: memory.storyTitle,
@@ -186,7 +197,7 @@ async function main(event, dependencies = {}) {
   const brief = organizationBrief(memoryType);
   let personalContext;
   const memoryRepo = db ? createMemoryRepository(db) : null;
-  if (!dependencies.skipGuard && process.env.PERSONAL_MEMORY_ENABLED === 'true') {
+  if (!dependencies.skipGuard && event.sourceOnly !== true && process.env.PERSONAL_MEMORY_ENABLED === 'true') {
     assertConsentVersion(identity.account, AI_CONSENT_VERSION);
     personalContext = await prepareContext(memoryRepo, identity, {excludeMemoryId:event.memoryId}).catch(() => undefined);
   }

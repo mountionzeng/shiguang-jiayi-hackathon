@@ -23,7 +23,10 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
  */
 async function main(event) {
   const context = cloud.getWXContext();
-  const openid = String(context.OPENID || "").trim();
+  // 客户端直调时只信微信上下文里的 OPENID；云函数之间调用时，部分 DevTools/云端
+  // 路径不会把原始用户 OPENID 带到被调函数，此时由上游云函数传入它刚从微信上下文
+  // 取得的 openid，仍然由服务端发起最终内容安全检测。
+  const openid = String(context.OPENID || event?.openid || "").trim();
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
 
   const input = normalizeCheckInput(event);
