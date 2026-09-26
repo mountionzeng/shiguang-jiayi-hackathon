@@ -25,7 +25,7 @@
     <view class="cover-results">
       <view class="cover-result" wx:for="{{covers}}" wx:key="imageId">
         <image class="cover-art" src="{{item.url}}" mode="aspectFit" data-url="{{item.url}}" bindtap="preview" aria-label="查看封面大图" />
-        <view class="cover-result-label">{{item.selected ? '正在使用' : 'AI 生成'}}<text wx:if="{{item.moderationLabel}}"> · {{item.moderationLabel}}</text></view>
+        <view class="cover-result-label">{{item.selected ? '正在使用' : '封面'}}<text wx:if="{{item.moderationLabel}}"> · {{item.moderationLabel}}</text></view>
         <view class="cover-quality" wx:if="{{item.qualityLabel}}">{{item.qualityLabel}}</view>
         <button class="cover-use tool-button" data-id="{{item.imageId}}" bindtap="choose" disabled="{{selecting || submitting || !item.ready || item.selected}}">{{item.selected ? '已是封面' : (!item.ready ? '等待审核' : '设为封面')}}</button>
       </view>

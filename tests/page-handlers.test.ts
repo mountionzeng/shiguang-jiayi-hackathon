@@ -1762,7 +1762,8 @@ test("writing UI uses native fields without an expanding textarea or bottom navi
   assert.match(template, /<input[^>]*bindinput="onEditTitle"/);
   assert.match(template, /<editor[^>]*bindinput="onEditorInput"/);
   assert.doesNotMatch(template, /writing-heading|writing-status/);
-  assert.match(template, /bindtap="addPhoto"/);
+  assert.match(template, /bindtap="togglePhotoMenu"/);
+  assert.match(template, /data-action="import"[^>]*bindtap="choosePhotoAction"/);
   assert.match(template, /viewportHeight/);
   assert.doesNotMatch(template, /100vh\s*-/, "do not subtract a keyboard from a shrinking CSS viewport");
   const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");

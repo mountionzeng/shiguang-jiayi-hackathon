@@ -17,7 +17,7 @@ export async function requestPhotoAiConsent(photoCount: number, purpose: PhotoAi
   const existing = pending.get(purpose);
   if (existing) return existing;
   const usage = purpose === "illustration-reference"
-    ? "用来提取主体外观、画风、配色和关键物件，并作为本章插图的参考图生成新插画"
+    ? "用来提取主体外观、画风、配色和关键物件，并作为本章插图或底图的参考图生成新画面"
     : "只用来帮你起草一句话";
   const cancelText = purpose === "illustration-reference" ? "不用照片" : "自己写";
   const request = new Promise<boolean>(resolve => wx.showModal({

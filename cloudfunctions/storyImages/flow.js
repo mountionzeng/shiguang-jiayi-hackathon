@@ -85,10 +85,44 @@ function createStoryImageHandlers(deps) {
     return photos.map(photo => photo.url);
   }
 
+  function uniqueList(values) {
+    return [...new Set((Array.isArray(values) ? values : []).map(value => String(value || "").trim()).filter(Boolean))];
+  }
+
+  async function readStoryImageReferenceUrls(job, imageIds, options = {}) {
+    const ids = uniqueList(imageIds);
+    if (!ids.length) return [];
+    const urls = [];
+    for (const imageId of ids) {
+      const image = await repo.getImage(imageId);
+      const linkedReference = !image?.storyId && job.storyId && repo.isImageLinkedToStory
+        ? await repo.isImageLinkedToStory(job.familyId, job.storyId, imageId) : false;
+      const storyMatches = !job.storyId || String(image?.storyId || "") === String(job.storyId || "") || linkedReference;
+      const memberMatches = job.storyId || image?.memberId === job.memberId;
+      const chapterMatches = !options.sameChapter || image?.chapterId === job.chapterId;
+      const purposeMatches = !options.purpose || image?.purpose === options.purpose;
+      if (!image || image.familyId !== job.familyId || !storyMatches || !memberMatches || !chapterMatches || !purposeMatches ||
+        image.deletedAtMs !== undefined || !image.fileID) {
+        throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "这张参考图已不可用，请重新选择");
+      }
+      if (image.moderation !== "pass") {
+        throw new core.StoryImageError("REFERENCE_IMAGE_NOT_READY", "这张插图还没通过平台审核，暂时不能作为参考");
+      }
+      const url = (await storage.tempUrls([image.fileID], 5 * 60))[image.fileID] || "";
+      if (!url) throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "暂时读不到这张参考图，请稍后再试");
+      urls.push(url);
+    }
+    return urls;
+  }
+
   async function referenceImagesForJob(job) {
-    const photoIds = Array.isArray(job.referencePhotoIds) ? job.referencePhotoIds : [];
-    if (!photoIds.length) return [];
-    return await readReferencePhotoUrls({ openid: job.requesterOpenId }, job, photoIds);
+    const imageUrls = await readStoryImageReferenceUrls(job, [
+      ...(job.referenceImageId ? [job.referenceImageId] : []),
+      ...(job.purpose === "cover" ? uniqueList(job.referenceImageIds) : []),
+    ], job.purpose === "cover" ? {} : { sameChapter: true, purpose: "illustration" });
+    const photoUrls = await readReferencePhotoUrls({ openid: job.requesterOpenId }, job, uniqueList(job.referencePhotoIds));
+    const chapterImageUrls = await readStoryImageReferenceUrls(job, uniqueList(job.chapterImageReferenceIds), { sameChapter: true, purpose: "illustration" });
+    return [...new Set([...imageUrls, ...photoUrls, ...chapterImageUrls])].slice(0, 3);
   }
 
   async function submit(ctx, event) {
@@ -126,9 +160,12 @@ function createStoryImageHandlers(deps) {
     const draft = input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
     const artMemories = await storyArtMemories(input.familyId, storyContext);
     const source = input.purpose === "cover" ? core.bookSource(draft, artMemories) : core.chapterSource(draft, input.chapterId, artMemories);
-    assertReferencePhotosInChapter(source, input.purpose === "illustration" ? input.referencePhotoIds : []);
+    const chapterImageReferenceIds = input.purpose === "cover" ? [] : (source.storyImageReferenceIds || [])
+      .map(referenceId => core.storyImageIdFromReference(input.familyId, referenceId))
+      .filter(Boolean);
+    assertReferencePhotosInChapter(source, input.purpose === "cover" ? [] : input.referencePhotoIds);
     let chapterReferenceUrls = [];
-    if (input.purpose === "illustration" && input.referencePhotoIds.length) {
+    if (["illustration", "backdrop"].includes(input.purpose) && input.referencePhotoIds.length) {
       if (!referenceAnalyzer?.configured) throw new core.StoryImageError("REFERENCE_NOT_CONFIGURED", "参考图服务还没配置好");
       chapterReferenceUrls = await readReferencePhotoUrls(ctx, input, input.referencePhotoIds);
     }
@@ -181,7 +218,7 @@ function createStoryImageHandlers(deps) {
       purpose: input.purpose,
       provider: provider.name,
       model: provider.model,
-      seed: core.imageSeed(input.familyId, input.requestId),
+      seed: core.imageSeed(input.familyId, input.requestId, { storyId: input.storyId, purpose: input.purpose, referenceImageId: input.referenceImageId }),
       prompt: "",
       source: {
         chapterId: input.chapterId,
@@ -190,13 +227,15 @@ function createStoryImageHandlers(deps) {
         artTextLength: source.artTextLength || source.textLength,
         characterContextLength: source.characterContext.length,
         ...(source.photoIds?.length ? { photoHash: source.photoHash, photoCount: source.photoIds.length } : {}),
+        ...(source.storyImageReferenceIds?.length ? { storyImageReferenceHash: source.storyImageReferenceHash, storyImageReferenceCount: source.storyImageReferenceIds.length } : {}),
       },
       referencePhotoCount: input.referencePhotoIds?.length || 0,
-      referenceImageCount: input.referenceImageIds?.length || (input.referenceImageId ? 1 : 0),
+      referenceImageCount: (input.referenceImageIds?.length || 0) + (input.referenceImageId ? 1 : 0) + chapterImageReferenceIds.length,
       ...(input.artDirection ? { artDirectionHash: core.textHash(input.artDirection) } : {}),
       ...(input.referencePhotoIds?.length ? { referencePhotoIds: input.referencePhotoIds } : {}),
       ...(input.purpose === "cover" ? { referenceImageIds: input.referenceImageIds, referencePhotoIds: input.referencePhotoIds } : {}),
       ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
+      ...(chapterImageReferenceIds.length ? { chapterImageReferenceIds } : {}),
       status: "submitted",
       dayKey,
       createdAtMs: nowMs,

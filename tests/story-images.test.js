@@ -135,6 +135,8 @@ function memoryRepo() {
         throw new core.StoryImageError('REVISION_CHANGED','章节内容已经变化');
       if(job.source?.photoHash && source.photoHash!==job.source.photoHash)
         throw new core.StoryImageError('REVISION_CHANGED','章节照片已经变化');
+      if(job.source?.storyImageReferenceHash && source.storyImageReferenceHash!==job.source.storyImageReferenceHash)
+        throw new core.StoryImageError('REVISION_CHANGED','章节插图已经变化');
     },
     async createImage(id, data) { images.set(id, { ...data, _id: id }); },
     async getImage(id) { const image = images.get(id); return image && { ...image }; },
@@ -571,9 +573,13 @@ test("插图提示词只用肯定式描述，不列禁止画的东西", () => {
   );
   assert.deepEqual([width, height], [1024, 768]);
   assert.match(prompt, /纸本手绘插画/);
-  assert.match(prompt, /纸面的纤维/);
+  assert.match(prompt, /手工笔触和纸面呼吸/);
   assert.match(prompt, /画中有竹竿、棉被。/);
   assert.match(prompt, /人物以远景或局部呈现：远景中的背影。/);
+  assert.match(prompt, /符合客观物理规律/);
+  assert.match(prompt, /前后遮挡/);
+  assert.match(prompt, /接触点、握持、翻阅、坐姿、重心和投影/);
+  assert.match(prompt, /接触和受力关系/);
   assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
   assert.doesNotMatch(prompt, /时代感/);
 });
@@ -587,7 +593,7 @@ test("已保存的全书文字只提炼媒介线索，当前章仍控制画面�
   const source = core.chapterSource(draft, "c1");
   assert.equal(source.bookLifeCategory, "local");
   const prompt = core.buildImagePrompt({ scene: "窗前", setting: "窗前", objects: [], light: "", mood: "怀旧", eraHint: "", figures: [] }, "illustration", undefined, source).prompt;
-  assert.match(prompt, /淡墨皴擦与薄水彩/);
+  assert.match(prompt, /粗纸上的干笔墨线/);
   assert.match(prompt, /视点贴近讲述者/);
   assert.match(prompt, /叠笔与擦洗/);
   assert.doesNotMatch(prompt, /旧院子|集市|田地|年代质地/);
@@ -609,8 +615,8 @@ test("同一本书的来源记忆参与美术提炼，但不改写当前画面�
   const prompt = core.buildImagePrompt({
     scene: "窗前的搪瓷杯", setting: "窗前", objects: ["搪瓷杯"], light: "", mood: "", eraHint: "", figures: [],
   }, "illustration", undefined, source).prompt;
-  assert.match(prompt, /淡墨皴擦与薄水彩/);
-  assert.match(prompt, /叠笔与擦洗/);
+  assert.match(prompt, /粗纸上的干笔墨线/);
+  assert.match(prompt, /细线和浅色面保持停顿/);
   assert.match(prompt, /正文明确写出的1983年/);
   assert.doesNotMatch(prompt, /晒被子|公交站|1998/);
 
@@ -620,15 +626,60 @@ test("同一本书的来源记忆参与美术提炼，但不改写当前画面�
   }, "cover", undefined, cover).prompt;
   assert.doesNotMatch(coverPrompt, /年代质地/);
   assert.match(coverPrompt, /主体与留白/);
+  assert.match(coverPrompt, /符合客观物理规律/);
 });
 
-test("被正文否定的情绪不会变成画法；明确年代才进入提示词", () => {
-  const scene = { scene: "窗前的桌子", setting: "窗前", objects: ["桌子"], light: "", mood: "怀旧", eraHint: "", figures: [] };
-  const source = { text: "我不想再沉在怀旧里，今天只想看窗前的桌子。" };
-  const prompt = core.buildImagePrompt(scene, "illustration", undefined, source).prompt;
-  assert.doesNotMatch(prompt, /被时间轻轻洗过|年代质地/);
-  const dated = core.buildImagePrompt({ ...scene, eraHint: "1980年代" }, "cover", undefined, { text: "1980年代的家里" }).prompt;
+test("情绪画法常开，常见氛围词各有材料行为，且否定情绪只走中性兜底", () => {
+  const baseScene = { scene: "窗前的桌子", setting: "窗前", objects: ["桌子"], light: "", eraHint: "", figures: [] };
+  const source = { text: "窗前的桌子上放着旧茶杯。" };
+  const quiet = core.buildImagePrompt({ ...baseScene, mood: "安静" }, "illustration", undefined, source).prompt;
+  const calm = core.buildImagePrompt({ ...baseScene, mood: "宁静" }, "illustration", undefined, source).prompt;
+  const plain = core.buildImagePrompt({ ...baseScene, mood: "平淡" }, "illustration", undefined, source).prompt;
+  assert.match(quiet, /情绪的画法：细线和浅色面保持停顿/);
+  assert.match(calm, /情绪的画法：大面积浅色慢慢铺开/);
+  assert.match(plain, /情绪的画法：笔触贴近器物表面/);
+  const lines = [quiet, calm, plain].map(prompt => prompt.match(/情绪的画法：[^。]+。/)?.[0]);
+  assert.equal(new Set(lines).size, 3);
+
+  const fallback = core.buildImagePrompt({ ...baseScene, mood: "" }, "illustration", undefined, source).prompt;
+  assert.match(fallback, /情绪的画法：以物件之间的距离、光的落点和边缘轻重组织画面情绪。/);
+
+  const negated = core.buildImagePrompt({ ...baseScene, mood: "焦虑" }, "illustration", undefined, { text: "我不想再回到那种焦虑里，只想看窗前的桌子。" }).prompt;
+  assert.doesNotMatch(negated, /短线在主体周围收紧/);
+  assert.match(negated, /以物件之间的距离、光的落点和边缘轻重组织画面情绪/);
+
+  const dated = core.buildImagePrompt({ ...baseScene, mood: "怀旧", eraHint: "1980年代" }, "cover", undefined, { text: "1980年代的家里" }).prompt;
   assert.match(dated, /正文明确写出的1980年代/);
+});
+
+test("生活质地按命中次数选最高，四档媒介保持可辨差异", () => {
+  const scene = { scene: "日常一幕", setting: "", objects: ["桌子"], light: "", mood: "", eraHint: "", figures: [] };
+  const promptFor = (text) => core.buildImagePrompt(scene, "illustration", undefined, { text }).prompt;
+  const prompts = {
+    family: promptFor("母亲和孩子在家里围着饭桌。"),
+    local: promptFor("孩子赶集市，集市边的县城巷口还有田埂。"),
+    urban: promptFor("母亲走过城市街道，楼房、地铁、公交和车站连在一起。"),
+    nature: promptFor("家人走进山林，山坡、河流、森林和草地在远处展开。"),
+  };
+  assert.match(prompts.family, /柔软彩铅颗粒与薄水彩/);
+  assert.match(prompts.local, /粗纸上的干笔墨线与赭色水粉/);
+  assert.match(prompts.urban, /硬边套色版画与平涂色块/);
+  assert.match(prompts.nature, /留白水墨与局部重墨/);
+  const media = Object.values(prompts).map(prompt => prompt.match(/媒介与材料：[^。]+。/)?.[0]);
+  assert.equal(new Set(media).size, 4);
+
+  assert.doesNotMatch(promptFor("母亲走在街道上。"), /媒介与材料：/);
+});
+
+test("同书基础图共享书级 seed，主动参考旧图时换成请求级 seed", () => {
+  const first = core.imageSeed(FAMILY, "req-20260913-seed0001", { storyId: "story-a", purpose: "illustration" });
+  const second = core.imageSeed(FAMILY, "req-20260913-seed0002", { storyId: "story-a", purpose: "illustration" });
+  assert.equal(first, second);
+  assert.notEqual(first, core.imageSeed(FAMILY, "req-20260913-seed0003", { storyId: "story-b", purpose: "illustration" }));
+  assert.notEqual(first, core.imageSeed(FAMILY, "req-20260913-seed0004", { storyId: "story-a", purpose: "backdrop" }));
+  const redraw = core.imageSeed(FAMILY, "req-20260913-seed0005", { storyId: "story-a", purpose: "illustration", referenceImageId: `${FAMILY}_img_req-oldseed1` });
+  assert.notEqual(first, redraw);
+  assert.notEqual(redraw, core.imageSeed(FAMILY, "req-20260913-seed0006", { storyId: "story-a", purpose: "illustration", referenceImageId: `${FAMILY}_img_req-oldseed1` }));
 });
 
 test("长章节后半段的明确年代仍进入美术提示词，且完整正文参与来源校验", () => {
@@ -644,12 +695,18 @@ test("长章节后半段的明确年代仍进入美术提示词，且完整正�
   assert.notEqual(changed.fullTextHash, source.fullTextHash);
 });
 
-test("章节正文里的本机照片引用会作为独立来源被记录", () => {
+test("章节正文里的本机照片和 AI 插图引用分别记录，避免走错读取接口", () => {
   const source = core.chapterSource({ chapters: [CHAPTER] }, "chapter-1");
   assert.deepEqual(source.photoIds, ["photo-abc"]);
   assert.equal(source.photoHash, core.textHash("photo-abc"));
   const duplicate = core.chapterSource({ chapters: [{ ...CHAPTER, content: [...CHAPTER.content, { photoId: "photo-abc" }, { photoId: "photo-ai-req-aaaaaaaa" }] }] }, "chapter-1");
   assert.deepEqual(duplicate.photoIds, ["photo-abc"]);
+  assert.deepEqual(duplicate.storyImageReferenceIds, ["photo-ai-req-aaaaaaaa"]);
+  assert.equal(duplicate.storyImageReferenceHash, core.textHash("photo-ai-req-aaaaaaaa"));
+  assert.equal(core.storyImageIdFromReference(FAMILY, "photo-ai-req-aaaaaaaa"), `${FAMILY}_img_req-aaaaaaaa`);
+  assert.throws(() => core.normalizeSubmitInput({
+    ...submitEvent("req-ai-as-photo-0001"), referencePhotoIds: ["photo-ai-req-aaaaaaaa"], photoReferenceConsent: true,
+  }), error => error.code === "INVALID_REFERENCE_IMAGE");
 });
 
 test("正文跨越多个明确年代时，不把其中之一当作全书年代", () => {
@@ -659,31 +716,36 @@ test("正文跨越多个明确年代时，不把其中之一当作全书年代",
   assert.doesNotMatch(prompt, /年代质地/);
 });
 
-test("本章照片经授权后参与章节插图提示词，并在付费出图前重新传给 TokenHub", async () => {
-  const h = harness();
-  const event = {
-    ...submitEvent("req-photo-ref-0001"),
-    referencePhotoIds: ["photo-abc"],
-    photoReferenceConsent: true,
-  };
-  const submitted = await h.handlers.submit(ctx, event);
-  assert.equal(submitted.job.referenceApplied, true);
-  assert.deepEqual(submitted.job.referencePhotoIds, ["photo-abc"]);
-  assert.deepEqual(h.calls.readPhotos[0], {
-    familyId: FAMILY,
-    photoIds: ["photo-abc"],
-    variant: "display",
-    purpose: "ai-reference",
-    onBehalfOfOpenid: OWNER_OPENID,
-  });
-  const storedJob = h.repo.jobs.get(`${FAMILY}_${event.requestId}`);
-  assert.match(storedJob.prompt, /本章照片参考/);
-  assert.match(storedJob.prompt, /蓝眼睛白灰长毛猫/);
-  assert.equal(storedJob.source.photoHash, core.textHash("photo-abc"));
+test("本章照片经授权后参与章节插图和底图提示词，并在付费出图前重新传给 TokenHub", async () => {
+  for (const purpose of ["illustration", "backdrop"]) {
+    const h = harness();
+    const event = {
+      ...submitEvent(`req-photo-ref-${purpose}`),
+      purpose,
+      referencePhotoIds: ["photo-abc"],
+      photoReferenceConsent: true,
+    };
+    const submitted = await h.handlers.submit(ctx, event);
+    assert.equal(submitted.job.referenceApplied, true);
+    assert.deepEqual(submitted.job.referencePhotoIds, ["photo-abc"]);
+    assert.deepEqual(h.calls.readPhotos[0], {
+      familyId: FAMILY,
+      photoIds: ["photo-abc"],
+      variant: "display",
+      purpose: "ai-reference",
+      onBehalfOfOpenid: OWNER_OPENID,
+    });
+    const storedJob = h.repo.jobs.get(`${FAMILY}_${event.requestId}`);
+    assert.match(storedJob.prompt, /本章照片参考/);
+    assert.match(storedJob.prompt, /蓝眼睛白灰长毛猫/);
+    assert.equal(storedJob.source.photoHash, core.textHash("photo-abc"));
+    if (purpose === "backdrop") assert.match(storedJob.prompt, /底图下方/);
+    else assert.match(storedJob.prompt, /纸本手绘插画/);
 
-  await h.handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: submitted.job.jobId });
-  assert.deepEqual(h.calls.readPhotos[1], h.calls.readPhotos[0]);
-  assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/photo-abc.jpg"]);
+    await h.handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: submitted.job.jobId });
+    assert.deepEqual(h.calls.readPhotos[1], h.calls.readPhotos[0]);
+    assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/photo-abc.jpg"]);
+  }
 });
 
 test("章节照片参考必须来自本章正文，且必须先有照片 AI 同意", async () => {
@@ -693,8 +755,19 @@ test("章节照片参考必须来自本章正文，且必须先有照片 AI 同�
     referencePhotoIds: ["photo-other"],
     photoReferenceConsent: true,
   }), error => error.code === "REFERENCE_IMAGE_NOT_FOUND");
+  await assert.rejects(h.handlers.submit(ctx, {
+    ...submitEvent("req-photo-other-backdrop"),
+    purpose: "backdrop",
+    referencePhotoIds: ["photo-other"],
+    photoReferenceConsent: true,
+  }), error => error.code === "REFERENCE_IMAGE_NOT_FOUND");
   assert.throws(() => core.normalizeSubmitInput({
     ...submitEvent("req-photo-no-consent"),
+    referencePhotoIds: ["photo-abc"],
+  }), error => error.code === "CONSENT_REQUIRED");
+  assert.throws(() => core.normalizeSubmitInput({
+    ...submitEvent("req-photo-no-consent-backdrop"),
+    purpose: "backdrop",
     referencePhotoIds: ["photo-abc"],
   }), error => error.code === "CONSENT_REQUIRED");
 });
@@ -752,6 +825,8 @@ test("底图只画景物：上方留白、最多三个物件、没有人物，�
   assert.match(prompt, /上方大面积是接近纯白的宣纸留白/);
   assert.match(prompt, /景物：冬天的小院。/);
   assert.match(prompt, /画中有竹竿、棉被、木凳。/);
+  assert.match(prompt, /符合客观物理规律/);
+  assert.match(prompt, /前后遮挡/);
   assert.doesNotMatch(prompt, /瓦罐|奶奶|背影|人物/);
   assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
 });
@@ -881,6 +956,8 @@ test("可以参考同一章节的旧插图再画，但不能跨章节或使用�
   assert.equal(job.referenceImageCount, 1);
   assert.match(job.prompt, /短发女孩，浅蓝外套/);
   assert.equal(job.visualReference, undefined);
+  await handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: result.job.jobId });
+  assert.deepEqual(calls.generate[0].referenceImages, ["https://tmp.example/cloud%3A%2F%2Fenv%2Fstory-images%2Fold.png"]);
   await assert.rejects(
     handlers.submit(ctx, { ...submitEvent(), referenceImageId: `${FAMILY}_img_req-20260913-another1` }),
     error => error.code === "REQUEST_CONFLICT",
@@ -931,6 +1008,47 @@ test("可以参考同一章节的旧插图再画，但不能跨章节或使用�
   }
 });
 
+test("正文里已插入的 AI 插图会作为章节参考图传给最终出图，但不走照片读取", async () => {
+  const h = harness();
+  const storyImageId = `${FAMILY}_img_req-20260913-aiembed1`;
+  h.repo.setDrafts([revisionRecord({
+    id: "revision-with-ai-image", savedAt: "2026-09-13T00:00:00.000Z",
+    chapters: [{ ...CHAPTER, content: [...CHAPTER.content, { photoId: "photo-ai-req-20260913-aiembed1" }] }],
+  })]);
+  await h.repo.createImage(storyImageId, {
+    familyId: FAMILY, memberId: "owner", chapterId: "chapter-1", purpose: "illustration",
+    fileID: "cloud://env/story-images/embedded.png", moderation: "pass", createdAtMs: T0 - 1,
+  });
+  const { job } = await h.handlers.submit(ctx, submitEvent("req-20260913-newbase1"));
+  const storedJob = h.repo.jobs.get(job.jobId);
+  assert.deepEqual(storedJob.chapterImageReferenceIds, [storyImageId]);
+  assert.equal(storedJob.referenceImageCount, 1);
+  assert.equal(h.calls.readPhotos.length, 0);
+
+  await h.handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: job.jobId });
+  assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/cloud%3A%2F%2Fenv%2Fstory-images%2Fembedded.png"]);
+});
+
+test("封面选中的旧插图也会进入最终出图请求", async () => {
+  const h = harness({ deps: { coverServices: { prepare: async () => [] } } });
+  const storyId = "story-cover-ref";
+  const imageId = `${FAMILY}_img_req-coverref1`;
+  h.repo.setDrafts([{ familyId: FAMILY, storyId, draftType: "story-revision", revision: {
+    id: "revision-cover-ref", storyId, savedAt: "2026-09-23",
+    draft: { title: "全书", chapters: [CHAPTER, { id: "last", title: "结尾", content: [{ text: "成年后在海边安家。" }] }] },
+  } }]);
+  await h.repo.createImage(imageId, {
+    familyId: FAMILY, storyId, memberId: "owner", chapterId: "chapter-1", purpose: "illustration",
+    fileID: "cloud://env/story-images/cover-ref.png", moderation: "pass", createdAtMs: T0 - 1,
+  });
+  const event = { familyId: FAMILY, storyId, purpose: "cover", coverConsent: true, requestId: "req-cover-ref0001", referenceImageIds: [imageId], referencePhotoIds: [] };
+  const { job } = await h.handlers.submit(ctx, event);
+  assert.equal(h.repo.jobs.get(job.jobId).referenceImageCount, 1);
+
+  await h.handlers.status(ctx, { familyId: FAMILY, storyId, jobId: job.jobId });
+  assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/cloud%3A%2F%2Fenv%2Fstory-images%2Fcover-ref.png"]);
+});
+
 test("没配置出图密钥时不留记录、不占名额", async () => {
   const { handlers, repo } = harness({ provider: { configured: false } });
   await assert.rejects(handlers.submit(ctx, submitEvent()), error => error.code === "IMAGE_NOT_CONFIGURED");
@@ -979,7 +1097,7 @@ test("页面查进度时才出图：画好先记下链接，再转存云存储�
   const queuedPrompt = repo.jobs.get(job.jobId).prompt;
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(calls.generate.length, 1);
-  assert.deepEqual(calls.generate[0], { prompt: queuedPrompt, width: 1024, height: 768, seed: core.imageSeed(FAMILY, submitEvent().requestId) });
+  assert.deepEqual(calls.generate[0], { prompt: queuedPrompt, width: 1024, height: 768, seed: core.imageSeed(FAMILY, submitEvent().requestId, { storyId: "", purpose: "illustration", referenceImageId: "" }) });
   assert.deepEqual(calls.download, ["https://result.example/1.png"]);
   assert.equal(calls.aigc.length, 1);
   assert.equal(calls.aigc[0].contentType, "image/png");

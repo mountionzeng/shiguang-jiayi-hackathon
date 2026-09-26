@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { inspectDeploymentSource } from "./deployment-source.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, "..");
@@ -98,10 +99,10 @@ function assertCommandSucceeded(result, expectedName = null) {
 export async function run(argv = process.argv.slice(2), options = {}) {
   const rootDir = path.resolve(options.rootDir ?? DEFAULT_ROOT);
   const parsed = parseArgs(argv);
-  const manifestPath = path.join(rootDir, "deploy/wechat-cloud.manifest.json");
+  const project = path.resolve(parsed.project ?? rootDir);
+  const manifestPath = path.join(project, "deploy/wechat-cloud.manifest.json");
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const names = planDeployment(manifest, parsed.includes);
-  const project = path.resolve(parsed.project ?? rootDir);
   const stdout = options.stdout ?? process.stdout;
 
   if (!parsed.execute) {
@@ -111,6 +112,8 @@ export async function run(argv = process.argv.slice(2), options = {}) {
   }
 
   const runner = options.runner ?? defaultRunner;
+  const inspectSource = options.inspectSource ?? inspectDeploymentSource;
+  const source = inspectSource(project, parsed.env);
   const cliPath = options.cliPath ?? "/Applications/wechatwebdevtools.app/Contents/MacOS/cli";
   const deployArgs = [
     "cloud", "functions", "deploy",
@@ -126,7 +129,10 @@ export async function run(argv = process.argv.slice(2), options = {}) {
     assertCommandSucceeded(await runner(cliPath, infoArgs, { cwd: rootDir }), name);
   }
 
-  const result = { mode: "execute", count: names.length, names, verified: names };
+  const after = inspectSource(project, parsed.env);
+  if (after.commit !== source.commit) throw new Error("Deployment source changed during deployment; inspect cloud state before retrying.");
+  const result = { mode: "execute", count: names.length, names, verified: names,
+    environment: parsed.env, source, verifiedAt: new Date().toISOString() };
   stdout.write(`${JSON.stringify(result)}\n`);
   return result;
 }

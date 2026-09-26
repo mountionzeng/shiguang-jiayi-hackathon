@@ -156,6 +156,7 @@ const repo = {
       const source=job.purpose === "cover" ? bookSource(record.revision.draft, memories) : chapterSource(record.revision.draft,job.chapterId, memories);
       if((source.fullTextHash || textHash(source.text))!==job.source?.textHash)throw new StoryImageError("REVISION_CHANGED","章节内容已经变化，请重新配图");
       if(job.source?.photoHash && source.photoHash!==job.source.photoHash)throw new StoryImageError("REVISION_CHANGED","章节照片已经变化，请重新配图");
+      if(job.source?.storyImageReferenceHash && source.storyImageReferenceHash!==job.source.storyImageReferenceHash)throw new StoryImageError("REVISION_CHANGED","章节插图已经变化，请重新配图");
     });
   },
   async isActiveStory(familyId,storyId) {

@@ -73,3 +73,9 @@ Network 记录的 URL 是 `wx.cloud.callFunction.storyBooks` 等虚拟调用，s
 后续用同一预览、同一账号，在真机 Wi-Fi 和移动网络各跑一次，复制结果后按 request ID 对应云端 Report。确认字节数/数量相同再比较；记录设备系统、微信/基础库版本和网络。若移动网络明显改善，进一步排查本地网络；若手机两种网络均改善，优先调查开发工具开销；若均慢，再查平台接入/区域链路。三者仍只是排查方向，不是单次对照即可证明的根因。
 
 本机临时证据：`/tmp/shiguang-transport-result.json`、`/tmp/shiguang-call-trace-result.json`、`/tmp/shiguang-network-sanitized.json`、`/tmp/shiguang-diagnostic-page-result.json`、`/tmp/shiguang-transport-diagnostic.jpg`。只保留脱敏统计；不入库用户正文截图。
+
+## 2026-09-25：为常规状态加载补充响应大小日志
+
+`room.cloud` 现在会记录 `responseBytes`（云函数 JSON 结果的未压缩 UTF-8 字节数）和 `responseAnalysisMs`（客户端计算该大小的耗时）。字节统计只对已解析响应进行 JSON 序列化，异常时省略数值且不影响读取；日志不包含响应字段、账号、书稿或正文。该字节数不等于微信 SDK 实际网络流量，也不能单独拆出排队、网络与响应传输耗时；`room.cloud.durationMs` 包含这段本地统计时间，后续比较时应同时查看 `responseAnalysisMs`。
+
+本地合成响应测试覆盖 UTF-8（含 emoji）计数、统计异常兜底、完整状态日志的字节数准确性和日志内容脱敏。尚未在真机采集新指标；微信开发者工具模拟器已有数据仍不能代表真实手机。

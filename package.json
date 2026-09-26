@@ -6,6 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts tests/*.test.js",
+    "test:files": "tsx --test",
+    "workspace:check": "node scripts/workspace-status.mjs",
     "test:kimi": "node scripts/test-kimi-connection.mjs",
     "check": "npm run typecheck && npm test",
     "configure:wechat": "node scripts/configure-wechat-account.mjs",
