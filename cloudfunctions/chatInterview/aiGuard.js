@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { moderateTextWithTencent } = require("./tencentModeration");
 
 const OPENID = /^[0-9A-Za-z_-]{1,128}$/;
 const APP_ID = /^wx[0-9A-Za-z_-]{1,80}$/;
@@ -154,12 +155,49 @@ async function writeModerationCache(db, cacheId, data) {
   } catch {}
 }
 
+async function tryPaidModeration(chunk, title, cacheId, dayKey, nowMs, options) {
+  const paidModeration = options && typeof options.paidModeration === "function"
+    ? options.paidModeration
+    : moderateTextWithTencent;
+  try {
+    const content = title ? `${title}\n${chunk}` : chunk;
+    const result = await paidModeration({ content, dataId: cacheId, env: options && options.env });
+    if (!result || result.available !== true) return { handled: false };
+    if (result.status === "pass") {
+      await writeModerationCache(options && options.db, cacheId, {
+        dayKey,
+        status: "pass",
+        suggest: "pass",
+        provider: "tencent-tms",
+        checkedAtMs: nowMs,
+      });
+      return { handled: true, passed: true };
+    }
+    await writeModerationCache(options && options.db, cacheId, {
+      dayKey,
+      status: "reject",
+      suggest: String(result.suggestion || "review").slice(0, 24),
+      provider: "tencent-tms",
+      checkedAtMs: nowMs,
+    });
+    throw aiError("AI_CONTENT_REJECTED", "这段内容暂时不能交给 AI 处理");
+  } catch (error) {
+    if (error && error.code === "AI_CONTENT_REJECTED") throw error;
+    console.warn("[ai-moderation]", {
+      reason: "paid-provider-unavailable",
+      ...(typeof error?.code === "string" ? { providerCode: error.code.slice(0, 80) } : {}),
+    });
+    return { handled: false };
+  }
+}
+
 async function moderateText(cloud, openid, value, title, options = {}) {
   const content = Array.from(String(value || "").trim());
   if (!content.length) return;
-  if (!cloud || !cloud.openapi || !cloud.openapi.security || typeof cloud.openapi.security.msgSecCheck !== "function") {
-    throw aiError("AI_CONTENT_CHECK_UNAVAILABLE", "内容安全检查暂时不可用");
-  }
+  const wechatModeration = cloud && cloud.openapi && cloud.openapi.security &&
+    typeof cloud.openapi.security.msgSecCheck === "function"
+    ? cloud.openapi.security.msgSecCheck.bind(cloud.openapi.security)
+    : null;
   const db = options && options.db;
   const nowMs = Number.isSafeInteger(options && options.nowMs) ? options.nowMs : Date.now();
   const dayKey = chinaDayKey(nowMs);
@@ -171,7 +209,8 @@ async function moderateText(cloud, openid, value, title, options = {}) {
     if (cached === "pass") continue;
     if (cached === "reject") throw aiError("AI_CONTENT_REJECTED", "这段内容暂时不能交给 AI 处理");
     try {
-      const response = await cloud.openapi.security.msgSecCheck({
+      if (!wechatModeration) throw Object.assign(new Error("WECHAT_MODERATION_UNAVAILABLE"), { code: "WECHAT_MODERATION_UNAVAILABLE" });
+      const response = await wechatModeration({
         content: chunk,
         version: 2,
         scene: 4,
@@ -194,6 +233,8 @@ async function moderateText(cloud, openid, value, title, options = {}) {
       if (error && error.code === "AI_CONTENT_REJECTED") throw error;
       const providerCode = Number(error && (error.errCode ?? error.errcode));
       const quotaExhausted = providerCode === 45009 || /reach max api daily quota limit/i.test(String(error && (error.errMsg || error.message) || ""));
+      const paid = await tryPaidModeration(chunk, safeTitle, cacheId, dayKey, nowMs, { ...options, db });
+      if (paid.handled && paid.passed) continue;
       // Record only a category and numeric code; SDK errors can contain private request data.
       console.warn("[ai-moderation]", {
         reason: quotaExhausted ? "daily-quota-exhausted" : "service-unavailable",

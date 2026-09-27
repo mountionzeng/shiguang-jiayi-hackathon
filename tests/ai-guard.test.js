@@ -155,6 +155,50 @@ test("AI moderation reuses same-day hashed verdicts without storing the checked 
   }
 });
 
+test("AI moderation falls back to paid Tencent moderation when WeChat quota is exhausted", async () => {
+  for (const name of ["chatInterview", "generateBiography", "organizeMemory", "personalMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    const records = new Map();
+    const db = databaseFixture(records);
+    let wechatCalls = 0;
+    let paidCalls = 0;
+    const cloud = { openapi: { security: { msgSecCheck: async () => {
+      wechatCalls += 1;
+      throw { errCode: 45009, errMsg: "reach max api daily quota limit" };
+    } } } };
+    const paidModeration = async ({ content, dataId }) => {
+      paidCalls += 1;
+      assert.equal(content, "测试标题\n虚构的按量审核文本");
+      assert.match(dataId, /^mod_[0-9a-f]{48}$/);
+      return { available: true, status: "pass", suggestion: "Pass" };
+    };
+
+    await deployedGuard.moderateText(cloud, "openid-a", "虚构的按量审核文本", "测试标题", { db, nowMs: 2_000_000, paidModeration });
+    await deployedGuard.moderateText(cloud, "openid-a", "虚构的按量审核文本", "测试标题", { db, nowMs: 2_100_000, paidModeration });
+    assert.equal(wechatCalls, 1, `${name} should cache the paid pass verdict`);
+    assert.equal(paidCalls, 1, `${name} should use paid moderation only once`);
+    assert.match(JSON.stringify([...records]), /tencent-tms/);
+    assert.doesNotMatch(JSON.stringify([...records]), /虚构的按量审核文本|测试标题|openid-a/);
+  }
+});
+
+test("AI moderation keeps paid Review and Block results closed", async () => {
+  const records = new Map();
+  const db = databaseFixture(records);
+  const cloud = { openapi: { security: { msgSecCheck: async () => {
+    throw { errCode: 45009, errMsg: "reach max api daily quota limit" };
+  } } } };
+  const paidModeration = async () => ({ available: true, status: "reject", suggestion: "Review" });
+  await assert.rejects(
+    () => guard.moderateText(cloud, "openid-a", "需要复核的虚构文字", "测试标题", { db, nowMs: 2_000_000, paidModeration }),
+    { code: "AI_CONTENT_REJECTED" },
+  );
+  await assert.rejects(
+    () => guard.moderateText({}, "openid-a", "需要复核的虚构文字", "测试标题", { db, nowMs: 2_100_000, paidModeration }),
+    { code: "AI_CONTENT_REJECTED" },
+  );
+});
+
 test("AI moderation checks content beyond 10,000 code points", async () => {
   for (const name of ["chatInterview", "generateBiography", "organizeMemory"]) {
     const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
