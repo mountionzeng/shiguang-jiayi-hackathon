@@ -11,6 +11,7 @@ import {
 } from "../miniprogram/domain/biography";
 import { makeRevision } from "../miniprogram/services/manuscript";
 import { storyImageApi } from "../miniprogram/services/storyImageService";
+import { storyCoverApi } from "../miniprogram/services/storyCoverService";
 import { storySharing } from "../miniprogram/services/storySharing";
 import { createDemoRoomStateForTests as createInitialRoomState } from "./fixtures";
 
@@ -408,6 +409,117 @@ test("continuing a recent story opens the interview with its existing context", 
     (interview.data.messages as Array<{ text: string }>)[0]?.text ?? "",
     /继续聊「外公接我放学」/,
   );
+});
+
+
+
+test("home book cover swipes between books and opens the selected one", async (context) => {
+  const initial = createInitialRoomState();
+  initial.contributions.push(createContribution({
+    id: "demo-personal-radio",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "母亲说小时候家里的收音机总放在窗边，晚饭后大家围着听天气预报。",
+    storyTitle: "母亲的收音机",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-09-01T08:00:00.000Z"),
+  }));
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  const slides = home.data.bookSlides as Array<{ key: string; storyTitle: string }>;
+  assert.ok(slides.length >= 2, "首页应把多本故事显示成可滑动封面");
+  const nextIndex = slides.findIndex((slide, index) => index !== home.data.activeBookIndex && slide.storyTitle);
+  assert.ok(nextIndex >= 0, "应能滑到另一本文书");
+  const next = slides[nextIndex];
+
+  await callPage(home, "onBookSlideChange", { detail: { current: nextIndex } });
+  assert.equal(storage.currentStoryTitle(), next.storyTitle);
+  assert.equal(home.data.currentStoryLabel, next.storyTitle);
+  assert.equal(home.data.storyKey, next.key);
+
+  await withImmediateTimeouts(async () => {
+    callPage(home, "openMemoryArchive");
+  });
+  assert.equal(last(storage.navigations), "/pages/stories/stories?key=" + encodeURIComponent(next.key));
+});
+
+test("home book swiper resolves cover art for the active story after changing books", async (context) => {
+  const initial = createInitialRoomState();
+  initial.contributions.push(createContribution({
+    id: "demo-personal-radio",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "母亲说小时候家里的收音机总放在窗边，晚饭后大家围着听天气预报。",
+    storyTitle: "母亲的收音机",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-09-01T08:00:00.000Z"),
+  }));
+  initial.stories = [
+    {
+      id: "story-rain",
+      familyId: "family-demo",
+      title: "外公接我放学",
+      bookTitle: "外公接我放学",
+      writingMode: "objective",
+      version: 1,
+      protagonistMemberIds: ["elder"],
+      memoryIds: ["demo-personal-rain"],
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      coverImageId: "cover-rain",
+    },
+    {
+      id: "story-radio",
+      familyId: "family-demo",
+      title: "母亲的收音机",
+      bookTitle: "母亲的收音机",
+      writingMode: "objective",
+      version: 1,
+      protagonistMemberIds: ["member-1"],
+      memoryIds: ["demo-personal-radio"],
+      createdAt: "2026-09-02T00:00:00.000Z",
+      updatedAt: "2026-09-02T00:00:00.000Z",
+      coverImageId: "cover-radio",
+    },
+  ];
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const previousResolveUrl = storyCoverApi.resolveUrl;
+  const resolved: Array<{ storyId: string; imageId?: string }> = [];
+  storyCoverApi.resolveUrl = async (storyId, imageId) => {
+    resolved.push({ storyId, imageId });
+    return `https://img.example/${storyId}/${imageId}.jpg`;
+  };
+  context.after(() => {
+    storyCoverApi.resolveUrl = previousResolveUrl;
+  });
+
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  await Promise.resolve();
+  assert.equal(home.data.storyId, "story-radio");
+  assert.equal(home.data.coverUrl, "https://img.example/story-radio/cover-radio.jpg");
+  assert.ok((home.data.bookSlides as Array<{ storyId: string; coverUrl: string }>).some(
+    slide => slide.storyId === "story-radio" && slide.coverUrl === "https://img.example/story-radio/cover-radio.jpg",
+  ));
+
+  const rainIndex = (home.data.bookSlides as Array<{ storyId: string }>).findIndex(slide => slide.storyId === "story-rain");
+  assert.ok(rainIndex >= 0, "the second story should be available as another book cover");
+  await callPage(home, "onBookSlideChange", { detail: { current: rainIndex } });
+  await Promise.resolve();
+  assert.equal(home.data.storyId, "story-rain");
+  assert.equal(home.data.coverUrl, "https://img.example/story-rain/cover-rain.jpg");
+  assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`), [
+    "story-radio:cover-radio",
+    "story-rain:cover-rain",
+  ]);
 });
 
 test("a new conversation chooses a telling style before chat", async (context) => {
@@ -942,7 +1054,10 @@ test("the home cover and its three counts are about the story you are on", async
   assert.equal(page.data.bookOpening, false);
   assert.equal(last(storage.navigations), storyUrl, "the cover opens that story, not the whole shelf");
 
+  const navigationCount = storage.navigations.length;
   callPage(page, "openStoryMemories");
+  assert.equal(storage.navigations.length, navigationCount + 1, "the memory count opens the story once");
+  assert.equal(last(storage.navigations), storyUrl);
   callPage(page, "openStoryChapters");
   callPage(page, "openPeople");
   assert.deepEqual(storage.navigations.slice(-3), [
@@ -1726,6 +1841,25 @@ test("keyboard layout subtracts height once even when Android shrinks its window
   callPage(page, "onKeyboardHeight", { detail: { height: 0 } });
   assert.equal(page.data.viewportHeight, 760);
   callPage(page, "onUnload");
+});
+
+
+
+test("home book cover is a horizontal swiper with direct-open affordance", () => {
+  const template = readFileSync("miniprogram/pages/index/index.wxml", "utf8");
+  const styles = readFileSync("miniprogram/pages/index/index.wxss", "utf8");
+  assert.match(template, /<swiper[\s\S]*class="book-swiper"[\s\S]*bindchange="onBookSlideChange"/);
+  assert.doesNotMatch(template, /<swiper[\s\S]*class="book-swiper"[\s\S]*vertical/);
+  assert.match(template, /wx:for="{{bookSlides}}"/);
+  assert.match(template, /左右滑动换一本书 · 轻触打开/);
+  assert.match(template, /class="book-cover-picture" wx:if="{{item.coverUrl}}"/);
+  assert.match(template, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
+  assert.match(template, /class="ancient-book-art {{item.coverUrl \? 'ancient-book-art-overlay' : ''}}"/);
+  assert.match(styles, /\.book-swiper[^{]*{[^}]*height: 850rpx/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 12rpx/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*top: -34%/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 160%/);
+  assert.match(styles, /\.book-rail-dot-on/);
 });
 
 test("writing UI uses native fields without an expanding textarea or bottom navigation", () => {

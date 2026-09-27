@@ -10,6 +10,21 @@ const switcherMarkup = readFileSync(
   ),
   "utf8",
 );
+const homeMarkup = readFileSync(
+  resolve(process.cwd(), "miniprogram/pages/index/index.wxml"),
+  "utf8",
+);
+const coverMarkup = readFileSync(
+  resolve(process.cwd(), "miniprogram/pages/story-cover/story-cover.wxml"),
+  "utf8",
+);
+const socialMarkup = readFileSync(
+  resolve(
+    process.cwd(),
+    "miniprogram/packages/story-sharing/pages/social/index.wxml",
+  ),
+  "utf8",
+);
 
 test("transparent story tabs never use WeChat's native pressed or disabled paint", () => {
   const entrances = switcherMarkup.match(
@@ -21,4 +36,18 @@ test("transparent story tabs never use WeChat's native pressed or disabled paint
     assert.match(entrance, /hover-class="none"/);
     assert.doesNotMatch(entrance, /\sdisabled=/);
   });
+});
+
+test("custom book covers fill their fixed cover frames", () => {
+  assert.match(homeMarkup, /class="book-cover-picture" wx:if="\{\{item.coverUrl\}\}"/);
+  assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
+  assert.match(homeMarkup, /class="ancient-book-art \{\{item.coverUrl \? 'ancient-book-art-overlay' : ''\}\}"[\s\S]*mode="aspectFill"/);
+  assert.match(
+    coverMarkup,
+    /<image class="cover-art"[^>]*mode="aspectFill"/,
+  );
+  assert.match(
+    socialMarkup,
+    /<image class="cover"[^>]*mode="\{\{coverUrl \? 'aspectFill' : 'aspectFit'\}\}"/,
+  );
 });

@@ -41,62 +41,91 @@
       </button>
     </view>
 
-    <view class="book-stage">
-      <view
-        class="book {{bookOpening ? 'book-opening' : ''}}"
-        bindtap="openMemoryArchive"
-        role="button"
-        aria-label="打开正在聊的故事 {{coverTitle}}"
+    <view class="book-stage {{bookSlides.length > 1 ? 'book-stage-scrollable' : ''}}">
+      <swiper
+        class="book-swiper"
+        circular="{{bookSlides.length > 1}}"
+        current="{{activeBookIndex}}"
+        duration="360"
+        easing-function="easeOutCubic"
+        bindchange="onBookSlideChange"
+        skip-hidden-item-layout="{{true}}"
       >
-        <view class="book-pages-under"></view>
-        <view class="book-cover-leaf">
-          <image
-            class="ancient-book-art {{coverUrl ? 'custom-book-art' : ''}}"
-            src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}"
-            mode="aspectFit"
-            aria-hidden="true"
-          ></image>
-          <view class="book-cover-copy">
-            <text class="book-kicker typewriter">拾 光 录</text>
-            <view class="book-copy">
-              <view class="book-slip">
-                <view class="book-title typewriter">{{coverTitle}}</view>
-                <view class="book-subtitle">{{coverSubtitle}}</view>
-              </view>
-              <view class="book-stats" role="group" aria-label="这个故事的记忆、章节和人物">
-                <button
-                  class="book-stat-action book-stat-note"
-                  catchtap="openStoryMemories"
-                  hover-class="none"
-                  aria-label="这个故事里的记忆"
-                >
-                  <text class="book-stat-num">{{storyMemoryCount}}</text>
-                  <text class="book-stat-label">段记忆</text>
-                </button>
-                <button
-                  class="book-stat-action book-stat-memoir"
-                  catchtap="openStoryChapters"
-                  hover-class="none"
-                  aria-label="这个故事整理好的章节"
-                >
-                  <text class="book-stat-num">{{storyChapterCount}}</text>
-                  <text class="book-stat-label">章节</text>
-                </button>
-                <button
-                  class="book-stat-action book-stat-home"
-                  catchtap="openPeople"
-                  hover-class="none"
-                  aria-label="这个故事里的人物，在记忆之家查看"
-                >
-                  <text class="book-stat-num">{{storyPeopleCount}}</text>
-                  <text class="book-stat-label">人物</text>
-                </button>
+        <swiper-item class="book-slide" wx:for="{{bookSlides}}" wx:key="key">
+          <view class="book-slide-inner">
+            <view
+              class="book {{bookOpening && activeBookIndex === index ? 'book-opening' : ''}}"
+              bindtap="openMemoryArchive"
+              role="button"
+              aria-label="打开故事 {{item.title}}"
+            >
+              <view class="book-pages-under"></view>
+              <view class="book-cover-leaf">
+                <view class="book-cover-picture" wx:if="{{item.coverUrl}}" aria-hidden="true">
+                  <image
+                    class="book-cover-picture-art"
+                    src="{{item.coverUrl}}"
+                    mode="aspectFill"
+                  ></image>
+                  <view class="book-cover-picture-wash"></view>
+                </view>
+                <image
+                  class="ancient-book-art {{item.coverUrl ? 'ancient-book-art-overlay' : ''}}"
+                  src="/assets/illustrations/story-book-cover.png"
+                  mode="aspectFill"
+                  aria-hidden="true"
+                ></image>
+                <view class="book-cover-copy">
+                  <text class="book-kicker typewriter">拾 光 录</text>
+                  <view class="book-copy">
+                    <view class="book-slip">
+                      <view class="book-title typewriter">{{item.title}}</view>
+                      <view class="book-subtitle">{{item.subtitle}}</view>
+                    </view>
+                    <view class="book-stats" role="group" aria-label="这本书的记忆、章节和人物">
+                      <button
+                        class="book-stat-action book-stat-note"
+                        catchtap="openStoryMemories"
+                        hover-class="none"
+                        aria-label="这本书里的记忆"
+                      >
+                        <text class="book-stat-num">{{item.memoryCount}}</text>
+                        <text class="book-stat-label">段记忆</text>
+                      </button>
+                      <button
+                        class="book-stat-action book-stat-memoir"
+                        catchtap="openStoryChapters"
+                        hover-class="none"
+                        aria-label="这本书整理好的章节"
+                      >
+                        <text class="book-stat-num">{{item.chapterCount}}</text>
+                        <text class="book-stat-label">章节</text>
+                      </button>
+                      <button
+                        class="book-stat-action book-stat-home"
+                        catchtap="openPeople"
+                        hover-class="none"
+                        aria-label="这本书里的人物，在记忆之家查看"
+                      >
+                        <text class="book-stat-num">{{item.peopleCount}}</text>
+                        <text class="book-stat-label">人物</text>
+                      </button>
+                    </view>
+                  </view>
+                </view>
               </view>
             </view>
           </view>
+        </swiper-item>
+      </swiper>
+      <view class="book-rail" wx:if="{{bookSlides.length > 1}}" aria-hidden="true">
+        <text class="book-rail-word">左滑</text>
+        <view class="book-rail-dots">
+          <text class="book-rail-dot {{index === activeBookIndex ? 'book-rail-dot-on' : ''}}" wx:for="{{bookSlides}}" wx:key="key"></text>
         </view>
+        <text class="book-rail-word">右滑</text>
       </view>
-      <view class="book-open-label typewriter">轻触打开这个故事</view>
+      <view class="book-open-label typewriter">{{bookSlides.length > 1 ? '左右滑动换一本书 · 轻触打开' : '轻触打开这个故事'}}</view>
     </view>
 
     <view class="home-setup" wx:if="{{!hasProfile}}">

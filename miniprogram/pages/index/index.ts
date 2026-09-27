@@ -43,6 +43,21 @@ interface StoryOptionView {
   selected: boolean;
 }
 
+interface BookSlideView {
+  key: string;
+  title: string;
+  subtitle: string;
+  storyTitle: string;
+  storyKey: string;
+  storyId: string;
+  manuscriptMemberId: string;
+  coverImageId: string;
+  coverUrl: string;
+  memoryCount: number;
+  chapterCount: number;
+  peopleCount: number;
+}
+
 interface RecommendedQuestionView {
   dimension: InterviewDimension;
   label: string;
@@ -126,6 +141,82 @@ function storyOptionsFor(shelf: ShelfStory[], currentTitle: string): StoryOption
     });
   }
   return options;
+}
+
+function peopleCountFor(memories: MemoryContribution[], activeMemberIds: Set<string>): number {
+  const people = new Set<string>();
+  memories.forEach((memory) => {
+    contributionRelatedMemberIds(memory).forEach((memberId) => {
+      if (activeMemberIds.has(memberId)) people.add(memberId);
+    });
+  });
+  return people.size;
+}
+
+function bookSlidesFor(input: {
+  shelf: ShelfStory[];
+  pool: MemoryContribution[];
+  currentTitle: string;
+  activeMemberIds: Set<string>;
+  stories: FamilyRoomState["stories"];
+  looseMemories: MemoryContribution[];
+}): BookSlideView[] {
+  const memoriesById = new Map(input.pool.map((memory) => [memory.id, memory]));
+  const storyRecords = new Map((input.stories ?? []).filter((story) => !story.deletedAt).map((story) => [story.id, story]));
+  const slides = input.shelf.map((story): BookSlideView => {
+    const memories = story.memoryIds.map((id) => memoriesById.get(id)).filter((memory): memory is MemoryContribution => Boolean(memory));
+    const coverStory = story.storyId ? storyRecords.get(story.storyId) : undefined;
+    return {
+      key: story.key,
+      title: story.bookTitle || story.title,
+      subtitle: story.chapterCount ? `已整理 ${story.chapterCount} 章` : (story.memoryIds.length ? "还没整理成章节" : "还没开始聊"),
+      storyTitle: story.title,
+      storyKey: story.key,
+      storyId: story.storyId ?? "",
+      manuscriptMemberId: story.manuscriptMemberId ?? "",
+      coverImageId: coverStory?.coverImageId ?? "",
+      coverUrl: "",
+      memoryCount: story.memoryIds.length,
+      chapterCount: story.chapterCount,
+      peopleCount: peopleCountFor(memories, input.activeMemberIds),
+    };
+  });
+
+  if (input.currentTitle && !slides.some((slide) => slide.storyTitle === input.currentTitle)) {
+    slides.unshift({
+      key: `new:${input.currentTitle}`,
+      title: input.currentTitle,
+      subtitle: "还没开始聊",
+      storyTitle: input.currentTitle,
+      storyKey: "",
+      storyId: "",
+      manuscriptMemberId: "",
+      coverImageId: "",
+      coverUrl: "",
+      memoryCount: 0,
+      chapterCount: 0,
+      peopleCount: 0,
+    });
+  }
+
+  if (!slides.length || !input.currentTitle) {
+    slides.unshift({
+      key: "loose",
+      title: "先随便聊聊",
+      subtitle: input.looseMemories.length ? "还没放进故事的记忆" : "先说一句，聊完再放进故事",
+      storyTitle: "",
+      storyKey: "",
+      storyId: "",
+      manuscriptMemberId: "",
+      coverImageId: "",
+      coverUrl: "",
+      memoryCount: input.looseMemories.length,
+      chapterCount: 0,
+      peopleCount: peopleCountFor(input.looseMemories, input.activeMemberIds),
+    });
+  }
+
+  return slides;
 }
 
 function latestContribution(
@@ -217,6 +308,8 @@ Page({
     storyPeopleCount: 0,
     storyManuscriptMemberId: "",
     bookOpening: false,
+    activeBookIndex: 0,
+    bookSlides: [] as BookSlideView[],
     storyChooserOpen: false,
     storyOptions: [] as StoryOptionView[],
     currentStoryTitle: "",
@@ -271,34 +364,37 @@ Page({
     const activeMemberIds = new Set(
       currentState.members.filter(isActiveMember).map((member) => member.id),
     );
-    const storyPeople = new Set<string>();
-    inCurrentStory.forEach((memory) => {
-      contributionRelatedMemberIds(memory).forEach((memberId) => {
-        if (activeMemberIds.has(memberId)) storyPeople.add(memberId);
-      });
+    const bookSlides = bookSlidesFor({
+      shelf,
+      pool,
+      currentTitle: currentStoryTitle,
+      activeMemberIds,
+      stories: currentState.stories,
+      looseMemories: inCurrentStory,
     });
+    const currentKey = currentStory?.key ?? (currentStoryTitle ? `new:${currentStoryTitle}` : "loose");
+    const activeBookIndex = Math.max(0, bookSlides.findIndex((slide) => slide.key === currentKey));
+    const activeBook = bookSlides[activeBookIndex] ?? bookSlides[0];
 
     if (coverRefreshId !== this.coverRefreshId) return;
-    const coverStory = (currentState.stories || []).find(story => story.id === currentStory?.storyId && !story.deletedAt);
+    const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
     this.setData({
       coverUrl: "", coverImageId: coverStory?.coverImageId || "",
       hasProfile: Boolean(owner),
       ownerAvatarText: owner?.avatarText ?? "",
-      coverTitle: currentStoryTitle || "先随便聊聊",
-      coverSubtitle: currentStoryTitle
-        ? (currentStory
-          ? (currentStory.chapterCount ? `已整理 ${currentStory.chapterCount} 章` : "还没整理成章节")
-          : "还没开始聊")
-        : (inCurrentStory.length ? "还没放进故事的记忆" : "先说一句，聊完再放进故事"),
-      storyKey: currentStory?.key ?? "",
-      storyId: currentStory?.storyId ?? "",
-      storyMemoryCount: inCurrentStory.length,
-      storyChapterCount: currentStory?.chapterCount ?? 0,
-      storyPeopleCount: storyPeople.size,
-      storyManuscriptMemberId: currentStory?.manuscriptMemberId ?? "",
+      coverTitle: activeBook?.title || "先随便聊聊",
+      coverSubtitle: activeBook?.subtitle || "先说一句，聊完再放进故事",
+      storyKey: activeBook?.storyKey ?? "",
+      storyId: activeBook?.storyId ?? "",
+      storyMemoryCount: activeBook?.memoryCount ?? inCurrentStory.length,
+      storyChapterCount: activeBook?.chapterCount ?? 0,
+      storyPeopleCount: activeBook?.peopleCount ?? 0,
+      storyManuscriptMemberId: activeBook?.manuscriptMemberId ?? "",
+      activeBookIndex,
+      bookSlides,
       storyOptions: storyOptionsFor(shelf, currentStoryTitle),
       currentStoryTitle,
-      currentStoryLabel: currentStoryTitle || "先随便聊聊",
+      currentStoryLabel: activeBook?.storyTitle || "先随便聊聊",
       // 这个故事还没有记忆可接着问时，用当天的共用题目；聊天页开场用同一个种子，问的是同一题。
       dailyQuestion: dailyQuestionFor(this.recommendationOffset),
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
@@ -314,10 +410,38 @@ Page({
 
     if (coverStory?.coverImageId) {
       void storyCoverApi.resolveUrl(coverStory.id, coverStory.coverImageId).then(url => {
-        if (coverRefreshId === this.coverRefreshId && this.data.storyId === coverStory.id) this.setData({coverUrl:url});
+        if (coverRefreshId !== this.coverRefreshId || this.data.storyId !== coverStory.id) return;
+        const nextSlides = (this.data.bookSlides as BookSlideView[]).map((slide) => slide.storyId === coverStory.id ? { ...slide, coverUrl: url } : slide);
+        this.setData({ coverUrl: url, bookSlides: nextSlides });
       }).catch(() => undefined);
     }
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
+  },
+
+  async onBookSlideChange(event: { detail: { current: number } }) {
+    const index = event.detail.current;
+    const slide = (this.data.bookSlides as BookSlideView[])[index];
+    if (!slide || index === this.data.activeBookIndex) return;
+    saveCurrentStoryTitle(slide.storyTitle);
+    saveCurrentStoryId(slide.storyId || "");
+    this.recommendationOffset = 0;
+    this.setData({
+      activeBookIndex: index,
+      storyChooserOpen: false,
+      coverTitle: slide.title,
+      coverSubtitle: slide.subtitle,
+      coverUrl: slide.coverUrl,
+      coverImageId: slide.coverImageId,
+      storyKey: slide.storyKey,
+      storyId: slide.storyId,
+      storyMemoryCount: slide.memoryCount,
+      storyChapterCount: slide.chapterCount,
+      storyPeopleCount: slide.peopleCount,
+      storyManuscriptMemberId: slide.manuscriptMemberId,
+      currentStoryTitle: slide.storyTitle,
+      currentStoryLabel: slide.storyTitle || "先随便聊聊",
+    });
+    await this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   startInterview() {

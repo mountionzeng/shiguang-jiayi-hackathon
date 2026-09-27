@@ -5,7 +5,7 @@
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <block wx:if="{{title}}">
     <view class="cover-summary">
-      <image class="cover" src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}" mode="aspectFit" />
+      <image class="cover" src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}" mode="{{coverUrl ? 'aspectFill' : 'aspectFit'}}" />
       <view><view class="serif">{{title}}</view><view class="caption">{{coverUrl ? '使用这本书已有的封面' : coverNotice || '封面示意'}}</view></view>
     </view>
     <view hidden="{{preview}}">
