@@ -2237,6 +2237,18 @@ test("personal memory consent uses modal buttons within WeChat's four-character 
   assert.match(dialogs[0].content || "", /本人原话.*在线 AI/);
 });
 
+test("personal memory correction starts empty instead of saving instruction text", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  let dialog: WechatMiniprogram.ShowModalOption | undefined;
+  wx.showModal = ((options: WechatMiniprogram.ShowModalOption) => { dialog = options; }) as typeof wx.showModal;
+  const page = instantiate(await pageDefinition("personal-memory"));
+  page.setData({ insights: [{ lineageKey: "lineage-one", text: "更愿意从自己的感受讲起。" }] });
+  callPage(page, "correct", { currentTarget: { dataset: { key: "lineage-one" } } });
+  assert.equal(dialog?.editable, true);
+  assert.equal(dialog?.content || "", "");
+  assert.match(dialog?.placeholderText || "", /留空.*停用/);
+});
+
 test("saved-memory learning is nonblocking, sends only an id and respects local consent denial", async context => {
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
   const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");

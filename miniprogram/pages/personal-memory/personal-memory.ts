@@ -55,8 +55,8 @@ Page({
     const lineageKey=event.currentTarget.dataset.key;
     const item=this.data.insights.find(value=>value.lineageKey===lineageKey);
     if (this.data.busy || !item) return;
-    wx.showModal({title:'改正这条理解',content:'可以补一句你更认可的说法。留空会停用这条理解，小忆不会猜相反答案。',editable:true,
-      placeholderText:'写下更准确的说法（可留空）',confirmText:'保存纠正',success:result=>{if(result.confirm)void this.confirmCorrection(lineageKey,result.content || '');}});
+    wx.showModal({title:'改正这条理解',content:'',editable:true,
+      placeholderText:'更准确的说法，留空则停用（60字内）',confirmText:'保存纠正',success:result=>{if(result.confirm)void this.confirmCorrection(lineageKey,result.content || '');}});
   },
   async confirmCorrection(lineageKey:string,text:string) {
     if (this.data.busy) return;
