@@ -493,17 +493,24 @@ test("home book swiper resolves cover art for the active story after changing bo
   context.after(storage.restore);
   const previousResolveUrl = storyCoverApi.resolveUrl;
   const resolved: Array<{ storyId: string; imageId?: string }> = [];
-  storyCoverApi.resolveUrl = async (storyId, imageId) => {
-    resolved.push({ storyId, imageId });
-    return `https://img.example/${storyId}/${imageId}.jpg`;
-  };
   context.after(() => {
     storyCoverApi.resolveUrl = previousResolveUrl;
   });
 
   const home = instantiate(await pageDefinition("index"));
-  await callPage(home, "refresh", initial);
-  await Promise.resolve();
+  let radioAttempts = 0;
+  storyCoverApi.resolveUrl = async (storyId, imageId) => {
+    resolved.push({ storyId, imageId });
+    if (storyId === "story-radio" && radioAttempts++ === 0) return "";
+    return `https://img.example/${storyId}/${imageId}.jpg`;
+  };
+
+  await withImmediateTimeouts(async () => {
+    await callPage(home, "refresh", initial);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
   assert.equal(home.data.storyId, "story-radio");
   assert.equal(home.data.coverUrl, "https://img.example/story-radio/cover-radio.jpg");
   assert.ok((home.data.bookSlides as Array<{ storyId: string; coverUrl: string }>).some(
@@ -512,11 +519,14 @@ test("home book swiper resolves cover art for the active story after changing bo
 
   const rainIndex = (home.data.bookSlides as Array<{ storyId: string }>).findIndex(slide => slide.storyId === "story-rain");
   assert.ok(rainIndex >= 0, "the second story should be available as another book cover");
-  await callPage(home, "onBookSlideChange", { detail: { current: rainIndex } });
-  await Promise.resolve();
+  await withImmediateTimeouts(async () => {
+    await callPage(home, "onBookSlideChange", { detail: { current: rainIndex } });
+    await Promise.resolve();
+  });
   assert.equal(home.data.storyId, "story-rain");
   assert.equal(home.data.coverUrl, "https://img.example/story-rain/cover-rain.jpg");
   assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`), [
+    "story-radio:cover-radio",
     "story-radio:cover-radio",
     "story-rain:cover-rain",
   ]);
@@ -1854,11 +1864,14 @@ test("home book cover is a horizontal swiper with direct-open affordance", () =>
   assert.match(template, /左右滑动换一本书 · 轻触打开/);
   assert.match(template, /class="book-cover-picture" wx:if="{{item.coverUrl}}"/);
   assert.match(template, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
-  assert.match(template, /class="ancient-book-art {{item.coverUrl \? 'ancient-book-art-overlay' : ''}}"/);
+  assert.match(template, /wx:else[\s\S]*class="ancient-book-art"/);
+  assert.match(template, /class="book-cover-copy {{item.coverUrl \? 'book-cover-copy-printed' : ''}}"/);
+  assert.doesNotMatch(template, /book-cover-picture-wash|ancient-book-art-overlay/);
   assert.match(styles, /\.book-swiper[^{]*{[^}]*height: 850rpx/);
-  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 12rpx/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*top: -34%/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 160%/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 64rpx/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*width: 100%/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 100%/);
+  assert.match(styles, /\.book-cover-copy-printed \.book-stat-action[^{]*{[^}]*background: transparent/);
   assert.match(styles, /\.book-rail-dot-on/);
 });
 

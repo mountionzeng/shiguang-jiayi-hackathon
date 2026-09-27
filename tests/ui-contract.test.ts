@@ -41,7 +41,9 @@ test("transparent story tabs never use WeChat's native pressed or disabled paint
 test("custom book covers fill their fixed cover frames", () => {
   assert.match(homeMarkup, /class="book-cover-picture" wx:if="\{\{item.coverUrl\}\}"/);
   assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
-  assert.match(homeMarkup, /class="ancient-book-art \{\{item.coverUrl \? 'ancient-book-art-overlay' : ''\}\}"[\s\S]*mode="aspectFill"/);
+  assert.match(homeMarkup, /wx:else[\s\S]*class="ancient-book-art"[\s\S]*mode="aspectFill"/);
+  assert.match(homeMarkup, /class="book-cover-copy \{\{item.coverUrl \? 'book-cover-copy-printed' : ''\}\}"/);
+  assert.doesNotMatch(homeMarkup, /book-cover-picture-wash|ancient-book-art-overlay/);
   assert.match(
     coverMarkup,
     /<image class="cover-art"[^>]*mode="aspectFill"/,
