@@ -949,6 +949,8 @@ test("interview follow-up checks the question's meaning rather than echoed words
     assert.match(rules, /否定、比喻或感受描述中的地点、时间、动作词/);
     assert.match(rules, /同一感受可以连续聊/);
     assert.match(rules, /已经说清的感受定义不换词重问/);
+    assert.match(rules, /不把感受延续变成感官扫描/);
+    assert.match(rules, /不再问.*最先感觉到什么/);
     assert.match(rules, /只有用户主动转向具体经历或明确想谈细节/);
     assert.doesNotMatch(rules, /你最想把这段时间留给什么/);
     assert.match(messages[1].content, /上一轮是感受，可以继续同一方向/);
