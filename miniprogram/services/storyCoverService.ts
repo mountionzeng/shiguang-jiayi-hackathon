@@ -25,7 +25,7 @@ async function submit(input: CoverInput): Promise<StoryImageJob> {
   }
   const allowed = await new Promise<boolean>(resolve => wx.showModal({
     title: '生成这本书的封面？',
-    content: `会把整本书已保存的正文${count ? `和你选中的 ${count} 张参考图片` : ''}${input.artDirection?.trim() ? '，以及你写的美术想法' : ''}发送给腾讯云 TokenHub 上的 AI 服务，提炼全书主题${count ? '、画风与配色' : ''}后生成封面。照片只发送压缩小图，不识别人脸身份。会产生供应商用量和费用，服务商日志留存政策仍适用。生成后由你决定是否使用。`,
+    content: `会把整本书已保存的正文${count ? `和你选中的 ${count} 张参考图片` : ''}${input.artDirection?.trim() ? '，以及你写的美术想法' : ''}发送给腾讯云 TokenHub 上的 AI 服务，提炼全书主题${count ? '、画风与配色' : ''}后生成适配古籍书封的竖版封面。照片只发送压缩小图，不识别人脸身份。会产生供应商用量和费用，服务商日志留存政策仍适用。生成后由你决定是否使用。`,
     confirmText: '生成封面', cancelText: '先等等',
     success: result => resolve(result.confirm), fail: () => resolve(false),
   }));

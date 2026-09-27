@@ -622,10 +622,17 @@ test("同一本书的来源记忆参与美术提炼，但不改写当前画面�
   const cover = core.bookSource(draft, memories);
   const coverPrompt = core.buildImagePrompt({
     scene: "窗边桌上的搪瓷杯与远处灯光", setting: "窗边", objects: ["搪瓷杯"], light: "", mood: "", eraHint: "", figures: [],
-  }, "cover", undefined, cover).prompt;
-  assert.doesNotMatch(coverPrompt, /年代质地/);
-  assert.match(coverPrompt, /主体与留白/);
-  assert.match(coverPrompt, /符合客观物理规律/);
+  }, "cover", undefined, cover);
+  assert.deepEqual([coverPrompt.width, coverPrompt.height], [832, 1248]);
+  assert.match(coverPrompt.prompt, /竖版古籍封面内的贴图画面/);
+  assert.match(coverPrompt.prompt, /上方三分之一也铺有连续的纸本纹理、淡彩背景和环境延展/);
+  assert.match(coverPrompt.prompt, /不能留下纯空白或没有画面的标题带/);
+  assert.match(coverPrompt.prompt, /画面从上缘延续到下缘/);
+  assert.match(coverPrompt.prompt, /顶部也要有淡彩、枝叶、光影或纸纹等可见内容/);
+  assert.match(coverPrompt.prompt, /贴在古籍封面里的纸本画/);
+  assert.match(coverPrompt.prompt, /文字由界面另行排版/);
+  assert.doesNotMatch(coverPrompt.prompt, /年代质地/);
+  assert.match(coverPrompt.prompt, /符合客观物理规律/);
 });
 
 test("情绪画法常开，常见氛围词各有材料行为，且否定情绪只走中性兜底", () => {
@@ -1938,8 +1945,8 @@ test("全书封面复用出图状态机，带末章上下文且同请求重试�
   const result=await h.handlers.status(ctx,{familyId:FAMILY,storyId,jobId:first.job.jobId});
   assert.equal(result.job.status,'stored');
   assert.equal(result.image.purpose,'cover');
-  assert.equal(h.calls.generate[0].width,768);
-  assert.equal(h.calls.generate[0].height,1024);
+  assert.equal(h.calls.generate[0].width,832);
+  assert.equal(h.calls.generate[0].height,1248);
   assert.equal(h.calls.aigc.length,1);
   await h.handlers.status(ctx,{familyId:FAMILY,storyId,jobId:first.job.jobId});
   assert.equal(h.calls.generate.length,1);
