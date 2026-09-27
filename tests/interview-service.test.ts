@@ -122,6 +122,26 @@ test("cloud-ready preview does not call interview AI before release", async (con
   assert.equal(cloudCalls, 0);
 });
 
+test("exhausted moderation quota is identified while preserving honest local fallback", async context => {
+  const restoreWarnings = silenceExpectedWarnings();
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: true } }));
+  let failure: unknown;
+  let calls = 0;
+  const restoreWx = installGlobal("wx", { cloud: { callFunction: async () => { calls += 1; throw failure; } } });
+  context.after(() => { restoreWarnings(); restoreWx(); restoreGetApp(); });
+  for (failure of [
+    { code: "AI_CONTENT_CHECK_QUOTA_EXHAUSTED" },
+    { errMsg: "cloud.callFunction:fail Error: 今日内容安全检查额度已用完，请稍后再试" },
+    new Error("AI_CONTENT_CHECK_QUOTA_EXHAUSTED"),
+  ]) {
+    const result = await generateInterviewPrompt({ answer: "今天先到这里吧。", askedDimensions: [] });
+    assert.equal(result.generationMode, "local-fallback");
+    assert.equal(result.fallbackReason, "moderation-quota-exhausted");
+    assert.doesNotMatch(result.text, /[？?]/);
+  }
+  assert.equal(calls, 3);
+});
+
 test("local fallback stays attached to the user's words and identifies itself as a template", async (context) => {
   const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: false } }));
   const restoreWx = installGlobal("wx", { cloud: { callFunction: async () => { throw new Error("must not call cloud"); } } });

@@ -1263,6 +1263,27 @@ test("daily question keeps guiding the next two answers even in an objective boo
   assert.equal(page.data.writingMode, "objective");
 });
 
+test("interview explains exhausted content-check quota beside its local template", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  const previousApp = (globalThis as any).getApp;
+  const previousWarn = console.warn;
+  console.warn = () => undefined;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; console.warn = previousWarn; });
+  (wx as any).cloud = { callFunction: async ({ name }: any) => {
+    if (name === "recordAiConsent") return { result: { success: true } };
+    throw { errMsg: "cloud.callFunction:fail Error: 今日内容安全检查额度已用完，请稍后再试" };
+  } };
+  page.setData({ inputText: "我想把这句话留下。", answers: [], messages: [], askedDimensions: [] });
+  await callPage(page, "send");
+  const messages = page.data.messages as Array<{ kind: string; text: string; label: string }>;
+  assert.equal(messages.find(message => message.kind === "answer")?.text, "我想把这句话留下。");
+  assert.equal(messages.find(message => message.kind === "followup")?.label, "模板追问 · 今日内容检查额度已用完");
+  assert.equal(page.data.asking, false);
+});
+
 test("continue chatting in an objective book keeps all three turns without modifying the book", async context => {
   const state = createInitialRoomState();
   state.stories = [{ id: "story-daily", familyId: "local", title: "日常", writingMode: "objective", memoryIds: [], protagonistMemberIds: [], createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z", version: 0 }];

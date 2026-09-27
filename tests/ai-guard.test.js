@@ -133,6 +133,34 @@ test("AI moderation checks content beyond 10,000 code points", async () => {
   }
 });
 
+test("AI moderation distinguishes exhausted daily quota without logging private SDK details or retrying", async context => {
+  const logs = [];
+  const previousWarn = console.warn;
+  console.warn = (...args) => logs.push(args);
+  context.after(() => { console.warn = previousWarn; });
+  for (const name of ["chatInterview", "organizeMemory", "personalMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    for (const error of [
+      { errCode: 45009, errMsg: "private request content" },
+      { errcode: "45009", message: "private request content" },
+      new Error("openapi.security.msgSecCheck:fail reach max api daily quota limit rid: private-request-id"),
+    ]) {
+      let calls = 0;
+      const cloud = { openapi: { security: { msgSecCheck: async () => { calls += 1; throw error; } } } };
+      await assert.rejects(() => deployedGuard.moderateText(cloud, "private-openid", "字".repeat(5001)), failure => {
+        assert.equal(failure.code, "AI_CONTENT_CHECK_QUOTA_EXHAUSTED");
+        assert.match(failure.message, /内容安全检查额度已用完/);
+        return true;
+      });
+      assert.equal(calls, 1, "quota exhaustion must not trigger repeated checks");
+    }
+    const cloud = { openapi: { security: { msgSecCheck: async () => { throw { errCode: 45011, errMsg: "private-openid" }; } } } };
+    await assert.rejects(() => deployedGuard.moderateText(cloud, "private-openid", "普通内容"), { code: "AI_CONTENT_CHECK_UNAVAILABLE" });
+  }
+  assert.doesNotMatch(JSON.stringify(logs), /private-|private request|普通内容/);
+  assert.match(JSON.stringify(logs), /daily-quota-exhausted/);
+});
+
 test("the server release gate defaults closed", async () => {
   await withEnvironment({ AI_SERVER_RELEASE_READY: undefined }, async () => {
     assert.throws(() => guard.assertServerReady(), /尚未完成发布验收/);

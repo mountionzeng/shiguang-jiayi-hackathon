@@ -429,7 +429,9 @@ Page({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
-      this.pushMessage("followup", prompt.text, prompt.generationMode === "cloud-ai" ? "文字 AI 生成" : FOLLOW_UP_LABEL);
+      const label = prompt.generationMode === "cloud-ai" ? "文字 AI 生成"
+        : prompt.fallbackReason === "moderation-quota-exhausted" ? "模板追问 · 今日内容检查额度已用完" : FOLLOW_UP_LABEL;
+      this.pushMessage("followup", prompt.text, label);
     } catch (error) {
       console.warn("追问生成失败", error);
       this.setData({ asking: false });

@@ -194,7 +194,7 @@ export interface InterviewPrompt {
   dimension: InterviewDimension;
   text: string;
   generationMode?: "cloud-ai" | "local-fallback";
-  fallbackReason?: "cloud-not-ready" | "function-error" | "invalid-result";
+  fallbackReason?: "cloud-not-ready" | "function-error" | "invalid-result" | "moderation-quota-exhausted";
 }
 
 export interface NextPromptInput {

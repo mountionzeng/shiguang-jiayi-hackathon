@@ -144,6 +144,14 @@ async function moderateText(cloud, openid, value, title) {
       throw aiError("AI_CONTENT_REJECTED", "这段内容暂时不能交给 AI 处理");
     } catch (error) {
       if (error && error.code === "AI_CONTENT_REJECTED") throw error;
+      const providerCode = Number(error && (error.errCode ?? error.errcode));
+      const quotaExhausted = providerCode === 45009 || /reach max api daily quota limit/i.test(String(error && (error.errMsg || error.message) || ""));
+      // Record only a category and numeric code; SDK errors can contain private request data.
+      console.warn("[ai-moderation]", {
+        reason: quotaExhausted ? "daily-quota-exhausted" : "service-unavailable",
+        ...(Number.isSafeInteger(providerCode) ? { providerCode } : {}),
+      });
+      if (quotaExhausted) throw aiError("AI_CONTENT_CHECK_QUOTA_EXHAUSTED", "今日内容安全检查额度已用完，请稍后再试");
       throw aiError("AI_CONTENT_CHECK_UNAVAILABLE", "内容安全检查暂时不可用");
     }
   }
