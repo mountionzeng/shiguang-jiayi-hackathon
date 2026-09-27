@@ -89,6 +89,9 @@ async function createInvite(event, accountId) {
       data: { ownerAccountId: accountId, updatedAt: db.serverDate() },
     });
   }
+  if (!(await passesContentSecurity(input.message, "亲友邀请"))) {
+    throw new Error("邀请文字没有通过内容安全检测，请修改后重试");
+  }
 
   // Older rooms predate WeChat account binding. Bind the creator's original
   // member record now so shared-room reads never have to guess who the owner is.
@@ -111,6 +114,8 @@ async function createInvite(event, accountId) {
     inviterName: account.displayName,
     inviteeName: input.inviteeName,
     relation: input.relation,
+    message: input.message,
+    illustrationStyle: input.illustrationStyle,
     roomName: family.roomName || "我们的记忆之家",
     status: "pending",
     expiresAt,

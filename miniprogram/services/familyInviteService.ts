@@ -1,10 +1,13 @@
 import { FamilyRoomState, MemoryContribution } from "../domain/biography";
+import { InviteCardStyleId } from "./inviteCard";
 
 export interface FamilyInvitation {
   token: string;
   inviterName: string;
   inviteeName: string;
   relation: string;
+  message: string;
+  illustrationStyle: InviteCardStyleId;
   roomName: string;
   familyId: string;
   memberId: string;
@@ -42,9 +45,11 @@ async function callInvite<T>(data: Record<string, unknown>): Promise<T> {
 export function createFamilyInvitation(
   inviteeName: string,
   relation: string,
+  message: string,
+  illustrationStyle: InviteCardStyleId,
   envVersion: "develop" | "trial" | "release",
 ): Promise<InviteResult> {
-  return callInvite({ action: "create", inviteeName, relation, envVersion });
+  return callInvite({ action: "create", inviteeName, relation, message, illustrationStyle, envVersion });
 }
 
 export function createFamilyInvitationCode(

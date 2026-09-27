@@ -17,9 +17,27 @@ test("邀请称呼和关系必须简短明确", () => {
   assert.deepEqual(invite.normalizeInviteInput({ inviteeName: " 妈 ", relation: " 母 女 " }), {
     inviteeName: "妈",
     relation: "母 女",
+    message: invite.DEFAULT_INVITE_MESSAGE,
+    illustrationStyle: "branch",
   });
   assert.throws(() => invite.normalizeInviteInput({ inviteeName: "", relation: "朋友" }), /填写对方的称呼/);
   assert.throws(() => invite.normalizeInviteInput({ inviteeName: "一二三四五六七八九", relation: "朋友" }), /最多 8 个字/);
+});
+
+test("邀请文字和插图风格由服务端校验并向旧邀请兼容", () => {
+  assert.deepEqual(invite.normalizeInviteInput({
+    inviteeName: "妈",
+    relation: "母女",
+    message: " 想和你一起，写下我们都记得的日子。 ",
+    illustrationStyle: "book",
+  }), {
+    inviteeName: "妈",
+    relation: "母女",
+    message: "想和你一起，写下我们都记得的日子。",
+    illustrationStyle: "book",
+  });
+  assert.equal(invite.normalizeInviteInput({ inviteeName: "妈", relation: "母女", illustrationStyle: "unknown" }).illustrationStyle, "branch");
+  assert.throws(() => invite.normalizeInviteInput({ inviteeName: "妈", relation: "母女", message: "忆".repeat(91) }), /最多 90 个字/);
 });
 
 test("未接受邀请不泄露记忆之家和成员标识", () => {
@@ -38,6 +56,8 @@ test("未接受邀请不泄露记忆之家和成员标识", () => {
   assert.equal(publicView.familyId, "");
   assert.equal(publicView.memberId, "");
   assert.equal(publicView.acceptedByMe, false);
+  assert.equal(publicView.message, invite.DEFAULT_INVITE_MESSAGE);
+  assert.equal(publicView.illustrationStyle, "branch");
 });
 
 test("邀请只允许原接受账号幂等重试，其他账号不能接手", () => {
@@ -111,6 +131,23 @@ test("建立邀请与生成小程序码分成两次短云调用", () => {
   assert.match(source, /async function createInviteCode/);
   assert.match(source, /case "code": return createInviteCode/);
   assert.doesNotMatch(source, /await ensureCollections\(\)/);
+});
+
+test("自定义邀请文字通过内容安全检测后才会保存", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../cloudfunctions/familyInvite/index.js"),
+    "utf8",
+  );
+  const createBody = source.slice(
+    source.indexOf("async function createInvite"),
+    source.indexOf("async function createInviteCode"),
+  );
+
+  assert.match(createBody, /passesContentSecurity\(input\.message, "亲友邀请"\)/);
+  assert.ok(
+    createBody.indexOf("passesContentSecurity(input.message") <
+      createBody.indexOf('.collection("family_invitations")'),
+  );
 });
 
 test("被邀请人看不到其他亲友姓名，主人仍能看到完整名单", () => {

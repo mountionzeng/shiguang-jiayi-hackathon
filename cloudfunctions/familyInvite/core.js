@@ -1,6 +1,8 @@
 const crypto = require("node:crypto");
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const INVITE_STYLES = new Set(["branch", "book", "nest"]);
+const DEFAULT_INVITE_MESSAGE = "有些记忆因为你也在场，才显得完整。想邀请你来这里，一起把故事慢慢写下来。";
 
 function accountIdFor(openid) {
   return `account_${crypto.createHash("sha256").update(openid).digest("hex").slice(0, 24)}`;
@@ -17,6 +19,12 @@ function normalizeInviteInput(event) {
   return {
     inviteeName: normalizeShortText(event && event.inviteeName, "对方的称呼", 8),
     relation: normalizeShortText(event && event.relation, "你们的关系", 12),
+    message: event && event.message
+      ? normalizeShortText(event.message, "邀请文字", 90)
+      : DEFAULT_INVITE_MESSAGE,
+    illustrationStyle: INVITE_STYLES.has(event && event.illustrationStyle)
+      ? event.illustrationStyle
+      : "branch",
   };
 }
 
@@ -62,6 +70,10 @@ function publicInvitation(invitation, viewerAccountId = "") {
     inviterName: invitation.inviterName,
     inviteeName: invitation.inviteeName,
     relation: invitation.relation,
+    message: invitation.message || DEFAULT_INVITE_MESSAGE,
+    illustrationStyle: INVITE_STYLES.has(invitation.illustrationStyle)
+      ? invitation.illustrationStyle
+      : "branch",
     roomName: invitation.roomName,
     familyId: acceptedByMe ? invitation.familyId : "",
     memberId: acceptedByMe ? invitation.memberId || "" : "",
@@ -160,6 +172,7 @@ function currentMemoryAttribution(memory, member) {
 
 module.exports = {
   INVITE_TTL_MS,
+  DEFAULT_INVITE_MESSAGE,
   accountIdFor,
   assertInvitationUsable,
   avatarTextFor,
