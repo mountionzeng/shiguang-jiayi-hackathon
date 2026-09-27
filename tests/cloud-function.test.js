@@ -679,8 +679,8 @@ test("the interview cloud function separates note and memoir prompts", () => {
   assert.equal(chatInterviewTest.validateMemoryType("unknown"), "note");
   assert.match(note.rule, /保持轻量/);
   assert.match(note.rule, /不自动引导成长意义/);
-  assert.match(memoir.rule, /先理清人生阶段/);
-  assert.match(memoir.rule, /不按轮数强行进入情感挖掘/);
+  assert.match(memoir.rule, /客观处境和当时感受都可以从一开始谈/);
+  assert.match(memoir.rule, /不按固定顺序补字段/);
 });
 
 test("the interview strategy reacts to emotion and off-track replies", () => {
@@ -922,6 +922,10 @@ test("interview prompt distinguishes a feeling pivot from an explicit goodbye", 
   assert.match(messages[0].content, /默认每轮一个问题/);
   assert.match(messages[0].content, /深入来自用户自己的思考/);
   assert.match(messages[0].content, /不要替他回答/);
+  assert.match(messages[0].content, /箴言、感想或评价/);
+  assert.match(messages[0].content, /不追问人物、时间、地点或事件事实/);
+  assert.match(messages[0].content, /人物、时间、地点、行为和感受都是并列的记忆素材/);
+  assert.match(messages[0].content, /能否指出这处依据/);
   assert.doesNotMatch(messages[0].content, /不要求每轮提问/);
   assert.match(messages[1].content, /没什么新鲜事，我想讲的是现在的心情/);
   assert.match(messages[1].content, /以前搬家总紧张/);

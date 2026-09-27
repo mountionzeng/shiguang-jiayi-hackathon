@@ -2065,15 +2065,21 @@ test("personal memory is reachable from Me, forget waits for success, and failed
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
   const { personalMemory } = await import("../miniprogram/services/personalMemory");
   const original = { ...personalMemory }; context.after(() => Object.assign(personalMemory, original));
-  const item = { lineageKey: "lineage-one", text: "喜欢安静地阅读。", origin: "inferred" as const, allowProactiveMention: true };
+  const item = { lineageKey: "lineage-one", text: "喜欢安静地阅读。", origin: "inferred" as const, allowProactiveMention: true,
+    evidence: [{ id: "e1", occurredOn: "2026-09-01", excerpt: "我喜欢安静地读书。" }] };
   let forgotten = false;
   personalMemory.list = async () => ({ enabled: true, insights: forgotten ? [] : [item] });
   personalMemory.forget = async key => { assert.equal(key, item.lineageKey); forgotten = true; };
+  personalMemory.confirm = async key => { assert.equal(key, item.lineageKey); };
+  personalMemory.correct = async (key,text) => { assert.equal(key, item.lineageKey); assert.equal(text, "我更愿意从自己的感受讲起。"); };
   personalMemory.configure = async () => { throw new Error("offline"); };
   const me = instantiate(await pageDefinition("me")); callPage(me, "openPersonalMemory");
   assert.equal(storage.navigations[0], "/pages/personal-memory/personal-memory");
   const page = instantiate(await pageDefinition("personal-memory")); await callPage(page, "refresh");
   assert.equal((page.data.insights as Array<{ originLabel: string }>)[0].originLabel, "小忆的暂定理解");
+  assert.deepEqual((page.data.insights as Array<{ evidence: unknown[] }>)[0].evidence, item.evidence);
+  await callPage(page, "confirmInsight", { currentTarget: { dataset: { key: item.lineageKey } } });
+  await callPage(page, "confirmCorrection", item.lineageKey, "我更愿意从自己的感受讲起。");
   await callPage(page, "confirmEnabled", false);
   assert.equal(page.data.enabled, true); assert.equal(page.data.busy, false);
   await callPage(page, "confirmForget", item.lineageKey);

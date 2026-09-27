@@ -76,4 +76,31 @@ async function assertEpoch(tx, identity, snapshot, requireConsent = false) {
 async function bumpEpoch(tx, identity, control, patch = {}) {
   await tx.set(TABLES.controls, identity.accountId, {...control,...patch,userId:identity.accountId,version:control.version+1});
 }
-module.exports = {TABLES, digest, error, createRepository, assertEpoch, bumpEpoch};
+
+// Use the current revision's evidence everywhere. Historical lineage links are
+// retained for forgetting, but cannot support a replacement understanding.
+async function validInsightEvidence(repo, identity, insight, evidence, {records, sources = new Map(), excludeMemoryId} = {}) {
+  const valid = [];
+  for (const reference of evidence) {
+    if (reference.userId !== identity.accountId || !insight.evidenceIds?.includes(reference.id) || !reference.lineageKeys?.includes(insight.lineageKey)) continue;
+    if (reference.kind === 'user_correction') {
+      const correction = String(insight.correctionText || '').trim();
+      if (insight.correctionEvidenceId === reference.id && correction && insight.text === correction &&
+          digest(correction) === reference.fingerprint && reference.correctionText === correction) {
+        valid.push({...reference, excerpt:correction});
+      }
+      continue;
+    }
+    if (excludeMemoryId !== undefined && reference.memoryId === excludeMemoryId) continue;
+    if (!sources.has(reference.memoryId)) sources.set(reference.memoryId, await repo.source(identity, reference.memoryId, records));
+    const source = sources.get(reference.memoryId);
+    if (source && source.fingerprint === reference.fingerprint) {
+      valid.push({...reference, occurredOn:reference.occurredOn || source.occurredOn || null, excerpt:Array.from(source.text).slice(0,60).join('')});
+    }
+  }
+  // A corrected text must keep its own valid source, even when later tellings
+  // reinforce it. Older stories alone cannot authenticate the user's correction.
+  if (insight.correctionEvidenceId && !valid.some(item=>item.id === insight.correctionEvidenceId)) return [];
+  return valid;
+}
+module.exports = {TABLES, digest, error, createRepository, assertEpoch, bumpEpoch, validInsightEvidence};

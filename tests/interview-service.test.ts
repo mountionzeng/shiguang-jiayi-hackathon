@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { generateInterviewPrompt } from "../miniprogram/services/interviewService";
+import { FOLLOW_UP_LABEL } from "../miniprogram/domain/interview";
 
 function installGlobal(name: "getApp" | "wx", value: unknown): () => void {
   if (name === "wx") value = { showModal: ({ success }: any) => success({ confirm: true, cancel: false }), ...(value as object) };
@@ -78,7 +79,7 @@ test("cloud interview prompt uses chatInterview when available", async (context)
   ]);
 });
 
-test("cloud interview prompt falls back to local rules", async (context) => {
+test("cloud interview prompt uses an honest local template when cloud fails", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({
     globalData: { cloudReady: true, aiReady: true },
@@ -102,8 +103,9 @@ test("cloud interview prompt falls back to local rules", async (context) => {
     mode: "personal",
   });
 
-  assert.ok(["person", "feeling"].includes(prompt.dimension));
-  assert.ok(prompt.text.length > 0);
+  assert.equal(prompt.generationMode, "local-fallback");
+  assert.equal(prompt.fallbackReason, "function-error");
+  assert.match(prompt.text, /这句话/);
 });
 
 test("cloud-ready preview does not call interview AI before release", async (context) => {
@@ -116,4 +118,37 @@ test("cloud-ready preview does not call interview AI before release", async (con
   assert.equal(prompt.generationMode, "local-fallback");
   assert.equal(prompt.fallbackReason, "cloud-not-ready");
   assert.equal(cloudCalls, 0);
+});
+
+test("local fallback stays attached to the user's words and identifies itself as a template", async (context) => {
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: false } }));
+  const restoreWx = installGlobal("wx", { cloud: { callFunction: async () => { throw new Error("must not call cloud"); } } });
+  context.after(() => { restoreWx(); restoreGetApp(); });
+
+  const prompt = await generateInterviewPrompt({
+    answer: "越是迷茫的时候，越是要往远处看。",
+    askedDimensions: [],
+  });
+
+  assert.equal(prompt.generationMode, "local-fallback");
+  assert.equal(FOLLOW_UP_LABEL, "模板追问");
+  assert.match(prompt.text, /这句话/);
+  assert.doesNotMatch(prompt.text, /谁和你在一起|什么时候|在哪里/);
+});
+test("local templates respect explicit pause or record-only requests", async context => {
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: false } }));
+  const restoreWx = installGlobal("wx", {});
+  context.after(() => { restoreWx(); restoreGetApp(); });
+  for (const answer of ["今天先到这里吧，我想歇一会儿。", "不太想解释原因，只想把这句话留下。", "今天先到这里吧。", "我只想记录。"]){
+    const result = await generateInterviewPrompt({ answer, askedDimensions: [] });
+    assert.doesNotMatch(result.text, /[？?]/);
+    assert.equal(result.generationMode, "local-fallback");
+  }
+});
+test("declining one topic does not end the local conversation", async context => {
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: false } }));
+  const restoreWx = installGlobal("wx", {});
+  context.after(() => { restoreWx(); restoreGetApp(); });
+  const result = await generateInterviewPrompt({ answer:"我不想聊那个人，想说说我后来怎样决定离开的。", askedDimensions:[] });
+  assert.match(result.text, /[？?]/);
 });
