@@ -1,15 +1,15 @@
 {
-  "observedAt": "2026-09-27T12:28:05.390Z",
+  "observedAt": "2026-09-27T13:24:54.362Z",
   "environment": "cloud1-d5ghzk30ve609f544",
   "appId": "wx86ae3e9d507ce52d",
-  "codeCommit": "2c886707d803726fe28908b3a90554a237bc6273",
+  "codeCommit": "a760eaf2d67bf8740a2a2a88c8837d5e8a469ec5",
   "integratedMain": "f805c155d8e3fdb0fef693602959a35d06fb7b68",
   "branch": "codex/conversation-intelligence-20260927",
   "mergedIntoMain": false,
   "pushed": false,
   "functions": {
     "chatInterview": {
-      "sourceCommit": "8f6fb7cbad4d35cf1ea32bf0dd7dab3fb288778d",
+      "sourceCommit": "a760eaf2d67bf8740a2a2a88c8837d5e8a469ec5",
       "businessSourceAndPackageVerified": true,
       "serverReady": true,
       "personalMemoryEnabled": false,
@@ -84,7 +84,7 @@
   },
   "localVerification": {
     "typecheck": "passed",
-    "passed": 992,
+    "passed": 993,
     "failed": 0,
     "skipped": 0
   },
@@ -95,6 +95,7 @@
     "clientGatePreview": true,
     "mismatches": []
   },
+  "realModelSourceCommit": "8f6fb7cbad4d35cf1ea32bf0dd7dab3fb288778d",
   "realModelSummary": {
     "successfulModelResponses": 20,
     "total": 20,
@@ -109,7 +110,26 @@
   "credentialReuseAuthorization": "User authorized reuse; key saved after WeChat MFA and verified. No key values in code, outputs or logs.",
   "preservedInvitationSource": "681c4811e4591bdde578ee412600fb57921aab87",
   "qrIssued": false,
+  "followupOptimization": {
+    "sourceCommit": "a760eaf2d67bf8740a2a2a88c8837d5e8a469ec5",
+    "summary": {
+      "status": "deployed_live_retest_blocked",
+      "firstIterationSuccessfulResponses": 6,
+      "firstIterationAttempted": 10,
+      "originalRepeatsWithoutWhereOrActivities": 3,
+      "originalRepeats": 3,
+      "firstIterationFullyAccepted": false,
+      "finalSuccessfulResponses": 0,
+      "finalAttempted": 2,
+      "finalNotAttempted": 8,
+      "typecheck": "passed",
+      "testsPassed": 993,
+      "testsFailed": 0,
+      "humanReview": "pending"
+    }
+  },
   "pending": [
+    "腾讯云内容检查服务恢复后，复测 a760eaf 的 10 条追问样例；最新版本尚无成功的线上复测回复。",
     "20 条真实模型结果由人逐条评审；Codex 判断不能代替人工硬门禁。",
     "真实手机复测基线原句；目前只在微信开发者工具模拟器完成。",
     "至少 3 个不同风格的真实测试账号评估倾向准确性。",
