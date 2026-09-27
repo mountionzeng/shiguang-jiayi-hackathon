@@ -4,6 +4,8 @@
 提出：问题八（界面清晰度），交给 Codex 绘制
 母版与画风参考：`design-handoff/poster-rollup-2026-08-29/`
 
+2026-09-27 素材位置更新：三个压缩交付副本与小程序文件逐字节相同，已统一保留在仓库根目录 `miniprogram/assets/illustrations/` 下的 `memory-bookmark.png`、`story-book-cover.png`、`story-book-spine.png`。本目录保留高分辨率母版；下文的 `app-optimized/` 为当时样稿阶段的交付路径。
+
 ## 1. 为什么要重画
 
 用户对整体插画风格满意（水彩彩铅的鸟、树枝、鸟窝、底部三个入口），但觉得「书」和「记忆」的样子不好看，三个主页面（首页、人生之书、记忆之家）也不满意。整理现有资产后看到：

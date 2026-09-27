@@ -8,13 +8,13 @@
 - 人生之书的故事封面已在第二轮改为真正的线装古籍形式，直接复用 `miniprogram/assets/illustrations/ancient-book-shell.png`；它来自本目录的 `assets/masters/ancient-book-shell-master.png`。动态界面在书壳上叠加四种淡彩、册号、书名签条、水彩圆印记、摘要和数量，不需要新增书本位图。
 - `references/book-shelf-more-book-like-request-2026-09-12.png`：用户第二轮反馈截图，记录“纯色圆角卡片仍太普通，需要更明显书籍形式”的要求。验收时应能一眼看出左侧线装书脊、右侧和底部毛边书口；相邻书有轻微错落，但文字仍保持端正可读。
 - `assets/masters/story-paper-master.png`：853 × 1844 的生成母版。它是「人生之书」故事书架与故事详情页的新宣纸背景，中央阅读区保持干净，只在边缘留极淡的玉石绿、湖水蓝和杏金水彩。
-- `assets/app-optimized/story-paper.jpg`：719 × 1556、JPEG 压缩版；小程序实际使用同内容的 `miniprogram/assets/illustrations/story-paper.jpg`。`assets/app-optimized/story-paper.png` 是流水线保留的无损压缩版，不进入小程序主包。
+- `miniprogram/assets/illustrations/story-paper.jpg`（仓库根目录）：719 × 1556、JPEG 压缩版；2026-09-27 已合并内容完全相同的交接副本。`assets/app-optimized/story-paper.png` 是流水线保留的无损压缩版，不进入小程序主包。
 - `references/book-shelf-before-2026-09-12.jpg`：改版前的人生之书列表，作为密集卡片、灰暗背景和底部遮挡问题的对照。
 - `references/story-detail-before-2026-09-12.jpg`：改版前的故事详情，作为三枚大胶囊按钮与大面积空白问题的对照。
 - `assets/masters/memory-recall-sheet-master.png`：2172 × 724、真实透明的异形宣纸便签母版。它只垫在“想起了哪一段？”动态标题下方，中央留白，边缘有克制的玉石绿与杏金水彩。
 - `assets/app-optimized/memory-recall-sheet.png`：720 × 240 的小程序交接副本；实际使用文件为 `miniprogram/assets/illustrations/memory-recall-sheet.png`。
 - `references/memory-recall-picker-before-2026-09-12.png`：改版前“想起了哪一段？”透明浮层，记录背景透出、卡片层级混乱和底部导航干扰的问题。
-- `references/memory-recall-sticky-note-request-2026-09-12.png`：用户复核截图。最终要求是保留轻量浮层，只在标题文字下方垫一张异形便签，并单独重做“全部回忆”按钮。
+- 用户复核截图与上面的 `references/memory-recall-picker-before-2026-09-12.png` 字节完全相同，2026-09-27 已合并为该文件。最终要求是保留轻量浮层，只在标题文字下方垫一张异形便签，并单独重做“全部回忆”按钮。
 
 验收时确认：背景不应降低正文与书封文字对比度；不应出现鸟、树枝、书、文字或 UI；纵向拉伸时不出现明显接缝。“回忆”便签不能扩展成整页背景，只承托标题文字；三条最近回忆和独立的“全部回忆”按钮在 320 px 宽度仍可读。底部导航三枚既有图标在本次改版中保持不变。
 
@@ -148,6 +148,8 @@
 
 ### 小程序压缩版：`assets/app-optimized/`
 
+2026-09-27 去重后，以下同名文件统一使用仓库根目录 `miniprogram/assets/illustrations/` 中的版本：`capture-memoir-book.png`、`capture-note-paper.png`、`memory-bird.png`、`memory-branch.png`、`memory-nest.png`、`story-paper.jpg`、`xiaoyi-avatar.png`。删除前已逐一核对 SHA256；其余不同版本仍保留在本目录。打包交接物料时，从上述位置取对应文件。
+
 这些文件只用于复现微信小程序或做屏幕尺寸演示，不能放大用于印刷。包括：背景、书封水彩、鸟、树枝、384px 鸟窝、480 × 720 的线装古籍书体和 128 × 128 的小忆头像。
 
 新增三枚 384 × 384 透明底异形按钮：`story-tab-personal.png`、`story-tab-chat.png`、`story-tab-family.png`。从左到右对应“人生之书、记下此刻、记忆之家”；按钮图中不烘焙文字，中文标签继续由小程序原生文字叠加。左右图案按初版约 1.5 倍展示，中间 LOGO 按初版约 2 倍展示并略微上浮，三者刻意错落、不做等距同高排列。
@@ -164,7 +166,7 @@
 - `xiaoyi-avatar-target-reference.png`：用户确认的“小忆”头像关系参考；正式头像使用母版文件。
 - `family-birds-before-nest.png`：用户确认有趣的三只互动小鸟；正式设计须保留三只鸟的大小关系，并在它们后方增加鸟窝。
 - `persistent-bottom-switcher-reference.png`：用户确认的底部三入口构图方向；弧形树枝和鸟群作为长期存在的切换引导，入口需保持自然错落。
-- `center-chat-logo-reference.png`：用户确认的“开始聊聊”中心 LOGO 原图；必须直接使用，不得以生成近似图替代。
+- `assets/masters/story-tab-chat-master.png`（相对于本交接目录）：用户确认的“开始聊聊”中心 LOGO 原图；已与内容完全相同的参考副本合并。必须直接使用，不得以生成近似图替代。
 
 ### 不采用素材：`archive-do-not-use/`
 

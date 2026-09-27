@@ -342,14 +342,6 @@ async function savePersonalDraft(
   });
 }
 
-async function removePersonalDraft(familyId: string, memberId: string): Promise<void> {
-  try {
-    await collection(CLOUD_COLLECTIONS.biographyDrafts).doc(personalDraftDocId(familyId, memberId)).remove();
-  } catch (error) {
-    if (!isNotFoundError(error)) throw error;
-  }
-}
-
 async function removeDocIfExists(collectionName: string, documentId: string): Promise<void> {
   try {
     await collection(collectionName).doc(documentId).remove();
@@ -373,21 +365,6 @@ async function clearFamilyCollection(
         .map((id) => collection(collectionName).doc(id).remove()),
     );
   }
-}
-
-async function saveCloudRoomState(
-  familyId: string,
-  state: FamilyRoomState,
-): Promise<void> {
-  await saveFamilyShell(familyId, state);
-  await saveMembers(familyId, state.members);
-  await Promise.all(state.contributions.map((contribution) => saveContribution(familyId, contribution)));
-  await saveDraft(familyId, state.draft);
-  await Promise.all(
-    Object.entries(state.personalDrafts ?? {}).map(([memberId, draft]) =>
-      savePersonalDraft(familyId, memberId, draft),
-    ),
-  );
 }
 
 async function seedInitialState(familyId: string): Promise<FamilyRoomState> {

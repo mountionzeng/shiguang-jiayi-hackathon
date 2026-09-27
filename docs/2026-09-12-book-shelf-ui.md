@@ -30,19 +30,19 @@
 
 ### 新增素材
 
+2026-09-27 去重说明：重复的宣纸 JPEG 交接副本统一使用下表小程序文件；两张内容完全相同的回忆浮层截图统一保留 `memory-recall-picker-before-2026-09-12.png`。母版和不同版本仍保留。
+
 | 文件 | 尺寸 | 体积 | 用途 |
 |---|---:|---:|---|
 | `miniprogram/assets/illustrations/story-paper.jpg` | 719×1556 | 77,529 B | 人生之书列表与故事详情背景 |
 | `design-handoff/poster-rollup-2026-08-29/assets/masters/story-paper-master.png` | 853×1844 | 1,805,606 B | 未压缩生成母版，不进入主包 |
-| `design-handoff/poster-rollup-2026-08-29/assets/app-optimized/story-paper.jpg` | 719×1556 | 77,529 B | 小程序用 JPEG 的交接副本 |
 | `design-handoff/poster-rollup-2026-08-29/assets/app-optimized/story-paper.png` | 719×1556 | 1,355,101 B | 流水线保留的无损 PNG，不进入主包 |
 | `design-handoff/poster-rollup-2026-08-29/references/book-shelf-before-2026-09-12.jpg` | 1260×2720 | 853,652 B | 用户提供的改版前书架参考 |
 | `design-handoff/poster-rollup-2026-08-29/references/story-detail-before-2026-09-12.jpg` | 1260×2720 | 649,327 B | 用户提供的改版前详情参考 |
 | `miniprogram/assets/illustrations/memory-recall-sheet.png` | 720×240 | 172,581 B | 垫在回忆标题下的透明异形宣纸便签 |
 | `design-handoff/poster-rollup-2026-08-29/assets/masters/memory-recall-sheet-master.png` | 2172×724 | 1,391,880 B | 异形便签透明母版，不进入主包 |
 | `design-handoff/poster-rollup-2026-08-29/assets/app-optimized/memory-recall-sheet.png` | 720×240 | 172,581 B | 异形便签交接副本 |
-| `design-handoff/poster-rollup-2026-08-29/references/memory-recall-picker-before-2026-09-12.png` | 1260×2720 | 1,512,952 B | 用户提供的改版前回忆浮层参考 |
-| `design-handoff/poster-rollup-2026-08-29/references/memory-recall-sticky-note-request-2026-09-12.png` | 1260×2720 | 1,512,952 B | 用户复核截图，要求只在标题下垫异形便签并重做全部回忆按钮 |
+| `design-handoff/poster-rollup-2026-08-29/references/memory-recall-picker-before-2026-09-12.png` | 1260×2720 | 1,512,952 B | 改版前参考与用户复核共用截图，要求只在标题下垫异形便签并重做全部回忆按钮 |
 | `design-handoff/poster-rollup-2026-08-29/references/book-shelf-more-book-like-request-2026-09-12.png` | 390×844 | 234,124 B | 用户第二轮反馈截图，指出纯色卡片书封仍过于普通 |
 
 本次没有删除既有位图。故事书复用原主包内的 `ancient-book-shell.png`（280×420、152,888 B），因此第二轮“增加书籍形式”的调整没有新增主包素材。`story-tab-personal.png`、`story-tab-chat.png`、`story-tab-family.png` 保持原文件。新背景与回忆素材由内置图像生成工具制作；页面背景要求暖白宣纸、中央 80% 干净留白。回忆素材最终替换为一张 720×240 的透明异形便签，不包含文字、书、连接线或其他 UI；`sips` 验证 `hasAlpha: yes` 后进入压缩流程。
