@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { generateInterviewPrompt } from "../miniprogram/services/interviewService";
 
+const interviewCloud = require("../cloudfunctions/chatInterview/index.js");
+
 function installGlobal(name: "getApp" | "wx", value: unknown): () => void {
   if (name === "wx") value = { showModal: ({ success }: any) => success({ confirm: true, cancel: false }), ...(value as object) };
   const previous = Object.getOwnPropertyDescriptor(globalThis, name);
@@ -116,4 +118,27 @@ test("cloud-ready preview does not call interview AI before release", async (con
   assert.equal(prompt.generationMode, "local-fallback");
   assert.equal(prompt.fallbackReason, "cloud-not-ready");
   assert.equal(cloudCalls, 0);
+});
+
+test("邀请短笺 AI 只返回可编辑的短标题和短正文", () => {
+  const messages = interviewCloud._test.buildInviteCopyMessages({
+    inviteeName: "阿遥",
+    relation: "同学",
+    currentHeadline: "一起写故事",
+    currentMessage: "把我们记得的日子写下来。",
+  });
+  assert.match(messages[0].content, /headline/);
+  assert.match(messages[0].content, /16/);
+  assert.match(messages[0].content, /48/);
+  assert.match(messages[0].content, /避免叠字和重复用词/);
+  assert.doesNotMatch(messages[0].content, /二维码|有效期/);
+
+  assert.deepEqual(
+    interviewCloud._test.parseInviteCopy('```json\n{"headline":"一起写下来","message":"阿遥，来补上你记得的那一页。"}\n```'),
+    { headline: "一起写下来", message: "阿遥，来补上你记得的那一页。" },
+  );
+  assert.throws(
+    () => interviewCloud._test.parseInviteCopy('{"headline":"忆忆忆忆忆忆忆忆忆忆忆忆忆忆忆忆忆","message":"一起写故事"}'),
+    /INVITE_COPY_INVALID/,
+  );
 });

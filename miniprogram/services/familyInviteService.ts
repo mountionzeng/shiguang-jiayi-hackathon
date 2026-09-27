@@ -6,7 +6,9 @@ export interface FamilyInvitation {
   inviterName: string;
   inviteeName: string;
   relation: string;
+  headline: string;
   message: string;
+  signature: string;
   illustrationStyle: InviteCardStyleId;
   roomName: string;
   familyId: string;
@@ -45,11 +47,27 @@ async function callInvite<T>(data: Record<string, unknown>): Promise<T> {
 export function createFamilyInvitation(
   inviteeName: string,
   relation: string,
+  headline: string,
   message: string,
+  signature: string,
   illustrationStyle: InviteCardStyleId,
   envVersion: "develop" | "trial" | "release",
 ): Promise<InviteResult> {
-  return callInvite({ action: "create", inviteeName, relation, message, illustrationStyle, envVersion });
+  return callInvite({ action: "create", inviteeName, relation, headline, message, signature, illustrationStyle, envVersion });
+}
+
+export async function generateFamilyInvitationCopy(input: {
+  inviteeName: string;
+  relation: string;
+  currentHeadline: string;
+  currentMessage: string;
+}): Promise<{ headline: string; message: string; aiDisclosure: string }> {
+  if (!wx.cloud) throw new Error("当前微信版本暂不支持 AI 写邀请语");
+  const response = await wx.cloud.callFunction({
+    name: "chatInterview",
+    data: { action: "inviteCopy", ...input },
+  });
+  return response.result as { headline: string; message: string; aiDisclosure: string };
 }
 
 export function createFamilyInvitationCode(

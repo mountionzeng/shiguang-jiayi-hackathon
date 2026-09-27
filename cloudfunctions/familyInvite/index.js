@@ -89,7 +89,7 @@ async function createInvite(event, accountId, openid) {
       data: { ownerAccountId: accountId, updatedAt: db.serverDate() },
     });
   }
-  if (!(await passesContentSecurity(input.message, "亲友邀请", openid))) {
+  if (!(await passesContentSecurity([input.headline, input.message, input.signature].filter(Boolean).join("\n"), "亲友邀请", openid))) {
     throw new Error("邀请文字没有通过内容安全检测，请修改后重试");
   }
 
@@ -114,7 +114,9 @@ async function createInvite(event, accountId, openid) {
     inviterName: account.displayName,
     inviteeName: input.inviteeName,
     relation: input.relation,
+    headline: input.headline,
     message: input.message,
+    signature: input.signature || account.displayName,
     illustrationStyle: input.illustrationStyle,
     roomName: family.roomName || "我们的记忆之家",
     status: "pending",

@@ -17,7 +17,9 @@ test("邀请称呼和关系必须简短明确", () => {
   assert.deepEqual(invite.normalizeInviteInput({ inviteeName: " 妈 ", relation: " 母 女 " }), {
     inviteeName: "妈",
     relation: "母 女",
+    headline: invite.DEFAULT_INVITE_HEADLINE,
     message: invite.DEFAULT_INVITE_MESSAGE,
+    signature: "",
     illustrationStyle: "branch",
   });
   assert.throws(() => invite.normalizeInviteInput({ inviteeName: "", relation: "朋友" }), /填写对方的称呼/);
@@ -28,16 +30,22 @@ test("邀请文字和插图风格由服务端校验并向旧邀请兼容", () =>
   assert.deepEqual(invite.normalizeInviteInput({
     inviteeName: "妈",
     relation: "母女",
+    headline: " 一起写下我们的故事 ",
     message: " 想和你一起，写下我们都记得的日子。 ",
+    signature: " 小岱 ",
     illustrationStyle: "book",
   }), {
     inviteeName: "妈",
     relation: "母女",
+    headline: "一起写下我们的故事",
     message: "想和你一起，写下我们都记得的日子。",
+    signature: "小岱",
     illustrationStyle: "book",
   });
   assert.equal(invite.normalizeInviteInput({ inviteeName: "妈", relation: "母女", illustrationStyle: "unknown" }).illustrationStyle, "branch");
-  assert.throws(() => invite.normalizeInviteInput({ inviteeName: "妈", relation: "母女", message: "忆".repeat(91) }), /最多 90 个字/);
+  assert.throws(() => invite.normalizeInviteInput({ inviteeName: "妈", relation: "母女", headline: "忆".repeat(17) }), /标题最多 16 个字/);
+  assert.throws(() => invite.normalizeInviteInput({ inviteeName: "妈", relation: "母女", message: "忆".repeat(49) }), /最多 48 个字/);
+  assert.throws(() => invite.normalizeInviteInput({ inviteeName: "妈", relation: "母女", signature: "忆".repeat(13) }), /署名最多 12 个字/);
 });
 
 test("未接受邀请不泄露记忆之家和成员标识", () => {
@@ -57,6 +65,8 @@ test("未接受邀请不泄露记忆之家和成员标识", () => {
   assert.equal(publicView.memberId, "");
   assert.equal(publicView.acceptedByMe, false);
   assert.equal(publicView.message, invite.DEFAULT_INVITE_MESSAGE);
+  assert.equal(publicView.headline, invite.DEFAULT_INVITE_HEADLINE);
+  assert.equal(publicView.signature, "岱");
   assert.equal(publicView.illustrationStyle, "branch");
 });
 
@@ -143,9 +153,9 @@ test("自定义邀请文字通过内容安全检测后才会保存", () => {
     source.indexOf("async function createInviteCode"),
   );
 
-  assert.match(createBody, /passesContentSecurity\(input\.message, "亲友邀请", openid\)/);
+  assert.match(createBody, /passesContentSecurity\(\[input\.headline, input\.message, input\.signature\]/);
   assert.ok(
-    createBody.indexOf("passesContentSecurity(input.message") <
+    createBody.indexOf("passesContentSecurity([input.headline") <
       createBody.indexOf('.collection("family_invitations")'),
   );
 });
@@ -158,7 +168,7 @@ test("亲友邀请把服务端确认的微信身份传给微信内容安全接�
 
   assert.match(source, /const \{ accountId, openid \} = identity\(\)/);
   assert.match(source, /createInvite\(event, accountId, openid\)/);
-  assert.match(source, /passesContentSecurity\(input\.message, "亲友邀请", openid\)/);
+  assert.match(source, /passesContentSecurity\(\[input\.headline, input\.message, input\.signature\]/);
   assert.match(source, /cloud\.openapi\.security\.msgSecCheck\(\{/);
   assert.match(source, /scene:\s*4,[\s\S]*openid/);
 });
@@ -257,4 +267,22 @@ test("邀请页为系统顶部留出空间并允许小屏滚动", () => {
   assert.match(styles, /overflow-y:\s*auto/);
   const pageRule = styles.slice(0, styles.indexOf("}\n") + 1);
   assert.doesNotMatch(pageRule, /overflow:\s*hidden/);
+});
+
+test("邀请短笺的标题、正文和署名都能修改，并提供真实 AI 写作入口", () => {
+  const markup = fs.readFileSync(
+    path.join(__dirname, "../miniprogram/pages/invite/invite.wxml"),
+    "utf8",
+  );
+  const page = fs.readFileSync(
+    path.join(__dirname, "../miniprogram/pages/invite/invite.ts"),
+    "utf8",
+  );
+  assert.match(markup, /value="\{\{headline\}\}"[^>]+bindinput="onHeadlineInput"/);
+  assert.match(markup, /value="\{\{message\}\}"[^>]+bindinput="onMessageInput"/);
+  assert.match(markup, /value="\{\{signature\}\}"[^>]+bindinput="onSignatureInput"/);
+  assert.match(markup, /bindtap="generateAiCopy"/);
+  assert.match(page, /generateFamilyInvitationCopy\(\{/);
+  assert.match(page, /requestAiConsent\(\)/);
+  assert.doesNotMatch(page, /邀请 7 天内有效 · 仅限一个微信账号接受/);
 });

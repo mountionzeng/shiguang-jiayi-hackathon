@@ -50,14 +50,28 @@
     <view class="copy-page" wx:if="{{step === 'words'}}">
       <button class="back-link" bindtap="previousStep" hover-class="none">‹ 返回改称呼</button>
       <view class="invite-eyebrow typewriter">写给 {{inviteeName}}</view>
-      <view class="invite-title serif">先替心意写成一句话</view>
-      <view class="invite-note">可以点“换一段”自动生成，也可以直接改成你自己的话。亲友打开二维码时也会看到这段文字。</view>
+      <view class="invite-title serif">把话说短一点</view>
+      <view class="invite-note">可以让 AI 写一版，也可以逐字修改。下面三处文字都会原样出现在邀请图里。</view>
       <view class="copy-paper">
         <image class="copy-paper-bird" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
-        <textarea class="copy-textarea serif" value="{{message}}" maxlength="90" auto-height bindinput="onMessageInput" placeholder="写下你想对他说的话"></textarea>
-        <view class="copy-count">{{messageLength}} / 90</view>
+        <label class="copy-field">
+          <text>主标题</text>
+          <input class="copy-headline serif" value="{{headline}}" maxlength="16" bindinput="onHeadlineInput" placeholder="例如：一起写下我们的故事" />
+        </label>
+        <label class="copy-field">
+          <text>邀请语</text>
+          <textarea class="copy-textarea serif" value="{{message}}" maxlength="48" auto-height bindinput="onMessageInput" placeholder="写一句想对他说的话"></textarea>
+          <view class="copy-count">{{messageLength}} / 48</view>
+        </label>
+        <label class="copy-field copy-signature-field">
+          <text>署名</text>
+          <input class="copy-signature" value="{{signature}}" maxlength="12" bindinput="onSignatureInput" placeholder="你的称呼" />
+        </label>
       </view>
-      <button class="invite-secondary copy-generate" bindtap="generateCopy">换一段邀请语</button>
+      <view class="copy-actions">
+        <button class="invite-secondary copy-generate" bindtap="generateAiCopy" loading="{{aiWriting}}" disabled="{{aiWriting}}">{{aiWriting ? 'AI 正在写…' : 'AI 写一版'}}</button>
+        <button class="invite-secondary copy-generate" bindtap="generateCopy" disabled="{{aiWriting}}">换个短句</button>
+      </view>
       <button class="invite-primary" bindtap="continueToArt">继续选插图</button>
     </view>
 
@@ -85,7 +99,9 @@
       </view>
       <view class="invite-mini-preview">
         <view class="mini-kicker">写给 {{inviteeName}}</view>
-        <view class="mini-message serif">“{{message}}”</view>
+        <view class="mini-headline serif">{{headline}}</view>
+        <view class="mini-message serif">{{message}}</view>
+        <view class="mini-signature">{{signature}} · {{relation}}</view>
         <view class="mini-code">二维码位置</view>
       </view>
       <button class="invite-primary" bindtap="createInvitation" loading="{{creating}}" disabled="{{creating}}">{{creating ? '正在写邀请笺…' : '生成带二维码的邀请图'}}</button>
@@ -110,9 +126,9 @@
       <image class="accept-book" wx:if="{{invitation.illustrationStyle === 'book'}}" src="/assets/illustrations/story-book-cover.png" mode="aspectFit" aria-hidden="true"></image>
       <image class="accept-nest" wx:if="{{invitation.illustrationStyle === 'nest'}}" src="/assets/illustrations/memory-nest.png" mode="aspectFit" aria-hidden="true"></image>
       <view class="invite-avatar accept-avatar serif"><image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image><text>{{invitationAvatarText}}</text></view>
-      <view class="accept-kicker">{{invitation.inviterName}} 写给你</view>
-      <view class="accept-message serif">“{{invitation.message}}”</view>
-      <view class="accept-title serif">{{invitation.roomName}}</view>
+      <view class="accept-kicker">{{invitation.signature}} 写给你</view>
+      <view class="accept-title serif">{{invitation.headline}}</view>
+      <view class="accept-message serif">{{invitation.message}}</view>
       <view class="accept-identity">
         <text>在这里，大家会叫你</text>
         <text class="accept-name">“{{invitation.inviteeName}}”</text>

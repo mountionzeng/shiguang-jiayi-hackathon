@@ -209,7 +209,7 @@ test("the invitation poster draws packaged assets and exports a scannable-size c
   const page = instantiate(await pageDefinition("invite"));
   const result = await callPage(page, "drawPoster", {
     token: "token", inviterName: "岱", inviteeName: "如", relation: "胎教朋友",
-    message: "想听你说说记得的细节，也想和你一起补全我们的共同回忆。",
+    headline: "一起写下我们的故事", message: "想听你说说记得的细节。", signature: "岱",
     illustrationStyle: "book",
     roomName: "我的拾光房间", familyId: "family", memberId: "member",
     status: "pending", acceptedByMe: false, expiresAt: "2026-09-20T00:00:00.000Z",
@@ -218,7 +218,7 @@ test("the invitation poster draws packaged assets and exports a scannable-size c
   assert.equal(result, "/tmp/invite.jpg");
   const packaged = drawImages.map(args => String(args[0])).filter(path => path.startsWith("/assets/"));
   packaged.forEach(path => assert.ok(existsSync("miniprogram" + path), `missing poster asset ${path}`));
-  assert.ok(drawImages.some(args => args[0] === "/tmp/code.png" && args[3] === 260 && args[4] === 260));
+  assert.ok(drawImages.some(args => args[0] === "/tmp/code.png" && args[3] === 240 && args[4] === 240));
   assert.ok(drawImages.some(args => args[0] === "/assets/illustrations/story-book-cover.png"));
   assert.ok(drawnText.some(value => value.includes("想听你说说")));
   assert.equal(exportOptions?.fileType, "jpg");
@@ -229,7 +229,7 @@ test("the invitation creator moves through recipient, editable copy, and illustr
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("invite"));
-  page.setData({ inviteeName: "妈", relation: "母女" });
+  page.setData({ inviteeName: "妈", relation: "母女", signature: "小岱" });
   callPage(page, "continueToWords");
   assert.equal(page.data.step, "words");
   assert.match(String(page.data.message), /妈/);

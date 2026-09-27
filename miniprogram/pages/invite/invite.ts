@@ -4,13 +4,16 @@ import {
   createFamilyInvitation,
   createFamilyInvitationCode,
   FamilyInvitation,
+  generateFamilyInvitationCopy,
   loadFamilyInvitation,
 } from "../../services/familyInviteService";
+import { currentConsentVersion, requestAiConsent } from "../../services/aiConsent";
 import {
   INVITE_CARD_STYLES,
   InviteCardStyleId,
   invitationMessageLength,
   nextInvitationCopy,
+  validInvitationHeadline,
   validInvitationMessage,
   wrapInvitationMessage,
 } from "../../services/inviteCard";
@@ -53,10 +56,13 @@ Page({
     inviteeName: "",
     inviteeAvatarText: "忆",
     relation: "",
+    headline: "",
     message: "",
+    signature: "",
     messageLength: 0,
     messageEdited: false,
     copyIndex: 0,
+    aiWriting: false,
     illustrationStyle: "branch" as InviteCardStyleId,
     styleOptions: INVITE_CARD_STYLES,
     invitation: null as FamilyInvitation | null,
@@ -69,7 +75,13 @@ Page({
 
   async onLoad(options: InviteLoadOptions = {}) {
     const token = decodeScene(options.scene || options.token);
-    if (!token) return;
+    if (!token) {
+      try {
+        const account = await loadCurrentAccount();
+        if (!this.data.signature) this.setData({ signature: account.displayName });
+      } catch { /* profile validation still runs when the invitation is saved */ }
+      return;
+    }
     this.setData({ mode: "accept", loading: true });
     try {
       await loadCurrentAccount();
@@ -101,8 +113,9 @@ Page({
     }
     const generated = nextInvitationCopy(inviteeName, relation, 0);
     const message = this.data.messageEdited ? this.data.message : generated.message;
+    const headline = this.data.messageEdited ? this.data.headline : generated.headline;
     this.setData({
-      inviteeName, relation, message,
+      inviteeName, relation, headline, message,
       messageLength: invitationMessageLength(message),
       messageEdited: this.data.messageEdited,
       copyIndex: generated.index,
@@ -118,6 +131,7 @@ Page({
       this.data.copyIndex + 1,
     );
     this.setData({
+      headline: generated.headline,
       message: generated.message,
       messageLength: invitationMessageLength(generated.message),
       messageEdited: false,
@@ -130,9 +144,55 @@ Page({
     this.setData({ message, messageLength: invitationMessageLength(message), messageEdited: true });
   },
 
+  onHeadlineInput(event: WechatMiniprogram.Input) {
+    this.setData({ headline: event.detail.value, messageEdited: true });
+  },
+
+  onSignatureInput(event: WechatMiniprogram.Input) {
+    this.setData({ signature: event.detail.value });
+  },
+
+  async generateAiCopy() {
+    if (this.data.aiWriting) return;
+    const allowed = await requestAiConsent();
+    if (!allowed) {
+      wx.showToast({ title: "你可以继续自己修改文字", icon: "none" });
+      return;
+    }
+    this.setData({ aiWriting: true, errorMessage: "" });
+    try {
+      const consentVersion = currentConsentVersion();
+      if (consentVersion && wx.cloud) {
+        await wx.cloud.callFunction({ name: "recordAiConsent", data: { version: consentVersion } });
+      }
+      const result = await generateFamilyInvitationCopy({
+        inviteeName: this.data.inviteeName,
+        relation: this.data.relation,
+        currentHeadline: this.data.headline,
+        currentMessage: this.data.message,
+      });
+      this.setData({
+        headline: result.headline,
+        message: result.message,
+        messageLength: invitationMessageLength(result.message),
+        messageEdited: true,
+      });
+    } catch {
+      wx.showToast({ title: "AI 暂时没写好，请稍后再试", icon: "none" });
+    } finally { this.setData({ aiWriting: false }); }
+  },
+
   continueToArt() {
+    if (!validInvitationHeadline(this.data.headline)) {
+      wx.showToast({ title: "请保留 2—16 个字的标题", icon: "none" });
+      return;
+    }
     if (!validInvitationMessage(this.data.message)) {
-      wx.showToast({ title: "请保留 4—90 个字的邀请", icon: "none" });
+      wx.showToast({ title: "请保留 4—48 个字的邀请", icon: "none" });
+      return;
+    }
+    if (!this.data.signature.trim()) {
+      wx.showToast({ title: "请留下署名", icon: "none" });
       return;
     }
     this.setData({ step: "art", errorMessage: "" });
@@ -154,7 +214,7 @@ Page({
 
   async createInvitation() {
     if (this.data.creating) return;
-    if (!validInvitationMessage(this.data.message)) {
+    if (!validInvitationHeadline(this.data.headline) || !validInvitationMessage(this.data.message) || !this.data.signature.trim()) {
       this.setData({ step: "words" });
       wx.showToast({ title: "请检查邀请文字", icon: "none" });
       return;
@@ -164,7 +224,9 @@ Page({
       const result = await createFamilyInvitation(
         this.data.inviteeName,
         this.data.relation,
+        this.data.headline,
         this.data.message,
+        this.data.signature,
         this.data.illustrationStyle,
         environmentVersion(),
       );
@@ -187,15 +249,16 @@ Page({
   drawPoster(invitation: FamilyInvitation, codePath: string): Promise<string> {
     const context = wx.createCanvasContext("invitePoster", this);
     const style = invitation.illustrationStyle || "branch";
-    const message = invitation.message || "有些记忆因为你也在场，才显得完整。想邀请你来这里，一起把故事慢慢写下来。";
+    const headline = invitation.headline || "一起写下我们的故事";
+    const message = invitation.message || "来补上你记得的那一页。";
     context.setFillStyle("#f8f2e7");
-    context.fillRect(0, 0, 750, 1040);
-    context.drawImage("/assets/illustrations/home-paper.jpg", 0, 0, 750, 1040);
+    context.fillRect(0, 0, 750, 960);
+    context.drawImage("/assets/illustrations/home-paper.jpg", 0, 0, 750, 960);
 
     if (style === "book") {
       context.setGlobalAlpha(0.24);
       context.drawImage("/assets/illustrations/story-book-cover.png", 505, -40, 260, 404);
-      context.drawImage("/assets/illustrations/book-wash.png", -60, 720, 260, 347);
+      context.drawImage("/assets/illustrations/book-wash.png", -60, 650, 260, 347);
       context.setGlobalAlpha(0.82);
       context.drawImage("/assets/illustrations/memory-bird.png", 548, 58, 94, 63);
     } else if (style === "nest") {
@@ -203,14 +266,14 @@ Page({
       context.drawImage("/assets/illustrations/memory-nest.png", 35, 42, 164, 109);
       context.drawImage("/assets/illustrations/memory-bird.png", 558, 38, 108, 72);
       context.setGlobalAlpha(0.2);
-      context.drawImage("/assets/illustrations/book-wash.png", 526, 720, 260, 347);
+      context.drawImage("/assets/illustrations/book-wash.png", 526, 650, 260, 347);
     } else {
       context.setGlobalAlpha(0.74);
       context.drawImage("/assets/illustrations/memory-branch.png", 360, 16, 438, 146);
       context.setGlobalAlpha(0.9);
       context.drawImage("/assets/illustrations/memory-bird.png", 574, 47, 100, 67);
       context.setGlobalAlpha(0.42);
-      context.drawImage("/assets/illustrations/memory-nest.png", 52, 790, 138, 92);
+      context.drawImage("/assets/illustrations/memory-nest.png", 52, 720, 138, 92);
     }
     context.setGlobalAlpha(1);
 
@@ -222,10 +285,10 @@ Page({
     context.quadraticCurveTo(72, 96, 102, 104);
     context.lineTo(652, 96);
     context.quadraticCurveTo(700, 106, 691, 144);
-    context.lineTo(704, 904);
-    context.quadraticCurveTo(686, 950, 644, 941);
-    context.lineTo(92, 953);
-    context.quadraticCurveTo(48, 943, 57, 897);
+    context.lineTo(704, 824);
+    context.quadraticCurveTo(686, 870, 644, 861);
+    context.lineTo(92, 873);
+    context.quadraticCurveTo(48, 863, 57, 817);
     context.closePath();
     context.fill();
     context.stroke();
@@ -238,41 +301,38 @@ Page({
     context.fillRect(88, 178, 194, 2);
     context.setFillStyle("#93765f");
     context.setFontSize(21);
-    context.fillText("一 封 写 给 你 的 邀 请", 88, 226);
+    context.fillText(`写 给 ${invitation.inviteeName}`, 88, 222);
     context.setFillStyle("#293a31");
     context.setFontSize(44);
-    context.fillText(`写给 ${invitation.inviteeName}`, 88, 292);
+    const headlineLines = wrapInvitationMessage(headline, 13, 2);
+    headlineLines.forEach((line, index) => context.fillText(line, 88, 286 + index * 50));
 
     context.setFillStyle("#5f5a50");
     context.setFontSize(27);
-    wrapInvitationMessage(message).forEach((line, index) => {
-      context.fillText(line, 88, 352 + index * 43);
+    const messageStart = 350 + Math.max(0, headlineLines.length - 1) * 50;
+    const messageLines = wrapInvitationMessage(message, 18, 3);
+    messageLines.forEach((line, index) => {
+      context.fillText(line, 88, messageStart + index * 41);
     });
     context.setFillStyle("#817466");
     context.setFontSize(21);
-    context.fillText(`${invitation.inviterName} · ${invitation.relation}`, 88, 548);
-    context.setFillStyle("#3d5146");
-    context.setFontSize(28);
-    context.fillText(`「${invitation.roomName}」`, 88, 588);
+    context.fillText(`${invitation.signature} · ${invitation.relation}`, 88, messageStart + messageLines.length * 41 + 24);
 
     context.setFillStyle("rgba(255,255,252,.96)");
     context.beginPath();
-    context.arc(375, 730, 158, 0, Math.PI * 2);
+    context.arc(375, 685, 148, 0, Math.PI * 2);
     context.fill();
-    context.drawImage(codePath, 245, 600, 260, 260);
+    context.drawImage(codePath, 255, 565, 240, 240);
     context.setTextAlign("center");
     context.setFillStyle("#4b5d52");
     context.setFontSize(23);
-    context.fillText("长按识别，来写下你记得的那一段", 375, 890);
-    context.setFillStyle("#8e8173");
-    context.setFontSize(19);
-    context.fillText("邀请 7 天内有效 · 仅限一个微信账号接受", 375, 924);
+    context.fillText("微信扫码，一起写", 375, 842);
 
     return new Promise((resolve, reject) => {
       context.draw(false, () => {
         wx.canvasToTempFilePath({
-          canvasId: "invitePoster", width: 750, height: 1040,
-          destWidth: 750, destHeight: 1040, fileType: "jpg", quality: 0.95,
+          canvasId: "invitePoster", width: 750, height: 960,
+          destWidth: 750, destHeight: 960, fileType: "jpg", quality: 0.95,
           success: result => resolve(result.tempFilePath), fail: reject,
         }, this);
       });
@@ -346,7 +406,7 @@ Page({
   onShareAppMessage() {
     const invitation = this.data.invitation;
     return invitation ? {
-      title: `${invitation.inviterName} 邀请你一起写故事`,
+      title: `${invitation.signature || invitation.inviterName} 邀请你一起写故事`,
       path: `/pages/invite/invite?token=${encodeURIComponent(invitation.token)}`,
     } : { title: "拾光家忆" };
   },

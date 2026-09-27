@@ -48,7 +48,7 @@
 .accept-identity { display: flex; flex-direction: column; gap: 10rpx; margin-top: 38rpx; padding: 28rpx 20rpx; border-top: 2rpx solid rgba(111,79,58,.14); border-bottom: 2rpx solid rgba(111,79,58,.14); color: #61584e; font-size: 26rpx; }
 .accept-name { color: #6f4f3a; font-size: 40rpx; font-weight: 700; }
 .invite-error { margin-top: 30rpx; padding: 24rpx; border-radius: 24rpx; background: rgba(191,83,61,.1); color: #9d4938; font-size: 25rpx; line-height: 1.6; text-align: center; }
-.invite-canvas { position: fixed; left: -2000px; top: 0; width: 750px; height: 1040px; }
+.invite-canvas { position: fixed; left: -2000px; top: 0; width: 750px; height: 960px; }
 
 .step-strip { display: flex; align-items: flex-start; justify-content: center; margin: 34rpx 12rpx 2rpx; }
 .step-dot { display: flex; min-width: 106rpx; flex-direction: column; align-items: center; gap: 7rpx; color: #9b8d7d; font-size: 21rpx; }
@@ -61,12 +61,19 @@
 .back-link { width: auto; margin: 0 0 24rpx -16rpx; padding: 8rpx 16rpx; border: 0; background: transparent; color: #7c6a59; font-size: 25rpx; text-align: left; }
 .back-link::after, .style-option::after { border: 0; }
 .copy-page .invite-title, .art-page .invite-title { margin-top: 12rpx; font-size: 48rpx; }
-.copy-paper { position: relative; min-height: 286rpx; margin-top: 34rpx; padding: 44rpx 40rpx 54rpx; border: 2rpx solid rgba(111,79,58,.13); border-radius: 14rpx 38rpx 20rpx 46rpx; background: rgba(255,253,247,.84); box-shadow: 0 24rpx 64rpx rgba(81,59,40,.1); overflow: hidden; transform: rotate(-.25deg); }
+.copy-paper { position: relative; margin-top: 30rpx; padding: 36rpx 40rpx 30rpx; border: 2rpx solid rgba(111,79,58,.13); border-radius: 14rpx 38rpx 20rpx 46rpx; background: rgba(255,253,247,.84); box-shadow: 0 24rpx 64rpx rgba(81,59,40,.1); overflow: hidden; transform: rotate(-.25deg); }
 .copy-paper::before { position: absolute; top: 26rpx; bottom: 26rpx; left: 24rpx; width: 2rpx; background: rgba(177,80,59,.18); content: ""; }
 .copy-paper-bird { position: absolute; top: -10rpx; right: -3rpx; width: 120rpx; height: 80rpx; opacity: .38; transform: scaleX(-1) rotate(-6deg); }
-.copy-textarea { position: relative; z-index: 1; width: 100%; min-height: 182rpx; color: #334238; font-size: 31rpx; line-height: 1.8; }
-.copy-count { position: absolute; right: 30rpx; bottom: 20rpx; color: #9b8d7d; font-size: 21rpx; }
+.copy-field { position: relative; z-index: 1; display: block; padding: 20rpx 0 22rpx; border-bottom: 2rpx solid rgba(111,79,58,.1); }
+.copy-field > text { display: block; margin-bottom: 8rpx; color: #98765e; font-size: 21rpx; letter-spacing: 2rpx; }
+.copy-headline { height: 66rpx; color: #2f4036; font-size: 34rpx; font-weight: 600; line-height: 66rpx; }
+.copy-textarea { position: relative; z-index: 1; width: 100%; min-height: 112rpx; padding-right: 54rpx; box-sizing: border-box; color: #334238; font-size: 29rpx; line-height: 1.65; }
+.copy-count { position: absolute; right: 0; bottom: 18rpx; color: #9b8d7d; font-size: 20rpx; }
+.copy-signature-field { border-bottom: 0; }
+.copy-signature { height: 58rpx; color: #5f5a50; font-size: 27rpx; line-height: 58rpx; }
 .copy-generate { margin-top: 24rpx; }
+.copy-actions { display: flex; gap: 16rpx; }
+.copy-actions .copy-generate { flex: 1; min-width: 0; padding: 0 12rpx; font-size: 26rpx; }
 
 .style-list { display: flex; width: calc(100vw - 84rpx); align-items: stretch; flex-direction: column; gap: 18rpx; margin-top: 30rpx; }
 .art-page .style-option { display: flex; width: calc(100vw - 84rpx); max-width: calc(100vw - 84rpx); min-height: 144rpx; align-items: center; box-sizing: border-box; margin: 0; padding: 16rpx 22rpx 16rpx 16rpx; border: 2rpx solid rgba(111,79,58,.13); border-radius: 18rpx 34rpx 18rpx 38rpx; background: rgba(255,252,244,.7); color: #3d493f; text-align: left; transition: border-color .18s ease, transform .18s ease, background .18s ease; }
@@ -84,7 +91,9 @@
 .style-check { width: 38rpx; color: #4f6f60; font-size: 31rpx; font-weight: 700; text-align: center; }
 .invite-mini-preview { position: relative; margin-top: 28rpx; padding: 30rpx 32rpx 28rpx; border-top: 2rpx solid rgba(111,79,58,.16); border-bottom: 2rpx solid rgba(111,79,58,.16); background: rgba(255,252,244,.4); }
 .mini-kicker { color: #98765e; font-size: 22rpx; letter-spacing: 2rpx; }
-.mini-message { margin-top: 14rpx; padding-right: 116rpx; color: #34443b; font-size: 26rpx; line-height: 1.65; }
+.mini-headline { margin-top: 10rpx; padding-right: 116rpx; color: #2f4036; font-size: 29rpx; font-weight: 600; }
+.mini-message { margin-top: 8rpx; padding-right: 116rpx; color: #566158; font-size: 24rpx; line-height: 1.55; }
+.mini-signature { margin-top: 12rpx; padding-right: 116rpx; color: #8b7d6d; font-size: 20rpx; }
 .mini-code { position: absolute; right: 28rpx; bottom: 24rpx; display: flex; width: 92rpx; height: 92rpx; align-items: center; justify-content: center; border: 10rpx solid #fff; background: repeating-linear-gradient(45deg,#314239 0 4rpx,#fff 4rpx 8rpx); color: transparent; box-shadow: 0 4rpx 14rpx rgba(52,68,59,.12); }
 
 .accept-message { position: relative; z-index: 1; margin: 28rpx 4rpx 8rpx; color: #435248; font-size: 30rpx; line-height: 1.8; }
