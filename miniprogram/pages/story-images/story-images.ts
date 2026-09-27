@@ -42,6 +42,10 @@ const jobRow = (job: StoryImageJob): JobRow => ({
   jobId: job.jobId, message: job.message, active: isActiveJob(job), purposeLabel: PURPOSE_LABELS[job.purpose] ?? "配图",
 });
 const messageOf = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback;
+const imageLimitLabel = (limits: { daily: number | null; book: number | null; unlimited?: boolean }): string =>
+  limits.unlimited || limits.daily === null || limits.book === null
+    ? "不设每日或单本张数上限；生成成功会产生供应商用量和费用。"
+    : `每天最多画 ${limits.daily} 张，这本书最多 ${limits.book} 张；没画成的不算。`;
 
 /**
  * 这本书的图：按章节列出插图和底图，可以给一章配图、选本章底图、看大图、删除，并显示占用的空间。
@@ -126,7 +130,7 @@ Page({
       // A chapter can be deleted after it got pictures; its pictures stay manageable here.
       otherImages: list.images.filter(image => image.purpose !== "cover" && !known.has(image.chapterId)).map(image => card(image)),
       usageLabel: `共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
-      limitsLabel: `每天最多画 ${list.limits.daily} 张，这本书最多 ${list.limits.book} 张；没画成的不算。`,
+      limitsLabel: imageLimitLabel(list.limits),
       loading: false,
       loadError: "",
     });
@@ -245,7 +249,7 @@ Page({
     }));
     return new Promise<void>(resolve => wx.showModal({
       title: "删掉这张图？",
-      content: (usedBy ? "它正在用作" + usedBy.label + "的底图，删掉后这一章就没有底图了。" : "") + "删掉后找不回来；这张图用掉的名额不会返还。",
+      content: (usedBy ? "它正在用作" + usedBy.label + "的底图，删掉后这一章就没有底图了。" : "") + "删掉后找不回来；已经产生的供应商用量和费用不会撤回。",
       confirmText: "删除",
       success: async result => {
         if (result.confirm) {

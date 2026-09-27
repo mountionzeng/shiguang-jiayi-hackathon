@@ -53,7 +53,7 @@ export interface StoryImageList {
   images: StoryImage[];
   pending: StoryImageJob[];
   usage: { count: number; bytes: number };
-  limits: { daily: number; book: number };
+  limits: { daily: number | null; book: number | null; unlimited?: boolean };
 }
 
 export class StoryImageServiceError extends Error {

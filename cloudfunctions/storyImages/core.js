@@ -1,10 +1,9 @@
 const crypto = require("node:crypto");
 
-const DAILY_LIMIT = 10;
-const BOOK_LIMIT = 30;
+const IMAGE_QUOTA_LIMITS = Object.freeze({ unlimited: true, daily: null, book: null });
 /**
  * submitted → queued → generating → generated → storing → stored.
- * Statuses that may have cost money count toward the limits; refusals do not.
+ * Statuses that may have cost money stay tracked for usage and diagnostics; refusals do not.
  */
 const COUNTED_STATUSES = ["submitted", "queued", "generating", "generated", "storing", "stored", "unknown", "expired"];
 const ACTIVE_STATUSES = ["submitted", "queued", "generating", "generated", "storing"];
@@ -37,9 +36,9 @@ const MESSAGES = {
   generated: DRAWING,
   storing: DRAWING,
   stored: "画好了",
-  failed: "没画成，这次不占名额，可以再试一次",
+  failed: "没画成，可以再试一次",
   blocked: "这段内容没通过平台审核，换一段试试",
-  unknown: "不确定有没有画成，可能已经扣费",
+  unknown: "不确定有没有画成，可能已经产生供应商费用",
   expired: "画好了但没来得及保存",
 };
 
@@ -451,14 +450,12 @@ function chinaDayKey(ms) {
   return new Date(ms + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-function quotaDecision({ todayCount, bookCount }) {
-  if (todayCount >= DAILY_LIMIT) {
-    return { allowed: false, code: "DAILY_LIMIT", message: `今天的 ${DAILY_LIMIT} 张画完了，明天再来` };
-  }
-  if (bookCount >= BOOK_LIMIT) {
-    return { allowed: false, code: "BOOK_LIMIT", message: `这个故事已经有 ${BOOK_LIMIT} 张图了，删掉的不会返还名额` };
-  }
+function quotaDecision() {
   return { allowed: true };
+}
+
+function quotaLimits() {
+  return IMAGE_QUOTA_LIMITS;
 }
 
 // Built from char codes so the source file itself stays free of invisible characters.
@@ -685,10 +682,9 @@ function extensionFor(contentType) {
 module.exports = {
   assertUnrestrictedStory,
   ACTIVE_STATUSES,
-  BOOK_LIMIT,
   COUNTED_STATUSES,
-  DAILY_LIMIT,
   ENABLED_PURPOSES,
+  IMAGE_QUOTA_LIMITS,
   MESSAGES,
   QUALITY_ISSUE_KEYS,
   QUALITY_ISSUE_LABELS,
@@ -720,6 +716,7 @@ module.exports = {
   publicImage,
   publicJob,
   quotaDecision,
+  quotaLimits,
   requireOwner,
   sweepAction,
   textHash,

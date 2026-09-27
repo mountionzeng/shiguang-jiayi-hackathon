@@ -198,12 +198,6 @@ function createStoryImageHandlers(deps) {
     }
     const nowMs = now();
     const dayKey = core.chinaDayKey(nowMs);
-    const [todayCount, bookCount] = await Promise.all([
-      repo.countJobs({ familyId: input.familyId, dayKey, statuses: core.COUNTED_STATUSES }),
-      repo.countJobs({ familyId: input.familyId, ...(input.storyId ? {storyId:input.storyId} : {memberId:input.memberId}), statuses: core.COUNTED_STATUSES }),
-    ]);
-    const quota = core.quotaDecision({ todayCount, bookCount });
-    if (!quota.allowed) throw new core.StoryImageError(quota.code, quota.message);
 
     // The record is written before any model call, so an interrupted request still leaves a trace.
     const job = {
@@ -487,7 +481,7 @@ function createStoryImageHandlers(deps) {
         .sort((a, b) => Number(b.createdAtMs) - Number(a.createdAtMs))
         .map(core.publicJob),
       usage: { count: visible.length, bytes: visible.reduce((sum, image) => sum + Number(image.bytes || 0), 0) },
-      limits: { daily: core.DAILY_LIMIT, book: core.BOOK_LIMIT },
+      limits: core.quotaLimits(),
     };
   }
 

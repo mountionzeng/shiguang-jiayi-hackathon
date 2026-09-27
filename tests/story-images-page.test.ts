@@ -120,7 +120,7 @@ function listWith(overrides: Partial<StoryImageList> = {}): StoryImageList {
     ],
     pending: [{ jobId: "family_o-owner_req-b", status: "queued", message: "正在画，大约 20–60 秒。可以先离开，回来接着看", chapterId: "chapter-b", purpose: "illustration", imageId: "", createdAtMs: 3 }],
     usage: { count: 2, bytes: 3072 },
-    limits: { daily: 10, book: 30 },
+    limits: { daily: null, book: null, unlimited: true },
     ...overrides,
   };
 }
@@ -673,9 +673,9 @@ test("云函数的明确错误、没部署和超时分别给出能看懂的提�
   context.after(env.restore);
   const wxMock = wx as unknown as { cloud: { callFunction: (options: { name: string }) => Promise<unknown> } };
 
-  wxMock.cloud = { callFunction: async ({ name }) => name === "getOpenId" ? { result: { openid: "o-owner" } } : { result: { error: { code: "DAILY_LIMIT", message: "今天的 10 张画完了，明天再来" } } } };
+  wxMock.cloud = { callFunction: async ({ name }) => name === "getOpenId" ? { result: { openid: "o-owner" } } : { result: { error: { code: "PROVIDER_QUOTA", message: "供应商账号额度不足，请稍后再试" } } } };
   await assert.rejects(storyImageApi.listStoryImages("owner"),
-    (error: unknown) => error instanceof StoryImageServiceError && error.code === "DAILY_LIMIT" && error.message === "今天的 10 张画完了，明天再来");
+    (error: unknown) => error instanceof StoryImageServiceError && error.code === "PROVIDER_QUOTA" && error.message === "供应商账号额度不足，请稍后再试");
 
   wxMock.cloud = { callFunction: async ({ name }) => { if (name === "getOpenId") return { result: { openid: "o-owner" } }; throw { errMsg: "cloud.callFunction:fail -501000 FUNCTION_NOT_FOUND" }; } };
   await assert.rejects(storyImageApi.removeStoryImage("x"), (error: unknown) => error instanceof StoryImageServiceError && error.code === "FUNCTION_MISSING");
@@ -910,7 +910,7 @@ test("提交配图失败时把原因显示出来，按钮恢复可点", async co
   const timers = captureTimers();
   const restoreApi = withApi({
     listStoryImages: async () => listWith({ pending: [] }),
-    submitChapterImage: async () => { throw new StoryImageServiceError("BOOK_LIMIT", "这个故事已经有 30 张图了，删掉的不会返还名额"); },
+    submitChapterImage: async () => { throw new StoryImageServiceError("PROVIDER_QUOTA", "供应商账号额度不足，请稍后再试"); },
   });
   context.after(() => { restoreApi(); timers.restore(); env.restore(); });
 
@@ -918,7 +918,7 @@ test("提交配图失败时把原因显示出来，按钮恢复可点", async co
   call(page, "onLoad", {});
   await call(page, "refresh");
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a" } } });
-  assert.equal(page.data.notice, "这个故事已经有 30 张图了，删掉的不会返还名额");
+  assert.equal(page.data.notice, "供应商账号额度不足，请稍后再试");
   assert.equal(page.data.submitting, "");
 });
 

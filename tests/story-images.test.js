@@ -354,15 +354,15 @@ test("结果图链接失效时标记为过期，并按文件魔数识别格式�
   );
 });
 
-test("出图失败的结局：审核拦截、明确拒绝不占名额；超时、服务端错误算不确定", () => {
+test("出图失败的结局：审核拦截、明确拒绝不记入已产生用量；超时、服务端错误算不确定", () => {
   assert.deepEqual(core.classifyGenerateError({ httpStatus: 422 }), { status: "blocked", errorCode: "CONTENT_BLOCKED" });
   assert.deepEqual(core.classifyGenerateError({ httpStatus: 429 }), { status: "failed", errorCode: "HTTP_429" });
   assert.deepEqual(core.classifyGenerateError({ httpStatus: 401 }), { status: "failed", errorCode: "HTTP_401" });
   assert.deepEqual(core.classifyGenerateError({ httpStatus: 500 }), { status: "unknown", errorCode: "HTTP_500" });
   assert.deepEqual(core.classifyGenerateError({ name: "AbortError" }), { status: "unknown", errorCode: "GENERATE_TIMEOUT" });
   assert.deepEqual(core.classifyGenerateError(new Error("TOKENHUB_NO_IMAGE")), { status: "unknown", errorCode: "GENERATE_UNCERTAIN" });
-  assert.equal(core.MESSAGES.failed, "没画成，这次不占名额，可以再试一次");
-  assert.equal(core.MESSAGES.unknown, "不确定有没有画成，可能已经扣费");
+  assert.equal(core.MESSAGES.failed, "没画成，可以再试一次");
+  assert.equal(core.MESSAGES.unknown, "不确定有没有画成，可能已经产生供应商费用");
 });
 
 // ---------- 校验与提示词 ----------
@@ -542,10 +542,9 @@ test("当前章节的性别线索覆盖其他章节，完全没有依据时改�
   });
 });
 
-test("限额：每天 10 张、每个故事 30 张，按北京时间换日；排队和画着的也算", () => {
-  assert.deepEqual(core.quotaDecision({ todayCount: 9, bookCount: 29 }), { allowed: true });
-  assert.equal(core.quotaDecision({ todayCount: 10, bookCount: 0 }).code, "DAILY_LIMIT");
-  assert.equal(core.quotaDecision({ todayCount: 0, bookCount: 30 }).code, "BOOK_LIMIT");
+test("配图不再设置每日或单本硬性张数上限，仍按北京时间记录用量日期", () => {
+  assert.deepEqual(core.quotaDecision({ todayCount: 999, bookCount: 999 }), { allowed: true });
+  assert.deepEqual(core.quotaLimits(), { unlimited: true, daily: null, book: null });
   for (const status of ["submitted", "queued", "generating", "generated", "storing", "stored", "unknown", "expired"]) {
     assert.ok(core.COUNTED_STATUSES.includes(status), status);
   }
@@ -1049,7 +1048,7 @@ test("封面选中的旧插图也会进入最终出图请求", async () => {
   assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/cloud%3A%2F%2Fenv%2Fstory-images%2Fcover-ref.png"]);
 });
 
-test("没配置出图密钥时不留记录、不占名额", async () => {
+test("没配置出图密钥时不留记录、不产生用量记录", async () => {
   const { handlers, repo } = harness({ provider: { configured: false } });
   await assert.rejects(handlers.submit(ctx, submitEvent()), error => error.code === "IMAGE_NOT_CONFIGURED");
   assert.equal(repo.jobs.size, 0);
@@ -1068,18 +1067,16 @@ test("别人的记忆之家不能提交", async () => {
   assert.equal(repo.jobs.size, 0);
 });
 
-test("今天画满 10 张就拦下，没画成的不占名额", async () => {
+test("已有很多配图任务时仍可继续提交新图", async () => {
   const { handlers, repo } = harness();
-  for (let index = 0; index < 10; index++) {
+  for (let index = 0; index < 40; index++) {
     await repo.createJob(`${FAMILY}_req-used-000${index}`, {
-      familyId: FAMILY, memberId: "owner", dayKey: "2026-09-13", status: index < 3 ? "failed" : "stored", createdAtMs: 0,
+      familyId: FAMILY, memberId: "owner", dayKey: "2026-09-13", status: "stored", createdAtMs: 0,
     });
   }
-  for (let index = 0; index < 3; index++) {
-    assert.equal((await handlers.submit(ctx, submitEvent(`req-20260913-fresh00${index}`))).job.status, "queued");
-  }
-  await assert.rejects(handlers.submit(ctx, submitEvent("req-20260913-over0001")), error => error.code === "DAILY_LIMIT");
-  assert.equal(repo.jobs.has(`${FAMILY}_req-20260913-over0001`), false);
+  const result = await handlers.submit(ctx, submitEvent("req-20260913-over0001"));
+  assert.equal(result.job.status, "queued");
+  assert.equal(repo.jobs.has(`${FAMILY}_req-20260913-over0001`), true);
 });
 
 test("读不懂章节画面时记为没画成，不排队出图", async () => {
@@ -1233,7 +1230,7 @@ test("两个查询同时到达，只出一张图、只转存一次", async () =>
   assert.ok(results.some(result => result.job.status === "stored"));
 });
 
-test("审核拦截显示没通过审核；超时算不确定并占名额，都不自动重画", async () => {
+test("审核拦截显示没通过审核；超时算不确定并记入用量追踪，都不自动重画", async () => {
   const blocked = harness({ provider: { async generate() { const error = new Error("TOKENHUB_HTTP_422"); error.httpStatus = 422; throw error; } } });
   const a = await blocked.handlers.submit(ctx, submitEvent());
   assert.equal((await blocked.handlers.status(ctx, { familyId: FAMILY, jobId: a.job.jobId })).job.status, "blocked");
@@ -1242,7 +1239,7 @@ test("审核拦截显示没通过审核；超时算不确定并占名额，都�
   const b = await timedOut.handlers.submit(ctx, submitEvent());
   const result = await timedOut.handlers.status(ctx, { familyId: FAMILY, jobId: b.job.jobId });
   assert.equal(result.job.status, "unknown");
-  assert.equal(result.job.message, "不确定有没有画成，可能已经扣费");
+  assert.equal(result.job.message, "不确定有没有画成，可能已经产生供应商费用");
   assert.equal(await timedOut.repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 1);
   await timedOut.handlers.status(ctx, { familyId: FAMILY, jobId: b.job.jobId });
 });
@@ -1367,7 +1364,7 @@ test("管理页列出没删除、没被判违规的图，并算出占用空间�
   assert.deepEqual(listed.images.map(image => image.imageId), [`${FAMILY}_img_b`, `${FAMILY}_img_a`]);
   assert.equal(listed.images[0].quality, "unchecked");
   assert.deepEqual(listed.usage, { count: 2, bytes: 150 });
-  assert.deepEqual(listed.limits, { daily: 10, book: 30 });
+  assert.deepEqual(listed.limits, { unlimited: true, daily: null, book: null });
 
   await handlers.remove(ctx, { familyId: FAMILY, imageId: `${FAMILY}_img_a` });
   assert.deepEqual(calls.remove, ["cloud://a"]);
@@ -1538,20 +1535,20 @@ test("提交底图：按底图尺寸排队，出图时用 1248x832，入库记�
   assert.equal(result.image.purpose, "backdrop");
 });
 
-test("TokenHub 明确拒绝（如并发超限 429）记为没画成、不占名额，可以马上再提交", async () => {
+test("TokenHub 明确拒绝（如并发超限 429）记为没画成、不记入已产生用量，可以马上再提交", async () => {
   const { handlers, repo } = harness({
     provider: { async generate() { const error = new Error("TOKENHUB_HTTP_429"); error.httpStatus = 429; throw error; } },
   });
   const { job } = await handlers.submit(ctx, submitEvent());
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(result.job.status, "failed");
-  assert.equal(result.job.message, "没画成，这次不占名额，可以再试一次");
+  assert.equal(result.job.message, "没画成，可以再试一次");
   assert.equal(repo.jobs.get(job.jobId).errorCode, "HTTP_429");
   assert.equal(await repo.countJobs({ familyId: FAMILY, statuses: core.COUNTED_STATUSES }), 0);
   assert.equal((await handlers.submit(ctx, submitEvent("req-20260913-retry001"))).job.status, "queued");
 });
 
-test("TokenHub 返回成功却没有图片时记为不确定，占名额，不当成失败", async () => {
+test("TokenHub 返回成功却没有图片时记为不确定并记入用量追踪，不当成失败", async () => {
   const { handlers, repo, calls } = harness({
     provider: { async generate() { throw new Error("TOKENHUB_NO_IMAGE"); } },
   });
