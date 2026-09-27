@@ -1,35 +1,40 @@
-# 对话智能：登录后的云端核查
+# 对话智能云端核验与交接
 
-日期：2026-09-27。以下为本次登录后实时读取的配置与源码，优先于早先交接中“尚未登录／云配置未核验”的描述。本轮未部署、未保存云配置、未发起模型请求。
+日期：2026-09-27。环境 cloud1-d5ghzk30ve609f544，AppID wx86ae3e9d507ce52d。
 
-## 实际云配置
+## 部署
 
-环境 `cloud1-d5ghzk30ve609f544` 与 AppID `wx86ae3e9d507ce52d` 的仓库映射一致。
+| 函数 | 已核对的源提交 | 验证 |
+| --- | --- | --- |
+| chatInterview | 8f6fb7c | 下载业务源码一致；20 条真实调用和页面基线完成 |
+| organizeMemory | 01dd7a2 | 7 个 JS 与 package.json 一致；SDK 已安装；真实整理成功 |
+| personalMemory | 26a0fd0 | 8 个 JS 与 package.json 一致；SDK 已安装；真实学习/纠正/忘记完成 |
 
-| 函数 | 服务端 AI 开关 | 个人记忆开关 | 模型凭据 | 模型 |
-| --- | --- | --- | --- | --- |
-| chatInterview | true | 未配置（代码默认关闭） | 已配置，只记录存在性 | deepseek/deepseek-flash |
-| organizeMemory | true | 未配置（代码默认关闭） | 已配置，只记录存在性 | deepseek/deepseek-flash |
-| personalMemory | false | false | 三种允许的凭据变量均未配置 | deepseek/deepseek-flash |
+最新客户端提交 2c88670；隔离预览的 183 个前端文件与其一致，仅预览启用客户端 AI。仓库闸门仍为 false。分支已包含主线 f805c15，未推送、未合入 main。云端既有邀请接口 681c481 已保留。
 
-三者模型服务地址均为 `https://tokenhub.tencentmaas.com/v1`，运行时 Nodejs16.13，超时 60 秒；最终只读查询均为 Active。追问限流仍为每日 60 次、最短间隔 1000 毫秒。
+## 密钥和开关
 
-## 数据与源码核查
+- 用户允许复用的 TokenHub 密钥已保存到 personalMemory，且在扫码后核对成功；未写入代码、交接文档或日志。
+- 模型地址 https://tokenhub.tencentmaas.com/v1；模型 deepseek/deepseek-flash。
+- 验收期间三个函数的 AI_SERVER_RELEASE_READY 和 PERSONAL_MEMORY_ENABLED 均为 true。
+- 个人记忆的云端临时开关最后确认仍为开启；恢复关闭的保存操作被腾讯云微信身份验证拦住，尚未确认生效。
+- 拟恢复：三个 PERSONAL_MEMORY_ENABLED=false；personalMemory 的 AI_SERVER_RELEASE_READY=false；chatInterview / organizeMemory 原有服务端文字 AI 开关保持 true。
+- 当前测试账号已通过界面暂停个人记忆，理解列表为空。
 
-- `personal_memory_controls`、`personal_memory_insights`、`personal_memory_evidence`、`personal_memory_suppressions`、`personal_memory_jobs` 五个集合均存在、当前记录数均为 0，各自具有 `user_id` 索引（`userId ASC, _id ASC`）。
-- 数据库读取工具只返回结构与索引，没有返回访问规则。旧控制台要求转到新版，新版在此次内嵌浏览器中渲染为空白；因此本轮尚未重新核验客户端读写禁止规则。
-- 三个函数业务源码已下载保存并逐文件比较。organizeMemory 与 personalMemory 的业务源码仍与功能起点 `937210a` 一致。
-- chatInterview 在核查期间一度为 Updating，随后恢复 Active。下载的 `index.js` 与邀请功能提交 `681c481` 完全一致，较功能起点新增 `inviteCopy` 邀请短笺接口。已将该接口及其既有回归用例整合进本地对话智能分支，保留本轮提示词修改；未引入邀请任务的其他界面、家人接口改动。部署前仍须协调并重新核对云端是否又有变化；其余文件仍与功能起点一致。
+## 数据与权限
 
-## 本地接续
+- 五个集合存在，user_id 索引已核对。
+- 实际客户端对每个集合进行读取、更新、创建，全部返回 -502003 permission denied；未创建或修改探针。
+- 完整权限规则源码未取到，新控制台页面空白；此限制与真实客户端拒绝证据分别记录。
+- 原始测试记忆在忘记后仍存在，随后通过正常可恢复删除清理；用户原章节、原照片和历史版本保留。
 
-已在功能分支合入当时最新的 main `f805c15`，合并提交 `1861043`，无冲突。合并后类型检查与 984 项离线检查通过（失败、跳过均为 0）。原实现提交 `defc6e8` 保留。没有合并回 main。
+## 仍待验收
 
-整合邀请接口后，为避免标准部署默认附带其他云函数，给原部署脚本增加 `--only`：只允许已登记的 base/configured 函数，禁止与 `--include` 混用，拒绝重复、未知、迁移、诊断及危险维护函数；保留干净提交、main 祖先关系、AppID/环境匹配和逐函数 Active 核验。三函数部署预演只列出 `chatInterview`、`personalMemory`、`organizeMemory`。最终类型检查与 987 项离线检查通过（失败、跳过均为 0）；这不代表真实模型验收。
+- 在右侧完成腾讯云微信身份验证，保存恢复配置并逐函数核对。
+- 20 条真实模型结果由人逐条评审；Codex 判断不能代替人工硬门禁。
+- 真实手机复测基线原句；目前只在微信开发者工具模拟器完成。
+- 至少 3 个不同风格的真实测试账号评估倾向准确性。
+- 双账号、至少两台设备验证读取/纠正/忘记隔离。
+- 持续观察个人记忆页面打开率和确认/纠正点击率。
 
-## 当前等待与下一步
-
-1. 初次查询时「拾光 界面」「拾光 AI 图片生成：新想法与流程改造」「拾光发送功能：家人邀请与社交图文」均有活动任务；15:26 再读时只剩「拾光 界面」仍运行。已向用户请求允许发送协调消息，确认微信开发者工具与共享云环境的交接时机；在收到允许前不向其他任务发送消息。
-2. **用户已明确允许**复用 chatInterview 现有 TokenHub 密钥到同一环境 personalMemory 的 `PERSONAL_MEMORY_AI_API_KEY`。此授权保留，不要重复索取。尚未执行保存，等待共享环境交接；不在聊天、源码或日志记录值。
-3. 交接后重新检查干净提交、main 兼容性及云端源码，再用 `--only` 部署三个相应函数。核验访问规则、独立同意和模型额度后，按 20 条固定样本执行真实模型评价，并完成纠正、忘记与账号隔离流程。
-4. 本轮仍没有真实模型或真机验收结果，不将配置存在、Active 状态或离线通过数计入产品成功率。
+[机器可读状态](../acceptance/2026-09-27-conversation-intelligence-cloud-preflight.json)

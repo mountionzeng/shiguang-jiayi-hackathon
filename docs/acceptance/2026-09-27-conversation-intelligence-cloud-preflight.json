@@ -1,0 +1,99 @@
+{
+  "observedAt": "2026-09-27T11:34:55.604Z",
+  "environment": "cloud1-d5ghzk30ve609f544",
+  "appId": "wx86ae3e9d507ce52d",
+  "codeCommit": "2c886707d803726fe28908b3a90554a237bc6273",
+  "integratedMain": "f805c155d8e3fdb0fef693602959a35d06fb7b68",
+  "branch": "codex/conversation-intelligence-20260927",
+  "mergedIntoMain": false,
+  "pushed": false,
+  "functions": {
+    "chatInterview": {
+      "sourceCommit": "8f6fb7cbad4d35cf1ea32bf0dd7dab3fb288778d",
+      "businessSourceAndPackageVerified": true,
+      "serverReady": true,
+      "personalMemoryEnabled": true,
+      "model": "deepseek/deepseek-flash",
+      "baseUrl": "https://tokenhub.tencentmaas.com/v1",
+      "credentialConfigured": true,
+      "runtime": "Nodejs16.13"
+    },
+    "organizeMemory": {
+      "sourceCommit": "01dd7a295fb1675c42639aafa166597bf4e76464",
+      "businessSourceAndPackageVerified": true,
+      "serverReady": true,
+      "personalMemoryEnabled": true,
+      "model": "deepseek/deepseek-flash",
+      "baseUrl": "https://tokenhub.tencentmaas.com/v1",
+      "credentialConfigured": true,
+      "runtime": "Nodejs16.13"
+    },
+    "personalMemory": {
+      "sourceCommit": "26a0fd0bba2abf94141b975e8129482b3302c402",
+      "businessSourceAndPackageVerified": true,
+      "serverReady": true,
+      "personalMemoryEnabled": true,
+      "model": "deepseek/deepseek-flash",
+      "baseUrl": "https://tokenhub.tencentmaas.com/v1",
+      "credentialConfigured": true,
+      "runtime": "Nodejs16.13"
+    }
+  },
+  "flagRestore": {
+    "status": "awaiting_tencent_wechat_mfa",
+    "statement": "个人记忆的云端临时开关最后确认仍为开启；恢复关闭的保存操作被腾讯云微信身份验证拦住，尚未确认生效。"
+  },
+  "perUserMemory": {
+    "enabled": false,
+    "insights": [],
+    "verifiedUi": true
+  },
+  "personalMemoryCollections": {
+    "count": 5,
+    "exist": true,
+    "userIdIndexesVerified": true,
+    "clientProbes": {
+      "read": "denied -502003",
+      "update": "denied -502003",
+      "create": "denied -502003",
+      "recordsCreatedOrChanged": 0
+    },
+    "exactRuleText": "not retrieved; console rendered blank",
+    "dualAccountVerification": "pending"
+  },
+  "localVerification": {
+    "typecheck": "passed",
+    "passed": 992,
+    "failed": 0,
+    "skipped": 0
+  },
+  "preview": {
+    "sourceCommit": "2c886707d803726fe28908b3a90554a237bc6273",
+    "filesChecked": 183,
+    "clientGateRepo": false,
+    "clientGatePreview": true,
+    "mismatches": []
+  },
+  "realModelSummary": {
+    "successfulModelResponses": 20,
+    "total": 20,
+    "codexSemanticRelevant": 20,
+    "firstFiveUnrelatedFactQuestions": 0,
+    "recordOnlyAndPauseRespected": true,
+    "humanReview": "pending",
+    "latencyMedianMs": 7075.5,
+    "latencyMaxMs": 12518,
+    "tokenUsage": "响应 computeUsage 全为 null，不能推算实际 token 或费用。"
+  },
+  "credentialReuseAuthorization": "User authorized reuse; key saved after WeChat MFA and verified. No key values in code, outputs or logs.",
+  "preservedInvitationSource": "681c4811e4591bdde578ee412600fb57921aab87",
+  "qrIssued": false,
+  "pending": [
+    "在右侧完成腾讯云微信身份验证，保存恢复配置并逐函数核对。",
+    "20 条真实模型结果由人逐条评审；Codex 判断不能代替人工硬门禁。",
+    "真实手机复测基线原句；目前只在微信开发者工具模拟器完成。",
+    "至少 3 个不同风格的真实测试账号评估倾向准确性。",
+    "双账号、至少两台设备验证读取/纠正/忘记隔离。",
+    "持续观察个人记忆页面打开率和确认/纠正点击率。"
+  ]
+}
