@@ -26,6 +26,37 @@ test("explicit configured inclusion works", () => {
   assert.ok(planDeployment(manifest, ["userDataMigration"]).includes("userDataMigration"));
 });
 
+test("only selects the requested application functions without adding defaults", async () => {
+  const names = ["chatInterview", "personalMemory", "organizeMemory"];
+  assert.deepEqual(planDeployment(manifest, [], names), names);
+  assert.deepEqual(planDeployment(manifest, [], ["getOpenId"]), ["getOpenId"]);
+  const calls = [];
+  const result = await run(["--execute", "--env", "test-env", ...names.flatMap(name => ["--only", name])], {
+    rootDir: root,
+    inspectSource: () => ({ commit: "fixed", appId: "test-app" }),
+    runner: async (_command, args) => {
+      calls.push(args);
+      return { exitCode: 0, stdout: args[2] === "info" ? `${args.at(-1)} Active` : "accepted", stderr: "" };
+    },
+    stdout: { write() {} },
+  });
+  assert.deepEqual(result.names, names);
+  assert.deepEqual(calls[0].slice(calls[0].indexOf("--names") + 1), names);
+  assert.equal(calls.length, 4);
+});
+
+test("only selection fails closed on mixed, duplicate, unknown and operator targets", () => {
+  assert.throws(() => parseArgs(["--only", "chatInterview", "--include", "storyImages"]), /cannot be combined/);
+  assert.throws(() => parseArgs(["--only", "chatInterview", "--only", "chatInterview"]), /Duplicate/);
+  assert.throws(() => parseArgs(["--only"]), /missing/);
+  assert.throws(() => planDeployment(manifest, ["storyImages"], ["chatInterview"]), /cannot be combined/);
+  assert.throws(() => planDeployment(manifest, [], ["chatInterview", "chatInterview"]), /Duplicate/);
+  assert.throws(() => planDeployment(manifest, [], ["missing-function"]), /not registered/);
+  for (const name of ["ensureCloudCollections", "inspectFamilyData", "userDataMigration", "deleteDemoFamilyOnce"]) {
+    assert.throws(() => planDeployment(manifest, [], [name]), /separate manual workflow/);
+  }
+});
+
 test("dangerous maintenance inclusion is always refused", () => {
   assert.throws(() => planDeployment(manifest, ["deleteDemoFamilyOnce"]), /separate manual workflow/);
 });
