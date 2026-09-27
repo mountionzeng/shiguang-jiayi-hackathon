@@ -22,6 +22,9 @@ function databaseFixture(records) {
               if (!current) throw new Error("not found");
               records.set(key, { ...current, ...data });
             },
+            async set({ data }) {
+              records.set(`${name}:${id}`, { ...data });
+            },
           };
         },
       };
@@ -113,6 +116,43 @@ test("AI moderation checks every chunk and fails closed", async () => {
   const risky = { openapi: { security: { msgSecCheck: async () => ({ result: { suggest: "risky" } }) } } };
   await assert.rejects(() => guard.moderateText(risky, "openid-a", "不安全内容"), /暂时不能交给 AI/);
   await assert.rejects(() => guard.moderateText({}, "openid-a", "普通内容"), /检查暂时不可用/);
+});
+
+test("AI moderation reuses same-day hashed verdicts without storing the checked text", async () => {
+  for (const name of ["chatInterview", "generateBiography", "organizeMemory", "personalMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    const records = new Map();
+    const db = databaseFixture(records);
+    let passCalls = 0;
+    const passCloud = { openapi: { security: { msgSecCheck: async () => {
+      passCalls += 1;
+      return { result: { suggest: "pass" } };
+    } } } };
+
+    await deployedGuard.moderateText(passCloud, "openid-a", "重复的安全文本", "缓存标题", { db, nowMs: 1_800_000 });
+    await deployedGuard.moderateText(passCloud, "openid-a", "重复的安全文本", "缓存标题", { db, nowMs: 1_900_000 });
+    assert.equal(passCalls, 1, `${name} should not spend quota for the same same-day text twice`);
+    assert.doesNotMatch(JSON.stringify([...records]), /重复的安全文本|缓存标题|openid-a/);
+
+    await deployedGuard.moderateText(passCloud, "openid-a", "重复的安全文本", "缓存标题", { db, nowMs: 90_000_000 });
+    assert.equal(passCalls, 2, `${name} should re-check on a different China day`);
+
+    let riskyCalls = 0;
+    const riskyCloud = { openapi: { security: { msgSecCheck: async () => {
+      riskyCalls += 1;
+      return { result: { suggest: "risky" } };
+    } } } };
+    await assert.rejects(
+      () => deployedGuard.moderateText(riskyCloud, "openid-a", "重复的风险文本", "缓存标题", { db, nowMs: 2_000_000 }),
+      /暂时不能交给 AI/,
+    );
+    const failIfCalled = { openapi: { security: { msgSecCheck: async () => { throw new Error("should not call provider"); } } } };
+    await assert.rejects(
+      () => deployedGuard.moderateText(failIfCalled, "openid-a", "重复的风险文本", "缓存标题", { db, nowMs: 2_100_000 }),
+      /暂时不能交给 AI/,
+    );
+    assert.equal(riskyCalls, 1, `${name} should reuse same-day rejected verdicts`);
+  }
 });
 
 test("AI moderation checks content beyond 10,000 code points", async () => {

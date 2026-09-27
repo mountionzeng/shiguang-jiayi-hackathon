@@ -197,7 +197,7 @@ async function main(event, dependencies = {}) {
   const userMessage = buildUserMessage(event, memories);
   if (!dependencies.skipGuard) {
     assertConsentVersion(identity.account, AI_CONSENT_VERSION);
-    await moderateText(cloud, identity.openid, userMessage, "AI 书稿输入");
+    await moderateText(cloud, identity.openid, userMessage, "AI 书稿输入", { db, nowMs: dependencies.nowMs });
     await reserveAiRequest(db, identity, "generateBiography", dependencies.nowMs);
   }
 
@@ -241,7 +241,7 @@ async function main(event, dependencies = {}) {
   const content = payload?.choices?.[0]?.message?.content;
   const result = parseChapter(content, memories.length);
   if (!dependencies.skipGuard) {
-    await moderateText(cloud, identity.openid, [result.title, ...result.paragraphs].join("\n"), "AI 书稿输出");
+    await moderateText(cloud, identity.openid, [result.title, ...result.paragraphs].join("\n"), "AI 书稿输出", { db, nowMs: dependencies.nowMs });
     await assertIdentityStillActive(db, identity);
   }
   return { ...result, aiDisclosure: "文字 AI 生成", computeUsage: meter.snapshot() };

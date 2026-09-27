@@ -499,7 +499,7 @@ async function generateInviteCopy(event, options) {
   const { cloud, db, identity, apiKey, model, baseUrl, dependencies } = options;
   if (!dependencies.skipGuard) {
     assertConsentVersion(identity.account, AI_CONSENT_VERSION);
-    await moderateText(cloud, identity.openid, messages[1].content, "AI 邀请短笺输入");
+    await moderateText(cloud, identity.openid, messages[1].content, "AI 邀请短笺输入", { db, nowMs: dependencies.nowMs });
     await reserveAiRequest(db, identity, "inviteCopy", dependencies.nowMs);
   }
   const meter = createTextMeter({ db, identity, kind: "inviteCopy", model, baseUrl, fetcher: defaultFetch });
@@ -512,7 +512,7 @@ async function generateInviteCopy(event, options) {
     });
     const result = parseInviteCopy(content);
     if (!dependencies.skipGuard) {
-      await moderateText(cloud, identity.openid, `${result.headline}\n${result.message}`, "AI 邀请短笺回复");
+      await moderateText(cloud, identity.openid, `${result.headline}\n${result.message}`, "AI 邀请短笺回复", { db, nowMs: dependencies.nowMs });
       await assertIdentityStillActive(db, identity);
     }
     return { ...result, aiDisclosure: "文字 AI 生成", computeUsage: meter.snapshot() };
@@ -603,7 +603,7 @@ async function main(event, dependencies = {}) {
 
   if (!dependencies.skipGuard) {
     assertConsentVersion(identity.account, AI_CONSENT_VERSION);
-    await moderateText(cloud, identity.openid, messages[1].content, "AI 访谈输入");
+    await moderateText(cloud, identity.openid, messages[1].content, "AI 访谈输入", { db, nowMs: dependencies.nowMs });
     await reserveAiRequest(db, identity, "chatInterview", dependencies.nowMs);
   }
 
@@ -623,7 +623,7 @@ async function main(event, dependencies = {}) {
     });
     const result = parseInterviewPrompt(content, fallbackDimension);
     if (!dependencies.skipGuard) {
-      await moderateText(cloud, identity.openid, result.text, "AI 访谈回复");
+      await moderateText(cloud, identity.openid, result.text, "AI 访谈回复", { db, nowMs: dependencies.nowMs });
       await assertIdentityStillActive(db, identity);
     }
     if (personalContext) await commitContext(memoryRepo, identity, personalContext);

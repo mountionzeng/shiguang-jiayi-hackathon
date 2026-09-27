@@ -22,7 +22,7 @@ function createExtractor(db,cloud) {
     // Preserve the existing product's provider compliance gate.
     if (baseUrl !== 'https://tokenhub.tencentmaas.com/v1' || !apiKey || !model) throw new Error('AI_NOT_CONFIGURED');
     const userMessage = JSON.stringify({spokenText:source.text,candidates:candidates.map(({ref,category,text,origin,userConfirmed,conversationTendency,distinctSourceCount,evidenceExcerpts})=>({ref,category,text,origin,userConfirmed,conversationTendency,distinctSourceCount,evidenceExcerpts}))});
-    await moderateText(cloud,identity.openid,userMessage,'个人理解输入');
+    await moderateText(cloud,identity.openid,userMessage,'个人理解输入',{db});
     await reserveAiRequest(db,identity,'personalMemory');
     const controller = new AbortController();
     const timer = setTimeout(()=>controller.abort(),15000);
@@ -34,7 +34,7 @@ function createExtractor(db,cloud) {
       const payload = await response.json();
       const content = payload?.choices?.[0]?.message?.content;
       if (typeof content !== 'string' || content.length>8000) throw new Error('INVALID_MODEL_OUTPUT');
-      await moderateText(cloud,identity.openid,content,'个人理解输出');
+      await moderateText(cloud,identity.openid,content,'个人理解输出',{db});
       return JSON.parse(content);
     } finally {clearTimeout(timer);}
   };

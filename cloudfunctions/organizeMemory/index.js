@@ -214,7 +214,7 @@ async function main(event, dependencies = {}) {
 
   if (!dependencies.skipGuard) {
     assertConsentVersion(identity.account, AI_CONSENT_VERSION);
-    await moderateText(cloud, identity.openid, userMessage, "AI 记忆整理输入");
+    await moderateText(cloud, identity.openid, userMessage, "AI 记忆整理输入", { db, nowMs: dependencies.nowMs });
     await reserveAiRequest(db, identity, "organizeMemory", dependencies.nowMs);
   }
 
@@ -263,7 +263,7 @@ async function main(event, dependencies = {}) {
   const content = payload?.choices?.[0]?.message?.content;
   const result = parseOrganizedMemory(content, transcript, memoryType);
   if (!dependencies.skipGuard) {
-    await moderateText(cloud, identity.openid, [result.title, result.summary, result.body].join("\n"), "AI 记忆整理输出");
+    await moderateText(cloud, identity.openid, [result.title, result.summary, result.body].join("\n"), "AI 记忆整理输出", { db, nowMs: dependencies.nowMs });
     await assertIdentityStillActive(db, identity);
   }
   if (personalContext) await commitContext(memoryRepo, identity, personalContext);

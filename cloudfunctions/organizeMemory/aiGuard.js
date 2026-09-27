@@ -7,6 +7,7 @@ const FAMILY_ID = /^family_[0-9A-Za-z_-]{1,120}$/;
 const DEFAULT_DAILY_LIMIT = 60;
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 const MODERATION_CHUNK = 2_500;
+const MODERATION_CACHE_COLLECTION = "ai_moderation_checks";
 const AI_CONSENT_VERSION = 1;
 
 function aiError(code, message = code) { return Object.assign(new Error(message), { code }); }
@@ -79,18 +80,69 @@ async function reserveAiRequest(db, identity, kind, nowMs = Date.now()) {
       byKind: { ...byKind, [kind]: (Number(byKind[kind]) || 0) + 1 } } } });
   });
 }
-async function moderateText(cloud, openid, value, title) {
+function hashText(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
+function moderationCacheId(openid, dayKey, scene, chunk, title) {
+  return `mod_${hashText(["v1", openid, dayKey, scene, title || "", chunk].join("\0")).slice(0, 48)}`;
+}
+
+async function readModerationCache(db, cacheId, dayKey) {
+  if (!db || !cacheId) return "miss";
+  try {
+    const data = (await db.collection(MODERATION_CACHE_COLLECTION).doc(cacheId).get()).data;
+    if (!data || data.dayKey !== dayKey) return "miss";
+    if (data.status === "pass") return "pass";
+    if (data.status === "reject") return "reject";
+  } catch {}
+  return "miss";
+}
+
+async function writeModerationCache(db, cacheId, data) {
+  if (!db || !cacheId) return;
+  try {
+    const ref = db.collection(MODERATION_CACHE_COLLECTION).doc(cacheId);
+    if (typeof ref.set === "function") await ref.set({ data });
+    else if (typeof ref.update === "function") await ref.update({ data });
+  } catch {}
+}
+
+async function moderateText(cloud, openid, value, title, options = {}) {
   const content = Array.from(String(value || "").trim());
   if (!content.length) return;
   if (!cloud || !cloud.openapi || !cloud.openapi.security || typeof cloud.openapi.security.msgSecCheck !== "function") {
     throw aiError("AI_CONTENT_CHECK_UNAVAILABLE", "内容安全检查暂时不可用");
   }
+  const db = options && options.db;
+  const nowMs = Number.isSafeInteger(options && options.nowMs) ? options.nowMs : Date.now();
+  const dayKey = chinaDayKey(nowMs);
   for (let offset = 0; offset < content.length; offset += MODERATION_CHUNK) {
+    const chunk = content.slice(offset, offset + MODERATION_CHUNK).join("");
+    const safeTitle = offset === 0 && title ? Array.from(String(title)).slice(0, 100).join("") : "";
+    const cacheId = db ? moderationCacheId(openid, dayKey, 4, chunk, safeTitle) : "";
+    const cached = await readModerationCache(db, cacheId, dayKey);
+    if (cached === "pass") continue;
+    if (cached === "reject") throw aiError("AI_CONTENT_REJECTED", "这段内容暂时不能交给 AI 处理");
     try {
-      const response = await cloud.openapi.security.msgSecCheck({ content: content.slice(offset, offset + MODERATION_CHUNK).join(""),
-        version: 2, scene: 4, openid,
-        ...(offset === 0 && title ? { title: Array.from(String(title)).slice(0, 100).join("") } : {}) });
-      if (response && response.result && response.result.suggest === "pass") continue;
+      const response = await cloud.openapi.security.msgSecCheck({
+        content: chunk,
+        version: 2,
+        scene: 4,
+        openid,
+        ...(safeTitle ? { title: safeTitle } : {}),
+      });
+      const result = response && response.result ? response.result : {};
+      if (result.suggest === "pass") {
+        await writeModerationCache(db, cacheId, { dayKey, status: "pass", suggest: "pass", checkedAtMs: nowMs });
+        continue;
+      }
+      await writeModerationCache(db, cacheId, {
+        dayKey,
+        status: "reject",
+        suggest: String(result.suggest || "review").slice(0, 24),
+        checkedAtMs: nowMs,
+      });
       throw aiError("AI_CONTENT_REJECTED", "这段内容暂时不能交给 AI 处理");
     } catch (error) {
       if (error && error.code === "AI_CONTENT_REJECTED") throw error;
