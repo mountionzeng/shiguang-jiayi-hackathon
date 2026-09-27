@@ -10,6 +10,13 @@ function timed<T>(run: (resolve: (value: T) => void, reject: (error: unknown) =>
     run(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
   });
 }
+function drawImageCover(ctx: any, image: any,
+  imageWidth: number, imageHeight: number, x: number, y: number, width: number, height: number) {
+  const scale = Math.max(width / imageWidth, height / imageHeight);
+  const sourceWidth = width / scale, sourceHeight = height / scale;
+  ctx.drawImage(image, (imageWidth - sourceWidth) / 2, (imageHeight - sourceHeight) / 2,
+    sourceWidth, sourceHeight, x, y, width, height);
+}
 export async function renderBookImages(material: BookExportMaterial, mode: ImageLayoutMode, fontSize: ImageFontSize,
   page: WechatMiniprogram.Page.TrivialInstance, isActive: () => boolean, progress: (done: number, total: number) => void): Promise<string[]> {
   const assertActive = () => { if (!isActive()) throw new Error('已停止本次图片生成'); };
@@ -54,8 +61,12 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
         ctx.fillStyle = '#2a2e2b'; ctx.font = 42 + 'px sans-serif';
         titleLines.forEach((line, i) => ctx.fillText(line.text, 60, 80 + i * 58));
         const top = 100 + titleLines.length * 58, available = height - top - 130;
-        const scale = Math.min(TEXT_WIDTH / cover.width, available / cover.height);
-        ctx.drawImage(coverImage, (IMAGE_WIDTH - cover.width * scale) / 2, top, cover.width * scale, cover.height * scale);
+        if (material.coverUrl) {
+          drawImageCover(ctx, coverImage, cover.width, cover.height, 60, top, TEXT_WIDTH, available);
+        } else {
+          const scale = Math.min(TEXT_WIDTH / cover.width, available / cover.height);
+          ctx.drawImage(coverImage, (IMAGE_WIDTH - cover.width * scale) / 2, top, cover.width * scale, cover.height * scale);
+        }
       } else {
         ctx.fillStyle = '#6a6e68'; ctx.font = 24 + 'px sans-serif';
         headerLines.forEach((line, i) => ctx.fillText(line.text, 60, 66 + i * 34));

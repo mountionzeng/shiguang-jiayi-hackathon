@@ -53,7 +53,7 @@
           <image
             class="ancient-book-art {{coverUrl ? 'custom-book-art' : ''}}"
             src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}"
-            mode="aspectFit"
+            mode="{{coverUrl ? 'aspectFill' : 'aspectFit'}}"
             aria-hidden="true"
           ></image>
           <view class="book-cover-copy">
