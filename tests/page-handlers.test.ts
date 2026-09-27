@@ -2220,6 +2220,23 @@ test("personal memory is reachable from Me, forget waits for success, and failed
   assert.deepEqual(page.data.insights, []); assert.equal(page.data.busy, false);
 });
 
+test("personal memory consent uses modal buttons within WeChat's four-character limit", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const dialogs: WechatMiniprogram.ShowModalOption[] = [];
+  wx.showModal = ((options: WechatMiniprogram.ShowModalOption) => { dialogs.push(options); }) as typeof wx.showModal;
+  const page = instantiate(await pageDefinition("personal-memory"));
+  page.setData({ loading: false, enabled: false });
+  callPage(page, "toggleEnabled");
+  page.setData({ enabled: true });
+  callPage(page, "toggleEnabled");
+  assert.equal(dialogs.length, 2);
+  for (const dialog of dialogs) {
+    assert.ok(Array.from(dialog.confirmText || "确定").length <= 4, dialog.confirmText);
+    assert.ok(Array.from(dialog.cancelText || "取消").length <= 4, dialog.cancelText);
+  }
+  assert.match(dialogs[0].content || "", /本人原话.*在线 AI/);
+});
+
 test("saved-memory learning is nonblocking, sends only an id and respects local consent denial", async context => {
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
   const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");

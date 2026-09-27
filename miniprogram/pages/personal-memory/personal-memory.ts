@@ -18,7 +18,7 @@ Page({
     const enabled = !this.data.enabled;
     wx.showModal({title:enabled ? '让小忆记住你的讲述？' : '暂停小忆的记忆？',
       content:enabled ? '你今后保存的本人原话会交给在线 AI 提炼少量个人背景，并用于以后的个人访谈和文字整理。此过程可能产生模型调用费用。不把家人或作品人物当作你；敏感理解不主动提及。你可以逐条忘记，原故事仍保留。' : '暂停后不再提炼或使用个人背景；已有理解仍可查看和忘记。',
-      confirmText:enabled ? '同意并开启' : '暂停',success:result=>{if(result.confirm)void this.confirmEnabled(enabled);}});
+      confirmText:enabled ? '同意开启' : '暂停',success:result=>{if(result.confirm)void this.confirmEnabled(enabled);}});
   },
   async confirmEnabled(enabled: boolean) {
     if (this.data.busy) return;
