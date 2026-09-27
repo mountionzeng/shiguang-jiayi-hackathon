@@ -103,9 +103,16 @@ function createMemoryService(repo, {extract, now = Date.now} = {}) {
       for (const [index,item] of candidateInsights.entries()) {
         const evidence = await validInsightEvidence(repo,identity,item,snapshot.evidence,{records:sourceRecords,sources:sourceCache});
         if (!evidence.length) continue;
+        const seenMemories = new Set(), seenFingerprints = new Set(), evidenceExcerpts = [];
+        for (const reference of [...evidence].reverse()) {
+          if (reference.kind==='user_correction' || seenMemories.has(reference.memoryId) || seenFingerprints.has(reference.fingerprint)) continue;
+          seenMemories.add(reference.memoryId); seenFingerprints.add(reference.fingerprint);
+          evidenceExcerpts.unshift(reference.excerpt);
+          if (evidenceExcerpts.length===3) break;
+        }
         candidates.push({ref:'C'+(index+1),lineageKey:item.lineageKey,category:item.category,text:item.text,
           origin:item.origin,userConfirmed:Boolean(item.confirmedAt || item.correctionEvidenceId),
-          conversationTendency:item.conversationTendency===true,distinctSourceCount:distinctTellingCount(evidence)});
+          conversationTendency:item.conversationTendency===true,distinctSourceCount:distinctTellingCount(evidence),evidenceExcerpts});
       }
       const changes = parseExtraction(await extract(source,candidates,identity),candidates);
       const latestSource = await repo.source(identity,event.memoryId);
@@ -138,12 +145,18 @@ function createMemoryService(repo, {extract, now = Date.now} = {}) {
           const correctionEvidenceId = reinforce && previous.correctionEvidenceId;
           const evidenceIds = correctionEvidenceId ? [correctionEvidenceId,...allEvidenceIds.filter(id=>id!==correctionEvidenceId).slice(-19)] : allEvidenceIds.slice(-20);
           const conversationTendency = change.conversationTendency===true || (reinforce && previous.conversationTendency===true);
+          // A new independent telling may change the assessment of a tentative
+          // tendency. Re-saving, copying or expanding one telling cannot do so.
+          const independentSource = !snapshot.evidence.some(item=>item.lineageKeys?.includes(lineageKey) &&
+            (item.memoryId===source.memoryId || item.fingerprint===source.fingerprint));
+          const reassessConfidence = reinforce && conversationTendency && change.action==='reinforce' && independentSource &&
+            !previous.confirmedAt && !previous.correctionEvidenceId;
           await tx.set(TABLES.insights,id,{...(reinforce ? previous : {}),userId:identity.accountId,lineageKey,status:'active',category:reinforce?previous.category:change.category,
             text:reinforce?previous.text:change.text,origin:reinforce?previous.origin:change.origin,
             conversationTendency:Boolean(conversationTendency),
             projectScoped:change.projectScoped || Boolean(previous?.projectScoped),
             allowProactiveMention:change.allowProactiveMention && previous?.allowProactiveMention!==false,
-            confidence:reinforce ? previous.confidence : change.confidence,evidenceIds,revision:(previous?.revision || 0)+1,updatedAt:new Date(now()).toISOString(),
+            confidence:reinforce && !reassessConfidence ? previous.confidence : change.confidence,evidenceIds,revision:(previous?.revision || 0)+1,updatedAt:new Date(now()).toISOString(),
             ...(previous?.lastMentionedAt ? {lastMentionedAt:previous.lastMentionedAt} : {})});
         }
         const {text,...evidence} = source;

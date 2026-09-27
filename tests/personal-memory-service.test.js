@@ -55,10 +55,10 @@ test('one inferred conversation tendency from one telling is neither displayed n
   const context=await prepareContext(f.repo,identity);
   assert.deepEqual(context.promptContext,[]);
 });
-test('a tendency becomes visible after three distinct telling records without confidence inflation',async()=>{
+test('new independent telling content can reassess a tentative tendency after three sources',async()=>{
   const f=fixture(async(source,candidates)=>({statementType:'inferred_behavior',insights:[{
     matchLineage:candidates[0]?.ref || null,isContradiction:false,category:'preference',conversationTendency:true,text:'更愿意从自己的感受讲起。',
-    projectScoped:false,confidence:source.memoryId==='m1'?0.8:0.99,sensitive:false}]}));
+    projectScoped:false,confidence:source.memoryId==='m1'?0.4:0.8,sensitive:false}]}));
   await f.enable();await f.service(identity,{action:'extract',memoryId:'m1'});
   const source2={...f.source,memoryId:'m2',sourceDocId:'family_alice_m2',text:'讲到这件事时，我总会先说心里的感受。',fingerprint:digest('讲到这件事时，我总会先说心里的感受。'),evidenceId:'e2',occurredOn:'2026-09-02'};
   const source3={...f.source,memoryId:'m3',sourceDocId:'family_alice_m3',text:'我想先说说那时自己心里怎么想。',fingerprint:digest('我想先说说那时自己心里怎么想。'),evidenceId:'e3',occurredOn:'2026-09-03'};
@@ -73,6 +73,29 @@ test('a tendency becomes visible after three distinct telling records without co
   assert.equal(listed[0].evidence.length,3);
   const stored=[...f.tables.entries()].find(([key,value])=>key.startsWith(TABLES.insights+':')&&value.status==='active')[1];
   assert.equal(stored.confidence,0.8);
+});
+test('copied tellings and edits of the same source cannot increase tendency confidence',async()=>{
+  let confidence=0.4;
+  const f=fixture(async(_source,candidates)=>response({conversationTendency:true,confidence,matchLineage:candidates[0]?.ref || null}));
+  await f.enable();await f.service(identity,{action:'extract',memoryId:'m1'});
+  const original=[...f.tables.values()].find(item=>item.status==='active');
+  const key=TABLES.insights+':alice_'+original.lineageKey;
+  confidence=0.99;
+  f.addSource('m2',f.source.text);await f.service(identity,{action:'extract',memoryId:'m2'});
+  assert.equal(f.tables.get(key).confidence,0.4);
+  f.addSource('m1',f.source.text+'我详细补充了同一次经历。');await f.service(identity,{action:'extract',memoryId:'m1'});
+  assert.equal(f.tables.get(key).confidence,0.4);
+  assert.deepEqual((await f.service(identity,{action:'list'})).insights,[]);
+});
+test('tendency reassessment receives only distinct currently valid source excerpts',async()=>{
+  let observed;
+  const f=fixture(async(_source,candidates)=>{observed=candidates;return response({conversationTendency:true,matchLineage:candidates[0]?.ref || null});});
+  await f.enable();await f.service(identity,{action:'extract',memoryId:'m1'});
+  f.addSource('m2','今天回想画画时，我先想谈心里的感受。');await f.service(identity,{action:'extract',memoryId:'m2'});
+  assert.deepEqual(observed[0].evidenceExcerpts,[f.source.text]);
+  f.tables.get('memories:family_alice_m1').deletedAt='2026-09-22';
+  f.addSource('m3','另一天，我想先谈读书时的踏实。');await f.service(identity,{action:'extract',memoryId:'m3'});
+  assert.deepEqual(observed[0].evidenceExcerpts,['今天回想画画时，我先想谈心里的感受。']);
 });
 test('a user correction becomes the active tendency with its own fingerprinted evidence',async()=>{
   const f=fixture(async()=>response({conversationTendency:true}));await f.enable();await f.service(identity,{action:'extract',memoryId:'m1'});
