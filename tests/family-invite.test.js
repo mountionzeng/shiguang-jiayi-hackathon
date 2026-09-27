@@ -143,11 +143,23 @@ test("自定义邀请文字通过内容安全检测后才会保存", () => {
     source.indexOf("async function createInviteCode"),
   );
 
-  assert.match(createBody, /passesContentSecurity\(input\.message, "亲友邀请"\)/);
+  assert.match(createBody, /passesContentSecurity\(input\.message, "亲友邀请", openid\)/);
   assert.ok(
     createBody.indexOf("passesContentSecurity(input.message") <
       createBody.indexOf('.collection("family_invitations")'),
   );
+});
+
+test("亲友邀请把服务端确认的微信身份传给内容安全检测", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../cloudfunctions/familyInvite/index.js"),
+    "utf8",
+  );
+
+  assert.match(source, /const \{ accountId, openid \} = identity\(\)/);
+  assert.match(source, /createInvite\(event, accountId, openid\)/);
+  assert.match(source, /passesContentSecurity\(input\.message, "亲友邀请", openid\)/);
+  assert.match(source, /data:\s*\{ content, title, openid \}/);
 });
 
 test("被邀请人看不到其他亲友姓名，主人仍能看到完整名单", () => {
@@ -211,7 +223,7 @@ test("提交进主人待确认列表前先过内容安全检测，不通过就�
     source.indexOf("async function main"),
   );
 
-  assert.match(submitBody, /passesContentSecurity\(input\.text, input\.title\)/);
+  assert.match(submitBody, /passesContentSecurity\(input\.text, input\.title, openid\)/);
   // 检测必须发生在写入 memories / source_records 之前。
   assert.ok(
     submitBody.indexOf("passesContentSecurity(input.text") <

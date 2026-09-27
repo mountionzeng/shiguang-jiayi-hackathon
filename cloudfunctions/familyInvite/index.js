@@ -73,7 +73,7 @@ async function loadAll(collectionName, familyId) {
   }
 }
 
-async function createInvite(event, accountId) {
+async function createInvite(event, accountId, openid) {
   const account = await requireAccount(accountId);
   if (!account.displayName) throw new Error("请先在“我的”里设置称呼");
   const input = normalizeInviteInput(event);
@@ -89,7 +89,7 @@ async function createInvite(event, accountId) {
       data: { ownerAccountId: accountId, updatedAt: db.serverDate() },
     });
   }
-  if (!(await passesContentSecurity(input.message, "亲友邀请"))) {
+  if (!(await passesContentSecurity(input.message, "亲友邀请", openid))) {
     throw new Error("邀请文字没有通过内容安全检测，请修改后重试");
   }
 
@@ -337,15 +337,15 @@ async function listRooms(accountId) {
 }
 
 /**
- * 内容安全检测：调用 contentSecurityCheck 云函数（云函数之间调用会透传原始用户的
- * OPENID，不需要单独传递）。检测没通过、或者调用失败（网络、配额等）一律按未通过
- * 处理——这段提交在进入主人的待确认列表之前就被拒绝，不写进数据库。
+ * 内容安全检测：把当前云函数从微信上下文确认的 OPENID 显式传给
+ * contentSecurityCheck，避免嵌套云函数调用丢失原始身份。检测没通过、或者调用失败
+ * （网络、配额等）一律按未通过处理，不把内容写进数据库。
  */
-async function passesContentSecurity(content, title) {
+async function passesContentSecurity(content, title, openid) {
   try {
     const response = await cloud.callFunction({
       name: "contentSecurityCheck",
-      data: { content, title },
+      data: { content, title, openid },
     });
     return Boolean(response && response.result && response.result.ok);
   } catch (error) {
@@ -354,14 +354,14 @@ async function passesContentSecurity(content, title) {
   }
 }
 
-async function submitContribution(event, accountId) {
+async function submitContribution(event, accountId, openid) {
   const familyId = String(event.familyId || "").trim();
   const access = await requireFamilyAccess(familyId, accountId);
   if (access.role === "owner") throw new Error("请从自己的首页记录故事");
   const member = await getDoc("family_members", `${familyId}_${access.memberId}`);
   if (!member || member.accountId !== accountId) throw new Error("成员身份已失效，请重新接受邀请");
   const input = normalizeContributionInput(event);
-  if (!(await passesContentSecurity(input.text, input.title))) {
+  if (!(await passesContentSecurity(input.text, input.title, openid))) {
     throw new Error("这段内容没有通过内容安全检测，请修改后重试");
   }
   // Namespace client-generated ids by the authenticated member. A contributor
@@ -416,15 +416,15 @@ async function submitContribution(event, accountId) {
 }
 
 async function main(event = {}) {
-  const { accountId } = identity();
+  const { accountId, openid } = identity();
   switch (event.action) {
-    case "create": return createInvite(event, accountId);
+    case "create": return createInvite(event, accountId, openid);
     case "code": return createInviteCode(event, accountId);
     case "get": return getInvite(event, accountId);
     case "accept": return acceptInvite(event, accountId);
     case "loadRoom": return loadRoom(event, accountId);
     case "listRooms": return listRooms(accountId);
-    case "submitContribution": return submitContribution(event, accountId);
+    case "submitContribution": return submitContribution(event, accountId, openid);
     default: throw new Error("UNKNOWN_INVITE_ACTION");
   }
 }
