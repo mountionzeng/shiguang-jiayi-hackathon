@@ -1252,9 +1252,12 @@ test("书稿里带底图的章节在正文区下方显示底图，没有底图�
   assert.ok(listCalls >= 1);
 
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
-  assert.match(markup, /<image wx:if="\{\{backdropUrl\}\}" class="chapter-backdrop"/);
+  assert.match(markup, /<block wx:if="\{\{backdropUrl\}\}">[\s\S]*class="chapter-edge-ornament chapter-edge-ornament-left"/);
+  assert.match(markup, /class="chapter-backdrop"[\s\S]*mode="aspectFit"/);
   const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");
-  assert.match(styles, /\.keyboard-open \.chapter-backdrop \{ display: none; \}/);
+  assert.match(styles, /\.chapter-backdrop[^{]*{[^}]*height: 34%/);
+  assert.doesNotMatch(styles, /\.chapter-backdrop[^{]*{[^}]*mask-image/);
+  assert.match(styles, /\.keyboard-open \.chapter-backdrop,\s*\.keyboard-open \.chapter-edge-ornament \{ display: none; \}/);
 
   const plainEnv = installWx({}, stateWithBook());
   plainEnv.setApp(false);
