@@ -931,3 +931,27 @@ test("interview prompt distinguishes a feeling pivot from an explicit goodbye", 
   assert.match(messages[1].content, /以前搬家总紧张/);
   assert.match(messages[1].content, /我和外婆坐在院子里听雨/);
 });
+
+test("interview follow-up checks the question's meaning rather than echoed words", () => {
+  for (const memoryType of ["note", "memoir"]) {
+    const answer = "嗯，就是那种终于不用赶着去哪里的感觉。";
+    const messages = chatInterviewTest.buildOutputMessages({
+      answer,
+      history: [{ role: "assistant", text: "刚才说的踏实，对你更像是什么感觉？" }],
+      lastDimension: "feeling",
+      mode: "personal",
+      memoryType,
+      memberName: "测试讲述者",
+    });
+    const rules = messages[0].content;
+    assert.match(rules, /检查实际问句/);
+    assert.match(rules, /只在开头复述原词不算贴合/);
+    assert.match(rules, /否定、比喻或感受描述中的地点、时间、动作词/);
+    assert.match(rules, /同一感受可以连续聊/);
+    assert.match(rules, /已经说清的感受定义不换词重问/);
+    assert.match(rules, /只有用户主动转向具体经历或明确想谈细节/);
+    assert.doesNotMatch(rules, /你最想把这段时间留给什么/);
+    assert.match(messages[1].content, /上一轮是感受，可以继续同一方向/);
+    assert.ok(messages[1].content.includes(answer));
+  }
+});
