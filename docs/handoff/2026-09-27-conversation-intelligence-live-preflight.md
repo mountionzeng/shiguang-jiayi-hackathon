@@ -17,8 +17,8 @@
 - 用户允许复用的 TokenHub 密钥已保存到 personalMemory，且在扫码后核对成功；未写入代码、交接文档或日志。
 - 模型地址 https://tokenhub.tencentmaas.com/v1；模型 deepseek/deepseek-flash。
 - 验收期间三个函数的 AI_SERVER_RELEASE_READY 和 PERSONAL_MEMORY_ENABLED 均为 true。
-- 个人记忆的云端临时开关最后确认仍为开启；恢复关闭的保存操作被腾讯云微信身份验证拦住，尚未确认生效；电脑已锁屏，需用户解锁后扫码。
-- 拟恢复：三个 PERSONAL_MEMORY_ENABLED=false；personalMemory 的 AI_SERVER_RELEASE_READY=false；chatInterview / organizeMemory 原有服务端文字 AI 开关保持 true。
+- 个人记忆的云端临时开关已恢复关闭。
+- 恢复后 chatInterview / organizeMemory 保持原有 AI_SERVER_RELEASE_READY=true；personalMemory 恢复 AI_SERVER_RELEASE_READY=false；三个 PERSONAL_MEMORY_ENABLED=false。
 - 当前测试账号已通过界面暂停个人记忆，理解列表为空。
 
 ## 数据与权限
@@ -30,7 +30,6 @@
 
 ## 仍待验收
 
-- 解锁 Mac，并在右侧完成腾讯云微信身份验证，保存恢复配置并逐函数核对。
 - 20 条真实模型结果由人逐条评审；Codex 判断不能代替人工硬门禁。
 - 真实手机复测基线原句；目前只在微信开发者工具模拟器完成。
 - 至少 3 个不同风格的真实测试账号评估倾向准确性。

@@ -1,5 +1,5 @@
 {
-  "observedAt": "2026-09-27T11:38:17.419Z",
+  "observedAt": "2026-09-27T12:28:05.390Z",
   "environment": "cloud1-d5ghzk30ve609f544",
   "appId": "wx86ae3e9d507ce52d",
   "codeCommit": "2c886707d803726fe28908b3a90554a237bc6273",
@@ -12,7 +12,7 @@
       "sourceCommit": "8f6fb7cbad4d35cf1ea32bf0dd7dab3fb288778d",
       "businessSourceAndPackageVerified": true,
       "serverReady": true,
-      "personalMemoryEnabled": true,
+      "personalMemoryEnabled": false,
       "model": "deepseek/deepseek-flash",
       "baseUrl": "https://tokenhub.tencentmaas.com/v1",
       "credentialConfigured": true,
@@ -22,7 +22,7 @@
       "sourceCommit": "01dd7a295fb1675c42639aafa166597bf4e76464",
       "businessSourceAndPackageVerified": true,
       "serverReady": true,
-      "personalMemoryEnabled": true,
+      "personalMemoryEnabled": false,
       "model": "deepseek/deepseek-flash",
       "baseUrl": "https://tokenhub.tencentmaas.com/v1",
       "credentialConfigured": true,
@@ -31,8 +31,8 @@
     "personalMemory": {
       "sourceCommit": "26a0fd0bba2abf94141b975e8129482b3302c402",
       "businessSourceAndPackageVerified": true,
-      "serverReady": true,
-      "personalMemoryEnabled": true,
+      "serverReady": false,
+      "personalMemoryEnabled": false,
       "model": "deepseek/deepseek-flash",
       "baseUrl": "https://tokenhub.tencentmaas.com/v1",
       "credentialConfigured": true,
@@ -40,8 +40,29 @@
     }
   },
   "flagRestore": {
-    "status": "awaiting_tencent_wechat_mfa",
-    "statement": "个人记忆的云端临时开关最后确认仍为开启；恢复关闭的保存操作被腾讯云微信身份验证拦住，尚未确认生效；电脑已锁屏，需用户解锁后扫码。"
+    "status": "verified",
+    "statement": "个人记忆的云端临时开关已恢复关闭。",
+    "verification": {
+      "environment": "cloud1-d5ghzk30ve609f544",
+      "verificationMethod": "Tencent Cloud saved configuration view after WeChat MFA",
+      "functions": {
+        "organizeMemory": {
+          "verifiedAt": "2026-09-27T12:18:39.793Z",
+          "AI_SERVER_RELEASE_READY": true,
+          "PERSONAL_MEMORY_ENABLED": false
+        },
+        "chatInterview": {
+          "verifiedAt": "2026-09-27T12:22:48.902Z",
+          "AI_SERVER_RELEASE_READY": true,
+          "PERSONAL_MEMORY_ENABLED": false
+        },
+        "personalMemory": {
+          "verifiedAt": "2026-09-27T12:27:34.283Z",
+          "AI_SERVER_RELEASE_READY": false,
+          "PERSONAL_MEMORY_ENABLED": false
+        }
+      }
+    }
   },
   "perUserMemory": {
     "enabled": false,
@@ -89,7 +110,6 @@
   "preservedInvitationSource": "681c4811e4591bdde578ee412600fb57921aab87",
   "qrIssued": false,
   "pending": [
-    "解锁 Mac，并在右侧完成腾讯云微信身份验证，保存恢复配置并逐函数核对。",
     "20 条真实模型结果由人逐条评审；Codex 判断不能代替人工硬门禁。",
     "真实手机复测基线原句；目前只在微信开发者工具模拟器完成。",
     "至少 3 个不同风格的真实测试账号评估倾向准确性。",
