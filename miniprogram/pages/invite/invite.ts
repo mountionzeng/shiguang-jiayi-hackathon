@@ -55,6 +55,7 @@ Page({
     relation: "",
     message: "",
     messageLength: 0,
+    messageEdited: false,
     copyIndex: 0,
     illustrationStyle: "branch" as InviteCardStyleId,
     styleOptions: INVITE_CARD_STYLES,
@@ -99,10 +100,11 @@ Page({
       return;
     }
     const generated = nextInvitationCopy(inviteeName, relation, 0);
-    const message = this.data.message || generated.message;
+    const message = this.data.messageEdited ? this.data.message : generated.message;
     this.setData({
       inviteeName, relation, message,
       messageLength: invitationMessageLength(message),
+      messageEdited: this.data.messageEdited,
       copyIndex: generated.index,
       step: "words",
       errorMessage: "",
@@ -118,13 +120,14 @@ Page({
     this.setData({
       message: generated.message,
       messageLength: invitationMessageLength(generated.message),
+      messageEdited: false,
       copyIndex: generated.index,
     });
   },
 
   onMessageInput(event: WechatMiniprogram.Input) {
     const message = event.detail.value;
-    this.setData({ message, messageLength: invitationMessageLength(message) });
+    this.setData({ message, messageLength: invitationMessageLength(message), messageEdited: true });
   },
 
   continueToArt() {

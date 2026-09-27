@@ -243,6 +243,37 @@ test("the invitation creator moves through recipient, editable copy, and illustr
   assert.equal(page.data.illustrationStyle, "nest");
 });
 
+test("automatic invitation copy follows a changed recipient", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("invite"));
+  page.setData({ inviteeName: "妈", relation: "母女" });
+  callPage(page, "continueToWords");
+  assert.match(String(page.data.message), /妈/);
+
+  callPage(page, "previousStep");
+  page.setData({ inviteeName: "小岚", relation: "老朋友" });
+  callPage(page, "continueToWords");
+
+  assert.match(String(page.data.message), /小岚/);
+  assert.doesNotMatch(String(page.data.message), /妈/);
+});
+
+test("handwritten invitation copy survives a changed recipient", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("invite"));
+  page.setData({ inviteeName: "妈", relation: "母女" });
+  callPage(page, "continueToWords");
+  callPage(page, "onMessageInput", { detail: { value: "这是我自己写的邀请。" } });
+
+  callPage(page, "previousStep");
+  page.setData({ inviteeName: "小岚", relation: "老朋友" });
+  callPage(page, "continueToWords");
+
+  assert.equal(page.data.message, "这是我自己写的邀请。");
+});
+
 test("an invitation poster can be saved to the photo album after it is rendered", async context => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
