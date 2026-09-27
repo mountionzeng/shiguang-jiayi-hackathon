@@ -443,6 +443,84 @@ async function requestChatCompletion({ baseUrl, apiKey, model, messages, tempera
   throw new Error("EMPTY_MODEL_OUTPUT");
 }
 
+function boundedInviteText(value, label, min, max) {
+  const text = Array.from(String(value || "").trim().replace(/\s+/g, " "));
+  if (text.length < min || text.length > max) throw new Error(`INVITE_COPY_INVALID_${label}`);
+  return text.join("");
+}
+
+function inviteCopyInput(event) {
+  return {
+    inviteeName: boundedInviteText(event?.inviteeName, "INVITEE", 1, 8),
+    relation: boundedInviteText(event?.relation, "RELATION", 1, 12),
+    currentHeadline: Array.from(String(event?.currentHeadline || "").trim()).slice(0, 16).join(""),
+    currentMessage: Array.from(String(event?.currentMessage || "").trim()).slice(0, 48).join(""),
+  };
+}
+
+function buildInviteCopyMessages(input) {
+  return [
+    {
+      role: "system",
+      content: "你为家庭记忆小程序写一张克制、温暖的中文邀请短笺。只输出 JSON：{\"headline\":\"标题\",\"message\":\"正文\"}。headline 必须 2—16 个字，message 必须 4—48 个字。少写、具体、自然，避免叠字和重复用词，不使用引号、口号、说明文字或虚构经历。",
+    },
+    {
+      role: "user",
+      content: [
+        `对方称呼：${input.inviteeName}`,
+        `关系：${input.relation}`,
+        input.currentHeadline ? `当前标题（可重写）：${input.currentHeadline}` : "",
+        input.currentMessage ? `当前正文（可重写）：${input.currentMessage}` : "",
+        "请写一个更简短的新版本。",
+      ].filter(Boolean).join("\n"),
+    },
+  ];
+}
+
+function parseInviteCopy(value) {
+  const raw = String(value || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  try {
+    if (start < 0 || end <= start) throw new Error("missing json");
+    const parsed = JSON.parse(raw.slice(start, end + 1));
+    return {
+      headline: boundedInviteText(parsed.headline, "HEADLINE", 2, 16),
+      message: boundedInviteText(parsed.message, "MESSAGE", 4, 48),
+    };
+  } catch {
+    throw new Error("INVITE_COPY_INVALID");
+  }
+}
+
+async function generateInviteCopy(event, options) {
+  const input = inviteCopyInput(event);
+  const messages = buildInviteCopyMessages(input);
+  const { cloud, db, identity, apiKey, model, baseUrl, dependencies } = options;
+  if (!dependencies.skipGuard) {
+    assertConsentVersion(identity.account, AI_CONSENT_VERSION);
+    await moderateText(cloud, identity.openid, messages[1].content, "AI 邀请短笺输入");
+    await reserveAiRequest(db, identity, "inviteCopy", dependencies.nowMs);
+  }
+  const meter = createTextMeter({ db, identity, kind: "inviteCopy", model, baseUrl, fetcher: defaultFetch });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const content = await requestChatCompletion({
+      baseUrl, apiKey, model, messages, temperature: 0.5,
+      signal: controller.signal, fetcher: meter.fetch,
+    });
+    const result = parseInviteCopy(content);
+    if (!dependencies.skipGuard) {
+      await moderateText(cloud, identity.openid, `${result.headline}\n${result.message}`, "AI 邀请短笺回复");
+      await assertIdentityStillActive(db, identity);
+    }
+    return { ...result, aiDisclosure: "文字 AI 生成", computeUsage: meter.snapshot() };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function main(event, dependencies = {}) {
   const apiKey = process.env.CHAT_AI_API_KEY || process.env.AI_API_KEY;
   const model = process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
@@ -478,6 +556,10 @@ async function main(event, dependencies = {}) {
     if (cloud.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
     db = db || cloud.database();
     identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
+  }
+
+  if (event?.action === "inviteCopy") {
+    return generateInviteCopy(event, { cloud, db, identity, apiKey, model, baseUrl, dependencies });
   }
 
   const answer = sanitizeText(event.answer, 500);
@@ -569,5 +651,8 @@ module.exports = {
     validateMemoryType,
     validatePreviousAnswers,
     loadStoryContext,
+    buildInviteCopyMessages,
+    parseInviteCopy,
+    inviteCopyInput,
   },
 };
