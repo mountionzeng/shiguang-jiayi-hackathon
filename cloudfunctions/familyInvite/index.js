@@ -337,17 +337,20 @@ async function listRooms(accountId) {
 }
 
 /**
- * 内容安全检测：把当前云函数从微信上下文确认的 OPENID 显式传给
- * contentSecurityCheck，避免嵌套云函数调用丢失原始身份。检测没通过、或者调用失败
- * （网络、配额等）一律按未通过处理，不把内容写进数据库。
+ * 内容安全检测必须在当前云函数内完成。云函数嵌套调用时，下游 getWXContext()
+ * 可能得到调用函数的上下文而不是原始用户；即使把 openid 放进 event，下游也无法
+ * 安全地区分服务端传值和客户端伪造值。这里直接使用当前调用已确认的 OPENID。
  */
 async function passesContentSecurity(content, title, openid) {
   try {
-    const response = await cloud.callFunction({
-      name: "contentSecurityCheck",
-      data: { content, title, openid },
+    const response = await cloud.openapi.security.msgSecCheck({
+      content,
+      version: 2,
+      scene: 4,
+      openid,
+      ...(title ? { title } : {}),
     });
-    return Boolean(response && response.result && response.result.ok);
+    return Boolean(response && response.result && response.result.suggest === "pass");
   } catch (error) {
     console.warn("内容安全检测调用失败，按未通过处理", error);
     return false;

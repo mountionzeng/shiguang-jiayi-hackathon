@@ -150,7 +150,7 @@ test("自定义邀请文字通过内容安全检测后才会保存", () => {
   );
 });
 
-test("亲友邀请把服务端确认的微信身份传给内容安全检测", () => {
+test("亲友邀请把服务端确认的微信身份传给微信内容安全接口", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../cloudfunctions/familyInvite/index.js"),
     "utf8",
@@ -159,7 +159,8 @@ test("亲友邀请把服务端确认的微信身份传给内容安全检测", ()
   assert.match(source, /const \{ accountId, openid \} = identity\(\)/);
   assert.match(source, /createInvite\(event, accountId, openid\)/);
   assert.match(source, /passesContentSecurity\(input\.message, "亲友邀请", openid\)/);
-  assert.match(source, /data:\s*\{ content, title, openid \}/);
+  assert.match(source, /cloud\.openapi\.security\.msgSecCheck\(\{/);
+  assert.match(source, /scene:\s*4,[\s\S]*openid/);
 });
 
 test("被邀请人看不到其他亲友姓名，主人仍能看到完整名单", () => {
@@ -213,11 +214,15 @@ test("共享房间按稳定人物标识显示最新署名", () => {
   });
 });
 
-test("提交进主人待确认列表前先过内容安全检测，不通过就不写库", () => {
+test("邀请云函数直接用已确认的微信身份做内容安全检测，不依赖会改写身份的嵌套云函数", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../cloudfunctions/familyInvite/index.js"),
     "utf8",
   );
+  const config = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "../cloudfunctions/familyInvite/config.json"),
+    "utf8",
+  ));
   const submitBody = source.slice(
     source.indexOf("async function submitContribution"),
     source.indexOf("async function main"),
@@ -229,7 +234,9 @@ test("提交进主人待确认列表前先过内容安全检测，不通过就�
     submitBody.indexOf("passesContentSecurity(input.text") <
       submitBody.indexOf('.collection("source_records")'),
   );
-  assert.match(source, /name:\s*"contentSecurityCheck"/);
+  assert.match(source, /cloud\.openapi\.security\.msgSecCheck/);
+  assert.doesNotMatch(source, /name:\s*"contentSecurityCheck"/);
+  assert.deepEqual(config.permissions.openapi.sort(), ["security.msgSecCheck", "wxacode.getUnlimited"]);
   assert.match(source, /return false;\s*\n\s*}\s*\n\s*}\s*\n\s*async function submitContribution/);
 });
 
