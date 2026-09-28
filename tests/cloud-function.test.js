@@ -957,3 +957,18 @@ test("interview follow-up checks the question's meaning rather than echoed words
     assert.ok(messages[1].content.includes(answer));
   }
 });
+
+test("interview follow-up preserves negation and a feeling that has ended", () => {
+  const answer = "最可贵的是，我不用连休息都觉得自己欠着什么。";
+  const messages = chatInterviewTest.buildOutputMessages({
+    answer,
+    history: [{ role: "assistant", text: "这份不用赶的自在，对你最可贵的是什么？" }],
+    lastDimension: "feeling",
+    mode: "personal",
+    memoryType: "note",
+    memberName: "测试讲述者",
+  });
+  assert.match(messages[0].content, /保留否定的作用范围与时间状态/);
+  assert.match(messages[0].content, /不能把已经否定或结束的感受当成仍在发生/);
+  assert.ok(messages[1].content.includes(answer));
+});
