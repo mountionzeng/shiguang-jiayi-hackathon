@@ -19,11 +19,12 @@
 - U3 十条均已取得真实云端回复。`meaning-continuation` 前三次同步调用返回 `timeout waiting for automator response`，随后改用后台触发 `wx.cloud.callFunction` 并从模拟器 console 读取标记结果，补齐真实回复。
 - 已整理 U3 人工评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u3-review.md`。表内列出固定输入、判据和真实回复，用户结论全部保留为待判断。
 - 已整理 U2 二十条人工语义评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u2-review.md`。表内列出原话、评审锚点和真实回复，用户结论全部保留为待判断。
+- 已整理 U1、U4、U5 的现场验收表：`docs/acceptance/2026-09-28-conversation-intelligence-u1-label-review.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u4-style-accounts.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md`。
 
 ## 2. 没做什么，为什么
 
 - 没有把 U3 写成通过：十条真实回复已取得，但是否符合“第 17 条”的语义判据仍需用户评审，不能用 Agent 自判替代。
-- 没有替用户评 U2、U4、U5：计划明确这些门禁只能由用户判断，Agent 只准备记录表。U2、U3 的人工评审入口已补齐；U4、U5 仍需现场账号和设备验证。
+- 没有替用户评 U1、U2、U3、U4、U5：计划明确这些门禁需要用户判断，Agent 只准备记录表。U1、U2、U3、U4、U5 的人工评审入口已补齐；U4、U5 仍需现场账号和设备验证。
 - 没有开启 `CLOUD_AI_RELEASE_READY`，也没有改 `PERSONAL_MEMORY_ENABLED`。
 - 没有绕过内容检查，没有合入 main，没有生成新二维码。
 - 没有重新部署客户端隔离预览：本轮明确不要生成新二维码；如需在真实小程序页面看 U1 标签，后续可以只更新隔离预览，再由用户做门禁 1 判断。
