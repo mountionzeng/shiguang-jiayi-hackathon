@@ -7,7 +7,7 @@ import { sharingHome } from '../../../../services/storySharing';
 
 Page({
   data: {
-    loading: false, checking: false, exportBusy: false, albumSaving: false, exportAvailable: false, capabilityKnown: false,
+    loading: false, checking: false, exportBusy: false, albumSaving: false, sharingIndex: -1, exportAvailable: false, capabilityKnown: false,
     layout: 'pages' as ImageLayoutMode, fontSize: 32 as ImageFontSize, canvasHeight: 1080,
     imagePaths: [] as string[], savedIndices: [] as number[], renderProgress: '',
     notice: '', title: '', coverUrl: '', coverNotice: '',
@@ -38,7 +38,7 @@ Page({
     this.hidden = true; this.epoch++; this.editorSeed++; this.snapshot = undefined; this.resetImages();
     this.editor?.clear();
     this.editor = undefined;
-    this.setData({ loading: false, checking: false, exportBusy: false, albumSaving: false, exportAvailable: false, capabilityKnown: false, title: '', coverUrl: '', coverNotice: '', chapters: [], selectedText: '',
+    this.setData({ loading: false, checking: false, exportBusy: false, albumSaving: false, sharingIndex: -1, exportAvailable: false, capabilityKnown: false, title: '', coverUrl: '', coverNotice: '', chapters: [], selectedText: '',
       editorReady: false, preview: false, previewChapters: [], selectedCount: 0, characterCount: 0 });
   },
   onUnload() { this.onHide(); this.editor = undefined; this.expected = undefined; },
@@ -179,7 +179,7 @@ Page({
       if (!this.hidden && epoch === this.epoch) this.setData({ checking: false });
     }
   },
-  busy() { return this.data.checking || this.data.exportBusy || this.data.albumSaving; },
+  busy() { return this.data.checking || this.data.exportBusy || this.data.albumSaving || this.data.sharingIndex >= 0; },
   async checkExportCapability(epoch: number) {
     try {
       const available = await bookExportApi.available();
@@ -285,6 +285,34 @@ Page({
         : '已保存 ' + this.data.savedIndices.length + ' 张，其余未完成。' + (/auth|deny|permission/i.test(reason)
           ? '请在小程序设置中允许保存到相册，再继续保存。' : '可以继续保存剩余图片。') });
     } finally { if (active()) this.setData({ albumSaving: false }); }
+  },
+  async shareImage(event: WechatMiniprogram.TouchEvent) {
+    if (this.busy() || !this.snapshot || !this.descriptor || !this.exportSelection) return;
+    const index = Number(event.currentTarget.dataset.index);
+    const path = this.data.imagePaths[index];
+    if (!Number.isSafeInteger(index) || !path) return;
+    const epoch = this.epoch, snapshot = this.snapshot, descriptor = this.descriptor, selection = this.exportSelection;
+    const active = () => !this.hidden && this.epoch === epoch;
+    this.setData({ sharingIndex: index, notice: '分享前正在核对版本和权限…' });
+    try {
+      await this.verifySnapshot(snapshot); if (!active()) return;
+      const material = await bookExportApi.material(selection, descriptor.id); if (!active()) return;
+      if (material.descriptor.id !== descriptor.id) throw new Error('预览已失效，请重新生成');
+      const share = (wx as typeof wx & { showShareImageMenu?: (options: {
+        path: string; success: () => void; fail: (error: unknown) => void;
+      }) => void }).showShareImageMenu;
+      if (typeof share !== 'function') throw new Error('当前微信版本暂不支持直接发送图片，请先保存到相册');
+      await new Promise<void>((resolve, reject) => share({ path, success: resolve, fail: reject }));
+      if (active()) this.setData({ notice: '已打开微信分享菜单，可发送给朋友或分享到朋友圈。' });
+    } catch (error) {
+      if (!active()) return;
+      const reason = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg || '');
+      if (/cancel/i.test(reason)) this.setData({ notice: '已取消分享，图片仍保留在预览中。' });
+      else {
+        if (/权限|版本|更新|失效|撤销/.test(reason)) this.resetImages();
+        this.setData({ notice: reason || '暂时无法打开微信分享，请先保存到相册' });
+      }
+    } finally { if (active()) this.setData({ sharingIndex: -1 }); }
   },
   backToSelection() { if (!this.busy()) { this.resetImages(); this.setData({ preview: false, previewChapters: [] }); } },
   goBack() { if (!this.busy()) wx.navigateBack(); },

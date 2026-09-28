@@ -37,7 +37,11 @@ function createStoryService(repo, options = {}) {
         excerptShare: accessEnabled && options.excerptSharingEnabled === true && canaryFamilies.has(ctx.familyId),
         sharedEdit: accessEnabled && options.sharedEditEnabled === true && canaryFamilies.has(ctx.familyId),
         copy: accessEnabled && options.copyReceiveEnabled === true && canaryFamilies.has(ctx.familyId),
-        bookExport: accessEnabled && options.shareCardEnabled === true && canaryFamilies.has(ctx.familyId),
+        // Owner-only book image export is locally rendered and revalidates the
+        // authoritative story before preview, save, and share. Keep the wider
+        // reader/publishing surface canaried, while allowing every verified
+        // owner to use this explicitly enabled export capability.
+        bookExport: accessEnabled && options.shareCardEnabled === true,
         memoryBookExport: true,
         shareCard: accessEnabled && options.shareCardEnabled === true && canaryFamilies.has(ctx.familyId), forward: false, publish: false };
     }
@@ -100,7 +104,7 @@ function createStoryService(repo, options = {}) {
       const memoryExport = event.sourceKind === 'memory';
       if (memoryExport) {
         if (accessEnabled) await assertSpaceOwner(repo, ctx);
-      } else if (!accessEnabled || options.shareCardEnabled !== true || !canaryFamilies.has(ctx.familyId)) {
+      } else if (!accessEnabled || options.shareCardEnabled !== true) {
         throw accessError('STORY_ACCESS_DISABLED');
       }
       const input = memoryExport

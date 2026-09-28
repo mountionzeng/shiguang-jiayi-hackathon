@@ -64,6 +64,7 @@ async function build(repo, ctx, input) {
       : input.scope === 'text' ? [input.excerpt.chapterId] : input.chapterIds;
     if (wanted.some(id => !draft.chapters.some(c => c.id === id))) fail('INVALID_INPUT', '所选章节已不存在');
     const chapters = [];
+    const backdropFileIDs = {};
     let containsAiText = false;
     for (const chapter of draft.chapters.filter(c => wanted.includes(c.id))) {
       // Conservative policy: every textual source in a selected chapter must allow export.
@@ -74,7 +75,17 @@ async function build(repo, ctx, input) {
         if (end > text.length || /[\uDC00-\uDFFF]/.test(text[start] || '') || /[\uDC00-\uDFFF]/.test(text[end] || '')) fail('INVALID_INPUT', '文字选区已变化');
         text = text.slice(start, end);
       }
-      chapters.push({ id: chapter.id, title: chapter.title || '', text });
+      let backdropImageId = '';
+      if (chapter.backdropImageId) {
+        const image = await tx.get('story_images', chapter.backdropImageId);
+        if (!image || image.familyId !== input.familyId || image.storyId !== story.id || image.chapterId !== chapter.id ||
+          image.purpose !== 'backdrop' || image.deletedAtMs !== undefined || image.moderation !== 'pass' ||
+          image.sourcePolicyRequired || typeof image.fileID !== 'string' || !image.fileID.startsWith('cloud://') ||
+          !image.fileID.includes(`/story-images/${input.familyId}/${story.id}/`) || !/\.(png|jpg|jpeg|webp)$/.test(image.fileID)) deny();
+        backdropImageId = chapter.backdropImageId;
+        backdropFileIDs[chapter.id] = image.fileID;
+      }
+      chapters.push({ id: chapter.id, title: chapter.title || '', text, ...(backdropImageId ? { backdropImageId } : {}) });
       containsAiText ||= chapter.containsAiText === true || chapter.generationMode === 'cloud-ai' || draft.generationMode === 'cloud-ai';
     }
     const length = chapters.reduce((sum, c) => sum + Array.from(c.text).length, 0);
@@ -93,8 +104,8 @@ async function build(repo, ctx, input) {
       title: draft.title || story.bookTitle || story.title, chapters, coverImageId: requestedCoverIds[0] || '',
       coverImageIds: requestedCoverIds, ...(input.targetTextImageCount ? { targetTextImageCount: input.targetTextImageCount } : {}),
       containsAiText };
-    const id = 'book-' + crypto.createHash('sha256').update(core.stable({ ...descriptor, coverFileIDs })).digest('hex');
-    return { descriptor: { id, ...descriptor }, coverFileID: coverFileIDs[0] || '', coverFileIDs };
+    const id = 'book-' + crypto.createHash('sha256').update(core.stable({ ...descriptor, coverFileIDs, backdropFileIDs })).digest('hex');
+    return { descriptor: { id, ...descriptor }, coverFileID: coverFileIDs[0] || '', coverFileIDs, backdropFileIDs };
   });
 }
 
@@ -141,8 +152,20 @@ async function exportBookImages(repo, ctx, raw, { approve, sign } = {}) {
     if (typeof signed !== 'string' || signed.length > 4096 || parsed.protocol !== 'https:' || parsed.username || parsed.password) deny();
     coverUrls.push(signed);
   }
+  const backdropUrls = {};
+  for (const [chapterId, fileID] of Object.entries(before.backdropFileIDs || {})) {
+    if (typeof sign !== 'function') deny();
+    const signed = await sign(fileID, 300);
+    let parsed;
+    try { parsed = new URL(signed); } catch { deny(); }
+    if (typeof signed !== 'string' || signed.length > 4096 || parsed.protocol !== 'https:' || parsed.username || parsed.password) deny();
+    backdropUrls[chapterId] = signed;
+  }
   const after = await build(repo, ctx, selection);
-  if (after.descriptor.id !== descriptorId || core.stable(after.coverFileIDs || []) !== core.stable(before.coverFileIDs || [])) fail('VERSION_CONFLICT', '书稿、封面或权限已有变化，请重新生成');
-  return { descriptor: after.descriptor, coverUrl: coverUrls[0] || '', coverUrls };
+  if (after.descriptor.id !== descriptorId || core.stable(after.coverFileIDs || []) !== core.stable(before.coverFileIDs || []) ||
+    core.stable(after.backdropFileIDs || {}) !== core.stable(before.backdropFileIDs || {})) {
+    fail('VERSION_CONFLICT', '书稿、封面、章节底图或权限已有变化，请重新生成');
+  }
+  return { descriptor: after.descriptor, coverUrl: coverUrls[0] || '', coverUrls, backdropUrls };
 }
 module.exports = { previewBookExport, exportBookImages };

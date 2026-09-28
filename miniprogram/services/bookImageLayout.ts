@@ -2,7 +2,7 @@ export type ImageLayoutMode = 'pages' | 'long';
 export type ImageFontSize = 28 | 32 | 36;
 export interface TextLine { text: string; newline: boolean }
 export interface LayoutRow { text: string; y: number; fontSize: number; heading: boolean }
-export interface TextImagePage { height: number; rows: LayoutRow[] }
+export interface TextImagePage { height: number; rows: LayoutRow[]; chapterId: string }
 export const IMAGE_WIDTH = 750;
 export const PAGE_HEIGHT = 1080;
 export const MAX_LONG_HEIGHT = 6000;
@@ -22,7 +22,7 @@ export function wrapImageText(text: string, fontSize: number, measure: MeasureTe
   return lines;
 }
 
-export function layoutTextImages(title: string, chapters: Array<{ title: string; text: string }>, mode: ImageLayoutMode,
+export function layoutTextImages(title: string, chapters: Array<{ id?: string; title: string; text: string; backdropImageId?: string }>, mode: ImageLayoutMode,
   fontSize: ImageFontSize, measure: MeasureText): TextImagePage[] {
   if (!['pages', 'long'].includes(mode) || ![28,32,36].includes(fontSize)) throw new Error('请选择排版与字号');
   const headingSize = 38, lineHeight = Math.ceil(fontSize * 1.75);
@@ -30,24 +30,28 @@ export function layoutTextImages(title: string, chapters: Array<{ title: string;
   const bottom = mode === 'pages' ? PAGE_HEIGHT - 106 : MAX_LONG_HEIGHT - 106;
   if (top + 54 + lineHeight > bottom) throw new Error('书名过长，无法完整排版，请缩短书名后重试');
   const pages: TextImagePage[] = [];
-  let rows: LayoutRow[] = [], y = top;
+  let rows: LayoutRow[] = [], y = top, pageChapterId = '';
   function nextPage() {
     if (mode === 'long') throw new Error('内容超过单张长图的尺寸上限，请选择分页图片；正文不会截断');
-    pages.push({ height: PAGE_HEIGHT, rows }); rows = []; y = top;
+    pages.push({ height: PAGE_HEIGHT, rows, chapterId: pageChapterId }); rows = []; y = top; pageChapterId = '';
   }
-  function append(text: string, size: number, height: number, heading: boolean) {
+  function append(text: string, size: number, height: number, heading: boolean, chapterId: string) {
     if (y + height > bottom) nextPage();
+    if (!pageChapterId) pageChapterId = chapterId;
+    else if (pageChapterId !== chapterId) pageChapterId = '__multiple_chapters__';
     rows.push({ text, y, fontSize: size, heading }); y += height;
   }
-  for (const chapter of chapters) {
+  chapters.forEach((chapter, chapterIndex) => {
+    const previous = chapters[chapterIndex - 1];
+    if (mode === 'pages' && chapterIndex > 0 && rows.length && (previous?.backdropImageId || chapter.backdropImageId)) nextPage();
     const headingLines = wrapImageText(chapter.title || '故事片段', headingSize, measure);
     if (rows.length && y + headingLines.length * 54 + lineHeight * 2 > bottom) nextPage();
-    for (const line of headingLines) append(line.text, headingSize, 54, true);
+    for (const line of headingLines) append(line.text, headingSize, 54, true, chapter.id || '');
     y += 16;
-    for (const line of wrapImageText(chapter.text, fontSize, measure)) append(line.text, fontSize, lineHeight, false);
+    for (const line of wrapImageText(chapter.text, fontSize, measure)) append(line.text, fontSize, lineHeight, false, chapter.id || '');
     y += 26;
-  }
-  if (rows.length) pages.push({ height: mode === 'pages' ? PAGE_HEIGHT : Math.max(PAGE_HEIGHT, y - 26 + 106), rows });
+  });
+  if (rows.length) pages.push({ height: mode === 'pages' ? PAGE_HEIGHT : Math.max(PAGE_HEIGHT, y - 26 + 106), rows, chapterId: pageChapterId });
   if (!pages.length) throw new Error('没有可以排版的文字');
   if (pages.length > 160) throw new Error('图片数量过多，请分批选择章节');
   return pages;

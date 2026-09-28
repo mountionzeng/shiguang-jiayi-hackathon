@@ -48,6 +48,22 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
     }, '加载封面');
     assertActive();
     if (!cover.width || !cover.height) throw new Error('封面暂时无法读取，请重试');
+    const backdropImages = new Map<string, { info: WechatMiniprogram.GetImageInfoSuccessCallbackResult; image: any }>();
+    for (const [chapterId, url] of Object.entries(material.backdropUrls || {})) {
+      if (!url) continue;
+      const info = await timed<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve, reject) => wx.getImageInfo({
+        src: url, success: resolve, fail: reject,
+      }), '读取章节底图');
+      const image = canvas.createImage();
+      await timed<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('章节底图暂时无法加载，请重试'));
+        image.src = info.path;
+      }, '加载章节底图');
+      assertActive();
+      if (!info.width || !info.height) throw new Error('章节底图暂时无法读取，请重试');
+      backdropImages.set(chapterId, { info, image });
+    }
     for (let index = 0; index <= pages.length; index++) {
       assertActive();
       const height = index === 0 ? PAGE_HEIGHT : pages[index - 1].height;
@@ -56,6 +72,15 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
       canvas.width = IMAGE_WIDTH; canvas.height = height;
       ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       ctx.fillStyle = '#fbf8f1'; ctx.fillRect(0, 0, IMAGE_WIDTH, height);
+      const textPage = index > 0 ? pages[index - 1] : undefined;
+      const backdrop = textPage ? backdropImages.get(textPage.chapterId) : undefined;
+      if (backdrop) {
+        ctx.globalAlpha = .24;
+        drawImageCover(ctx, backdrop.image, backdrop.info.width, backdrop.info.height, 0, 0, IMAGE_WIDTH, height);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(251,248,241,.86)';
+        ctx.fillRect(34, 34, IMAGE_WIDTH - 68, height - 68);
+      }
       ctx.fillStyle = '#4f7f6b'; ctx.fillRect(60, 44, 56, 5);
       if (index === 0) {
         ctx.fillStyle = '#2a2e2b'; ctx.font = 42 + 'px sans-serif';
@@ -77,7 +102,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
       ctx.fillStyle = '#d7d6ca'; ctx.fillRect(60, height - 78, TEXT_WIDTH, 1);
       ctx.fillStyle = '#6a6e68'; ctx.font = 20 + 'px sans-serif';
       ctx.fillText(index === 0 ? '拾光家忆' + (descriptor.coverImageId ? ' · AI 生成封面' : '')
-        : '拾光家忆' + (descriptor.containsAiText ? ' · 含 AI 生成文字' : ''), 60, height - 52);
+        : '拾光家忆' + (backdrop ? ' · AI 章节底图' : '') + (descriptor.containsAiText ? ' · 含 AI 文字' : ''), 60, height - 52);
       ctx.textAlign = 'right'; ctx.fillText(index === 0 ? '封面' : index + ' / ' + pages.length, 690, height - 52);
       assertActive();
       const path = await new Promise<string>((resolve, reject) => {
