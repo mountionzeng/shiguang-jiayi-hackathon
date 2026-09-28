@@ -9,23 +9,26 @@
     <image class="invite-bird invite-bird-two" src="/assets/illustrations/memory-bird.png" mode="aspectFit"></image>
   </view>
 
-  <view class="invite-top">
-    <view class="invite-brand typewriter">拾光家忆</view>
-  </view>
+  <view class="invite-top"><view class="invite-brand typewriter">拾光家忆</view></view>
 
   <block wx:if="{{mode === 'create'}}">
-    <view class="invite-intro">
-      <view class="invite-eyebrow typewriter">邀请一位重要的人</view>
-      <view class="invite-title serif">一起把故事写下来</view>
-      <view class="invite-note">先替对方写下你熟悉的称呼和关系。对方接受邀请后，这会成为他在这个记忆之家里的身份。</view>
+    <view class="step-strip" wx:if="{{step !== 'ready'}}" aria-label="邀请卡制作进度">
+      <view class="step-dot {{step === 'who' ? 'step-on' : ''}}"><text>1</text><text>写给谁</text></view>
+      <view class="step-line"></view>
+      <view class="step-dot {{step === 'words' ? 'step-on' : ''}}"><text>2</text><text>邀请语</text></view>
+      <view class="step-line"></view>
+      <view class="step-dot {{step === 'art' ? 'step-on' : ''}}"><text>3</text><text>选插图</text></view>
     </view>
 
-    <view class="invite-form" wx:if="{{!posterPath}}">
+    <view class="invite-intro" wx:if="{{step === 'who'}}">
+      <view class="invite-eyebrow typewriter">先想起一个重要的人</view>
+      <view class="invite-title serif">这张邀请，写给谁？</view>
+      <view class="invite-note">对方扫码后，这段邀请会成为你们共同记忆的开头。称呼和关系只用于这个记忆之家。</view>
+    </view>
+
+    <view class="invite-form" wx:if="{{step === 'who'}}">
       <view class="invite-letter-head">
-        <view class="invite-avatar serif">
-          <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
-          <text>{{inviteeAvatarText}}</text>
-        </view>
+        <view class="invite-avatar serif"><image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image><text>{{inviteeAvatarText}}</text></view>
         <view class="invite-letter-copy">
           <text class="invite-letter-label typewriter">给一位重要的人</text>
           <text class="invite-letter-name serif">{{inviteeName || '留一个位置'}}</text>
@@ -40,14 +43,75 @@
         <text>你们是什么关系</text>
         <input value="{{relation}}" maxlength="12" placeholder="例如：母女、老朋友、同学" bindinput="onRelationInput" />
       </label>
-      <button class="invite-primary" bindtap="createInvitation" loading="{{creating}}" disabled="{{creating}}">生成邀请图片</button>
+      <button class="invite-primary" bindtap="continueToWords">继续写邀请语</button>
       <view class="invite-privacy">邀请只进入这一个记忆之家。对方写下的故事会先交给你确认，不会直接改动正式书稿。</view>
     </view>
 
-    <view class="poster-ready" wx:else>
-      <view class="poster-ready-title serif">邀请笺已经写好</view>
+    <view class="copy-page" wx:if="{{step === 'words'}}">
+      <button class="back-link" bindtap="previousStep" hover-class="none">‹ 返回改称呼</button>
+      <view class="invite-eyebrow typewriter">写给 {{inviteeName}}</view>
+      <view class="invite-title serif">把话说短一点</view>
+      <view class="invite-note">可以让 AI 写一版，也可以逐字修改。下面三处文字都会原样出现在邀请图里。</view>
+      <view class="copy-paper">
+        <image class="copy-paper-bird" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
+        <label class="copy-field">
+          <text>主标题</text>
+          <input class="copy-headline serif" value="{{headline}}" maxlength="16" bindinput="onHeadlineInput" placeholder="例如：一起写下我们的故事" />
+        </label>
+        <label class="copy-field">
+          <text>邀请语</text>
+          <textarea class="copy-textarea serif" value="{{message}}" maxlength="48" auto-height bindinput="onMessageInput" placeholder="写一句想对他说的话"></textarea>
+          <view class="copy-count">{{messageLength}} / 48</view>
+        </label>
+        <label class="copy-field copy-signature-field">
+          <text>署名</text>
+          <input class="copy-signature" value="{{signature}}" maxlength="12" bindinput="onSignatureInput" placeholder="你的称呼" />
+        </label>
+      </view>
+      <view class="copy-actions">
+        <button class="invite-secondary copy-generate" bindtap="generateAiCopy" loading="{{aiWriting}}" disabled="{{aiWriting}}">{{aiWriting ? 'AI 正在写…' : 'AI 写一版'}}</button>
+        <button class="invite-secondary copy-generate" bindtap="generateCopy" disabled="{{aiWriting}}">换个短句</button>
+      </view>
+      <button class="invite-primary" bindtap="continueToArt">继续选插图</button>
+    </view>
+
+    <view class="art-page" wx:if="{{step === 'art'}}">
+      <button class="back-link" bindtap="previousStep" hover-class="none">‹ 返回改文字</button>
+      <view class="invite-eyebrow typewriter">给邀请添一幅画</view>
+      <view class="invite-title serif">选一种记忆的颜色</view>
+      <view class="invite-note">插图只装点这张邀请图，不会改变书的封面。二维码始终保持清晰可识别。</view>
+      <view class="style-list">
+        <button
+          class="style-option {{illustrationStyle === item.id ? 'style-on' : ''}}"
+          wx:for="{{styleOptions}}"
+          wx:key="id"
+          data-style="{{item.id}}"
+          bindtap="chooseStyle"
+          aria-label="选择{{item.name}}"
+        >
+          <view class="style-art style-art-{{item.id}}">
+            <image src="{{item.art}}" mode="aspectFit"></image>
+            <text class="style-seal">忆</text>
+          </view>
+          <view class="style-copy"><text class="style-name serif">{{item.name}}</text><text class="style-note">{{item.note}}</text></view>
+          <text class="style-check">{{illustrationStyle === item.id ? '✓' : ''}}</text>
+        </button>
+      </view>
+      <view class="invite-mini-preview">
+        <view class="mini-kicker">写给 {{inviteeName}}</view>
+        <view class="mini-headline serif">{{headline}}</view>
+        <view class="mini-message serif">{{message}}</view>
+        <view class="mini-signature">{{signature}} · {{relation}}</view>
+        <view class="mini-code">二维码位置</view>
+      </view>
+      <button class="invite-primary" bindtap="createInvitation" loading="{{creating}}" disabled="{{creating}}">{{creating ? '正在写邀请笺…' : '生成带二维码的邀请图'}}</button>
+    </view>
+
+    <view class="poster-ready" wx:if="{{step === 'ready' && posterPath}}">
+      <view class="invite-eyebrow typewriter">邀请笺已经写好</view>
+      <view class="poster-ready-title serif">把这段新的记忆，送给 {{inviteeName}}</view>
       <image class="poster-preview" src="{{posterPath}}" mode="widthFix" bindtap="previewPoster"></image>
-      <view class="poster-tip">图片已生成。发送给好友后，请他长按识别图中的小程序码。</view>
+      <view class="poster-tip">图片里已经放入小程序码。发送给亲友后，请他长按识别并接受邀请。</view>
       <button class="invite-primary" bindtap="sharePoster">发送邀请图片</button>
       <button class="invite-secondary" bindtap="savePoster" loading="{{albumSaving}}" disabled="{{albumSaving}}">{{albumSaving ? '保存中…' : '保存邀请图片到相册'}}</button>
       <button class="invite-secondary" open-type="share">也可以直接转发小程序</button>
@@ -56,15 +120,15 @@
 
   <block wx:else>
     <view class="invite-loading" wx:if="{{loading}}">正在打开这份邀请…</view>
-    <view class="accept-card" wx:elif="{{invitation}}">
+    <view class="accept-card accept-card-{{invitation.illustrationStyle}}" wx:elif="{{invitation}}">
       <image class="accept-branch" src="/assets/illustrations/memory-branch.png" mode="aspectFit" aria-hidden="true"></image>
       <image class="accept-bird" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
-      <view class="invite-avatar accept-avatar serif">
-        <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
-        <text>{{invitationAvatarText}}</text>
-      </view>
-      <view class="accept-kicker">{{invitation.inviterName}} 想和你一起记住</view>
-      <view class="accept-title serif">{{invitation.roomName}}</view>
+      <image class="accept-book" wx:if="{{invitation.illustrationStyle === 'book'}}" src="/assets/illustrations/story-book-cover.png" mode="aspectFit" aria-hidden="true"></image>
+      <image class="accept-nest" wx:if="{{invitation.illustrationStyle === 'nest'}}" src="/assets/illustrations/memory-nest.png" mode="aspectFit" aria-hidden="true"></image>
+      <view class="invite-avatar accept-avatar serif"><image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image><text>{{invitationAvatarText}}</text></view>
+      <view class="accept-kicker">{{invitation.signature}} 写给你</view>
+      <view class="accept-title serif">{{invitation.headline}}</view>
+      <view class="accept-message serif">{{invitation.message}}</view>
       <view class="accept-identity">
         <text>在这里，大家会叫你</text>
         <text class="accept-name">“{{invitation.inviteeName}}”</text>
