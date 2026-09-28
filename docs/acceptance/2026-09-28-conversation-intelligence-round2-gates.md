@@ -11,7 +11,7 @@
 | U2 二十条语义相关率 | `docs/acceptance/2026-09-28-conversation-intelligence-u2-review.md` | Agent 判定 19/20，通过 |
 | U3 第 17 条复测 | `docs/acceptance/2026-09-28-conversation-intelligence-u3-review.md` | Agent 判定 10/10，通过 |
 | U4 风格账号 | `docs/acceptance/2026-09-28-conversation-intelligence-u4-style-accounts.md` | 代码级通过；真机账号未跑 |
-| U5 双账号隔离 | `docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md` | 代码级通过；双设备未跑 |
+| U5 双账号隔离 | `docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md` | 代码级通过；单账号预览已推送 |
 
 ## U1 标签长辈判据
 
@@ -84,5 +84,5 @@
 | B 不能纠正 A 的理解 | A 设备 1；B 设备 2 | 代码级通过 | 真机未跑 |
 | B 不能忘掉 A 的理解 | A 设备 1；B 设备 2 | 代码级通过 | 真机未跑 |
 | A 忘掉后不复活 | A 设备 1 复测 | 代码级通过 | 真机未跑 |
-| 真机复测基线原句 | 真实手机 | 未跑 | 真机未跑 |
-| 测试增量清理并重开核对 | 对应设备 | 未跑 | 真机未跑 |
+| 真机复测基线原句 | 真实手机 | 预览已推送 | 待手机实际反馈 |
+| 测试增量清理并重开核对 | 对应设备 | 暂无测试增量 | 待手机实际反馈后确认 |

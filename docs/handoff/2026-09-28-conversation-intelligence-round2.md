@@ -25,6 +25,7 @@
 - 提交 `5262b2a`（`docs: add U2 semantic review sheet`）整理 U2 二十条人工语义评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u2-review.md`。
 - 提交 `309e147`（`docs: add remaining round2 review sheets`）整理 U1、U4、U5 的现场验收表：`docs/acceptance/2026-09-28-conversation-intelligence-u1-label-review.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u4-style-accounts.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md`。
 - 提交本轮后续 Agent 自判：`docs/acceptance/2026-09-28-conversation-intelligence-agent-judgment.md`。用户已允许按 Agent 判断推进；Agent 判定 U1 通过、U2 19/20 通过、U3 10/10 通过；U4/U5 相关自动化 162 项通过，但真实双账号双设备现场验收未跑。
+- 已制作隔离预览副本 `/private/tmp/shiguang-conversation-round2-preview-20260928`，仅副本临时开启 `CLOUD_AI_RELEASE_READY=true`；`auto_preview` 已成功推送到开发者微信，未生成二维码。模拟器可打开 `pages/interview/interview?memoryType=note`。
 
 ## 2. 没做什么，为什么
 
@@ -32,7 +33,7 @@
 - 已替 U1、U2、U3 做 Agent 判定；U4、U5 做到代码级与自动化验证。U4、U5 仍未完成真实三账号/双设备现场验收。
 - 没有开启 `CLOUD_AI_RELEASE_READY`，也没有改 `PERSONAL_MEMORY_ENABLED`。
 - 没有绕过内容检查，没有合入 main，没有生成新二维码。
-- 没有重新部署客户端隔离预览：本轮明确不要生成新二维码；如需在真实小程序页面看 U1 标签，后续可以只更新隔离预览，再由用户做门禁 1 判断。
+- 已推送隔离预览到开发者微信，但尚未收到手机实际输入反馈；未生成二维码，未上传体验版。
 
 ## 3. 和需求不一样的地方：包括你认为需求写错了、或者你做得比需求更严的地方
 
@@ -51,4 +52,4 @@
 | 4 | 第 17 条 | 通过 | Agent 判定 U3 10/10 真实回复均符合判据 |
 | 5 | 倾向准确性 | 通过（代码级） | 自动化覆盖三种倾向、三次证据门槛、纠正与忘掉；未跑真实三账号现场验收 |
 | 6 | 隔离 | 通过（代码级） | 自动化覆盖另一个账号不能提取或忘掉私有理解；未跑真实双设备 |
-| 7 | 真机 | 未通过 | 真实手机基线原句复测未做；没有生成新二维码 |
+| 7 | 真机 | 待反馈 | 隔离预览已推送到开发者微信；仍待手机实际输入基线原句并反馈 |

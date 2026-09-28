@@ -68,3 +68,12 @@
 - 结果：162 项通过。
 - 覆盖点：三种倾向、三次独立证据门槛、说得对/不对/忘掉、来源指纹变更、账号隔离、另一个账号不能提取或忘掉私有理解。
 - 限制：没有两台真实手机与两个真实微信号的现场操作记录。
+
+## 真机预览推进记录
+
+- 隔离预览目录：`/private/tmp/shiguang-conversation-round2-preview-20260928`。
+- 只在隔离预览副本中临时设置 `CLOUD_AI_RELEASE_READY=true`；仓库 `miniprogram/config/runtime.ts` 未改。
+- 开发者工具 `auto_preview` 已成功推送到开发者微信；未生成二维码文件。
+- 包大小：1,950,328 字节；main 包 1,853,085 字节；`/packages/audio/` 27,521 字节；`/packages/story-sharing/` 69,722 字节。
+- 模拟器已成功打开 `pages/interview/interview?memoryType=note`。
+- 真机上是否完成基线输入「越是迷茫的时候，越是要往远处看。」仍待手机实际反馈。
