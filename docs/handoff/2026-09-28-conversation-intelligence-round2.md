@@ -15,10 +15,12 @@
 - 已跑局部检查：`npm run test:files -- tests/interview-service.test.ts tests/page-handlers.test.ts`，98 项通过。
 - 已跑 U3 提示约束局部检查：`npm run test:files -- tests/cloud-function.test.js`，36 项通过。
 - 已跑完整检查：`npm run check`，1009 项通过。该结果只说明工程检查健康，不替代下面的门禁。
+- 2026-09-28 已按用户授权执行 U3 十条真实复测：先增量部署 `chatInterview/index.js`，部署确认任务 `confirmation_cloud_fn_inc_deploy_538e9240-8f81-4f9f-b657-c490f05ebae8` 成功，随后通过微信开发者工具逐条调用真实云函数。复测原始结果写入 `docs/acceptance/2026-09-28-conversation-intelligence-u3-retest.json`。
+- U3 十条中 9 条取得真实云端回复；`meaning-continuation` 连续三次由开发者工具返回 `timeout waiting for automator response`，没有拿到可评审回复。
 
 ## 2. 没做什么，为什么
 
-- 没有跑 U3 的十条真实复测：计划写明复测前要先问用户额度，本次尚未得到这一步的额度确认。`adbaefe` 只让提示约束更严，不算真实模型复测通过。
+- 没有把 U3 写成通过：虽然用户已授权并已完成本轮真实复测尝试，但 `meaning-continuation` 没有取得真实回复；另外 9 条仍需用户按语义判据评审。
 - 没有替用户评 U2、U4、U5：计划明确这些门禁只能由用户判断，Agent 只准备记录表。
 - 没有开启 `CLOUD_AI_RELEASE_READY`，也没有改 `PERSONAL_MEMORY_ENABLED`。
 - 没有绕过内容检查，没有合入 main，没有生成新二维码。
@@ -38,7 +40,7 @@
 | 1 | R1 标签 | 需要用户做 | 代码已改为三种用户语言标签；长辈判据仍需用户判断 |
 | 2 | 语义相关率 | 需要用户做 | 二十条人工评审表已准备；不能用 Codex 自判代替 |
 | 3 | 箴言类不问事实 | 需要用户做 | 前五条记录表已准备；需用户按需求判据确认 |
-| 4 | 第 17 条 | 需要用户做 | 已进一步收紧提示约束；十条真实复测前需用户先确认额度，复测后仍需用户评审 |
+| 4 | 第 17 条 | 需要用户做 | 已进一步收紧提示约束；用户已授权并完成 U3 真实复测尝试，9/10 取得真实回复，`meaning-continuation` 因开发者工具等待超时未取得；所有已取得回复仍需用户评审 |
 | 5 | 倾向准确性 | 需要用户做 | 三类风格账号与证据不足对照表已准备；未开启个人记忆全量验证 |
 | 6 | 隔离 | 需要用户做 | 双账号两设备记录表已准备；未进行真机隔离判断 |
 | 7 | 真机 | 需要用户做 | 真实手机基线原句复测未做；没有生成新二维码 |
