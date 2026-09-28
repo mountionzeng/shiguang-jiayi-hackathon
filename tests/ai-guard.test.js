@@ -102,6 +102,22 @@ test("AI usage reservations enforce a durable interval and daily ceiling", async
   });
 });
 
+test("zero daily ceiling allows paid usage while preserving interval and accounting", async () => {
+  for (const name of ["chatInterview", "organizeMemory", "generateBiography", "personalMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    const identity = { openid: "paid-openid", accountDocumentId: "account-document", accountId: "account_222222222222222222222222", familyId: "family_paid" };
+    const records = new Map([["user_accounts:account-document", { accountId: identity.accountId, primaryFamilyId: identity.familyId, wxOpenId: identity.openid, status: "active", aiUsage: { dayKey: "1970-01-01", count: 1000, lastAtMs: 9000, byKind: { [name]: 1000 } } }]]);
+    const db = databaseFixture(records);
+    await withEnvironment({ AI_DAILY_REQUEST_LIMIT: "0", AI_MIN_INTERVAL_MS: 1000 }, async () => {
+      await deployedGuard.reserveAiRequest(db, identity, name, 10000);
+      assert.equal(records.get("user_accounts:account-document").aiUsage.count, 1001);
+      await assert.rejects(() => deployedGuard.reserveAiRequest(db, identity, name, 10500), /操作太频繁/);
+      records.get("user_accounts:account-document").status = "revoked";
+      await assert.rejects(() => deployedGuard.reserveAiRequest(db, identity, name, 12000), /权限已经变化/);
+    });
+  }
+});
+
 test("AI moderation checks every chunk and fails closed", async () => {
   const calls = [];
   const cloud = { openapi: { security: { msgSecCheck: async request => {

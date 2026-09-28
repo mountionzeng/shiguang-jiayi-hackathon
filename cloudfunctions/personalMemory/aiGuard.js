@@ -100,7 +100,9 @@ async function assertIdentityStillActive(db, identity) {
 }
 
 async function reserveAiRequest(db, identity, kind, nowMs = Date.now()) {
-  const dailyLimit = positiveInteger(process.env.AI_DAILY_REQUEST_LIMIT, DEFAULT_DAILY_LIMIT, 500);
+  // Explicit zero enables metered usage without an application daily ceiling.
+  const dailyLimit = process.env.AI_DAILY_REQUEST_LIMIT === "0"
+    ? 0 : positiveInteger(process.env.AI_DAILY_REQUEST_LIMIT, DEFAULT_DAILY_LIMIT, 500);
   const minIntervalMs = positiveInteger(process.env.AI_MIN_INTERVAL_MS, DEFAULT_MIN_INTERVAL_MS, 60_000);
   const dayKey = chinaDayKey(nowMs);
   await db.runTransaction(async transaction => {
@@ -116,7 +118,7 @@ async function reserveAiRequest(db, identity, kind, nowMs = Date.now()) {
     const count = Number.isSafeInteger(previous.count) ? previous.count : 0;
     const lastAtMs = Number.isSafeInteger(previous.lastAtMs) ? previous.lastAtMs : 0;
     if (nowMs - lastAtMs < minIntervalMs) throw aiError("AI_RATE_LIMITED", "操作太频繁，请稍后再试");
-    if (count >= dailyLimit) throw aiError("AI_DAILY_LIMIT", "今天的 AI 使用次数已达到上限");
+    if (dailyLimit > 0 && count >= dailyLimit) throw aiError("AI_DAILY_LIMIT", "今天的 AI 使用次数已达到上限");
     const byKind = previous.byKind && typeof previous.byKind === "object" ? previous.byKind : {};
     await ref.update({ data: { aiUsage: {
       dayKey,
