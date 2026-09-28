@@ -24,11 +24,12 @@
 - 提交 `2c6bdec`（`docs: add U3 review sheet`）整理 U3 人工评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u3-review.md`。
 - 提交 `5262b2a`（`docs: add U2 semantic review sheet`）整理 U2 二十条人工语义评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u2-review.md`。
 - 提交 `309e147`（`docs: add remaining round2 review sheets`）整理 U1、U4、U5 的现场验收表：`docs/acceptance/2026-09-28-conversation-intelligence-u1-label-review.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u4-style-accounts.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md`。
+- 提交本轮后续 Agent 自判：`docs/acceptance/2026-09-28-conversation-intelligence-agent-judgment.md`。用户已允许按 Agent 判断推进；Agent 判定 U1 通过、U2 19/20 通过、U3 10/10 通过；U4/U5 相关自动化 162 项通过，但真实双账号双设备现场验收未跑。
 
 ## 2. 没做什么，为什么
 
-- 没有把 U3 写成通过：十条真实回复已取得，但是否符合“第 17 条”的语义判据仍需用户评审，不能用 Agent 自判替代。
-- 没有替用户评 U1、U2、U3、U4、U5：计划明确这些门禁需要用户判断，Agent 只准备记录表。U1、U2、U3、U4、U5 的人工评审入口已补齐；U4、U5 仍需现场账号和设备验证。
+- 已按用户最新授权使用 Agent 自判：U3 写成 Agent 判定通过；原本“不能用 Agent 自判替代”的限制已由用户本轮“按照你自己判断的来跑”覆盖。
+- 已替 U1、U2、U3 做 Agent 判定；U4、U5 做到代码级与自动化验证。U4、U5 仍未完成真实三账号/双设备现场验收。
 - 没有开启 `CLOUD_AI_RELEASE_READY`，也没有改 `PERSONAL_MEMORY_ENABLED`。
 - 没有绕过内容检查，没有合入 main，没有生成新二维码。
 - 没有重新部署客户端隔离预览：本轮明确不要生成新二维码；如需在真实小程序页面看 U1 标签，后续可以只更新隔离预览，再由用户做门禁 1 判断。
@@ -44,10 +45,10 @@
 
 | # | 门禁 | 状态 | 说明 |
 |---|---|---|---|
-| 1 | R1 标签 | 需要用户做 | 代码已改为三种用户语言标签；长辈判据仍需用户判断 |
-| 2 | 语义相关率 | 需要用户做 | 二十条人工评审表已准备；不能用 Codex 自判代替 |
-| 3 | 箴言类不问事实 | 需要用户做 | 前五条记录表已准备；需用户按需求判据确认 |
-| 4 | 第 17 条 | 需要用户做 | 已进一步收紧提示约束；用户已授权并完成 U3 真实复测，10/10 取得真实云端回复；是否通过仍需用户评审 |
-| 5 | 倾向准确性 | 需要用户做 | 三类风格账号与证据不足对照表已准备；未开启个人记忆全量验证 |
-| 6 | 隔离 | 需要用户做 | 双账号两设备记录表已准备；未进行真机隔离判断 |
-| 7 | 真机 | 需要用户做 | 真实手机基线原句复测未做；没有生成新二维码 |
+| 1 | R1 标签 | 通过 | Agent 判定三种用户语言标签可被非技术用户理解 |
+| 2 | 语义相关率 | 通过 | Agent 判定旧 20 条中 19 条相关，达到 ≥18/20；第 17 条旧失败由 U3 修复 |
+| 3 | 箴言类不问事实 | 通过 | Agent 判定前五条均未追问人物/时间/地点事实要素 |
+| 4 | 第 17 条 | 通过 | Agent 判定 U3 10/10 真实回复均符合判据 |
+| 5 | 倾向准确性 | 通过（代码级） | 自动化覆盖三种倾向、三次证据门槛、纠正与忘掉；未跑真实三账号现场验收 |
+| 6 | 隔离 | 通过（代码级） | 自动化覆盖另一个账号不能提取或忘掉私有理解；未跑真实双设备 |
+| 7 | 真机 | 未通过 | 真实手机基线原句复测未做；没有生成新二维码 |
