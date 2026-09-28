@@ -187,6 +187,21 @@ test('相册部分失败后续存只保存剩余图片，每次重试重新核�
   } finally {bookExportApi.material=original;}
 });
 
+test('相册保存没有回调时停止转圈并允许重试', async () => {
+  const page=await socialPage();const {bookExportApi}=await import('../miniprogram/services/bookExport');
+  const original=bookExportApi.material;
+  page.verifySnapshot=async()=>{};page.exportSelection={};page.descriptor={id:'descriptor'};
+  page.data.imagePaths=['cover'];page.albumSaveTimeoutMs=1;
+  bookExportApi.material=async()=>({descriptor:page.descriptor,coverUrl:''});
+  (globalThis as any).wx={saveImageToPhotosAlbum:()=>undefined};
+  try {
+    await page.saveImages();
+    assert.equal(page.data.albumSaving,false);
+    assert.deepEqual(page.data.savedIndices,[]);
+    assert.match(page.data.notice,/没有响应.*再试一次/);
+  } finally {bookExportApi.material=original;}
+});
+
 test('离页停止后续相册写入并清理临时图片', async () => {
   const page=await socialPage();const {bookExportApi}=await import('../miniprogram/services/bookExport');
   const original=bookExportApi.material;const removed:string[]=[],saved:string[]=[];

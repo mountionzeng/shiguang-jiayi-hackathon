@@ -5,6 +5,22 @@ import { renderBookImages, removeImageFiles } from '../../../../services/bookIma
 import { ImageLayoutMode, ImageFontSize } from '../../../../services/bookImageLayout';
 import { sharingHome } from '../../../../services/storySharing';
 
+const saveImageToAlbum = (filePath: string, timeoutMs = 15000) => new Promise<void>((resolve, reject) => {
+  let settled = false;
+  const finish = (callback: () => void) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    callback();
+  };
+  const timer = setTimeout(() => finish(() => reject(new Error('相册保存没有响应，请再试一次'))), timeoutMs);
+  wx.saveImageToPhotosAlbum({
+    filePath,
+    success: () => finish(resolve),
+    fail: error => finish(() => reject(error)),
+  });
+});
+
 Page({
   data: {
     loading: false, checking: false, exportBusy: false, albumSaving: false, sharingIndex: -1, exportAvailable: false, capabilityKnown: false,
@@ -23,6 +39,7 @@ Page({
   descriptor: undefined as BookExportDescriptor | undefined,
   renderTask: undefined as Promise<string[]> | undefined,
   returningFromCover: false,
+  albumSaveTimeoutMs: 15000,
   onLoad(options: { storyId?: string; revisionId?: string; version?: string } = {}) {
     const version = Number(options.version);
     if (options.storyId && options.revisionId && Number.isSafeInteger(version) && version >= 1) {
@@ -272,7 +289,7 @@ Page({
       for (let index = 0; index < paths.length; index++) {
         if (!active()) return;
         if (saved.has(index)) continue;
-        await new Promise<void>((resolve, reject) => wx.saveImageToPhotosAlbum({ filePath: paths[index], success: () => resolve(), fail: reject }));
+        await saveImageToAlbum(paths[index], this.albumSaveTimeoutMs);
         if (!active()) return;
         saved.add(index); this.setData({ savedIndices: [...saved], notice: '已保存 ' + saved.size + ' / ' + paths.length + ' 张' });
       }
@@ -283,7 +300,8 @@ Page({
       const reason = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg || '');
       this.setData({ notice: !authorized ? (reason || '导出权限未能确认，请重试')
         : '已保存 ' + this.data.savedIndices.length + ' 张，其余未完成。' + (/auth|deny|permission/i.test(reason)
-          ? '请在小程序设置中允许保存到相册，再继续保存。' : '可以继续保存剩余图片。') });
+          ? '请在小程序设置中允许保存到相册，再继续保存。' : /超时|没有响应|timeout/i.test(reason)
+            ? '相册保存没有响应，请再试一次。' : '可以继续保存剩余图片。') });
     } finally { if (active()) this.setData({ albumSaving: false }); }
   },
   async shareImage(event: WechatMiniprogram.TouchEvent) {
