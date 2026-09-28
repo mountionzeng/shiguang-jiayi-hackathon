@@ -2,7 +2,9 @@
 
 更新：2026-09-28。
 
-草稿 PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
+PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
+
+PR 已标记为可评审；GitHub 当前显示 `mergeable=MERGEABLE`、`mergeStateStatus=CLEAN`。
 
 ## 1. 做了什么（附提交号）
 
@@ -29,6 +31,8 @@
 - 提交本轮后续 Agent 自判：`docs/acceptance/2026-09-28-conversation-intelligence-agent-judgment.md`。用户已允许按 Agent 判断推进；Agent 判定 U1 通过、U2 19/20 通过、U3 10/10 通过；U4/U5 相关自动化 162 项通过，但真实双账号双设备现场验收未跑。
 - 已制作隔离预览副本 `/private/tmp/shiguang-conversation-round2-preview-20260928`，仅副本临时开启 `CLOUD_AI_RELEASE_READY=true`；`auto_preview` 已成功推送到开发者微信，未生成二维码。模拟器可打开 `pages/interview/interview?memoryType=note`。
 - 最终重新跑 `npm run check`，1009 项通过，0 失败。
+- 发布前安全检查：`git diff --check origin/main...HEAD` 通过；搜索确认仓库客户端未提交 `CLOUD_AI_RELEASE_READY=true`，密钥扫描仅命中测试假值。
+- PR #6 已从草稿改为可评审。
 
 ## 2. 没做什么，为什么
 
