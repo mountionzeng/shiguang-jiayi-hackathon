@@ -51,16 +51,24 @@ test('read/edit/publish grants do not turn recipients into owner book exporters'
   f.tables.set('story_grants:'+grantIdFor('family_owner','story-book',f.reader.principalId),{familyId:'family_owner',storyId:'story-book',principalId:f.reader.principalId,ownerPrincipalId:f.owner.principalId,status:'active',version:1,scope:{type:'book',chapterIds:[]},permissions:{read:true,edit:true,publish:true,export:true}});
   await assert.rejects(previewBookExport(f.repo,f.reader,f.input,{approve}),{code:'STORY_FORBIDDEN'});
 });
-test('book export remains gated by access and share-card enablement but is available to every verified owner',async()=>{
+test('book export is available to every verified owner without opening public share cards',async()=>{
   const f=await setup(),context={APPID:'wx-original',OPENID:'owner'};
   const options={accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',shareCardEnabled:true,sharedReadFamilyIds:['family_owner'],approveShareCard:approve};
-  for(const override of [{accessEnabled:false},{shareCardEnabled:false}]){
-    const service=createStoryService(f.repo,{...options,...override});
-    assert.equal((await service(context,{action:'capabilities'})).bookExport,false);
-    await assert.rejects(service(context,{...f.input,action:'bookExportPreview'}),{code:'STORY_ACCESS_DISABLED'});
-  }
+  const disabled=createStoryService(f.repo,{...options,accessEnabled:false});
+  assert.equal((await disabled(context,{action:'capabilities'})).bookExport,false);
+  await assert.rejects(disabled(context,{...f.input,action:'bookExportPreview'}),{code:'STORY_ACCESS_DISABLED'});
+  const privateExport=createStoryService(f.repo,{...options,shareCardEnabled:false});
+  const privateCapabilities=await privateExport(context,{action:'capabilities'});
+  assert.equal(privateCapabilities.bookExport,true);
+  assert.equal(privateCapabilities.shareCard,false);
+  await privateExport(context,{...f.input,action:'bookExportPreview'});
+  await assert.rejects(privateExport({APPID:'wx-original',OPENID:'reader'},
+    {...f.input,action:'bookExportPreview'}),{code:'STORY_FORBIDDEN'});
+  await assert.rejects(privateExport(context,{...f.input,action:'shareCardPreview'}),{code:'STORY_ACCESS_DISABLED'});
   const outsideCanary=createStoryService(f.repo,{...options,sharedReadFamilyIds:[]});
-  assert.equal((await outsideCanary(context,{action:'capabilities'})).bookExport,true);
+  const outsideCapabilities=await outsideCanary(context,{action:'capabilities'});
+  assert.equal(outsideCapabilities.bookExport,true);
+  assert.equal(outsideCapabilities.shareCard,false);
   await outsideCanary(context,{...f.input,action:'bookExportPreview'});
   let seen;
   const service=createStoryService(f.repo,{...options,approveShareCard:async(text,openid)=>{seen={text,openid};return true;}});
