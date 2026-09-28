@@ -2,6 +2,8 @@
 
 更新：2026-09-28。
 
+草稿 PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
+
 ## 1. 做了什么（附提交号）
 
 - 提交 `d3ac5ae`（`fix: clarify interview fallback labels`）完成 U1 代码修改：追问卡片的三种状态改成用户能听懂的标签。
