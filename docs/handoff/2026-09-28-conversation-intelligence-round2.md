@@ -95,5 +95,11 @@ PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
 | 40 | Success：不打扰 10 分钟 | 需要用户做 | 需真机连续编辑观察 |
 | 41 | 封面：生成图使用绿色书封框 | 通过 | `a160aaa` 已实现并补合同测试 |
 | 42 | 上线前云函数部署 | 通过 | `organizeMemory` 和 `storyImages` 已部署并验证 Active |
-| 43 | 预览二维码 | 需要用户做 | 待隔离副本生成；扫码后做最终人工审批 |
+| 43 | 预览二维码 | 通过 | 已从隔离副本 `/private/tmp/shiguang-inline-xiaoyi-preview-7d14c17` 生成，仓库发布开关仍保持关闭 |
 
+
+## 审批入口
+
+- 预览二维码：`/Users/yuandai/Documents/Codex/2026-09-27/shiguang-conversation-intelligence/outputs/inline-xiaoyi-preview-7d14c17.png`
+- 预览副本：`/private/tmp/shiguang-inline-xiaoyi-preview-7d14c17`，仅该副本打开 `CLOUD_AI_RELEASE_READY`。
+- 需要扫码重点审批：章节编辑页小忆入口、就地面板、软键盘同屏、选中文字追问、帮我写先问再整理、原话/整理稿待确认写回、记忆保存页小忆追加原话、最新绿色书封封面框。
