@@ -25,6 +25,10 @@ const socialMarkup = readFileSync(
   ),
   "utf8",
 );
+const homeStyles = readFileSync(
+  resolve(process.cwd(), "miniprogram/pages/index/index.wxss"),
+  "utf8",
+);
 
 test("transparent story tabs never use WeChat's native pressed or disabled paint", () => {
   const entrances = switcherMarkup.match(
@@ -44,6 +48,12 @@ test("custom book covers reuse the default green cover frame", () => {
   assert.match(homeMarkup, /class="book-cover-picture"/);
   assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*src="\{\{item.coverUrl\}\}"[\s\S]*mode="aspectFill"/);
   assert.match(homeMarkup, /class="book-cover-paper-texture"/);
+  assert.match(homeStyles, /\.book-cover-picture[^{]*{[^}]*z-index: 1/);
+  assert.match(homeStyles, /\.book-cover-picture-art[^{]*{[^}]*width: 100%/);
+  assert.match(homeStyles, /\.book-cover-picture-art[^{]*{[^}]*height: 100%/);
+  assert.doesNotMatch(homeStyles.match(/\.book-cover-picture-art[^{]*{[^}]*}/)?.[0] ?? "", /opacity|mix-blend-mode|filter/);
+  assert.match(homeStyles, /\.book-cover-paper-texture[^{]*{[^}]*z-index: 2/);
+  assert.match(homeStyles, /\.book-cover-paper-texture[^{]*{[^}]*mix-blend-mode: soft-light/);
   assert.doesNotMatch(homeMarkup, /book-cover-material|book-cover-material-color|story-book-cover-paper-texture\.png/);
   assert.match(homeMarkup, /class="book-cover-copy \{\{item.coverUrl \? 'book-cover-copy-printed' : ''\}\}"/);
   assert.match(homeMarkup, /<text class="book-kicker typewriter">拾 光 录<\/text>/);

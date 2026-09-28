@@ -1126,6 +1126,7 @@ Page({
       }
       const state = await saveManuscriptRevision(this.pendingSave, this.revisionId);
       this.pendingSave = undefined;
+      this.setData({ editing: false });
       await this.refresh(state);
       this.setData({ editing: false, canUndo: false, saveNotice: kind === "draft" ? "修改已保存" : "版本已保存，旧版仍然保留" });
       wx.disableAlertBeforeUnload();

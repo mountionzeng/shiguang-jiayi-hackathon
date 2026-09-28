@@ -2515,6 +2515,8 @@ test("inline xiaoyi in a chapter reads selected text and creates a pending inser
   (wx as any).cloud = undefined;
 
   callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
+  page.setData({ editing: true });
+  assert.equal(page.data.editing, true, "用户可能先打字，再让小忆把回答放进待确认修改");
   await callPage(page, "useXiaoyiOriginal");
   let draft = (page.data.draft as any);
   let chapter = draft.chapters[0];
@@ -2529,6 +2531,62 @@ test("inline xiaoyi in a chapter reads selected text and creates a pending inser
   assert.match(chapter.content.map((item: any) => item.text || "").join(""), /烙饼/);
   assert.equal(chapter.containsAiText, true);
   assert.equal(chapter.pendingRevision, undefined);
+});
+
+test("inline xiaoyi write mode asks first, organizes only the answer, then creates a pending insert", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "灶台", paragraphs: ["那天屋里很冷，我妈在灶台前忙着。"], sourceCount: 0, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-1", title: "灶台", memoryIds: [], content: [{ text: "那天屋里很冷，我妈在灶台前忙着。" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const calls: any[] = [];
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "chatInterview") return { result: { dimension: "event", text: "灶台前忙着的时候，你想补哪一个细节？" } };
+    if (name === "organizeMemory") return { result: { title: "灶台前", summary: "烙饼和烧火", body: "我妈那天在灶台前烙饼，我在旁边烧火。", memoryType: "memoir", generationMode: "cloud-ai" } };
+    return { result: { status: "ok" } };
+  } };
+  page.editorContext = {
+    getSelectionText: ({ success }: any) => success({ text: "" }),
+    getContents: ({ success }: any) => success({ delta: { ops: [{ insert: "那天屋里很冷，我妈在灶台前忙着。" }] } }),
+    setContents: ({ success }: any) => success(),
+  };
+  page.setData({ editorReady: true, view: "chapter" });
+
+  callPage(page, "openXiaoyi");
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "write" } } });
+  assert.match(String(page.data.xiaoyiStatus), /先回答这个问题/);
+  assert.equal(page.data.xiaoyiCanOrganize, true);
+  assert.equal(calls.filter(call => call.name === "organizeMemory").length, 0, "帮我写不会跳过提问直接整理");
+
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
+  await callPage(page, "organizeXiaoyiAnswer");
+  const organizeCall = calls.find(call => call.name === "organizeMemory");
+  assert.equal(organizeCall?.data.inlineAnswer, true);
+  assert.deepEqual(organizeCall?.data.transcript, ["我妈那天在灶台前烙饼，我在旁边烧火。"]);
+  assert.equal(page.data.xiaoyiDraftText, "我妈那天在灶台前烙饼，我在旁边烧火。");
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /小忆只整理了你的回答/);
+  (wx as any).cloud = undefined;
+
+  await callPage(page, "useXiaoyiDraft");
+  let draft = (page.data.draft as any);
+  let chapter = draft.chapters[0];
+  assert.equal(chapter.content.map((item: any) => item.text || "").join(""), "那天屋里很冷，我妈在灶台前忙着。", "整理稿不会直接写入正文");
+  assert.equal(chapter.pendingRevision.edits[0].source, "ai");
+  assert.match(chapter.pendingRevision.edits[0].text, /烙饼/);
+
+  await callPage(page, "decidePendingEdit", { currentTarget: { dataset: { id: chapter.pendingRevision.edits[0].id, decision: "accept" } } });
+  await callPage(page, "finishPendingEdits");
+  draft = (page.data.draft as any);
+  chapter = draft.chapters[0];
+  assert.match(chapter.content.map((item: any) => item.text || "").join(""), /烙饼/);
+  assert.equal(chapter.containsAiText, true);
 });
 
 test("inline xiaoyi in memory save appends the user's original answer to the draft", async context => {
