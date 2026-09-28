@@ -103,6 +103,13 @@ export interface OrganizeMemoryInput {
   memoryId?: string;
 }
 
+export interface OrganizeInlineAnswerInput {
+  answer: string;
+  memoryType?: MemoryType;
+  memberName?: string;
+  storyTitle?: string;
+}
+
 export async function organizeMemory(
   input: OrganizeMemoryInput,
 ): Promise<OrganizedMemoryDraft> {
@@ -132,4 +139,32 @@ export async function organizeMemory(
   }
 
   return fallback;
+}
+
+export async function organizeInlineAnswer(
+  input: OrganizeInlineAnswerInput,
+): Promise<OrganizedMemoryDraft | undefined> {
+  const answer = normalizeMemoryText(input.answer);
+  if (!answer || !canUseCloudAi()) return undefined;
+  if (!await requestAiConsent()) return undefined;
+  const fallback = localOrganizedDraft([answer], input.memoryType ?? "note");
+
+  try {
+    const response = await wx.cloud.callFunction({
+      name: "organizeMemory",
+      data: {
+        inlineAnswer: true,
+        transcript: [answer],
+        memoryType: input.memoryType ?? "note",
+        memberName: input.memberName,
+        storyTitle: input.storyTitle,
+        consentVersion: currentConsentVersion(),
+      },
+    });
+    const cloudDraft = parseCloudDraft(response.result, fallback);
+    return cloudDraft?.generationMode === "cloud-ai" ? cloudDraft : undefined;
+  } catch (error) {
+    console.warn("就地小忆整理不可用，将保留原话");
+    return undefined;
+  }
 }

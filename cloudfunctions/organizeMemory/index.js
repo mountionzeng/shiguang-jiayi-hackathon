@@ -180,8 +180,8 @@ async function main(event, dependencies = {}) {
     identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
   }
 
-  let source = { transcript: event.transcript, memberName: event.memberName, memoryType: event.memoryType, storyTitle: event.storyTitle };
-  if (!dependencies.skipGuard) {
+  let source = { transcript: event.transcript, memberName: event.memberName, memoryType: event.memoryType, storyTitle: event.storyTitle, inlineAnswer: event.inlineAnswer === true };
+  if (!dependencies.skipGuard && event.inlineAnswer !== true) {
     source = await loadMemorySource(event, cloud, identity);
   }
 
@@ -197,7 +197,7 @@ async function main(event, dependencies = {}) {
   const brief = organizationBrief(memoryType);
   let personalContext;
   const memoryRepo = db ? createMemoryRepository(db) : null;
-  if (!dependencies.skipGuard && event.sourceOnly !== true && process.env.PERSONAL_MEMORY_ENABLED === 'true') {
+  if (!dependencies.skipGuard && event.sourceOnly !== true && event.inlineAnswer !== true && process.env.PERSONAL_MEMORY_ENABLED === 'true') {
     assertConsentVersion(identity.account, AI_CONSENT_VERSION);
     personalContext = await prepareContext(memoryRepo, identity, {excludeMemoryId:event.memoryId}).catch(() => undefined);
   }

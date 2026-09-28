@@ -2456,3 +2456,75 @@ test("inserting into a scoped chapter uses the chapter number displayed in its p
   assert.equal(page.data.chapterLabelText, "第一章");
   assert.deepEqual((page.data.draft as any).chapters[0], state.personalDrafts.owner.chapters![0]);
 });
+
+test("inline xiaoyi entry is embedded in chapter editor and hidden for protected copies", () => {
+  const template = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
+  assert.match(template, /class="xiaoyi-entry"[^>]*catchtouchstart="openXiaoyi"/);
+  assert.match(template, /wx:if="\{\{!protectedCopy\}\}"[^>]*class="xiaoyi-entry"/);
+  assert.match(template, /class="xiaoyi-panel"/);
+  assert.match(template, /看看这一章的记忆/);
+  assert.match(template, /就用我的原话/);
+  assert.match(template, /请小忆整理/);
+  assert.match(template, /class="pending-edits"/);
+  assert.doesNotMatch(template, /xiaoyi-entry[\s\S]{0,240}navigateTo/, "inline xiaoyi must not jump to interview page");
+});
+
+test("inline xiaoyi in a chapter reads selected text and creates a pending insert before final acceptance", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "灶台", paragraphs: ["那天屋里很冷，我妈在灶台前忙着。"], sourceCount: 0, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-1", title: "灶台", memoryIds: [], content: [{ text: "那天屋里很冷，我妈在灶台前忙着。" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const calls: any[] = [];
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "chatInterview") return { result: { dimension: "event", text: "灶台前忙着的时候，你最先注意到的是火光、声音，还是妈妈手上的动作？" } };
+    return { result: { status: "ok" } };
+  } };
+  page.editorContext = {
+    getSelectionText: ({ success }: any) => success({ text: "我妈在灶台前忙着" }),
+    getContents: ({ success }: any) => success({ delta: { ops: [{ insert: "那天屋里很冷，我妈在灶台前忙着。" }] } }),
+    setContents: ({ success }: any) => success(),
+  };
+  page.setData({ editorReady: true, view: "chapter" });
+
+  callPage(page, "openXiaoyi");
+  assert.equal(page.data.xiaoyiContextText, "我妈在灶台前忙着");
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
+  assert.equal(calls.find(call => call.name === "chatInterview")?.data.answer, "我妈在灶台前忙着");
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /灶台前/);
+  (wx as any).cloud = undefined;
+
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
+  await callPage(page, "useXiaoyiOriginal");
+  let draft = (page.data.draft as any);
+  let chapter = draft.chapters[0];
+  assert.equal(chapter.content.map((item: any) => item.text || "").join(""), "那天屋里很冷，我妈在灶台前忙着。", "正文尚未直接改变");
+  assert.equal(chapter.pendingRevision.edits[0].source, "ai");
+  assert.match(chapter.pendingRevision.edits[0].text, /烙饼/);
+
+  await callPage(page, "decidePendingEdit", { currentTarget: { dataset: { id: chapter.pendingRevision.edits[0].id, decision: "accept" } } });
+  await callPage(page, "finishPendingEdits");
+  draft = (page.data.draft as any);
+  chapter = draft.chapters[0];
+  assert.match(chapter.content.map((item: any) => item.text || "").join(""), /烙饼/);
+  assert.equal(chapter.containsAiText, true);
+  assert.equal(chapter.pendingRevision, undefined);
+});
+
+test("inline xiaoyi in memory save appends the user's original answer to the draft", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  page.setData({ stage: "save", draftText: "那天屋里很冷。", draftLength: 7, memoryType: "note", storyTitle: "灶台" });
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈在灶台前烙饼。" } });
+  callPage(page, "useXiaoyiOriginal");
+  assert.match(String(page.data.draftText), /那天屋里很冷。[\s\S]*我妈在灶台前烙饼。/);
+  assert.equal(page.data.xiaoyiAnswer, "");
+});
