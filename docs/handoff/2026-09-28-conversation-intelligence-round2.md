@@ -28,6 +28,8 @@ PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
   - `tests/chapter-segments.test.ts` 覆盖就地小忆原话写回、待确认、接受后 `containsAiText`。
   - `tests/page-handlers.test.ts` 覆盖章节入口、读选区、追问调用、待确认写回、最终接受，以及记忆保存页追加原话。
 - 旧一轮对话智能已完成的提交仍保留在 PR 中：`d3ac5ae`、`adbaefe`、`dc487bf`、`663cfdd`、`2c6bdec`、`5262b2a`、`309e147`、`5d113b7`、`a62802c`、`90bb2ef`。
+- 提交 `59fdc06` 后已从临时干净克隆部署 `organizeMemory` 到 `cloud1-d5ghzk30ve609f544`，部署脚本确认 `organizeMemory` 为 Active，部署源提交 `59fdc0622aca964a49477bc87c7b6491d89ff4c8`。
+- 已生成隔离预览二维码，预览副本目录 `/private/tmp/shiguang-inline-xiaoyi-preview-59fdc06`，仅副本把 `CLOUD_AI_RELEASE_READY` 打开；仓库仍保持关闭。二维码文件：`/Users/yuandai/Documents/Codex/2026-09-27/shiguang-conversation-intelligence/outputs/inline-xiaoyi-preview-59fdc06.png`。
 - 本轮检查：
   - `npm run typecheck` 通过。
   - `npm run test:files -- tests/chapter-segments.test.ts tests/page-handlers.test.ts`：105 项通过。
@@ -77,4 +79,9 @@ PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
 | 21 | Success：20 次贴合率 ≥90% | 需要用户做 | 章节 10 次、记忆 10 次真实场景人工评审 |
 | 22 | Success：零发明 | 需要用户做 | 真实整理输出逐句对照用户回答 |
 | 23 | Success：不打扰 10 分钟 | 需要用户做 | 真机连续编辑 10 分钟观察入口是否主动弹出或跳动 |
-| 24 | 上线前云函数部署 | 需要用户做 | 需部署 `organizeMemory` 新代码后复测 `inlineAnswer` |
+| 24 | 上线前云函数部署 | 通过 | `organizeMemory` 已部署到 `cloud1-d5ghzk30ve609f544` 并验证 Active |
+
+## 审批入口
+
+- 预览二维码：`/Users/yuandai/Documents/Codex/2026-09-27/shiguang-conversation-intelligence/outputs/inline-xiaoyi-preview-59fdc06.png`
+- 请扫码后重点看：章节编辑页小忆入口、就地面板、软键盘同屏、选中文字追问、原话待确认写回、记忆保存页小忆追加原话、请小忆整理是否只整理本次回答。
