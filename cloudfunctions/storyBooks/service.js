@@ -37,11 +37,10 @@ function createStoryService(repo, options = {}) {
         excerptShare: accessEnabled && options.excerptSharingEnabled === true && canaryFamilies.has(ctx.familyId),
         sharedEdit: accessEnabled && options.sharedEditEnabled === true && canaryFamilies.has(ctx.familyId),
         copy: accessEnabled && options.copyReceiveEnabled === true && canaryFamilies.has(ctx.familyId),
-        // Owner-only book image export is locally rendered and revalidates the
-        // authoritative story before preview, save, and share. It is separate
-        // from the public share-card rollout and is available to every verified
-        // owner once the story access service is enabled.
-        bookExport: accessEnabled,
+        // Owner-only book image export is locally rendered and resolves the
+        // trusted WeChat identity again before preview, save, and share. It is
+        // independent from both the public share-card and shared-read rollouts.
+        bookExport: true,
         memoryBookExport: true,
         shareCard: accessEnabled && options.shareCardEnabled === true && canaryFamilies.has(ctx.familyId), forward: false, publish: false };
     }
@@ -102,22 +101,24 @@ function createStoryService(repo, options = {}) {
     }
     if (action === 'bookExportPreview' || action === 'bookExportImages') {
       const memoryExport = event.sourceKind === 'memory';
+      let exportCtx = ctx;
       if (memoryExport) {
         if (accessEnabled) await assertSpaceOwner(repo, ctx);
       } else if (!accessEnabled) {
-        throw accessError('STORY_ACCESS_DISABLED');
+        exportCtx = { ...await resolveStoryIdentity(repo, context, { bootstrapAppId: options.bootstrapAppId }),
+          verifiedOpenid: context.OPENID };
       }
       const input = memoryExport
-        ? { familyId: ctx.familyId, sourceKind: 'memory', memoryId: event.memoryId,
+        ? { familyId: exportCtx.familyId, sourceKind: 'memory', memoryId: event.memoryId,
           ...(event.revisionId !== undefined ? { revisionId: event.revisionId } : {}),
           expectedSourceVersion: event.expectedSourceVersion,
           ...(event.targetTextImageCount !== undefined ? { targetTextImageCount: event.targetTextImageCount } : {}) }
-        : { familyId: ctx.familyId, storyId: event.storyId, revisionId: event.revisionId, expectedVersion: event.expectedVersion,
+        : { familyId: exportCtx.familyId, storyId: event.storyId, revisionId: event.revisionId, expectedVersion: event.expectedVersion,
           scope: event.scope, chapterIds: event.chapterIds, ...(event.excerpt !== undefined ? { excerpt: event.excerpt } : {}),
           ...(event.coverImageIds !== undefined ? { coverImageIds: event.coverImageIds } : {}),
           ...(event.targetTextImageCount !== undefined ? { targetTextImageCount: event.targetTextImageCount } : {}) };
-      return action === 'bookExportPreview' ? previewBookExport(repo, ctx, input, { approve: options.approveShareCard })
-        : exportBookImages(repo, ctx, { ...input, descriptorId: event.descriptorId }, { approve: options.approveShareCard, sign: options.signMedia });
+      return action === 'bookExportPreview' ? previewBookExport(repo, exportCtx, input, { approve: options.approveShareCard })
+        : exportBookImages(repo, exportCtx, { ...input, descriptorId: event.descriptorId }, { approve: options.approveShareCard, sign: options.signMedia });
     }
     if (action === 'memoryExportSource') {
       if (accessEnabled) await assertSpaceOwner(repo, ctx);

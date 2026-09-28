@@ -54,9 +54,14 @@ test('read/edit/publish grants do not turn recipients into owner book exporters'
 test('book export is available to every verified owner without opening public share cards',async()=>{
   const f=await setup(),context={APPID:'wx-original',OPENID:'owner'};
   const options={accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',shareCardEnabled:true,sharedReadFamilyIds:['family_owner'],approveShareCard:approve};
-  const disabled=createStoryService(f.repo,{...options,accessEnabled:false});
-  assert.equal((await disabled(context,{action:'capabilities'})).bookExport,false);
-  await assert.rejects(disabled(context,{...f.input,action:'bookExportPreview'}),{code:'STORY_ACCESS_DISABLED'});
+  const beforeSharedRollout=createStoryService(f.repo,{...options,accessEnabled:false});
+  const legacyCapabilities=await beforeSharedRollout(context,{action:'capabilities'});
+  assert.equal(legacyCapabilities.identityVersion,0);
+  assert.equal(legacyCapabilities.bookExport,true);
+  assert.equal(legacyCapabilities.shareCard,false);
+  await beforeSharedRollout(context,{...f.input,action:'bookExportPreview'});
+  await assert.rejects(beforeSharedRollout({APPID:'wx-original',OPENID:'reader'},
+    {...f.input,action:'bookExportPreview'}),{code:'STORY_FORBIDDEN'});
   const privateExport=createStoryService(f.repo,{...options,shareCardEnabled:false});
   const privateCapabilities=await privateExport(context,{action:'capabilities'});
   assert.equal(privateCapabilities.bookExport,true);
