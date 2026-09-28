@@ -204,3 +204,14 @@ test('导出权限撤销后不写相册并清掉已有图片',async()=>{
   bookExportApi.material=async()=>{throw new Error('权限已撤销');};
   try{await page.saveImages();assert.deepEqual(removed,['private']);assert.deepEqual(page.data.imagePaths,[]);assert.match(page.data.notice,/撤销/);}finally{bookExportApi.material=original;}
 });
+test('每张成品图在再次核对权限后可直接打开微信图片分享菜单',async()=>{
+  const page=await socialPage();const {bookExportApi}=await import('../miniprogram/services/bookExport');const original=bookExportApi.material;
+  page.verifySnapshot=async()=>{};page.exportSelection={};page.descriptor={id:'descriptor'};page.data.imagePaths=['cover','page1'];
+  const shared:string[]=[];let verified=0;
+  bookExportApi.material=async()=>{verified++;return {descriptor:page.descriptor,coverUrl:''};};
+  (globalThis as any).wx={showShareImageMenu:({path,success}:any)=>{shared.push(path);success();}};
+  try{
+    await page.shareImage({currentTarget:{dataset:{index:1}}});
+    assert.equal(verified,1);assert.deepEqual(shared,['page1']);assert.match(page.data.notice,/朋友圈/);assert.equal(page.data.sharingIndex,-1);
+  }finally{bookExportApi.material=original;}
+});

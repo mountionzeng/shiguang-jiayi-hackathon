@@ -51,14 +51,17 @@ test('read/edit/publish grants do not turn recipients into owner book exporters'
   f.tables.set('story_grants:'+grantIdFor('family_owner','story-book',f.reader.principalId),{familyId:'family_owner',storyId:'story-book',principalId:f.reader.principalId,ownerPrincipalId:f.owner.principalId,status:'active',version:1,scope:{type:'book',chapterIds:[]},permissions:{read:true,edit:true,publish:true,export:true}});
   await assert.rejects(previewBookExport(f.repo,f.reader,f.input,{approve}),{code:'STORY_FORBIDDEN'});
 });
-test('book export remains gated by access, share-card enablement and family canary',async()=>{
+test('book export remains gated by access and share-card enablement but is available to every verified owner',async()=>{
   const f=await setup(),context={APPID:'wx-original',OPENID:'owner'};
   const options={accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',shareCardEnabled:true,sharedReadFamilyIds:['family_owner'],approveShareCard:approve};
-  for(const override of [{accessEnabled:false},{shareCardEnabled:false},{sharedReadFamilyIds:[]}]){
+  for(const override of [{accessEnabled:false},{shareCardEnabled:false}]){
     const service=createStoryService(f.repo,{...options,...override});
     assert.equal((await service(context,{action:'capabilities'})).bookExport,false);
     await assert.rejects(service(context,{...f.input,action:'bookExportPreview'}),{code:'STORY_ACCESS_DISABLED'});
   }
+  const outsideCanary=createStoryService(f.repo,{...options,sharedReadFamilyIds:[]});
+  assert.equal((await outsideCanary(context,{action:'capabilities'})).bookExport,true);
+  await outsideCanary(context,{...f.input,action:'bookExportPreview'});
   let seen;
   const service=createStoryService(f.repo,{...options,approveShareCard:async(text,openid)=>{seen={text,openid};return true;}});
   assert.equal((await service(context,{action:'capabilities'})).bookExport,true);
@@ -80,6 +83,34 @@ test('only approved current-story cover is signed; revoked and changed covers ar
   await assert.rejects(exportBookImages(f.repo,f.owner,input,{approve,sign:async()=>{image.moderation='risky';return 'https://media.example/cover';}}),{code:'STORY_FORBIDDEN'});
   Object.assign(f.tables.get('story_images:image-cover'),{moderation:'pass',fileID:'cloud://env/story-images/family_owner/story-book/replaced.jpg'});
   await assert.rejects(exportBookImages(f.repo,f.owner,input,{approve,sign:async()=> 'https://media.example/cover'}),{code:'VERSION_CONFLICT'});
+});
+test('selected chapters carry their approved backdrop into the signed export material',async()=>{
+  const f=await setup();
+  const imageId='family_owner_img_req-backdrop-12345678';
+  const image={familyId:'family_owner',storyId:'story-book',chapterId:'chapter-one',purpose:'backdrop',moderation:'pass',
+    fileID:'cloud://env/story-images/family_owner/story-book/backdrop.jpg'};
+  f.draft.chapters[0].backdropImageId=imageId;
+  f.tables.set('story_images:'+imageId,image);
+  const {descriptor}=await previewBookExport(f.repo,f.owner,f.input,{approve});
+  assert.equal(descriptor.chapters[0].backdropImageId,imageId);
+  assert.equal(descriptor.chapters[1].backdropImageId,undefined);
+  const signed=[];
+  const result=await exportBookImages(f.repo,f.owner,{...f.input,descriptorId:descriptor.id},{approve,
+    sign:async(file,ttl)=>{signed.push(file);assert.equal(ttl,300);return 'https://media.example/backdrop.jpg';}});
+  assert.deepEqual(signed,[image.fileID]);
+  assert.deepEqual(result.backdropUrls,{'chapter-one':'https://media.example/backdrop.jpg'});
+  assert.equal(JSON.stringify(result).includes('cloud://'),false);
+});
+test('chapter backdrops from another story, chapter, purpose or moderation state cannot be exported',async()=>{
+  const imageId='family_owner_img_req-backdrop-12345678';
+  for(const patch of [{storyId:'story-other'},{chapterId:'chapter-two'},{purpose:'illustration'},{moderation:'pending'},
+    {deletedAtMs:1},{sourcePolicyRequired:true},{fileID:'cloud://env/private/backdrop.jpg'}]){
+    const f=await setup();
+    f.draft.chapters[0].backdropImageId=imageId;
+    f.tables.set('story_images:'+imageId,{familyId:'family_owner',storyId:'story-book',chapterId:'chapter-one',purpose:'backdrop',
+      moderation:'pass',fileID:'cloud://env/story-images/family_owner/story-book/backdrop.jpg',...patch});
+    await assert.rejects(previewBookExport(f.repo,f.owner,f.input,{approve}),{code:'STORY_FORBIDDEN'});
+  }
 });
 test('book export can sign multiple selected share covers without changing the permanent cover', async () => {
   const f = await setup();

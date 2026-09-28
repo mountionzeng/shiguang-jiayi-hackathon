@@ -37,16 +37,20 @@
         <button class="cover-model-action" bindtap="makeCover" disabled="{{exportBusy || albumSaving}}">先制作 AI 封面</button>
       </view>
       <view class="section-title serif">图片排版</view>
-      <view class="scope-options"><button class="scope {{layout === 'pages' ? 'selected' : ''}}" data-layout="pages" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving}}">分页图片</button><button class="scope {{layout === 'long' ? 'selected' : ''}}" data-layout="long" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving}}">一张长图</button></view>
-      <picker range="{{['紧凑','标准','大字']}}" value="{{fontSize === 28 ? 0 : fontSize === 32 ? 1 : 2}}" bindchange="chooseFont" disabled="{{exportBusy || albumSaving}}"><view class="chapter-picker">字号：{{fontSize === 28 ? '紧凑' : fontSize === 32 ? '标准' : '大字'}}　⌄</view></picker>
-      <view class="caption">封面单独一张，正文按所选方式排版。长图过长时会提示改用分页，正文不会截断。</view>
-      <view class="notice" wx:if="{{capabilityKnown && !exportAvailable}}">图片导出尚未开放，当前可以查看所选内容。</view>
-      <button class="primary" bindtap="generateImages" loading="{{exportBusy}}" disabled="{{!exportAvailable || exportBusy || albumSaving}}">{{exportBusy ? renderProgress : imagePaths.length ? '重新生成图片' : '生成图片预览'}}</button>
+      <view class="scope-options"><button class="scope {{layout === 'pages' ? 'selected' : ''}}" data-layout="pages" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}">分页图片</button><button class="scope {{layout === 'long' ? 'selected' : ''}}" data-layout="long" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}">一张长图</button></view>
+      <picker range="{{['紧凑','标准','大字']}}" value="{{fontSize === 28 ? 0 : fontSize === 32 ? 1 : 2}}" bindchange="chooseFont" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}"><view class="chapter-picker">字号：{{fontSize === 28 ? '紧凑' : fontSize === 32 ? '标准' : '大字'}}　⌄</view></picker>
+      <view class="caption">封面单独一张；正文会沿用每章已经选好的底图，没有底图时使用纸张背景。正文不会截断。</view>
+      <view class="notice" wx:if="{{capabilityKnown && !exportAvailable}}">图片导出服务暂时没有打开，请稍后重新进入。</view>
+      <button class="primary" bindtap="generateImages" loading="{{exportBusy}}" disabled="{{!exportAvailable || exportBusy || albumSaving || sharingIndex >= 0}}">{{exportBusy ? renderProgress : imagePaths.length ? '重新生成图片' : '生成图片预览'}}</button>
       <block wx:if="{{imagePaths.length}}">
         <view class="section-title serif">共 {{imagePaths.length}} 张图片</view>
-        <view class="export-image" wx:for="{{imagePaths}}" wx:key="*this"><view class="caption">{{index === 0 ? '封面' : '文字图 ' + index}}</view><image src="{{item}}" mode="widthFix" /></view>
-        <button class="primary" bindtap="saveImages" loading="{{albumSaving}}" disabled="{{albumSaving || exportBusy || savedIndices.length === imagePaths.length}}">{{savedIndices.length === imagePaths.length ? '已全部保存' : savedIndices.length ? '继续保存剩余图片' : '保存全部图片到相册'}}</button>
-        <view class="caption">{{savedIndices.length ? '已保存 ' + savedIndices.length + ' 张。' : ''}}保存后由你选择发布渠道。</view>
+        <view class="export-image" wx:for="{{imagePaths}}" wx:key="*this">
+          <view class="caption">{{index === 0 ? '封面' : '文字图 ' + index}}</view>
+          <image src="{{item}}" mode="widthFix" />
+          <button class="share-image-action" data-index="{{index}}" bindtap="shareImage" loading="{{sharingIndex === index}}" disabled="{{sharingIndex >= 0 || albumSaving || exportBusy}}">发这张图片</button>
+        </view>
+        <button class="primary" bindtap="saveImages" loading="{{albumSaving}}" disabled="{{albumSaving || exportBusy || sharingIndex >= 0 || savedIndices.length === imagePaths.length}}">{{savedIndices.length === imagePaths.length ? '已全部保存' : savedIndices.length ? '继续保存剩余图片' : '保存全部图片到相册'}}</button>
+        <view class="caption">{{savedIndices.length ? '已保存 ' + savedIndices.length + ' 张。' : ''}}可以逐张直接发送，也可以保存全部图片后一起发布。</view>
       </block>
       <view class="section-title serif">核对原文</view>
       <view class="reading-chapter" wx:for="{{previewChapters}}" wx:key="id"><view class="section-title serif">{{item.title}}</view><text class="paragraph" selectable>{{item.text || '本章没有文字'}}</text></view>
