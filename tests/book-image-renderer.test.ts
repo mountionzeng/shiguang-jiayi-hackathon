@@ -4,13 +4,13 @@ import {renderBookImages} from '../miniprogram/services/bookImageRenderer';
 import {PAGE_HEIGHT, TEXT_WIDTH} from '../miniprogram/services/bookImageLayout';
 const material={descriptor:{id:'test',storyId:'story-test',revisionId:'revision-test',storyVersion:1,title:'虚构测试书',chapters:[{id:'chapter-one',title:'第一章',text:'测试正文🌿'.repeat(100)}],coverImageId:'',containsAiText:false},coverUrl:''};
 function runtime(imageInfo={path:'local-cover',width:600,height:800}){
-  const files:string[]=[],removed:string[]=[],drawn:string[]=[],images:any[][]=[];let number=0;
+  const files:string[]=[],removed:string[]=[],drawn:string[]=[],images:any[][]=[],requested:string[]=[];let number=0;
   const ctx:any=new Proxy({measureText:(text:string)=>({width:Array.from(text).length*32}),fillText:(text:string)=>drawn.push(text),drawImage:(...args:any[])=>images.push(args),},{get:(target:any,key)=>target[key]||(()=>{})});
-  const wx:any={createCanvasContext:()=>ctx,getFileSystemManager:()=>({unlink:({filePath}:any)=>removed.push(filePath)}),getImageInfo:({success}:any)=>success(imageInfo),canvasToTempFilePath:({success}:any)=>{const path='temp-'+(++number);files.push(path);success({tempFilePath:path});}};
+  const wx:any={createCanvasContext:()=>ctx,getFileSystemManager:()=>({unlink:({filePath}:any)=>removed.push(filePath)}),getImageInfo:({src,success}:any)=>{requested.push(src);success(imageInfo);},canvasToTempFilePath:({success}:any)=>{const path='temp-'+(++number);files.push(path);success({tempFilePath:path});}};
   (globalThis as any).wx=wx;
   const canvas={getContext:()=>ctx,createImage:()=>{const image:any={};Object.defineProperty(image,'src',{set:()=>image.onload()});return image;}};
   const page:any={setData:(_:any,done:()=>void)=>done(),createSelectorQuery:()=>{const query:any={select:()=>query,fields:()=>query,exec:(done:any)=>done([{node:canvas}])};return query;}};
-  return {wx,page,files,removed,drawn,images};
+  return {wx,page,files,removed,drawn,images,requested};
 }
 test('renderer exports cover plus complete text pages at requested dimensions',async()=>{
   const f=runtime(),progress:number[]=[];
@@ -49,4 +49,13 @@ test('renderer crops custom cover images to fill the exported cover frame',async
   assert.equal(coverDraw[6],top);
   assert.equal(coverDraw[7],TEXT_WIDTH);
   assert.equal(coverDraw[8],height);
+});
+test('renderer places the selected chapter backdrop under readable text pages',async()=>{
+  const f=runtime();
+  const withBackdrop={...material,descriptor:{...material.descriptor,chapters:[{...material.descriptor.chapters[0],backdropImageId:'image-backdrop'}]},
+    backdropUrls:{'chapter-one':'https://media.example/backdrop.jpg'}};
+  await renderBookImages(withBackdrop,'pages',32,f.page,()=>true,()=>{});
+  assert.deepEqual(f.requested,['/assets/illustrations/story-book-cover.png','https://media.example/backdrop.jpg']);
+  assert.ok(f.images.some(args=>args.length===9 && args[5]===0 && args[6]===0));
+  assert.ok(f.drawn.includes('拾光家忆 · AI 章节底图'));
 });

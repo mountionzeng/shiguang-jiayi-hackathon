@@ -5,9 +5,14 @@ export interface BookExportSelection {
 }
 export interface BookExportDescriptor {
   id: string; storyId: string; revisionId: string; storyVersion: number; title: string;
-  chapters: Array<Pick<SendChapter, 'id' | 'title' | 'text'>>; coverImageId: string; containsAiText: boolean;
+  chapters: Array<Pick<SendChapter, 'id' | 'title' | 'text'> & { backdropImageId?: string }>;
+  coverImageId: string; containsAiText: boolean;
 }
-export interface BookExportMaterial { descriptor: BookExportDescriptor; coverUrl: string }
+export interface BookExportMaterial {
+  descriptor: BookExportDescriptor;
+  coverUrl: string;
+  backdropUrls?: Record<string, string>;
+}
 async function call<T>(action: string, input: object = {}): Promise<T> {
   if (!wx.cloud) throw new Error('图片导出需要连接云端后使用');
   const response = await wx.cloud.callFunction({ name: 'storyBooks', data: { ...input, action } });

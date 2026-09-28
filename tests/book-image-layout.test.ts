@@ -29,3 +29,16 @@ test('larger font changes pagination without changing body content',()=>{
   assert.ok(large.length>small.length);
   assert.throws(()=>layoutTextImages('书'.repeat(1000),chapters,'pages',32,measure),/书名过长/);
 });
+test('paged layouts keep each chapter on pages carrying that chapter identity',()=>{
+  const pages=layoutTextImages('书',[{id:'chapter-one',title:'一',text:'甲'.repeat(1200),backdropImageId:'backdrop-one'},
+    {id:'chapter-two',title:'二',text:'乙'.repeat(40)}],'pages',32,measure);
+  assert.ok(pages.filter(page=>page.chapterId==='chapter-one').length>1);
+  assert.equal(pages[pages.length-1].chapterId,'chapter-two');
+  assert.equal(pages[pages.length-1].rows.some(row=>row.text.includes('甲')),false);
+});
+test('a long image spanning chapters does not claim either chapter backdrop',()=>{
+  const pages=layoutTextImages('书',[{id:'chapter-one',title:'一',text:'甲'},
+    {id:'chapter-two',title:'二',text:'乙'}],'long',32,measure);
+  assert.equal(pages.length,1);
+  assert.equal(pages[0].chapterId,'__multiple_chapters__');
+});
