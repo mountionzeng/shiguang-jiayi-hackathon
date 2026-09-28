@@ -64,3 +64,31 @@ test("Tencent paid moderation keeps dedicated credentials as one credential set"
     TENCENTCLOUD_SESSIONTOKEN: "runtime-token",
   }), { secretId: "runtime-id", secretKey: "runtime-key", token: "runtime-token" });
 });
+
+test("Tencent paid moderation can resolve short-lived CloudBase credentials", async () => {
+  let calls = 0;
+  const credentials = await moderation.resolveModerationCredentials({
+    env: { TCB_ENV: "cloud-test-env" },
+    async loadRuntimeCredentials() {
+      calls += 1;
+      return { id: "temporary-id", key: "temporary-key", token: "temporary-token" };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(credentials, {
+    secretId: "temporary-id",
+    secretKey: "temporary-key",
+    token: "temporary-token",
+  });
+  assert.deepEqual(moderation.roleCredentialsFromPayload(JSON.stringify({
+    TmpSecretId: "metadata-id",
+    TmpSecretKey: "metadata-key",
+    Token: "metadata-token",
+    ExpiredTime: 2_000_000_000,
+  })), {
+    secretId: "metadata-id",
+    secretKey: "metadata-key",
+    token: "metadata-token",
+    expiresAtMs: 2_000_000_000_000,
+  });
+});
