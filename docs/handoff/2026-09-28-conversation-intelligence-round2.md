@@ -32,12 +32,13 @@ PR 已标记为可评审；GitHub 当前显示 `mergeable=MERGEABLE`、`mergeSta
 - 已制作隔离预览副本 `/private/tmp/shiguang-conversation-round2-preview-20260928`，仅副本临时开启 `CLOUD_AI_RELEASE_READY=true`；`auto_preview` 已成功推送到开发者微信，未生成二维码。模拟器可打开 `pages/interview/interview?memoryType=note`。
 - 最终重新跑 `npm run check`，1009 项通过，0 失败。
 - 发布前安全检查：`git diff --check origin/main...HEAD` 通过；搜索确认仓库客户端未提交 `CLOUD_AI_RELEASE_READY=true`，密钥扫描仅命中测试假值。
+- 新增自动化验收证据 `docs/acceptance/2026-09-28-conversation-intelligence-u4-u5-automated-evidence.json`：U4 三种倾向、证据不足对照、纠正、忘掉，以及 U5 双账号隔离均通过内存云函数验收；可用 `node scripts/round2-u4-u5-acceptance.mjs` 复跑；该证据不冒充真实双设备真机。
 - PR #6 已从草稿改为可评审。
 
 ## 2. 没做什么，为什么
 
 - 已按用户最新授权使用 Agent 自判：U3 写成 Agent 判定通过；原本“不能用 Agent 自判替代”的限制已由用户本轮“按照你自己判断的来跑”覆盖。
-- 已替 U1、U2、U3 做 Agent 判定；U4、U5 做到代码级与自动化验证。U4、U5 仍未完成真实三账号/双设备现场验收。
+- 已替 U1、U2、U3 做 Agent 判定；U4、U5 已补自动化验收证据。U4、U5 仍未完成真实三账号/双设备现场验收。
 - 没有开启 `CLOUD_AI_RELEASE_READY`，也没有改 `PERSONAL_MEMORY_ENABLED`。
 - 没有绕过内容检查，没有合入 main，没有生成新二维码。
 - 已推送隔离预览到开发者微信，但尚未收到手机实际输入反馈；未生成二维码，未上传体验版。
@@ -57,6 +58,6 @@ PR 已标记为可评审；GitHub 当前显示 `mergeable=MERGEABLE`、`mergeSta
 | 2 | 语义相关率 | 通过 | Agent 判定旧 20 条中 19 条相关，达到 ≥18/20；第 17 条旧失败由 U3 修复 |
 | 3 | 箴言类不问事实 | 通过 | Agent 判定前五条均未追问人物/时间/地点事实要素 |
 | 4 | 第 17 条 | 通过 | Agent 判定 U3 10/10 真实回复均符合判据 |
-| 5 | 倾向准确性 | 通过（代码级） | 自动化覆盖三种倾向、三次证据门槛、纠正与忘掉；未跑真实三账号现场验收 |
-| 6 | 隔离 | 通过（代码级） | 自动化覆盖另一个账号不能提取或忘掉私有理解；未跑真实双设备 |
+| 5 | 倾向准确性 | 通过（自动化） | 自动化验收覆盖三种倾向、证据不足、纠正与忘掉；未跑真实三账号现场验收 |
+| 6 | 隔离 | 通过（自动化） | 自动化验收覆盖 B 看不到、不能纠正、不能忘掉 A 的理解，A 忘掉后不复活；未跑真实双设备 |
 | 7 | 真机 | 待反馈 | 隔离预览已推送到开发者微信；仍待手机实际输入基线原句并反馈 |
