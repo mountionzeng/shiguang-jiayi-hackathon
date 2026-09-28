@@ -610,7 +610,9 @@ async function main(event, dependencies = {}) {
 
   const meter = createTextMeter({ db, identity, kind: "chatInterview", model, baseUrl, fetcher: defaultFetch });
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20_000);
+  // TokenHub can queue interactive replies beyond 20s. Keep a bounded model
+  // budget while leaving room for moderation under the 60s function limit.
+  const timeoutId = setTimeout(() => controller.abort(), 40_000);
   try {
     // 不再按“人物→时间→地点”轮流指定方向：已经答过的事被硬逼着再问一遍，聊天就像填表。
     const content = await requestChatCompletion({

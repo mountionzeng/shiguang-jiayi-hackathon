@@ -634,6 +634,41 @@ test("the interview cloud function retries one empty provider response", async (
   }
 });
 
+test("interview allows a slow model reply but still aborts at forty seconds", async (t) => {
+  const previousFetch = global.fetch;
+  const previousKey = process.env.CHAT_AI_API_KEY;
+  const previousModel = process.env.CHAT_AI_MODEL;
+  process.env.CHAT_AI_API_KEY = "test-chat-key";
+  process.env.CHAT_AI_MODEL = "smart-chat-model";
+  let requestSignal;
+  global.fetch = async (_url, options) => {
+    requestSignal = options.signal;
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(Object.assign(new Error("timed out"), { name: "AbortError" })), { once: true });
+    });
+  };
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const pending = chatInterviewMain({ answer: "这是虚构的慢请求验收。" });
+    const rejected = assert.rejects(pending, { name: "AbortError" });
+    // main awaits story-context resolution before requesting the model.
+    await Promise.resolve();
+    assert.ok(requestSignal);
+    t.mock.timers.tick(20_001);
+    assert.equal(requestSignal.aborted, false);
+    t.mock.timers.tick(19_999);
+    await rejected;
+    assert.equal(requestSignal.aborted, true);
+  } finally {
+    t.mock.timers.reset();
+    global.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.CHAT_AI_API_KEY;
+    else process.env.CHAT_AI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.CHAT_AI_MODEL;
+    else process.env.CHAT_AI_MODEL = previousModel;
+  }
+});
+
 test("the interview cloud function rejects two empty provider responses", async () => {
   const previousFetch = global.fetch;
   const previousKey = process.env.CHAT_AI_API_KEY;
