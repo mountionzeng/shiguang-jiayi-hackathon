@@ -11,7 +11,7 @@
   - 模型不可用：`小忆暂时没连上，先陪你聊`
   - 内容检查日限制触发：`小忆今天有点迟钝，先按常问的陪你说`
 - 这三句都避开了 `模板`、`本地`、`降级`、`AI`、`模型`、`云端`、`额度` 这些内部词，并在测试里固定互不相同。
-- 新增门禁记录表：`docs/acceptance/2026-09-28-conversation-intelligence-round2-gates.md`。表里准备了 U1 长辈判据、U2 二十条人工评审、U3 十条固定复测、U4 三类风格账号、U5 双账号两设备记录栏，结论均留给用户判断。
+- 新增门禁记录表：`docs/acceptance/2026-09-28-conversation-intelligence-round2-gates.md`。表里准备了 U1 长辈判据、U2 二十条人工评审、U3 十条固定复测、U4 三类风格账号、U5 双账号两设备记录栏，结论均留给用户判断；并补入评审入口索引。
 - 已跑局部检查：`npm run test:files -- tests/interview-service.test.ts tests/page-handlers.test.ts`，98 项通过。
 - 已跑 U3 提示约束局部检查：`npm run test:files -- tests/cloud-function.test.js`，36 项通过。
 - 已跑完整检查：`npm run check`，1009 项通过。该结果只说明工程检查健康，不替代下面的门禁。
@@ -19,7 +19,11 @@
 - U3 十条均已取得真实云端回复。`meaning-continuation` 前三次同步调用返回 `timeout waiting for automator response`，随后改用后台触发 `wx.cloud.callFunction` 并从模拟器 console 读取标记结果，补齐真实回复。
 - 已整理 U3 人工评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u3-review.md`。表内列出固定输入、判据和真实回复，用户结论全部保留为待判断。
 - 已整理 U2 二十条人工语义评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u2-review.md`。表内列出原话、评审锚点和真实回复，用户结论全部保留为待判断。
-- 已整理 U1、U4、U5 的现场验收表：`docs/acceptance/2026-09-28-conversation-intelligence-u1-label-review.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u4-style-accounts.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md`。
+- 提交 `dc487bf`（`docs: record round2 U3 retest`）记录首轮 U3 真实复测证据。
+- 提交 `663cfdd`（`docs: complete round2 U3 retest evidence`）补齐 U3 第 10 条真实回复。
+- 提交 `2c6bdec`（`docs: add U3 review sheet`）整理 U3 人工评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u3-review.md`。
+- 提交 `5262b2a`（`docs: add U2 semantic review sheet`）整理 U2 二十条人工语义评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u2-review.md`。
+- 提交 `309e147`（`docs: add remaining round2 review sheets`）整理 U1、U4、U5 的现场验收表：`docs/acceptance/2026-09-28-conversation-intelligence-u1-label-review.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u4-style-accounts.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md`。
 
 ## 2. 没做什么，为什么
 

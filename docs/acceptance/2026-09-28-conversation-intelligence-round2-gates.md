@@ -2,6 +2,17 @@
 
 日期：2026-09-28。用途：记录第二轮门禁，不用自动化测试数量代替人工判断。
 
+
+## 评审入口索引
+
+| 门禁 | 评审文件 | 当前状态 |
+|---|---|---|
+| U1 标签听感 | `docs/acceptance/2026-09-28-conversation-intelligence-u1-label-review.md` | 需要用户判断 |
+| U2 二十条语义相关率 | `docs/acceptance/2026-09-28-conversation-intelligence-u2-review.md` | 需要用户判断 |
+| U3 第 17 条复测 | `docs/acceptance/2026-09-28-conversation-intelligence-u3-review.md` | 10/10 真实回复已取得，需用户判断 |
+| U4 风格账号 | `docs/acceptance/2026-09-28-conversation-intelligence-u4-style-accounts.md` | 需要现场账号验证 |
+| U5 双账号隔离 | `docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md` | 需要现场设备验证 |
+
 ## U1 标签长辈判据
 
 | 状态 | 当前标签 | 用户复核 | 备注 |
