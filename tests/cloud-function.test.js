@@ -987,6 +987,9 @@ test("interview follow-up checks the question's meaning rather than echoed words
     assert.match(rules, /不把感受延续变成感官扫描/);
     assert.match(rules, /不再问.*最先感觉到什么/);
     assert.match(rules, /只有用户主动转向具体经历或明确想谈细节/);
+    assert.match(rules, /如何安排时间/);
+    assert.match(rules, /把空下来的时间留给什么/);
+    assert.match(rules, /接下来做什么/);
     assert.doesNotMatch(rules, /你最想把这段时间留给什么/);
     assert.match(messages[1].content, /上一轮是感受，可以继续同一方向/);
     assert.ok(messages[1].content.includes(answer));
