@@ -35,3 +35,7 @@
 ```bash
 node scripts/round2-u4-u5-acceptance.mjs > docs/acceptance/2026-09-28-conversation-intelligence-u4-u5-automated-evidence.json
 ```
+
+## 当前开发者工具状态
+
+2026-09-28 已将微信开发者工具切回本轮 worktree，并开启自动化接口；模拟器启动失败，界面显示 `simulator launch failed`。因此真实手机/模拟器基线句仍未完成，不能把自动化内存验收冒充为真机验收。
