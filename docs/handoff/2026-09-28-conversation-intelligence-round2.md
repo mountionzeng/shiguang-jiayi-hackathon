@@ -17,6 +17,7 @@
 - 已跑完整检查：`npm run check`，1009 项通过。该结果只说明工程检查健康，不替代下面的门禁。
 - 2026-09-28 已按用户授权执行 U3 十条真实复测：先增量部署 `chatInterview/index.js`，部署确认任务 `confirmation_cloud_fn_inc_deploy_538e9240-8f81-4f9f-b657-c490f05ebae8` 成功，随后通过微信开发者工具逐条调用真实云函数。复测原始结果写入 `docs/acceptance/2026-09-28-conversation-intelligence-u3-retest.json`。
 - U3 十条均已取得真实云端回复。`meaning-continuation` 前三次同步调用返回 `timeout waiting for automator response`，随后改用后台触发 `wx.cloud.callFunction` 并从模拟器 console 读取标记结果，补齐真实回复。
+- 已整理 U3 人工评审表：`docs/acceptance/2026-09-28-conversation-intelligence-u3-review.md`。表内列出固定输入、判据和真实回复，用户结论全部保留为待判断。
 
 ## 2. 没做什么，为什么
 
