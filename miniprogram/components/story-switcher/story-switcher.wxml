@@ -5,12 +5,6 @@
     mode="aspectFit"
     aria-hidden="true"
   ></image>
-  <image
-    class="switcher-book-edges"
-    src="/assets/illustrations/story-switcher-book-edges.png"
-    mode="aspectFit"
-    aria-hidden="true"
-  ></image>
 
   <button
     class="story-tab story-tab-personal {{current === 'personal' ? 'story-tab-current' : ''}}"
@@ -160,12 +154,7 @@
       hover-class="none"
       aria-label="回忆录，挑一段接着聊"
     >
-      <image
-        class="capture-art capture-art-memoir"
-        src="/assets/illustrations/capture-memoir-book.png"
-        mode="aspectFit"
-        aria-hidden="true"
-      ></image>
+      <view class="capture-art capture-art-memoir" aria-hidden="true"></view>
       <view class="capture-copy capture-copy-memoir">
         <view class="capture-choice-title typewriter">回忆录</view>
       </view>

@@ -1,0 +1,57 @@
+{
+  "checkedAt": "2026-09-27T15:11:00.000Z",
+  "sourceCommit": "e2e8bf95fbe44c9db5e9faaf90adb738a145b0d5",
+  "previousFunctionalCommit": "19212f122a8247b13f96d2f664eac3cca4c64403",
+  "provider": "WeChat security.msgSecCheck",
+  "quotaRestored": false,
+  "latestQuotaProbe": {
+    "checkedAtLocal": "2026-09-27 23:11:00 +08:00",
+    "runner": "wechatide automation_evaluate",
+    "function": "contentSecurityCheck",
+    "modelCalled": false,
+    "databaseWritten": false,
+    "rawProviderCategory": "reach max api daily quota limit",
+    "requestId": "0ea31332-7be8-414e-906e-59b4839bd96a"
+  },
+  "moderationCache": {
+    "deployed": true,
+    "deployedFunctions": [
+      "chatInterview",
+      "organizeMemory",
+      "personalMemory"
+    ],
+    "collection": "ai_moderation_checks",
+    "storesRawText": false,
+    "storesOpenid": false,
+    "scope": "same China day, same openid, same scene, same title hash and same text hash",
+    "doesNotBypassProvider": true
+  },
+  "deployment": {
+    "environment": "cloud1-d5ghzk30ve609f544",
+    "appId": "wx86ae3e9d507ce52d",
+    "verifiedActive": [
+      "chatInterview",
+      "organizeMemory",
+      "personalMemory"
+    ],
+    "verifiedAt": "2026-09-27T15:07:37.103Z"
+  },
+  "tests": {
+    "passed": 997,
+    "failed": 0,
+    "skipped": 0,
+    "typecheck": "passed"
+  },
+  "preview": {
+    "sourceCommit": "e2e8bf95fbe44c9db5e9faaf90adb738a145b0d5",
+    "previewPath": "/Users/yuandai/Documents/Codex/2026-09-27/shiguang-conversation-intelligence/work/ai-preview-e2e8bf9",
+    "filesChecked": 184,
+    "clientGateRepo": false,
+    "clientGatePreview": true,
+    "mismatches": [],
+    "note": "Isolated acceptance build; not a formal release."
+  },
+  "fullWorkflowPassed": false,
+  "qrGenerated": false,
+  "testDataCreated": false
+}

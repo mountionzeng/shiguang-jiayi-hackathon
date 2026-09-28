@@ -4,7 +4,9 @@
 提出：问题八（界面清晰度），交给 Codex 绘制
 母版与画风参考：`design-handoff/poster-rollup-2026-08-29/`
 
-2026-09-27 素材位置更新：三个压缩交付副本与小程序文件逐字节相同，已统一保留在仓库根目录 `miniprogram/assets/illustrations/` 下的 `memory-bookmark.png`、`story-book-cover.png`、`story-book-spine.png`。本目录保留高分辨率母版；下文的 `app-optimized/` 为当时样稿阶段的交付路径。
+2026-09-27 素材位置更新：三个压缩交付副本与小程序文件逐字节相同，已统一保留在仓库根目录 `miniprogram/assets/illustrations/` 下的 `memory-bookmark.png`、`story-book-cover.png`。本目录保留高分辨率母版；下文的 `app-optimized/` 为当时样稿阶段的交付路径。
+
+2026-09-28 封面资产收敛：`story-book-cover.png` 是没有生成封面时的默认绿色书封，必须保留；其他本地书籍样式图不再进入小程序主包，生成封面的材质过渡改由 CSS 纹理层处理。
 
 ## 1. 为什么要重画
 
@@ -53,7 +55,7 @@
   - B 合上的书：360×540 左右，≤ 35 KB。
   - C 书脊：120×540 左右，≤ 15 KB。
 - 预览：PNG 一张，放 `design-handoff/ui-clarity-2026-09-15/preview/`。
-- 主包上限 2 MB，目前约 1.4 MB。全套确认后，会用新图替换掉 `capture-note-paper.png`（51 KB）、`capture-memoir-book.png`（84 KB）和 `ancient-book-shell.png`（22 KB），新增的总量要尽量和删掉的持平。
+- 主包上限 2 MB，目前约 1.4 MB。2026-09-28 后，除默认绿色封面 `story-book-cover.png` 外，其他本地书籍样式图不再进入小程序主包；新增图要尽量克制体积。
 
 ## 5. 这一轮不要动
 
@@ -83,4 +85,4 @@
 - Codex 交付的原稿（带烘焙棋盘格）留在 Codex 自己的工作目录 `~/.codex/visualizations/2026/09/15/01a0a337-28e5-73b3-8859-4a6fe8533ba4/ui-clarity-2026-09-15/`，说明见 `CODEX-ROUND1.md`。
 - 用户认可这一轮画风，要求直接用它先做一版界面。
 - 问题八用脚本去掉了棋盘格（只删除「灰白两色交替」的中性色连通区域，再羽化 1 px 边缘），得到 `masters/` 里的四张透明母版。
-- 进入小程序主包的只有两张：`memory-bookmark.png`（150×558，17 KB，记忆卡片左侧的书签）和 `story-book-cover.png`（540×838，149 KB，首页书封和书架）。旧的 `ancient-book-shell.png` 已删除。书脊和丝带这一版还没用上。
+- 进入小程序主包的书本外观只保留 `story-book-cover.png`（没有生成封面时的默认绿色书封）。`memory-bookmark.png` 继续用于记忆卡片左侧的书签；其他本地书籍样式图已移出小程序主包，生成封面的材质过渡由 CSS 纹理层处理。旧的 `ancient-book-shell.png` 已删除。

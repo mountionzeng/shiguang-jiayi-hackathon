@@ -18,7 +18,7 @@ Page({
     const enabled = !this.data.enabled;
     wx.showModal({title:enabled ? '让小忆记住你的讲述？' : '暂停小忆的记忆？',
       content:enabled ? '你今后保存的本人原话会交给在线 AI 提炼少量个人背景，并用于以后的个人访谈和文字整理。此过程可能产生模型调用费用。不把家人或作品人物当作你；敏感理解不主动提及。你可以逐条忘记，原故事仍保留。' : '暂停后不再提炼或使用个人背景；已有理解仍可查看和忘记。',
-      confirmText:enabled ? '同意并开启' : '暂停',success:result=>{if(result.confirm)void this.confirmEnabled(enabled);}});
+      confirmText:enabled ? '同意开启' : '暂停',success:result=>{if(result.confirm)void this.confirmEnabled(enabled);}});
   },
   async confirmEnabled(enabled: boolean) {
     if (this.data.busy) return;
@@ -41,6 +41,29 @@ Page({
     this.setData({busy:true});
     try { await personalMemory.forget(lineageKey); await this.refresh(); }
     catch { wx.showToast({title:'尚未忘记，请重试',icon:'none'}); }
+    finally { this.setData({busy:false}); }
+  },
+  async confirmInsight(event: {currentTarget:{dataset:{key:string}}}) {
+    const lineageKey=event.currentTarget.dataset.key;
+    if (this.data.busy || !this.data.insights.some(value=>value.lineageKey===lineageKey)) return;
+    this.setData({busy:true});
+    try { await personalMemory.confirm(lineageKey); await this.refresh(); }
+    catch { wx.showToast({title:'确认未保存，请重试',icon:'none'}); }
+    finally { this.setData({busy:false}); }
+  },
+  correct(event: {currentTarget:{dataset:{key:string}}}) {
+    const lineageKey=event.currentTarget.dataset.key;
+    const item=this.data.insights.find(value=>value.lineageKey===lineageKey);
+    if (this.data.busy || !item) return;
+    wx.showModal({title:'改正这条理解',content:'',editable:true,
+      placeholderText:'更准确的说法，留空则停用（60字内）',confirmText:'保存纠正',success:result=>{if(result.confirm)void this.confirmCorrection(lineageKey,result.content || '');}});
+  },
+  async confirmCorrection(lineageKey:string,text:string) {
+    if (this.data.busy) return;
+    if (Array.from(text.trim()).length > 60) { wx.showToast({title:'请把纠正控制在60字以内',icon:'none'}); return; }
+    this.setData({busy:true});
+    try { await personalMemory.correct(lineageKey,text); await this.refresh(); }
+    catch { wx.showToast({title:'纠正未保存，请重试',icon:'none'}); }
     finally { this.setData({busy:false}); }
   },
   onShareAppMessage() { return {title:'拾光家忆｜把重要的故事慢慢写下来',path:'/pages/index/index'}; },

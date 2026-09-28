@@ -34,6 +34,7 @@ const contributionForClient = (memory,member) => ({
   reviewStatus:memory.reviewStatus,
   createdAt:memory.createdAt,
   segments:memory.segments,
+  aiRevisions:memory.aiRevisions,
   deletedAt:memory.deletedAt,
   photoIds:memory.photoIds,
 });

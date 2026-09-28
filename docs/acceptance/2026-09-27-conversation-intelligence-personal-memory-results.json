@@ -1,0 +1,136 @@
+{
+  "date": "2026-09-27",
+  "environment": "cloud1-d5ghzk30ve609f544",
+  "sourceCommit": "26a0fd0bba2abf94141b975e8129482b3302c402",
+  "consentUi": "enabled successfully after 09fc653 modal label fix",
+  "samples": [
+    {
+      "id": "memory-1790500640555-l1succ",
+      "title": "小院散步，心里松下来",
+      "text": "今天在小院里散步，我想先讲那种心里松下来的感觉。终于没有催促，我整个人都安静了。说起这段经历，最想谈的是自己的感受。今天先记下来，不用追问。",
+      "path": "UI"
+    },
+    {
+      "id": "memory-1790501329940-ajpoup",
+      "title": "画坏了也没有重来",
+      "text": "昨天练习画画，画坏了也没有重来。我先想到的是自己的心情，从着急变成了轻松，允许自己慢慢来很舒服。我讲经历时总想从心里的感觉开始。先记着，不用追问。",
+      "path": "UI input/save; runtime page handlers for send/finish"
+    },
+    {
+      "id": "memory-1790501592326-cl5u5j",
+      "title": "雨声里读书",
+      "text": "前天在雨声里读书，读到一半我停住了。我想先说的是内心的踏实，不用急着证明什么，安安静静就很好。每次回想事情，我在意的是自己的感受怎么变化。先记录，不用问下去了。",
+      "path": "UI input/save; runtime page handlers for send/finish; extraction retry returned complete"
+    },
+    {
+      "id": "memory-1790506070241-czni4c",
+      "title": "把一盆小花搬到窗边",
+      "text": "今天把一盆小花搬到窗边。讲这件事时，我最想先说的是心里忽然有了盼头的感觉，不是物件的样子。回看散步、画画和读书的经历，我也总从自己的感受讲起。先记下来，不用追问。",
+      "path": "UI"
+    }
+  ],
+  "beforeFix": {
+    "listAfter1": [],
+    "listAfter2": [],
+    "listAfter3": [],
+    "candidateConfidence": 0.4,
+    "candidateEvidenceCount": 3,
+    "candidateText": "讲述个人经历时，倾向先谈自己内心的感受。",
+    "lineageKey": "9c55e5bba1eef84b572970f27629cbc6"
+  },
+  "fix": "Only a matched new independent source may reassess confidence from valid original excerpts; copies, same-source edits and missed matches cannot raise it. Three distinct sources and 0.75 gate preserved.",
+  "afterFix": {
+    "status": "visible",
+    "evidenceCount": 4,
+    "text": "讲述个人经历时，倾向先谈自己内心的感受。",
+    "sourceLabel": "小忆的暂定理解",
+    "confirmUi": "说得对 succeeded; label changed to 依据你的讲述",
+    "correction": {
+      "text": "我更愿意从物件和场景的具体细节讲起。",
+      "origin": "user_corrected",
+      "evidenceLabel": "你的纠正 · 2026-09-27",
+      "uiLabel": "依据你的纠正",
+      "sameInput": "傍晚走过小公园，看见一张空长椅，我停了一会儿。",
+      "before": {
+        "dimension": "event",
+        "text": "傍晚路过公园，一张空长椅让你停了一会儿。那一下是脚步先慢下来，还是看见椅子空着，才想站一站？"
+      },
+      "after": {
+        "dimension": "place",
+        "text": "傍晚的小公园里，一张空着的长椅让你停了一会儿。停下那会儿，你先注意到的是长椅本身——比如它的样子、位置，还是周围的光线和声响？"
+      },
+      "generationMode": "cloud-ai",
+      "selectorVersion": "u6-v2",
+      "caveat": "Before response was about action, not strongly emotional; one before/after pair does not establish style accuracy across accounts."
+    },
+    "correctionInputFix": {
+      "commit": "2c88670",
+      "checkedUi": true,
+      "defaultEmpty": true
+    },
+    "forgetUi": "confirmed; visible list empty",
+    "forgetReplay": [
+      {
+        "memoryId": "memory-1790500640555-l1succ",
+        "status": "suppressed"
+      },
+      {
+        "memoryId": "memory-1790501329940-ajpoup",
+        "status": "suppressed"
+      },
+      {
+        "memoryId": "memory-1790501592326-cl5u5j",
+        "status": "suppressed"
+      },
+      {
+        "memoryId": "memory-1790506070241-czni4c",
+        "status": "suppressed"
+      }
+    ],
+    "listAfterForget": [],
+    "pauseUi": "confirmed; memory disabled",
+    "originalsAfterForget": "Four sample memories still present before cleanup; forgetting did not delete them",
+    "pauseCloudVerified": true
+  },
+  "cleanup": {
+    "verified": true,
+    "mode": "normal UI soft delete; recoverable",
+    "memories": [
+      {
+        "id": "memory-1790497809872-eefc1d",
+        "deletedAt": "2026-09-27T08:54:30.558Z"
+      },
+      {
+        "id": "memory-1790500640555-l1succ",
+        "deletedAt": "2026-09-27T11:17:36.047Z"
+      },
+      {
+        "id": "memory-1790501329940-ajpoup",
+        "deletedAt": "2026-09-27T11:13:13.180Z"
+      },
+      {
+        "id": "memory-1790501592326-cl5u5j",
+        "deletedAt": "2026-09-27T11:11:20.848Z"
+      },
+      {
+        "id": "memory-1790506070241-czni4c",
+        "deletedAt": "2026-09-27T11:09:00.994Z"
+      }
+    ]
+  },
+  "baselineMemoryCleanup": {
+    "id": "memory-1790497809872-eefc1d",
+    "deletedAt": "2026-09-27T08:54:30.558Z",
+    "verified": true
+  },
+  "fallback": {
+    "simulatedCloudUnavailable": true,
+    "input": "越是迷茫的时候，越是要往远处看。",
+    "label": "模板追问",
+    "reply": "你刚才这句话里，最想留下来的是哪个意思？",
+    "savedWithoutAiLabel": true,
+    "id": "memory-1790508119546-js1mzx",
+    "deletedAt": "2026-09-27T11:28:05.090Z",
+    "previewRuntimeRestored": true
+  }
+}

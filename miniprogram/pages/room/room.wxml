@@ -25,12 +25,7 @@
         aria-label="看和{{item.name}}有关的记忆"
       >
         <view class="filter-avatar serif">
-          <image
-            class="filter-avatar-backdrop"
-            src="/assets/illustrations/book-wash.png"
-            mode="aspectFill"
-            aria-hidden="true"
-          ></image>
+          <view class="filter-avatar-backdrop" aria-hidden="true"></view>
           <text class="filter-avatar-letter">{{item.avatarText}}</text>
         </view>
         <text class="filter-name">{{item.name}}</text>

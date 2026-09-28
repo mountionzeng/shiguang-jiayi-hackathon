@@ -19,6 +19,7 @@ import {
   pendingEditCount,
   pendingRevisionResolved,
   proposeMemorySegmentInsert,
+  proposeInlineXiaoyiInsert,
   proposeSelectionRewrite,
   resolvePendingEdit,
 } from "../miniprogram/services/chapters";
@@ -143,6 +144,24 @@ test("一段记忆同时提到好几章：各章各自的待确认修订和水�
   const [, updatedSecond] = proposed;
   assert.deepEqual(updatedSecond, second, "只对目标章提修订");
   assert.equal(chapterHasNewSegment(updatedSecond, grown), false);
+});
+
+
+test("就地小忆原话写回：先生成 AI 来源待确认新增，接受后标记含 AI", () => {
+  const target = chapter("chapter-1", "灶台", "那天屋里很冷。\n");
+  const proposed = proposeInlineXiaoyiInsert([target], "chapter-1", "我妈在灶台前烙饼，我在旁边烧火。");
+  const proposedChapter = proposed[0];
+  assert.equal(proposedChapter.content.map(item => item.text).join(""), "那天屋里很冷。\n", "正文还没变");
+  assert.equal(pendingEditCount(proposed), 1);
+  const edit = firstEdit(proposed, "chapter-1");
+  assert.equal(edit.kind, "insert");
+  assert.equal(edit.source, "ai", "即使用原话，也因为小忆参与而从宽留痕");
+  assert.equal(edit.text, "我妈在灶台前烙饼，我在旁边烧火。");
+
+  const accepted = resolvePendingEdit(proposed, "chapter-1", edit.id, "accept");
+  const [finalized] = finalizePendingRevision(accepted, "chapter-1");
+  assert.match(finalized.content.map(item => item.text).join(""), /烙饼/);
+  assert.equal(finalized.containsAiText, true);
 });
 
 test("AI 来源的新增被接受后，章节标为含 AI 文字；被「不要」的不标", () => {

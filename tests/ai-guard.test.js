@@ -22,6 +22,9 @@ function databaseFixture(records) {
               if (!current) throw new Error("not found");
               records.set(key, { ...current, ...data });
             },
+            async set({ data }) {
+              records.set(`${name}:${id}`, { ...data });
+            },
           };
         },
       };
@@ -99,6 +102,22 @@ test("AI usage reservations enforce a durable interval and daily ceiling", async
   });
 });
 
+test("zero daily ceiling allows paid usage while preserving interval and accounting", async () => {
+  for (const name of ["chatInterview", "organizeMemory", "generateBiography", "personalMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    const identity = { openid: "paid-openid", accountDocumentId: "account-document", accountId: "account_222222222222222222222222", familyId: "family_paid" };
+    const records = new Map([["user_accounts:account-document", { accountId: identity.accountId, primaryFamilyId: identity.familyId, wxOpenId: identity.openid, status: "active", aiUsage: { dayKey: "1970-01-01", count: 1000, lastAtMs: 9000, byKind: { [name]: 1000 } } }]]);
+    const db = databaseFixture(records);
+    await withEnvironment({ AI_DAILY_REQUEST_LIMIT: "0", AI_MIN_INTERVAL_MS: 1000 }, async () => {
+      await deployedGuard.reserveAiRequest(db, identity, name, 10000);
+      assert.equal(records.get("user_accounts:account-document").aiUsage.count, 1001);
+      await assert.rejects(() => deployedGuard.reserveAiRequest(db, identity, name, 10500), /操作太频繁/);
+      records.get("user_accounts:account-document").status = "revoked";
+      await assert.rejects(() => deployedGuard.reserveAiRequest(db, identity, name, 12000), /权限已经变化/);
+    });
+  }
+});
+
 test("AI moderation checks every chunk and fails closed", async () => {
   const calls = [];
   const cloud = { openapi: { security: { msgSecCheck: async request => {
@@ -113,6 +132,87 @@ test("AI moderation checks every chunk and fails closed", async () => {
   const risky = { openapi: { security: { msgSecCheck: async () => ({ result: { suggest: "risky" } }) } } };
   await assert.rejects(() => guard.moderateText(risky, "openid-a", "不安全内容"), /暂时不能交给 AI/);
   await assert.rejects(() => guard.moderateText({}, "openid-a", "普通内容"), /检查暂时不可用/);
+});
+
+test("AI moderation reuses same-day hashed verdicts without storing the checked text", async () => {
+  for (const name of ["chatInterview", "generateBiography", "organizeMemory", "personalMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    const records = new Map();
+    const db = databaseFixture(records);
+    let passCalls = 0;
+    const passCloud = { openapi: { security: { msgSecCheck: async () => {
+      passCalls += 1;
+      return { result: { suggest: "pass" } };
+    } } } };
+
+    await deployedGuard.moderateText(passCloud, "openid-a", "重复的安全文本", "缓存标题", { db, nowMs: 1_800_000 });
+    await deployedGuard.moderateText(passCloud, "openid-a", "重复的安全文本", "缓存标题", { db, nowMs: 1_900_000 });
+    assert.equal(passCalls, 1, `${name} should not spend quota for the same same-day text twice`);
+    assert.doesNotMatch(JSON.stringify([...records]), /重复的安全文本|缓存标题|openid-a/);
+
+    await deployedGuard.moderateText(passCloud, "openid-a", "重复的安全文本", "缓存标题", { db, nowMs: 90_000_000 });
+    assert.equal(passCalls, 2, `${name} should re-check on a different China day`);
+
+    let riskyCalls = 0;
+    const riskyCloud = { openapi: { security: { msgSecCheck: async () => {
+      riskyCalls += 1;
+      return { result: { suggest: "risky" } };
+    } } } };
+    await assert.rejects(
+      () => deployedGuard.moderateText(riskyCloud, "openid-a", "重复的风险文本", "缓存标题", { db, nowMs: 2_000_000 }),
+      /暂时不能交给 AI/,
+    );
+    const failIfCalled = { openapi: { security: { msgSecCheck: async () => { throw new Error("should not call provider"); } } } };
+    await assert.rejects(
+      () => deployedGuard.moderateText(failIfCalled, "openid-a", "重复的风险文本", "缓存标题", { db, nowMs: 2_100_000 }),
+      /暂时不能交给 AI/,
+    );
+    assert.equal(riskyCalls, 1, `${name} should reuse same-day rejected verdicts`);
+  }
+});
+
+test("AI moderation falls back to paid Tencent moderation when WeChat quota is exhausted", async () => {
+  for (const name of ["chatInterview", "generateBiography", "organizeMemory", "personalMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    const records = new Map();
+    const db = databaseFixture(records);
+    let wechatCalls = 0;
+    let paidCalls = 0;
+    const cloud = { openapi: { security: { msgSecCheck: async () => {
+      wechatCalls += 1;
+      throw { errCode: 45009, errMsg: "reach max api daily quota limit" };
+    } } } };
+    const paidModeration = async ({ content, dataId }) => {
+      paidCalls += 1;
+      assert.equal(content, "测试标题\n虚构的按量审核文本");
+      assert.match(dataId, /^mod_[0-9a-f]{48}$/);
+      return { available: true, status: "pass", suggestion: "Pass" };
+    };
+
+    await deployedGuard.moderateText(cloud, "openid-a", "虚构的按量审核文本", "测试标题", { db, nowMs: 2_000_000, paidModeration });
+    await deployedGuard.moderateText(cloud, "openid-a", "虚构的按量审核文本", "测试标题", { db, nowMs: 2_100_000, paidModeration });
+    assert.equal(wechatCalls, 1, `${name} should cache the paid pass verdict`);
+    assert.equal(paidCalls, 1, `${name} should use paid moderation only once`);
+    assert.match(JSON.stringify([...records]), /tencent-tms/);
+    assert.doesNotMatch(JSON.stringify([...records]), /虚构的按量审核文本|测试标题|openid-a/);
+  }
+});
+
+test("AI moderation keeps paid Review and Block results closed", async () => {
+  const records = new Map();
+  const db = databaseFixture(records);
+  const cloud = { openapi: { security: { msgSecCheck: async () => {
+    throw { errCode: 45009, errMsg: "reach max api daily quota limit" };
+  } } } };
+  const paidModeration = async () => ({ available: true, status: "reject", suggestion: "Review" });
+  await assert.rejects(
+    () => guard.moderateText(cloud, "openid-a", "需要复核的虚构文字", "测试标题", { db, nowMs: 2_000_000, paidModeration }),
+    { code: "AI_CONTENT_REJECTED" },
+  );
+  await assert.rejects(
+    () => guard.moderateText({}, "openid-a", "需要复核的虚构文字", "测试标题", { db, nowMs: 2_100_000, paidModeration }),
+    { code: "AI_CONTENT_REJECTED" },
+  );
 });
 
 test("AI moderation checks content beyond 10,000 code points", async () => {
@@ -131,6 +231,34 @@ test("AI moderation checks content beyond 10,000 code points", async () => {
     assert.equal(calls.length, 5, `${name} must moderate the tail chunk`);
     assert.match(calls[4].content, /尾部风险$/);
   }
+});
+
+test("AI moderation distinguishes exhausted daily quota without logging private SDK details or retrying", async context => {
+  const logs = [];
+  const previousWarn = console.warn;
+  console.warn = (...args) => logs.push(args);
+  context.after(() => { console.warn = previousWarn; });
+  for (const name of ["chatInterview", "organizeMemory", "personalMemory"]) {
+    const deployedGuard = require(`../cloudfunctions/${name}/aiGuard.js`);
+    for (const error of [
+      { errCode: 45009, errMsg: "private request content" },
+      { errcode: "45009", message: "private request content" },
+      new Error("openapi.security.msgSecCheck:fail reach max api daily quota limit rid: private-request-id"),
+    ]) {
+      let calls = 0;
+      const cloud = { openapi: { security: { msgSecCheck: async () => { calls += 1; throw error; } } } };
+      await assert.rejects(() => deployedGuard.moderateText(cloud, "private-openid", "字".repeat(5001)), failure => {
+        assert.equal(failure.code, "AI_CONTENT_CHECK_QUOTA_EXHAUSTED");
+        assert.match(failure.message, /内容安全检查额度已用完/);
+        return true;
+      });
+      assert.equal(calls, 1, "quota exhaustion must not trigger repeated checks");
+    }
+    const cloud = { openapi: { security: { msgSecCheck: async () => { throw { errCode: 45011, errMsg: "private-openid" }; } } } };
+    await assert.rejects(() => deployedGuard.moderateText(cloud, "private-openid", "普通内容"), { code: "AI_CONTENT_CHECK_UNAVAILABLE" });
+  }
+  assert.doesNotMatch(JSON.stringify(logs), /private-|private request|普通内容/);
+  assert.match(JSON.stringify(logs), /daily-quota-exhausted/);
 });
 
 test("the server release gate defaults closed", async () => {

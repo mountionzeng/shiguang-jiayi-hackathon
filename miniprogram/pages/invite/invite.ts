@@ -129,8 +129,6 @@ Page({
 
     // 原有拾光插画语言：淡彩晕染、树枝、小鸟与鸟窝。
     context.setGlobalAlpha(0.18);
-    context.drawImage("/assets/illustrations/book-wash.png", 528, -70, 260, 346);
-    context.drawImage("/assets/illustrations/book-wash.png", -74, 744, 250, 334);
     context.setGlobalAlpha(0.72);
     context.drawImage("/assets/illustrations/memory-branch.png", 368, 16, 430, 143);
     context.setGlobalAlpha(0.9);

@@ -508,7 +508,7 @@ function parseSceneJson(content) {
 
 const STYLES = {
   cover: {
-    lead: "竖版古籍封面内的贴图画面，适配细长书封比例。围绕整本书共同的主题组织一个简洁意象；上方三分之一也铺有连续的纸本纹理、淡彩背景和环境延展，不能留下纯空白或没有画面的标题带；书名区只需要落在较浅、可读的纹理之上，画面由纯粹的图像元素组成。",
+    lead: "竖版古籍书封正面插画底稿，适配细长书封比例。围绕整本书共同的主题组织一个简洁意象；上方三分之一也铺有连续的纸本纹理、淡彩背景和环境延展，不能留下纯空白或没有画面的标题带；书名区落在较浅、可读的纹理之上，画面由纯粹的图像元素组成。",
     width: 832, height: 1248, maxObjects: 4, withScene: true, withFigures: true,
   },
   illustration: {
@@ -598,7 +598,7 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
   const eraHint = explicitEraHint(text);
   if (eraHint) parts.push(`${purpose === "backdrop" ? "景物与器物" : "服装与器物"}的年代质地依据正文明确写出的${eraHint}。`);
   if (purpose === "illustration") parts.push("主体略偏于画面一侧，光线来自场景内可辨认的方向。");
-  if (purpose === "cover") parts.push("主体、背景纹理与上方延展共同构成可读的竖版封面骨架；画面从上缘延续到下缘，顶部也要有淡彩、枝叶、光影或纸纹等可见内容，像贴在古籍封面里的纸本画。文字由界面另行排版，生成图只画背景、主体、纹理和物件。");
+  if (purpose === "cover") parts.push("主体、背景纹理与上方延展共同构成可读的竖版封面骨架；画面从上缘延续到下缘，顶部也要有淡彩、枝叶、光影或纸纹等可见内容，直接铺满封面正面。书脊、绑线、纸页边缘和外框交给界面层处理；书名、章节数和统计文字由界面另行排版，生成图只画背景、主体、纹理和物件。");
   if (purpose === "backdrop") parts.push("正文所在留白保持清朗，景物附近保留少量纸纤维和淡彩渗色。");
   parts.push(PHYSICAL_REALISM_REQUIREMENT);
   if (artDirection) parts.push(`用户的美术偏好：${artDirection}。优先体现在色彩、材料与笔触中，画面事实仍以正文为准。`);

@@ -282,6 +282,40 @@ export function proposeSelectionRewrite(
   });
 }
 
+/**
+ * 就地小忆把用户刚回答的话写回章节：只提出一条 AI 来源的待确认新增，
+ * 不直接改正文。没有可靠光标 anchor 时接到正文末尾；未来拿到光标偏移后可传 anchor。
+ */
+export function proposeInlineXiaoyiInsert(
+  chapters: ManuscriptChapter[],
+  chapterId: string,
+  text: string,
+  anchor?: { start: number; end: number },
+  now = new Date(),
+): ManuscriptChapter[] {
+  const target = chapters.find(chapter => chapter.id === chapterId);
+  const trimmed = text.trim();
+  if (!target || !trimmed) return chapters.map(copyChapter);
+  const edit: ChapterEdit = {
+    id: newEditId(now),
+    kind: "insert",
+    text: trimmed,
+    source: "ai",
+    status: "pending",
+    ...(anchor ? { anchor } : {}),
+  };
+  return chapters.map(chapter => {
+    if (chapter.id !== chapterId) return copyChapter(chapter);
+    return {
+      ...copyChapter(chapter),
+      pendingRevision: {
+        createdAt: chapter.pendingRevision?.createdAt ?? now.toISOString(),
+        edits: [...(chapter.pendingRevision?.edits ?? []), edit],
+      },
+    };
+  });
+}
+
 /** 逐条确认/不要一处待确认修订；不改任何文字，只改这一条的状态。 */
 export function resolvePendingEdit(
   chapters: ManuscriptChapter[],
