@@ -4,7 +4,13 @@ import test from "node:test";
 import { generateInterviewPrompt } from "../miniprogram/services/interviewService";
 
 const interviewCloud = require("../cloudfunctions/chatInterview/index.js");
-import { FOLLOW_UP_LABEL } from "../miniprogram/domain/interview";
+import {
+  CLOUD_FOLLOW_UP_LABEL,
+  FOLLOW_UP_LABEL,
+  QUOTA_EXHAUSTED_FOLLOW_UP_LABEL,
+} from "../miniprogram/domain/interview";
+
+const INTERNAL_LABEL_WORDS = /模板|本地|降级|AI|模型|云端|额度/;
 
 function installGlobal(name: "getApp" | "wx", value: unknown): () => void {
   if (name === "wx") value = { showModal: ({ success }: any) => success({ confirm: true, cancel: false }), ...(value as object) };
@@ -142,7 +148,16 @@ test("exhausted moderation quota is identified while preserving honest local fal
   assert.equal(calls, 3);
 });
 
-test("local fallback stays attached to the user's words and identifies itself as a template", async (context) => {
+test("follow-up labels distinguish normal, unavailable, and daily-check-limit states in user language", () => {
+  assert.notEqual(CLOUD_FOLLOW_UP_LABEL, FOLLOW_UP_LABEL);
+  assert.notEqual(CLOUD_FOLLOW_UP_LABEL, QUOTA_EXHAUSTED_FOLLOW_UP_LABEL);
+  assert.notEqual(FOLLOW_UP_LABEL, QUOTA_EXHAUSTED_FOLLOW_UP_LABEL);
+  for (const label of [CLOUD_FOLLOW_UP_LABEL, FOLLOW_UP_LABEL, QUOTA_EXHAUSTED_FOLLOW_UP_LABEL]) {
+    assert.doesNotMatch(label, INTERNAL_LABEL_WORDS);
+  }
+});
+
+test("local fallback stays attached to the user's words and identifies itself in user language", async (context) => {
   const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: false } }));
   const restoreWx = installGlobal("wx", { cloud: { callFunction: async () => { throw new Error("must not call cloud"); } } });
   context.after(() => { restoreWx(); restoreGetApp(); });
@@ -153,7 +168,7 @@ test("local fallback stays attached to the user's words and identifies itself as
   });
 
   assert.equal(prompt.generationMode, "local-fallback");
-  assert.equal(FOLLOW_UP_LABEL, "模板追问");
+  assert.equal(FOLLOW_UP_LABEL, "小忆暂时没连上，先陪你聊");
   assert.match(prompt.text, /这句话/);
   assert.doesNotMatch(prompt.text, /谁和你在一起|什么时候|在哪里/);
 });

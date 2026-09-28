@@ -20,10 +20,12 @@ export const INTERVIEW_DIMENSIONS: InterviewDimension[] = [
 ];
 
 /**
- * 追问卡片上的标签。不再显示「追问人物 / 追问时候」这类方向名，
+ * 追问卡片上的标签。不再显示内部生成方式或「追问人物 / 追问时候」这类方向名，
  * 方向只在内部用来避免连续问同一类事，不让用户觉得在填表。
  */
-export const FOLLOW_UP_LABEL = "模板追问";
+export const CLOUD_FOLLOW_UP_LABEL = "小忆认真想过了";
+export const FOLLOW_UP_LABEL = "小忆暂时没连上，先陪你聊";
+export const QUOTA_EXHAUSTED_FOLLOW_UP_LABEL = "小忆今天有点迟钝，先按常问的陪你说";
 
 /** 五个方向都问过一轮后，只顺着经过和心里的感受往下聊，不再回头问事实。 */
 const REFLECTIVE_DIMENSIONS: InterviewDimension[] = ["event", "feeling"];

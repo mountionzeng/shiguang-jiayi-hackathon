@@ -1280,7 +1280,7 @@ test("interview explains exhausted content-check quota beside its local template
   await callPage(page, "send");
   const messages = page.data.messages as Array<{ kind: string; text: string; label: string }>;
   assert.equal(messages.find(message => message.kind === "answer")?.text, "我想把这句话留下。");
-  assert.equal(messages.find(message => message.kind === "followup")?.label, "模板追问 · 今日内容检查额度已用完");
+  assert.equal(messages.find(message => message.kind === "followup")?.label, "小忆今天有点迟钝，先按常问的陪你说");
   assert.equal(page.data.asking, false);
 });
 
