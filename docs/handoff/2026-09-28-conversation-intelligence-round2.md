@@ -26,6 +26,7 @@
 - 提交 `309e147`（`docs: add remaining round2 review sheets`）整理 U1、U4、U5 的现场验收表：`docs/acceptance/2026-09-28-conversation-intelligence-u1-label-review.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u4-style-accounts.md`、`docs/acceptance/2026-09-28-conversation-intelligence-u5-isolation-devices.md`。
 - 提交本轮后续 Agent 自判：`docs/acceptance/2026-09-28-conversation-intelligence-agent-judgment.md`。用户已允许按 Agent 判断推进；Agent 判定 U1 通过、U2 19/20 通过、U3 10/10 通过；U4/U5 相关自动化 162 项通过，但真实双账号双设备现场验收未跑。
 - 已制作隔离预览副本 `/private/tmp/shiguang-conversation-round2-preview-20260928`，仅副本临时开启 `CLOUD_AI_RELEASE_READY=true`；`auto_preview` 已成功推送到开发者微信，未生成二维码。模拟器可打开 `pages/interview/interview?memoryType=note`。
+- 最终重新跑 `npm run check`，1009 项通过，0 失败。
 
 ## 2. 没做什么，为什么
 

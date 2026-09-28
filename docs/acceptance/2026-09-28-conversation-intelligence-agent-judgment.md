@@ -77,3 +77,9 @@
 - 包大小：1,950,328 字节；main 包 1,853,085 字节；`/packages/audio/` 27,521 字节；`/packages/story-sharing/` 69,722 字节。
 - 模拟器已成功打开 `pages/interview/interview?memoryType=note`。
 - 真机上是否完成基线输入「越是迷茫的时候，越是要往远处看。」仍待手机实际反馈。
+
+## 最终完整检查
+
+- 已跑：`npm run check`。
+- 结果：1009 项通过，0 失败。
+- 时间：2026-09-28，在分支 `codex/conversation-intelligence-20260927`。
