@@ -26,19 +26,6 @@
   pointer-events: none;
 }
 
-.switcher-book-edges {
-  position: absolute;
-  bottom: -12rpx;
-  left: -14%;
-  z-index: 0;
-  width: 128%;
-  height: 320rpx;
-  opacity: 0.24;
-  pointer-events: none;
-  transform: scale(2);
-  transform-origin: 50% 100%;
-}
-
 .story-tab {
   position: relative;
   z-index: 1;
@@ -254,10 +241,18 @@
 }
 
 .capture-art-memoir {
-  top: 0;
-  width: 264rpx;
-  height: 274rpx;
-  margin-left: -132rpx;
+  top: 20rpx;
+  width: 282rpx;
+  height: 218rpx;
+  margin-left: -141rpx;
+  border: 2rpx solid rgba(128, 99, 58, 0.14);
+  border-radius: 28rpx 14rpx 34rpx 18rpx;
+  background:
+    linear-gradient(90deg, rgba(128,99,58,.12) 0 8rpx, transparent 8rpx 100%),
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.72), transparent 32%),
+    linear-gradient(135deg, rgba(255,253,247,.96), rgba(236,230,214,.9));
+  box-shadow: 0 14rpx 26rpx rgba(80, 60, 41, 0.12);
+  transform: rotate(3deg);
 }
 
 .capture-copy {

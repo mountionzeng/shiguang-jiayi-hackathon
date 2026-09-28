@@ -126,6 +126,8 @@
       <block wx:if="{{backdropUrl}}">
         <image class="chapter-edge-ornament chapter-edge-ornament-left" src="/assets/illustrations/memory-branch.png" mode="aspectFit" aria-hidden="true" />
         <image class="chapter-edge-ornament chapter-edge-ornament-right" src="/assets/illustrations/memory-branch.png" mode="aspectFit" aria-hidden="true" />
+        <image class="chapter-backdrop-echo chapter-backdrop-echo-left" src="{{backdropUrl}}" mode="aspectFit" aria-hidden="true" />
+        <image class="chapter-backdrop-echo chapter-backdrop-echo-right" src="{{backdropUrl}}" mode="aspectFit" aria-hidden="true" />
         <image class="chapter-backdrop" src="{{backdropUrl}}" mode="aspectFit" aria-label="AI 生成的本章底图" />
       </block>
       <view class="field-label">正文</view>

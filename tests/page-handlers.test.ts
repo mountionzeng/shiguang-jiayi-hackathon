@@ -525,6 +525,8 @@ test("home book swiper resolves cover art for the active story after changing bo
   });
   assert.equal(home.data.storyId, "story-rain");
   assert.equal(home.data.coverUrl, "https://img.example/story-rain/cover-rain.jpg");
+
+
   assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`), [
     "story-radio:cover-radio",
     "story-radio:cover-radio",
@@ -1883,16 +1885,27 @@ test("home book cover is a horizontal swiper with direct-open affordance", () =>
   assert.doesNotMatch(template, /<swiper[\s\S]*class="book-swiper"[\s\S]*vertical/);
   assert.match(template, /wx:for="{{bookSlides}}"/);
   assert.match(template, /左右滑动换一本书 · 轻触打开/);
-  assert.match(template, /class="book-cover-picture" wx:if="{{item.coverUrl}}"/);
-  assert.match(template, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
-  assert.match(template, /wx:else[\s\S]*class="ancient-book-art"/);
-  assert.match(template, /class="book-cover-copy {{item.coverUrl \? 'book-cover-copy-printed' : ''}}"/);
-  assert.doesNotMatch(template, /book-cover-picture-wash|ancient-book-art-overlay/);
+  assert.match(template, /class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
+  assert.match(template, /<block wx:if="{{item.coverUrl}}">/);
+  assert.match(template, /class="book-cover-picture"/);
+  assert.match(template, /class="book-cover-picture-art"[\s\S]*src="{{item.coverUrl}}"[\s\S]*mode="aspectFill"/);
+  assert.match(template, /class="book-cover-paper-texture"/);
+  assert.match(template, /class="book-cover-copy {{item.coverUrl \? 'book-cover-copy-printed' : ''}}/);
+  assert.doesNotMatch(template, /book-cover-material(?:\s|"|-color)|book-cover-picture-wash|ancient-book-art-overlay|onBookCoverLoad|story-book-cover-material-texture\.png/);
   assert.match(styles, /\.book-swiper[^{]*{[^}]*height: 850rpx/);
-  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 64rpx/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 30rpx/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*right: 22rpx/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*bottom: 24rpx/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*left: 96rpx/);
+  assert.match(styles, /\.book-custom-cover \.book-pages-under[^{]*{[^}]*display: none/);
+  assert.match(styles, /\.book-cover-paper-texture[^{]*{[^}]*z-index: 2/);
+  assert.doesNotMatch(styles, /background-image: url\("\/assets\/illustrations\/story-book-cover\.png"\)/);
+  assert.match(styles, /\.book-cover-copy-printed[^{]*{[^}]*display: flex/);
+  assert.match(styles, /\.book-cover-copy-printed \.book-stats[^{]*{[^}]*margin-bottom: 10rpx/);
+  assert.match(styles, /\.book-cover-copy-printed \.book-stat-action::before[^{]*{[^}]*height: 4rpx/);
+  assert.match(styles, /\.book-cover-copy-printed \.book-stat-action[^{]*{[^}]*border: 0/);
   assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*width: 100%/);
   assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 100%/);
-  assert.match(styles, /\.book-cover-copy-printed \.book-stat-action[^{]*{[^}]*background: transparent/);
   assert.match(styles, /\.book-rail-dot-on/);
 });
 

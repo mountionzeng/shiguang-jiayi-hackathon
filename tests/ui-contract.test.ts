@@ -38,12 +38,20 @@ test("transparent story tabs never use WeChat's native pressed or disabled paint
   });
 });
 
-test("custom book covers fill their fixed cover frames", () => {
-  assert.match(homeMarkup, /class="book-cover-picture" wx:if="\{\{item.coverUrl\}\}"/);
-  assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
-  assert.match(homeMarkup, /wx:else[\s\S]*class="ancient-book-art"[\s\S]*mode="aspectFill"/);
+test("custom book covers reuse the default green cover frame", () => {
+  assert.match(homeMarkup, /class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
+  assert.match(homeMarkup, /<block wx:if="\{\{item.coverUrl\}\}">/);
+  assert.match(homeMarkup, /class="book-cover-picture"/);
+  assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*src="\{\{item.coverUrl\}\}"[\s\S]*mode="aspectFill"/);
+  assert.match(homeMarkup, /class="book-cover-paper-texture"/);
+  assert.doesNotMatch(homeMarkup, /book-cover-material|book-cover-material-color|story-book-cover-paper-texture\.png/);
   assert.match(homeMarkup, /class="book-cover-copy \{\{item.coverUrl \? 'book-cover-copy-printed' : ''\}\}"/);
-  assert.doesNotMatch(homeMarkup, /book-cover-picture-wash|ancient-book-art-overlay/);
+  assert.match(homeMarkup, /<text class="book-kicker typewriter">拾 光 录<\/text>/);
+  assert.match(homeMarkup, /<view class="book-title typewriter">\{\{item.title\}\}<\/view>/);
+  assert.match(homeMarkup, /<text class="book-stat-label">段记忆<\/text>/);
+  assert.match(homeMarkup, /<text class="book-stat-label">章节<\/text>/);
+  assert.match(homeMarkup, /<text class="book-stat-label">人物<\/text>/);
+  assert.doesNotMatch(homeMarkup, /book-cover-picture-wash|ancient-book-art-overlay|onBookCoverLoad/);
   assert.match(
     coverMarkup,
     /<image class="cover-art"[^>]*mode="aspectFill"/,

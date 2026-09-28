@@ -1,6 +1,6 @@
 .invite-page { position: relative; height: 100vh; min-height: 100vh; padding: calc(20rpx + env(safe-area-inset-top)) 42rpx calc(80rpx + env(safe-area-inset-bottom)); box-sizing: border-box; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #f7f0e3; }
 .invite-paper { position: fixed; inset: 0; width: 100%; height: 100%; opacity: .86; }
-.invite-wash { position: fixed; z-index: 0; width: 360rpx; height: 430rpx; opacity: .2; pointer-events: none; }
+.invite-wash { position: fixed; z-index: 0; width: 360rpx; height: 430rpx; border-radius: 48% 52% 45% 55%; background: radial-gradient(circle at 45% 42%, rgba(255,254,251,.74), rgba(215,200,165,.42) 48%, rgba(176,130,57,.18) 78%, transparent 82%); opacity: .38; pointer-events: none; }
 .invite-wash-top { top: -126rpx; right: -126rpx; transform: rotate(38deg); }
 .invite-wash-bottom { bottom: -180rpx; left: -130rpx; transform: rotate(210deg); }
 .invite-branch-scene { position: absolute; top: calc(30rpx + env(safe-area-inset-top)); right: -92rpx; z-index: 0; width: 430rpx; height: 176rpx; opacity: .7; pointer-events: none; }
@@ -24,7 +24,7 @@
 .invite-letter-name { margin-top: 3rpx; overflow: hidden; color: #2f392f; font-size: 34rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .invite-letter-nest { position: absolute; right: -34rpx; bottom: -18rpx; width: 138rpx; height: 92rpx; opacity: .34; transform: rotate(7deg); }
 .invite-avatar { position: relative; display: flex; flex-shrink: 0; align-items: center; justify-content: center; width: 96rpx; height: 96rpx; border: 2rpx solid rgba(79,127,107,.2); border-radius: 50%; overflow: hidden; background: rgba(212,227,216,.86); color: #4f6f60; font-size: 39rpx; font-weight: 700; box-shadow: 0 7rpx 22rpx rgba(72,90,77,.08); }
-.invite-avatar image { position: absolute; inset: -28rpx; width: 172rpx; height: 172rpx; opacity: .6; }
+.invite-profile-wash, .accept-avatar-wash { position: absolute; inset: -28rpx; width: 172rpx; height: 172rpx; border-radius: 50%; background: radial-gradient(circle at 44% 40%, rgba(255,254,251,.88), rgba(212,227,216,.62) 45%, rgba(79,127,107,.2) 75%, transparent 80%); opacity: .66; }
 .invite-avatar text { position: relative; z-index: 1; }
 .invite-field { display: block; margin: 28rpx 10rpx 0; }
 .invite-field > text { display: block; color: #5b493b; font-size: 25rpx; font-weight: 600; letter-spacing: 1rpx; }
