@@ -1,4 +1,5 @@
 import { storyCoverApi } from "../../services/storyCoverService";
+import { renderBookFrame } from "../../services/bookFrameColor";
 import {
   accountOwner,
   contributionRelatedMemberIds,
@@ -53,6 +54,7 @@ interface BookSlideView {
   manuscriptMemberId: string;
   coverImageId: string;
   coverUrl: string;
+  frameUrl?: string;
   memoryCount: number;
   chapterCount: number;
   peopleCount: number;
@@ -408,14 +410,34 @@ Page({
       hasRecentStories: recentStories.length > 0,
     });
 
-    if (coverStory?.coverImageId) {
-      void storyCoverApi.resolveUrl(coverStory.id, coverStory.coverImageId).then(url => {
-        if (coverRefreshId !== this.coverRefreshId || this.data.storyId !== coverStory.id) return;
-        const nextSlides = (this.data.bookSlides as BookSlideView[]).map((slide) => slide.storyId === coverStory.id ? { ...slide, coverUrl: url } : slide);
-        this.setData({ coverUrl: url, bookSlides: nextSlides });
-      }).catch(() => undefined);
-    }
+    if (coverStory?.coverImageId) this.resolveActiveBookCover(coverRefreshId, coverStory.id, coverStory.coverImageId);
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
+  },
+
+  resolveActiveBookCover(coverRefreshId: number, storyId: string, coverImageId: string, attempt = 0) {
+    void storyCoverApi.resolveUrl(storyId, coverImageId).then(url => {
+      if (coverRefreshId !== this.coverRefreshId) return;
+      if (!url && attempt < 2) {
+        setTimeout(() => this.resolveActiveBookCover(coverRefreshId, storyId, coverImageId, attempt + 1), 700 * (attempt + 1));
+        return;
+      }
+      if (!url) return;
+      const nextSlides = (this.data.bookSlides as BookSlideView[]).map((slide) => (
+        slide.storyId === storyId ? { ...slide, coverUrl: url } : slide
+      ));
+      this.setData({
+        bookSlides: nextSlides,
+        ...(this.data.storyId === storyId ? { coverUrl: url } : {}),
+      });
+      void renderBookFrame(this, url, `${storyId}:${coverImageId}`).then(frameUrl => {
+        if (coverRefreshId !== this.coverRefreshId) return;
+        this.setData({ bookSlides: (this.data.bookSlides as BookSlideView[]).map(slide =>
+          slide.storyId === storyId && slide.coverImageId === coverImageId ? { ...slide, frameUrl } : slide) });
+      }).catch(error => logLoadError("index-book-frame", error));
+    }).catch(() => {
+      if (coverRefreshId !== this.coverRefreshId || attempt >= 2) return;
+      setTimeout(() => this.resolveActiveBookCover(coverRefreshId, storyId, coverImageId, attempt + 1), 700 * (attempt + 1));
+    });
   },
 
   async onBookSlideChange(event: { detail: { current: number } }) {

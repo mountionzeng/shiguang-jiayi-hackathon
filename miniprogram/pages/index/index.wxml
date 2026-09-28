@@ -15,12 +15,7 @@
         aria-label="打开我的"
       >
         <view class="member-avatar serif">
-          <image
-            class="member-avatar-backdrop"
-            src="/assets/illustrations/book-wash.png"
-            mode="aspectFill"
-            aria-hidden="true"
-          ></image>
+          <view class="member-avatar-backdrop" aria-hidden="true"></view>
           <text class="member-avatar-letter">{{ownerAvatarText || '我'}}</text>
         </view>
       </button>
@@ -67,15 +62,20 @@
                     src="{{item.coverUrl}}"
                     mode="aspectFill"
                   ></image>
-                  <view class="book-cover-picture-wash"></view>
+                  <image
+                    class="book-cover-frame {{item.frameUrl ? '' : 'book-cover-frame-loading'}}"
+                    src="{{item.frameUrl || '/assets/illustrations/story-book-cover-frame.png'}}"
+                    mode="aspectFill"
+                  ></image>
                 </view>
                 <image
-                  class="ancient-book-art {{item.coverUrl ? 'ancient-book-art-overlay' : ''}}"
+                  wx:else
+                  class="ancient-book-art"
                   src="/assets/illustrations/story-book-cover.png"
                   mode="aspectFill"
                   aria-hidden="true"
                 ></image>
-                <view class="book-cover-copy">
+                <view class="book-cover-copy {{item.coverUrl ? 'book-cover-copy-printed' : ''}}">
                   <text class="book-kicker typewriter">拾 光 录</text>
                   <view class="book-copy">
                     <view class="book-slip">
@@ -260,3 +260,4 @@
 </scroll-view>
 
 <story-switcher current="home"></story-switcher>
+<canvas type="2d" id="book-frame-canvas" class="book-frame-canvas" aria-hidden="true"></canvas>

@@ -135,7 +135,7 @@
 | 文件 | 尺寸 | 透明 | 用途 |
 |---|---:|:---:|---|
 | `rice-paper-background-master.png` | 853 × 1844 | 否 | 宣纸底纹。只作柔和纹理；易拉宝需无损放大或重新生成高分辨率版本。 |
-| `book-wash-master.png` | 1086 × 1448 | 是 | 书封、水彩圆形和氛围点缀。 |
+| `book-wash-master.png` | 1086 × 1448 | 是 | 历史母版，仅作归档；小程序主包不再使用这类书籍样式图。 |
 | `watercolor-bird-master.png` | 1536 × 1024 | 是 | 单鸟与鸟群。可复制、缩放和水平翻转，组成大小不同的互动鸟群。 |
 | `watercolor-branch-master.png` | 2172 × 724 | 是 | 海报和易拉宝的横向主视觉树枝。 |
 | `xiaoyi-avatar-master.png` | 1254 × 1254 | 是 | AI 伙伴“小忆”头像。文字“小忆”由版面排字，不要烙进头像图片。 |
@@ -148,7 +148,7 @@
 
 ### 小程序压缩版：`assets/app-optimized/`
 
-2026-09-27 去重后，以下同名文件统一使用仓库根目录 `miniprogram/assets/illustrations/` 中的版本：`capture-memoir-book.png`、`capture-note-paper.png`、`memory-bird.png`、`memory-branch.png`、`memory-nest.png`、`story-paper.jpg`、`xiaoyi-avatar.png`。删除前已逐一核对 SHA256；其余不同版本仍保留在本目录。打包交接物料时，从上述位置取对应文件。
+2026-09-27 去重后，部分同名文件曾统一使用仓库根目录 `miniprogram/assets/illustrations/` 中的版本。2026-09-28 起，小程序主包除默认绿色封面 `story-book-cover.png` 外不再保留其他书籍样式图；`capture-memoir-book.png` 等历史书本图仅保留在设计归档语境中，不要重新放回主包。
 
 这些文件只用于复现微信小程序或做屏幕尺寸演示，不能放大用于印刷。包括：背景、书封水彩、鸟、树枝、384px 鸟窝、480 × 720 的线装古籍书体和 128 × 128 的小忆头像。
 
@@ -156,9 +156,9 @@
 
 `story-switcher-curved-branch.png` 是底部三入口专用的透明弧形水彩树枝压缩版，印刷母版为 `assets/masters/story-switcher-curved-branch-master.png`。树枝负责连接三枚图案，不得再叠加顶部横线、当前页下划线或规则矩形 Tab Bar；中间 LOGO 只保留一层很轻的柔和阴影。
 
-`story-switcher-book-edges.png` 是底部三入口背后的透明手绘古籍页边装饰，印刷母版为 `assets/masters/story-switcher-book-edges-master.png`。书页组横向相互压叠，并在左右边缘出血；它仅以低对比度衬托三枚入口，须置于树枝、小鸟与 LOGO 下层；不能作为白色卡片、规则边框或文字底板。入口文字以原生文字逐字排成浅弧，沿各自图案的下缘走，须保持较大、较粗且清晰易读。
+`story-switcher-book-edges.png` 是历史手绘古籍页边装饰。2026-09-28 后不要再作为小程序主包资产使用；底部入口的氛围层改用 CSS 和非书籍装饰完成。
 
-“开始聊聊”底部弹层新增两枚透明古籍按钮：`capture-note-paper.png` 是轻薄散页，对应“随手记”；`capture-memoir-book.png` 是交错线装册，对应“回忆录”。两张图都不烘焙文字，避免小尺寸中文发糊。
+“开始聊聊”底部弹层历史上使用过透明古籍按钮。2026-09-28 后，小程序主包不再保留 `capture-memoir-book.png` 这类书本样式图，回忆录入口改为 CSS 纸面样式。
 
 ### 界面参考：`references/`
 

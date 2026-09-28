@@ -42,7 +42,7 @@
       </view>
       <view class="person-row" wx:for="{{people}}" wx:key="id">
         <view class="profile-avatar serif">
-          <image class="profile-avatar-backdrop" src="/assets/illustrations/book-wash.png" mode="aspectFill" aria-hidden="true"></image>
+          <view class="profile-avatar-backdrop" aria-hidden="true"></view>
           <text class="profile-avatar-letter">{{item.avatarText}}</text>
         </view>
         <view class="profile-copy">
