@@ -8,6 +8,7 @@ export interface PersonalInsight {
   text: string;
   origin: 'user_stated' | 'user_corrected' | 'inferred';
   allowProactiveMention: boolean;
+  evidence?: Array<{id: string; label?: string; occurredOn: string | null; excerpt: string}>;
 }
 export interface PersonalMemoryState { enabled: boolean; insights: PersonalInsight[]; }
 async function call(data: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -26,6 +27,8 @@ export const personalMemory = {
     await call({action:'configure',enabled,consentVersion:1});
   },
   async forget(lineageKey: string) { await call({action:'forget',lineageKey}); },
+  async confirm(lineageKey: string) { await call({action:'confirm',lineageKey}); },
+  async correct(lineageKey: string, text: string) { await call({action:'correct',lineageKey,text}); },
 };
 // Fire after a successful save, with a stable memory id only. The server checks
 // separate opt-in, persisted ownership/evidence and idempotency before any AI call.

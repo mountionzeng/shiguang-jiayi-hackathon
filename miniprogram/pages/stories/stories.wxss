@@ -48,7 +48,7 @@
 .spine-body { position: absolute; right: 0; bottom: 0; left: 0; height: 100%; filter: drop-shadow(3rpx 6rpx 6rpx rgba(42,46,43,.16)); transition: transform 160ms ease; }
 .spine-h-1 .spine-body { height: 93%; }
 .spine-h-2 .spine-body { height: 86%; }
-.spine-art { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: block; width: 100%; height: 100%; }
+.spine-art { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: block; width: 100%; height: 100%; border-radius: 7rpx 12rpx 8rpx 5rpx; background: linear-gradient(90deg, rgba(66,55,42,.18) 0 7rpx, rgba(255,253,247,.42) 7rpx 10rpx, transparent 10rpx 100%), linear-gradient(180deg, rgba(255,253,247,.72), rgba(221,211,187,.78)); box-shadow: inset -8rpx 0 0 rgba(42,46,43,.06), inset 0 0 18rpx rgba(255,255,255,.38); }
 .spine-tint { position: absolute; top: 3%; right: 20%; bottom: 1%; left: 3%; background: rgba(79,127,107,.06); }
 .spine-tone-1 .spine-tint { background: rgba(74,110,136,.2); }
 .spine-tone-2 .spine-tint { background: rgba(176,130,57,.22); }

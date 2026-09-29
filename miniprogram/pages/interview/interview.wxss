@@ -805,3 +805,24 @@
 
 /* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
 .mode-start.mode-start { width: 356rpx; margin-left: auto; margin-right: auto; }
+
+/* 就地小忆：保存阶段内嵌，不跳到聊天页。 */
+.xiaoyi-entry { width: auto; min-height: 72rpx; margin: 18rpx 0 0; padding: 0 28rpx; border-radius: 999rpx; background: var(--jade); color: var(--paper-card); font-size: 28rpx; }
+.xiaoyi-entry::after, .xiaoyi-close::after, .xiaoyi-option::after, .xiaoyi-action::after { border: 0; }
+.xiaoyi-panel { margin-top: 18rpx; padding: 18rpx; border: 1rpx solid rgba(79,127,107,.28); border-radius: 20rpx; background: #fffdf8; box-shadow: 0 8rpx 26rpx rgba(42,46,43,.08); }
+.xiaoyi-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16rpx; }
+.xiaoyi-title { font-size: 30rpx; font-weight: 700; color: var(--jade); }
+.xiaoyi-context { margin-top: 4rpx; font-size: 23rpx; line-height: 1.5; color: var(--ink-soft); }
+.xiaoyi-close { flex: none; width: auto; min-height: 58rpx; margin: 0; padding: 0 18rpx; border-radius: 999rpx; background: var(--paper-sunk); color: var(--ink-soft); font-size: 25rpx; }
+.xiaoyi-options, .xiaoyi-actions { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 14rpx; }
+.xiaoyi-option, .xiaoyi-action { width: auto; min-height: 64rpx; margin: 0; padding: 0 20rpx; border-radius: 999rpx; background: var(--jade-soft); color: var(--jade); font-size: 26rpx; }
+.xiaoyi-action-primary { background: var(--jade); color: var(--paper-card); }
+.xiaoyi-status { margin-top: 12rpx; font-size: 25rpx; line-height: 1.55; color: #805326; }
+.xiaoyi-thread { max-height: 210rpx; margin-top: 12rpx; }
+.xiaoyi-message { margin-top: 10rpx; padding: 14rpx 16rpx; border-radius: 16rpx; font-size: 27rpx; line-height: 1.65; white-space: pre-wrap; user-select: text; }
+.xiaoyi-message-question { background: var(--jade-soft); color: var(--ink); }
+.xiaoyi-message-answer { background: var(--paper-sunk); color: var(--ink); }
+.xiaoyi-message-draft { background: #f7eedf; color: var(--ink); }
+.xiaoyi-message-label { margin-bottom: 4rpx; font-size: 22rpx; color: var(--ink-soft); }
+.xiaoyi-answer, .xiaoyi-draft { box-sizing: border-box; width: 100%; min-height: 88rpx; margin-top: 14rpx; padding: 16rpx; border: 1rpx solid var(--line); border-radius: 14rpx; background: var(--paper-card); font-size: 28rpx; line-height: 1.65; }
+.xiaoyi-draft-box { margin-top: 14rpx; padding-top: 10rpx; border-top: 1rpx solid var(--line); }

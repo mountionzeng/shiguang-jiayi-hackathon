@@ -9,7 +9,7 @@ const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, "..");
 const FAILURE_MARKERS = ["ResourceNotFound", "[error]", "Error", "✖"];
 
 export function parseArgs(argv) {
-  const parsed = { execute: false, env: null, project: null, includes: [] };
+  const parsed = { execute: false, env: null, project: null, includes: [], only: [] };
   const seenSingletons = new Set();
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -21,16 +21,17 @@ export function parseArgs(argv) {
       continue;
     }
 
-    if (argument === "--env" || argument === "--project" || argument === "--include") {
-      if (argument !== "--include" && seenSingletons.has(argument)) {
+    if (argument === "--env" || argument === "--project" || argument === "--include" || argument === "--only") {
+      if (!["--include", "--only"].includes(argument) && seenSingletons.has(argument)) {
         throw new Error("Duplicate option is not allowed.");
       }
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) throw new Error("An option value is missing.");
       index += 1;
-      if (argument === "--include") {
-        if (parsed.includes.includes(value)) throw new Error("Duplicate function inclusion is not allowed.");
-        parsed.includes.push(value);
+      if (argument === "--include" || argument === "--only") {
+        const names = argument === "--include" ? parsed.includes : parsed.only;
+        if (names.includes(value)) throw new Error("Duplicate function selection is not allowed.");
+        names.push(value);
       } else {
         seenSingletons.add(argument);
         parsed[argument === "--env" ? "env" : "project"] = value;
@@ -39,20 +40,32 @@ export function parseArgs(argv) {
     }
 
     // Keep this deliberately generic: a mistyped argument may contain a credential.
-    throw new Error("Unknown option. Supported options are --execute, --env, --project, and --include.");
+    throw new Error("Unknown option. Supported options are --execute, --env, --project, --include, and --only.");
   }
 
   if (!parsed.execute && parsed.env !== null) throw new Error("--env is only valid with --execute.");
   if (parsed.execute && !parsed.env) throw new Error("--execute requires --env.");
+  if (parsed.only.length && parsed.includes.length) throw new Error("--only cannot be combined with --include.");
   return parsed;
 }
 
-export function planDeployment(manifest, includes = []) {
+export function planDeployment(manifest, includes = [], only = []) {
   if (!manifest || typeof manifest.cloudFunctions !== "object") {
     throw new Error("Invalid WeChat cloud deployment manifest.");
   }
 
   const entries = manifest.cloudFunctions;
+  if (only.length) {
+    if (includes.length) throw new Error("--only cannot be combined with --include.");
+    if (new Set(only).size !== only.length) throw new Error("Duplicate function selection is not allowed.");
+    for (const name of only) {
+      if (!entries[name]) throw new Error("Requested cloud function is not registered in the deployment manifest.");
+      if (!["base", "configured"].includes(entries[name].deploymentClass)) {
+        throw new Error("Operator and maintenance functions require the separate manual workflow.");
+      }
+    }
+    return [...only];
+  }
   const defaults = Object.entries(entries)
     .filter(([, entry]) => entry.defaultDeploy === true)
     .map(([name]) => name);
@@ -102,7 +115,7 @@ export async function run(argv = process.argv.slice(2), options = {}) {
   const project = path.resolve(parsed.project ?? rootDir);
   const manifestPath = path.join(project, "deploy/wechat-cloud.manifest.json");
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  const names = planDeployment(manifest, parsed.includes);
+  const names = planDeployment(manifest, parsed.includes, parsed.only);
   const stdout = options.stdout ?? process.stdout;
 
   if (!parsed.execute) {

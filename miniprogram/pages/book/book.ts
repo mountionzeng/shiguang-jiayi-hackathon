@@ -4,6 +4,13 @@ import {
   accountOwner, BiographyDraft, buildLocalChapterDraft, contributionStoryTitle, createContribution, isActiveMember, isRecordingProfile, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution, Story,
   memoryAiLabel, memorySegmentCount, memoryPool, personalBookSourceFingerprint,
 } from "../../domain/biography";
+import {
+  CLOUD_FOLLOW_UP_LABEL,
+  FOLLOW_UP_LABEL,
+  QUOTA_EXHAUSTED_FOLLOW_UP_LABEL,
+  InterviewDimension,
+  InterviewTurn,
+} from "../../domain/interview";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
 import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, usesCloudStorage } from "../../services/roomRepository";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
@@ -14,7 +21,7 @@ import {
 import { StoryImage, storyImageApi } from "../../services/storyImageService";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import {
-  addChapter, applyOrganized, assignMemory, chapterAiLabel, chapterLabel, chaptersOf, draftWithChapters, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter,
+  addChapter, applyOrganized, assignMemory, chapterAiLabel, chapterLabel, chaptersOf, draftWithChapters, finalizePendingRevision, moveChapter, pendingRevisionResolved, placeMemoryInChapter, proposeInlineXiaoyiInsert, removeChapter, resolvePendingEdit, unassignedMemoryIds, updateChapter,
 } from "../../services/chapters";
 import { chapterInsertionPoints, ChapterInsertionPoint, insertChapterText } from "../../services/chapterInsertion";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -24,6 +31,8 @@ import { loadCurrentStoryId, saveCurrentStoryId } from "../../services/storySele
 import { audioCreatePath } from "../../services/storyAudioService";
 import { storySharing } from "../../services/storySharing";
 import { copyRequestId, storyCopies } from "../../services/storyCopies";
+import { generateInterviewPrompt } from "../../services/interviewService";
+import { organizeInlineAnswer } from "../../services/memoryOrganizerService";
 
 const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
   "cloud-disabled": "这个版本关闭了在线 AI",
@@ -37,6 +46,8 @@ const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
 };
 
 type MemoryRow = { id: string; text: string; title: string; excerpt: string; dateLabel: string; createdAt: string; aiLabel: string };
+type XiaoyiMessage = { id: string; kind: "question" | "answer" | "draft" | "status"; text: string; label?: string };
+type PendingEditRow = { id: string; kind: string; text: string; label: string; status: string };
 const imageCount = (content: ManuscriptContent[]) => content.filter(item => item.photoId).length;
 const plainText = (content: ManuscriptContent[]) => content.map(item => item.text ?? "").join("");
 const memoryDate = (iso: string) => {
@@ -85,6 +96,10 @@ Page({
     shareText: "", shareRecipientIds: [] as string[], sharingExcerpt: false,
     shareRecipients: [] as Array<{ id: string; name: string; relation: string; checked: boolean }>,
     protectedCopy: false, appendOwnText: "", appendingOwn: false, returningOwn: false,
+    xiaoyiOpen: false, xiaoyiLoading: false, xiaoyiMode: "ask" as "ask" | "write",
+    xiaoyiContextText: "", xiaoyiContextPreview: "", xiaoyiAnswer: "", xiaoyiDraftText: "",
+    xiaoyiCanOrganize: false, xiaoyiStatus: "", xiaoyiMessages: [] as XiaoyiMessage[],
+    chapterPendingEdits: [] as PendingEditRow[], chapterPendingCount: 0,
   },
   // Native inputs own their live value/cursor. Do not echo the document on each keystroke.
   localDraftKey: "",
@@ -134,6 +149,8 @@ Page({
   requestedMemoryIds: [] as string[],
   storyScopeMemoryIds: undefined as Set<string> | undefined,
   organizeCandidate: undefined as { draft: BiographyDraft; fingerprint: string; chapterId: string; label: string; notice: string; revisionId: string; insertion?: { original: ManuscriptContent[]; pointId: string } } | undefined,
+  xiaoyiAskedDimensions: [] as InterviewDimension[],
+  xiaoyiConversation: [] as InterviewTurn[],
   onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string } = {}) {
     this.openOrganizeOnLoad = options.memoryIds !== undefined;
     this.requestedMemberId = options.memberId || "";
@@ -474,6 +491,14 @@ Page({
       unassigned: unassignedMemoryIds(visibleChapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
       chapterMemories: active ? active.memoryIds.flatMap(id => known.has(id) ? [memoryRow(known.get(id)!)] : []) : [],
+      chapterPendingEdits: active?.pendingRevision?.edits.map(edit => ({
+        id: edit.id,
+        kind: edit.kind,
+        text: edit.text,
+        label: edit.kind === "insert" ? (edit.source === "ai" ? "待确认新增 · 小忆协助" : "待确认新增") : "待确认删除",
+        status: edit.status,
+      })) ?? [],
+      chapterPendingCount: active?.pendingRevision?.edits.filter(edit => edit.status === "pending").length ?? 0,
       chapterLabelText: active ? chapterLabel(visibleChapters.indexOf(active) + 1) : "",
       chapterAiLabelText: active ? chapterAiLabel(active) : "",
       storyOptions: Array.from(stories, ([title, count]) => ({ title, count })),
@@ -783,6 +808,156 @@ Page({
       fail: () => wx.showToast({ title: "没有读到选中的文字，请重新选择", icon: "none" }),
     });
   },
+  openXiaoyi() {
+    if (this.data.protectedCopy || this.data.view !== "chapter" || this.data.panel || this.data.saving || this.data.generating) return;
+    this.setData({ xiaoyiOpen: true, moreOpen: false, xiaoyiStatus: "", xiaoyiContextPreview: "正在读取当前正文…" });
+    this.captureXiaoyiContext();
+  },
+  closeXiaoyi() {
+    if (this.data.xiaoyiLoading) return;
+    this.xiaoyiAskedDimensions = [];
+    this.xiaoyiConversation = [];
+    this.setData({ xiaoyiOpen: false, xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiStatus: "", xiaoyiMessages: [] });
+  },
+  captureXiaoyiContext() {
+    const useFallback = async () => {
+      await this.collectEditor().catch(() => undefined);
+      const text = (this.bodyBuffer || plainText(this.contentBuffer)).trim();
+      const preview = text ? (text.length > 120 ? text.slice(0, 120) + "…" : text) : "这一章还没有正文，小忆会先从你接下来要说的话问起。";
+      this.setData({ xiaoyiContextText: text, xiaoyiContextPreview: preview });
+    };
+    if (!this.editorContext || !this.data.editorReady) { void useFallback(); return; }
+    this.editorContext.getSelectionText({
+      success: result => {
+        const selected = String(result.text ?? "").trim();
+        if (selected) {
+          if (selected.length > 1000) {
+            wx.showToast({ title: "选中的内容有点长，请少选一些", icon: "none" });
+            this.setData({ xiaoyiContextText: "", xiaoyiContextPreview: "请少选一些，再点小忆。" });
+            return;
+          }
+          this.setData({ xiaoyiContextText: selected, xiaoyiContextPreview: selected.length > 120 ? selected.slice(0, 120) + "…" : selected });
+          return;
+        }
+        void useFallback();
+      },
+      fail: () => { void useFallback(); },
+    });
+  },
+  xiaoyiMessagesAppend(message: Omit<XiaoyiMessage, "id">) {
+    const id = `xiaoyi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    this.setData({ xiaoyiMessages: [...this.data.xiaoyiMessages, { id, ...message }] });
+  },
+  async askXiaoyiQuestion(event?: { currentTarget?: { dataset?: { mode?: string } } }) {
+    if (this.data.xiaoyiLoading) return;
+    const mode = event?.currentTarget?.dataset?.mode === "write" ? "write" : "ask";
+    if (!this.data.xiaoyiOpen) this.openXiaoyi();
+    const contextText = (this.data.xiaoyiContextText || this.bodyBuffer || plainText(this.contentBuffer)).trim();
+    if (!contextText) {
+      this.setData({ xiaoyiStatus: "先写一句，或者直接告诉小忆你卡在哪里。" });
+      return;
+    }
+    this.setData({ xiaoyiLoading: true, xiaoyiMode: mode, xiaoyiStatus: mode === "write" ? "小忆会先问一个问题，不会直接替你写。" : "小忆正在想一个贴着正文的问题…" });
+    try {
+      const prompt = await generateInterviewPrompt({
+        answer: contextText,
+        askedDimensions: this.xiaoyiAskedDimensions,
+        mode: "personal",
+        memoryType: "memoir",
+        storyTitle: [this.data.editTitle, this.data.editChapterTitle].filter(Boolean).join(" · "),
+        storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
+        previousAnswers: [],
+        conversation: this.xiaoyiConversation,
+      });
+      const label = prompt.generationMode === "cloud-ai" ? CLOUD_FOLLOW_UP_LABEL
+        : prompt.fallbackReason === "moderation-quota-exhausted" ? QUOTA_EXHAUSTED_FOLLOW_UP_LABEL : FOLLOW_UP_LABEL;
+      this.xiaoyiAskedDimensions = [...this.xiaoyiAskedDimensions, prompt.dimension];
+      this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "assistant", text: prompt.text }];
+      this.xiaoyiMessagesAppend({ kind: "question", text: prompt.text, label });
+      this.setData({ xiaoyiStatus: mode === "write" ? "先回答这个问题，再让小忆整理你的回答。" : "", xiaoyiCanOrganize: prompt.generationMode === "cloud-ai" });
+    } catch (error) {
+      this.setData({ xiaoyiStatus: "小忆刚刚走神了，请再试一次。" });
+    } finally {
+      this.setData({ xiaoyiLoading: false });
+    }
+  },
+  onXiaoyiAnswerInput(event: WechatMiniprogram.Input) { this.setData({ xiaoyiAnswer: event.detail.value }); },
+  onXiaoyiDraftInput(event: WechatMiniprogram.Input) { this.setData({ xiaoyiDraftText: event.detail.value }); },
+  async useXiaoyiOriginal() {
+    const answer = this.data.xiaoyiAnswer.trim();
+    if (!answer) { wx.showToast({ title: "先回答一句吧", icon: "none" }); return; }
+    this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "user", text: answer }];
+    this.xiaoyiMessagesAppend({ kind: "answer", text: answer });
+    await this.proposeXiaoyiInsert(answer, "小忆：原话待确认");
+  },
+  async organizeXiaoyiAnswer() {
+    const answer = this.data.xiaoyiAnswer.trim();
+    if (!answer || this.data.xiaoyiLoading) { if (!answer) wx.showToast({ title: "先回答一句吧", icon: "none" }); return; }
+    this.setData({ xiaoyiLoading: true, xiaoyiStatus: "小忆正在只整理你刚刚回答的话…" });
+    try {
+      const draft = await organizeInlineAnswer({
+        answer,
+        memoryType: "memoir",
+        storyTitle: [this.data.editTitle, this.data.editChapterTitle].filter(Boolean).join(" · "),
+      });
+      if (!draft) {
+        this.setData({ xiaoyiStatus: "小忆暂时没连上，先用你的原话更稳妥。" });
+        return;
+      }
+      this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "user", text: answer }];
+      this.xiaoyiMessagesAppend({ kind: "answer", text: answer });
+      this.xiaoyiMessagesAppend({ kind: "draft", text: draft.body, label: "小忆只整理了你的回答" });
+      this.setData({ xiaoyiDraftText: draft.body, xiaoyiStatus: "这段可以继续改，满意后再放进正文待确认。" });
+    } finally {
+      this.setData({ xiaoyiLoading: false });
+    }
+  },
+  async useXiaoyiDraft() {
+    const text = this.data.xiaoyiDraftText.trim();
+    if (!text) { wx.showToast({ title: "还没有整理好的文字", icon: "none" }); return; }
+    await this.proposeXiaoyiInsert(text, "小忆：整理稿待确认");
+  },
+  async proposeXiaoyiInsert(text: string, label: string) {
+    if (!this.activeChapterId || this.data.protectedCopy || this.data.saving) return;
+    try {
+      await this.collectEditor();
+      const liveChapters = updateChapter(this.chapters, this.activeChapterId, { title: this.chapterTitleBuffer, content: this.contentBuffer });
+      const chapters = proposeInlineXiaoyiInsert(liveChapters, this.activeChapterId, text);
+      const draft = draftWithChapters({ ...(this.data.draft ?? this.newBookBase()), title: this.titleBuffer }, chapters);
+      if (await this.persist(draft, this.sourceFingerprint, "draft", label)) {
+        this.setData({ xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiStatus: "已放到本章的待确认修改里，点“收下”才会写入正文。", ...this.chapterData() });
+      }
+    } catch (error) {
+      this.setData({ xiaoyiStatus: error instanceof Error ? error.message : "暂时没放进去，请重试" });
+    }
+  },
+  openXiaoyiMemories() {
+    if (this.data.xiaoyiLoading) return;
+    this.setData({ xiaoyiOpen: false });
+    this.selectTool({ currentTarget: { dataset: { action: "memories" } } });
+  },
+  async decidePendingEdit(event: { currentTarget: { dataset: { id: string; decision: string } } }) {
+    const id = event.currentTarget.dataset.id;
+    const decision = event.currentTarget.dataset.decision === "accept" ? "accept" : "reject";
+    if (!id || !this.activeChapterId || this.data.saving) return;
+    const chapters = resolvePendingEdit(this.chapters, this.activeChapterId, id, decision);
+    if (await this.persist(draftWithChapters(this.data.draft ?? this.newBookBase(), chapters), this.sourceFingerprint, "draft", decision === "accept" ? "收下小忆待确认文字" : "不要小忆待确认文字")) {
+      this.setData({ ...this.chapterData() });
+    }
+  },
+  async finishPendingEdits() {
+    const active = this.chapters.find(chapter => chapter.id === this.activeChapterId);
+    if (!active || !pendingRevisionResolved(active) || this.data.saving) return;
+    try {
+      const chapters = finalizePendingRevision(this.chapters, this.activeChapterId);
+      if (await this.persist(draftWithChapters(this.data.draft ?? this.newBookBase(), chapters), this.sourceFingerprint, "draft", "确认小忆写入正文")) {
+        this.setData({ saveNotice: "已按你的选择写入正文。", ...this.chapterData() });
+      }
+    } catch (error) {
+      this.setData({ saveNotice: error instanceof Error ? error.message : "还有没确认的修改" });
+    }
+  },
+
   async prepareExcerptShare(text: string) {
     try {
       const state = await loadRoomStateRemoteFirst();
@@ -951,6 +1126,7 @@ Page({
       }
       const state = await saveManuscriptRevision(this.pendingSave, this.revisionId);
       this.pendingSave = undefined;
+      this.setData({ editing: false });
       await this.refresh(state);
       this.setData({ editing: false, canUndo: false, saveNotice: kind === "draft" ? "修改已保存" : "版本已保存，旧版仍然保留" });
       wx.disableAlertBeforeUnload();

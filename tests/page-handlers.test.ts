@@ -493,17 +493,24 @@ test("home book swiper resolves cover art for the active story after changing bo
   context.after(storage.restore);
   const previousResolveUrl = storyCoverApi.resolveUrl;
   const resolved: Array<{ storyId: string; imageId?: string }> = [];
-  storyCoverApi.resolveUrl = async (storyId, imageId) => {
-    resolved.push({ storyId, imageId });
-    return `https://img.example/${storyId}/${imageId}.jpg`;
-  };
   context.after(() => {
     storyCoverApi.resolveUrl = previousResolveUrl;
   });
 
   const home = instantiate(await pageDefinition("index"));
-  await callPage(home, "refresh", initial);
-  await Promise.resolve();
+  let radioAttempts = 0;
+  storyCoverApi.resolveUrl = async (storyId, imageId) => {
+    resolved.push({ storyId, imageId });
+    if (storyId === "story-radio" && radioAttempts++ === 0) return "";
+    return `https://img.example/${storyId}/${imageId}.jpg`;
+  };
+
+  await withImmediateTimeouts(async () => {
+    await callPage(home, "refresh", initial);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
   assert.equal(home.data.storyId, "story-radio");
   assert.equal(home.data.coverUrl, "https://img.example/story-radio/cover-radio.jpg");
   assert.ok((home.data.bookSlides as Array<{ storyId: string; coverUrl: string }>).some(
@@ -512,11 +519,16 @@ test("home book swiper resolves cover art for the active story after changing bo
 
   const rainIndex = (home.data.bookSlides as Array<{ storyId: string }>).findIndex(slide => slide.storyId === "story-rain");
   assert.ok(rainIndex >= 0, "the second story should be available as another book cover");
-  await callPage(home, "onBookSlideChange", { detail: { current: rainIndex } });
-  await Promise.resolve();
+  await withImmediateTimeouts(async () => {
+    await callPage(home, "onBookSlideChange", { detail: { current: rainIndex } });
+    await Promise.resolve();
+  });
   assert.equal(home.data.storyId, "story-rain");
   assert.equal(home.data.coverUrl, "https://img.example/story-rain/cover-rain.jpg");
+
+
   assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`), [
+    "story-radio:cover-radio",
     "story-radio:cover-radio",
     "story-rain:cover-rain",
   ]);
@@ -1253,6 +1265,27 @@ test("daily question keeps guiding the next two answers even in an objective boo
   assert.equal(page.data.writingMode, "objective");
 });
 
+test("interview explains exhausted content-check quota beside its local template", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  const previousApp = (globalThis as any).getApp;
+  const previousWarn = console.warn;
+  console.warn = () => undefined;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; console.warn = previousWarn; });
+  (wx as any).cloud = { callFunction: async ({ name }: any) => {
+    if (name === "recordAiConsent") return { result: { success: true } };
+    throw { errMsg: "cloud.callFunction:fail Error: 今日内容安全检查额度已用完，请稍后再试" };
+  } };
+  page.setData({ inputText: "我想把这句话留下。", answers: [], messages: [], askedDimensions: [] });
+  await callPage(page, "send");
+  const messages = page.data.messages as Array<{ kind: string; text: string; label: string }>;
+  assert.equal(messages.find(message => message.kind === "answer")?.text, "我想把这句话留下。");
+  assert.equal(messages.find(message => message.kind === "followup")?.label, "小忆今天有点迟钝，先按常问的陪你说");
+  assert.equal(page.data.asking, false);
+});
+
 test("continue chatting in an objective book keeps all three turns without modifying the book", async context => {
   const state = createInitialRoomState();
   state.stories = [{ id: "story-daily", familyId: "local", title: "日常", writingMode: "objective", memoryIds: [], protagonistMemberIds: [], createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z", version: 0 }];
@@ -1852,13 +1885,27 @@ test("home book cover is a horizontal swiper with direct-open affordance", () =>
   assert.doesNotMatch(template, /<swiper[\s\S]*class="book-swiper"[\s\S]*vertical/);
   assert.match(template, /wx:for="{{bookSlides}}"/);
   assert.match(template, /左右滑动换一本书 · 轻触打开/);
-  assert.match(template, /class="book-cover-picture" wx:if="{{item.coverUrl}}"/);
-  assert.match(template, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
-  assert.match(template, /class="ancient-book-art {{item.coverUrl \? 'ancient-book-art-overlay' : ''}}"/);
+  assert.match(template, /class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
+  assert.match(template, /<block wx:if="{{item.coverUrl}}">/);
+  assert.match(template, /class="book-cover-picture"/);
+  assert.match(template, /class="book-cover-picture-art"[\s\S]*src="{{item.coverUrl}}"[\s\S]*mode="aspectFill"/);
+  assert.match(template, /class="book-cover-paper-texture"/);
+  assert.match(template, /class="book-cover-copy {{item.coverUrl \? 'book-cover-copy-printed' : ''}}/);
+  assert.doesNotMatch(template, /book-cover-material(?:\s|"|-color)|book-cover-picture-wash|ancient-book-art-overlay|onBookCoverLoad|story-book-cover-material-texture\.png/);
   assert.match(styles, /\.book-swiper[^{]*{[^}]*height: 850rpx/);
-  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 12rpx/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*top: -34%/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 160%/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 30rpx/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*right: 22rpx/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*bottom: 24rpx/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*left: 96rpx/);
+  assert.match(styles, /\.book-custom-cover \.book-pages-under[^{]*{[^}]*display: none/);
+  assert.match(styles, /\.book-cover-paper-texture[^{]*{[^}]*z-index: 2/);
+  assert.doesNotMatch(styles, /background-image: url\("\/assets\/illustrations\/story-book-cover\.png"\)/);
+  assert.match(styles, /\.book-cover-copy-printed[^{]*{[^}]*display: flex/);
+  assert.match(styles, /\.book-cover-copy-printed \.book-stats[^{]*{[^}]*margin-bottom: 10rpx/);
+  assert.match(styles, /\.book-cover-copy-printed \.book-stat-action::before[^{]*{[^}]*height: 4rpx/);
+  assert.match(styles, /\.book-cover-copy-printed \.book-stat-action[^{]*{[^}]*border: 0/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*width: 100%/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 100%/);
   assert.match(styles, /\.book-rail-dot-on/);
 });
 
@@ -2199,19 +2246,54 @@ test("personal memory is reachable from Me, forget waits for success, and failed
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
   const { personalMemory } = await import("../miniprogram/services/personalMemory");
   const original = { ...personalMemory }; context.after(() => Object.assign(personalMemory, original));
-  const item = { lineageKey: "lineage-one", text: "喜欢安静地阅读。", origin: "inferred" as const, allowProactiveMention: true };
+  const item = { lineageKey: "lineage-one", text: "喜欢安静地阅读。", origin: "inferred" as const, allowProactiveMention: true,
+    evidence: [{ id: "e1", occurredOn: "2026-09-01", excerpt: "我喜欢安静地读书。" }] };
   let forgotten = false;
   personalMemory.list = async () => ({ enabled: true, insights: forgotten ? [] : [item] });
   personalMemory.forget = async key => { assert.equal(key, item.lineageKey); forgotten = true; };
+  personalMemory.confirm = async key => { assert.equal(key, item.lineageKey); };
+  personalMemory.correct = async (key,text) => { assert.equal(key, item.lineageKey); assert.equal(text, "我更愿意从自己的感受讲起。"); };
   personalMemory.configure = async () => { throw new Error("offline"); };
   const me = instantiate(await pageDefinition("me")); callPage(me, "openPersonalMemory");
   assert.equal(storage.navigations[0], "/pages/personal-memory/personal-memory");
   const page = instantiate(await pageDefinition("personal-memory")); await callPage(page, "refresh");
   assert.equal((page.data.insights as Array<{ originLabel: string }>)[0].originLabel, "小忆的暂定理解");
+  assert.deepEqual((page.data.insights as Array<{ evidence: unknown[] }>)[0].evidence, item.evidence);
+  await callPage(page, "confirmInsight", { currentTarget: { dataset: { key: item.lineageKey } } });
+  await callPage(page, "confirmCorrection", item.lineageKey, "我更愿意从自己的感受讲起。");
   await callPage(page, "confirmEnabled", false);
   assert.equal(page.data.enabled, true); assert.equal(page.data.busy, false);
   await callPage(page, "confirmForget", item.lineageKey);
   assert.deepEqual(page.data.insights, []); assert.equal(page.data.busy, false);
+});
+
+test("personal memory consent uses modal buttons within WeChat's four-character limit", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const dialogs: WechatMiniprogram.ShowModalOption[] = [];
+  wx.showModal = ((options: WechatMiniprogram.ShowModalOption) => { dialogs.push(options); }) as typeof wx.showModal;
+  const page = instantiate(await pageDefinition("personal-memory"));
+  page.setData({ loading: false, enabled: false });
+  callPage(page, "toggleEnabled");
+  page.setData({ enabled: true });
+  callPage(page, "toggleEnabled");
+  assert.equal(dialogs.length, 2);
+  for (const dialog of dialogs) {
+    assert.ok(Array.from(dialog.confirmText || "确定").length <= 4, dialog.confirmText);
+    assert.ok(Array.from(dialog.cancelText || "取消").length <= 4, dialog.cancelText);
+  }
+  assert.match(dialogs[0].content || "", /本人原话.*在线 AI/);
+});
+
+test("personal memory correction starts empty instead of saving instruction text", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  let dialog: WechatMiniprogram.ShowModalOption | undefined;
+  wx.showModal = ((options: WechatMiniprogram.ShowModalOption) => { dialog = options; }) as typeof wx.showModal;
+  const page = instantiate(await pageDefinition("personal-memory"));
+  page.setData({ insights: [{ lineageKey: "lineage-one", text: "更愿意从自己的感受讲起。" }] });
+  callPage(page, "correct", { currentTarget: { dataset: { key: "lineage-one" } } });
+  assert.equal(dialog?.editable, true);
+  assert.equal(dialog?.content || "", "");
+  assert.match(dialog?.placeholderText || "", /留空.*停用/);
 });
 
 test("saved-memory learning is nonblocking, sends only an id and respects local consent denial", async context => {
@@ -2386,4 +2468,134 @@ test("inserting into a scoped chapter uses the chapter number displayed in its p
   assert.match(String(page.data.saveNotice), /^已写入第一章/);
   assert.equal(page.data.chapterLabelText, "第一章");
   assert.deepEqual((page.data.draft as any).chapters[0], state.personalDrafts.owner.chapters![0]);
+});
+
+test("inline xiaoyi entry is embedded in chapter editor and hidden for protected copies", () => {
+  const template = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
+  assert.match(template, /class="xiaoyi-entry"[^>]*catchtouchstart="openXiaoyi"/);
+  assert.match(template, /wx:if="\{\{!protectedCopy\}\}"[^>]*class="xiaoyi-entry"/);
+  assert.match(template, /class="xiaoyi-panel"/);
+  assert.match(template, /看看这一章的记忆/);
+  assert.match(template, /就用我的原话/);
+  assert.match(template, /请小忆整理/);
+  assert.match(template, /class="pending-edits"/);
+  assert.doesNotMatch(template, /xiaoyi-entry[\s\S]{0,240}navigateTo/, "inline xiaoyi must not jump to interview page");
+});
+
+test("inline xiaoyi in a chapter reads selected text and creates a pending insert before final acceptance", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "灶台", paragraphs: ["那天屋里很冷，我妈在灶台前忙着。"], sourceCount: 0, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-1", title: "灶台", memoryIds: [], content: [{ text: "那天屋里很冷，我妈在灶台前忙着。" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const calls: any[] = [];
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "chatInterview") return { result: { dimension: "event", text: "灶台前忙着的时候，你最先注意到的是火光、声音，还是妈妈手上的动作？" } };
+    return { result: { status: "ok" } };
+  } };
+  page.editorContext = {
+    getSelectionText: ({ success }: any) => success({ text: "我妈在灶台前忙着" }),
+    getContents: ({ success }: any) => success({ delta: { ops: [{ insert: "那天屋里很冷，我妈在灶台前忙着。" }] } }),
+    setContents: ({ success }: any) => success(),
+  };
+  page.setData({ editorReady: true, view: "chapter" });
+
+  callPage(page, "openXiaoyi");
+  assert.equal(page.data.xiaoyiContextText, "我妈在灶台前忙着");
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
+  assert.equal(calls.find(call => call.name === "chatInterview")?.data.answer, "我妈在灶台前忙着");
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /灶台前/);
+  (wx as any).cloud = undefined;
+
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
+  page.setData({ editing: true });
+  assert.equal(page.data.editing, true, "用户可能先打字，再让小忆把回答放进待确认修改");
+  await callPage(page, "useXiaoyiOriginal");
+  let draft = (page.data.draft as any);
+  let chapter = draft.chapters[0];
+  assert.equal(chapter.content.map((item: any) => item.text || "").join(""), "那天屋里很冷，我妈在灶台前忙着。", "正文尚未直接改变");
+  assert.equal(chapter.pendingRevision.edits[0].source, "ai");
+  assert.match(chapter.pendingRevision.edits[0].text, /烙饼/);
+
+  await callPage(page, "decidePendingEdit", { currentTarget: { dataset: { id: chapter.pendingRevision.edits[0].id, decision: "accept" } } });
+  await callPage(page, "finishPendingEdits");
+  draft = (page.data.draft as any);
+  chapter = draft.chapters[0];
+  assert.match(chapter.content.map((item: any) => item.text || "").join(""), /烙饼/);
+  assert.equal(chapter.containsAiText, true);
+  assert.equal(chapter.pendingRevision, undefined);
+});
+
+test("inline xiaoyi write mode asks first, organizes only the answer, then creates a pending insert", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "灶台", paragraphs: ["那天屋里很冷，我妈在灶台前忙着。"], sourceCount: 0, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-1", title: "灶台", memoryIds: [], content: [{ text: "那天屋里很冷，我妈在灶台前忙着。" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const calls: any[] = [];
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "chatInterview") return { result: { dimension: "event", text: "灶台前忙着的时候，你想补哪一个细节？" } };
+    if (name === "organizeMemory") return { result: { title: "灶台前", summary: "烙饼和烧火", body: "我妈那天在灶台前烙饼，我在旁边烧火。", memoryType: "memoir", generationMode: "cloud-ai" } };
+    return { result: { status: "ok" } };
+  } };
+  page.editorContext = {
+    getSelectionText: ({ success }: any) => success({ text: "" }),
+    getContents: ({ success }: any) => success({ delta: { ops: [{ insert: "那天屋里很冷，我妈在灶台前忙着。" }] } }),
+    setContents: ({ success }: any) => success(),
+  };
+  page.setData({ editorReady: true, view: "chapter" });
+
+  callPage(page, "openXiaoyi");
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "write" } } });
+  assert.match(String(page.data.xiaoyiStatus), /先回答这个问题/);
+  assert.equal(page.data.xiaoyiCanOrganize, true);
+  assert.equal(calls.filter(call => call.name === "organizeMemory").length, 0, "帮我写不会跳过提问直接整理");
+
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
+  await callPage(page, "organizeXiaoyiAnswer");
+  const organizeCall = calls.find(call => call.name === "organizeMemory");
+  assert.equal(organizeCall?.data.inlineAnswer, true);
+  assert.deepEqual(organizeCall?.data.transcript, ["我妈那天在灶台前烙饼，我在旁边烧火。"]);
+  assert.equal(page.data.xiaoyiDraftText, "我妈那天在灶台前烙饼，我在旁边烧火。");
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /小忆只整理了你的回答/);
+  (wx as any).cloud = undefined;
+
+  await callPage(page, "useXiaoyiDraft");
+  let draft = (page.data.draft as any);
+  let chapter = draft.chapters[0];
+  assert.equal(chapter.content.map((item: any) => item.text || "").join(""), "那天屋里很冷，我妈在灶台前忙着。", "整理稿不会直接写入正文");
+  assert.equal(chapter.pendingRevision.edits[0].source, "ai");
+  assert.match(chapter.pendingRevision.edits[0].text, /烙饼/);
+
+  await callPage(page, "decidePendingEdit", { currentTarget: { dataset: { id: chapter.pendingRevision.edits[0].id, decision: "accept" } } });
+  await callPage(page, "finishPendingEdits");
+  draft = (page.data.draft as any);
+  chapter = draft.chapters[0];
+  assert.match(chapter.content.map((item: any) => item.text || "").join(""), /烙饼/);
+  assert.equal(chapter.containsAiText, true);
+});
+
+test("inline xiaoyi in memory save appends the user's original answer to the draft", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  page.setData({ stage: "save", draftText: "那天屋里很冷。", draftLength: 7, memoryType: "note", storyTitle: "灶台" });
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈在灶台前烙饼。" } });
+  callPage(page, "useXiaoyiOriginal");
+  assert.match(String(page.data.draftText), /那天屋里很冷。[\s\S]*我妈在灶台前烙饼。/);
+  assert.equal(page.data.xiaoyiAnswer, "");
 });

@@ -8,6 +8,13 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, "deploy/wechat-cloud
 const functionRoot = path.join(root, "cloudfunctions");
 const { CORE_COLLECTIONS } = require("../cloudfunctions/ensureCloudCollections/bootstrap.js");
 
+test("conversation AI functions declare the SDK required by their authenticated entry points", () => {
+  for (const name of ["chatInterview", "organizeMemory", "personalMemory"]) {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(functionRoot, name, "package.json"), "utf8"));
+    assert.ok(packageJson.dependencies?.["wx-server-sdk"], `${name} must install wx-server-sdk during deployment`);
+  }
+});
+
 function sorted(values) {
   return [...values].sort((left, right) => left.localeCompare(right));
 }

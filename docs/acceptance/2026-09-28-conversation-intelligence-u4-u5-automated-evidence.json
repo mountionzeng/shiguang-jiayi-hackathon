@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-09-28T11:26:56.147Z",
+  "u4": {
+    "relation": {
+      "status": "pass",
+      "expectedTendency": "更愿意从身边的人讲起。",
+      "evidenceCount": 4,
+      "promptUsedTendency": true,
+      "correctionReplacedTendency": true,
+      "forgetRemovedTendency": true
+    },
+    "feeling": {
+      "status": "pass",
+      "expectedTendency": "更愿意从自己的感受讲起。",
+      "evidenceCount": 4,
+      "promptUsedTendency": true,
+      "correctionReplacedTendency": true,
+      "forgetRemovedTendency": true
+    },
+    "object": {
+      "status": "pass",
+      "expectedTendency": "更愿意从物件与场景讲起。",
+      "evidenceCount": 4,
+      "promptUsedTendency": true,
+      "correctionReplacedTendency": true,
+      "forgetRemovedTendency": true
+    },
+    "sparse": {
+      "status": "pass",
+      "expected": "no tendency before three independent sources",
+      "visibleInsights": 0
+    }
+  },
+  "u5": {
+    "status": "pass",
+    "bobCannotSeeAlice": true,
+    "bobCannotCorrectAlice": true,
+    "bobCannotForgetAlice": true,
+    "aliceForgetDoesNotRevive": true,
+    "replayStatus": "suppressed"
+  }
+}

@@ -7,7 +7,6 @@ import {
   InterviewMode,
   InterviewPrompt,
   InterviewTurn,
-  nextInterviewPrompt,
 } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
@@ -46,13 +45,19 @@ function localFallbackPrompt(
   input: GenerateInterviewPromptInput,
   fallbackReason: InterviewPrompt["fallbackReason"],
 ): InterviewPrompt {
+  // The local client has no semantic model. Keep the fallback honest and tied
+  // to the user's words instead of cycling through unrelated fact dimensions.
+  const templates = [
+    "你刚才这句话里，最想留下来的是哪个意思？",
+    "这句话对你来说，最贴近的是哪一部分？",
+    "你愿意从这句话里的哪个词或意思接着说？",
+  ];
+  const answer = input.answer.trim();
+  const wantsPause = /(?:^|[，。！？,!?\s])(?:(?:今天|这次)?(?:就|先)?到这里(?:吧|了|就好|就行)?|(?:今天|现在)?(?:先)?不聊了|我(?:想|要)(?:先)?(?:歇|休息)(?:一会儿|一会)?)[。！!，,\s]*$/.test(answer);
+  const wantsRecordOnly = /(?:只想|只要|就想)(?:把)?(?:这(?:句|段)话)?(?:记下|记录(?:下来)?|留下)(?:就好|就行|吧)?[。！!\s]*$/.test(answer);
   return {
-    ...nextInterviewPrompt({
-      answer: input.answer,
-      askedDimensions: input.askedDimensions,
-      mode: input.mode,
-      previousAnswers: input.previousAnswers,
-    }),
+    dimension: "feeling",
+    text: wantsPause ? "好，我们先停在这里。" : wantsRecordOnly ? "好，这里先不追问。" : templates[input.askedDimensions.length % templates.length],
     generationMode: "local-fallback",
     fallbackReason,
   };
@@ -106,6 +111,10 @@ export async function generateInterviewPrompt(
     return localFallbackPrompt(input, "invalid-result");
   } catch (error) {
     console.warn("AI 追问不可用，将使用本地追问规则");
+    const failure = error as { code?: unknown; errMsg?: unknown; message?: unknown } | undefined;
+    if (failure?.code === "AI_CONTENT_CHECK_QUOTA_EXHAUSTED" || /AI_CONTENT_CHECK_QUOTA_EXHAUSTED|内容安全检查额度已用完/.test(String(failure?.errMsg || failure?.message || ""))) {
+      return localFallbackPrompt(input, "moderation-quota-exhausted");
+    }
     return localFallbackPrompt(input, "function-error");
   }
 }

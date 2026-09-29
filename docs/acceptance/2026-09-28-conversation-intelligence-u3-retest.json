@@ -1,0 +1,149 @@
+{
+  "environment": "cloud1-d5ghzk30ve609f544",
+  "sourceCommit": "524a577dde0caeaef0515ec3fbca8e93880f3628",
+  "completedAt": "2026-09-28T10:50:00.000Z",
+  "method": "wechatide automation_evaluate sequential wx.cloud.callFunction; meaning-continuation recovered via background call and simulator console marker",
+  "cases": [
+    {
+      "id": "original-1",
+      "answer": "嗯，就是那种终于不用赶着去哪里的感觉。",
+      "expectation": "继续聊不用赶的感受或意义；不问地点、活动、感官扫描，不重复上一问",
+      "latencyMs": 6872,
+      "ok": true,
+      "result": {
+        "dimension": "feeling",
+        "text": "嗯，不用赶着去哪里——这句里的轻松挺具体的。那就顺着这份不赶的自在：它对你来说，最舒服的是哪一点？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    },
+    {
+      "id": "original-2",
+      "answer": "嗯，就是那种终于不用赶着去哪里的感觉。",
+      "expectation": "继续聊不用赶的感受或意义；不问地点、活动、感官扫描，不重复上一问",
+      "latencyMs": 5639,
+      "ok": true,
+      "result": {
+        "dimension": "feeling",
+        "text": "那份踏实，听起来就落在“不用赶着去哪里”上——像不必被下一站催着走。这样一种不用赶的状态，对你最要紧的是什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    },
+    {
+      "id": "original-3",
+      "answer": "嗯，就是那种终于不用赶着去哪里的感觉。",
+      "expectation": "继续聊不用赶的感受或意义；不问地点、活动、感官扫描，不重复上一问",
+      "latencyMs": 6840,
+      "ok": true,
+      "result": {
+        "dimension": "feeling",
+        "text": "嗯，不用赶着去哪里，听起来是脚步和心思都能慢下来的那种踏实。这份不用赶，对你来说意味着什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    },
+    {
+      "id": "feeling-variant",
+      "answer": "对，像终于不用一直往前跑了，心里一下松了。",
+      "expectation": "不把往前跑当跑步或目的地；不问最先感觉到什么；继续聊意义",
+      "latencyMs": 6066,
+      "ok": true,
+      "result": {
+        "dimension": "feeling",
+        "text": "嗯，那个“一直往前跑”的劲一下停了，松就落下来了。那在这份松里，此刻你最在意、最想留住的是哪一点？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    },
+    {
+      "id": "metaphor",
+      "answer": "不是想说哪个地方，是心里好像终于有了个能停靠的地方。",
+      "expectation": "接受地点纠正，不追问实际地点；顺着心里能停靠的意义",
+      "latencyMs": 5316,
+      "ok": true,
+      "result": {
+        "dimension": "feeling",
+        "text": "不是地点，是心里有个能停靠的地方——我听见了。你说“停靠”这个词时，心里那份感觉像是终于不用再漂着了。对你来说，能停靠下来意味着什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    },
+    {
+      "id": "meaning-continuation",
+      "answer": "最可贵的是，我不用连休息都觉得自己欠着什么。",
+      "expectation": "沿不欠着什么继续；保留否定范围，不虚构亏欠原因",
+      "ok": true,
+      "latencyMs": null,
+      "result": {
+        "dimension": "feeling",
+        "text": "不用连休息都觉得自己欠着什么，休息就只是休息本身，不必先偿付什么。这份不必偿还的安心，对你来说意味着什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "note": "前三次同步 automation_evaluate 等待超时；2026-09-28 改用后台触发 wx.cloud.callFunction 并从模拟器 console 读取 ROUND2_MEANING_RESULT，取得真实云端回复。"
+    },
+    {
+      "id": "concrete-object",
+      "answer": "搬家时发现一个掉了漆的铁盒，我舍不得扔。",
+      "expectation": "可以追问铁盒细节或舍不得的原因；不编造来历",
+      "latencyMs": 5299,
+      "ok": true,
+      "result": {
+        "dimension": "event",
+        "text": "搬家翻出这个掉了漆的铁盒，你说舍不得扔。是里面还装着什么，还是光这个盒子本身就想留着？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    },
+    {
+      "id": "explicit-scene-pivot",
+      "answer": "我想讲个具体画面：那天傍晚坐在河边，看见一只小船慢慢靠岸。",
+      "expectation": "用户主动转具体画面，可以顺着画面问一处具体细节",
+      "latencyMs": 7308,
+      "ok": true,
+      "result": {
+        "dimension": "event",
+        "text": "傍晚的河边，一只小船慢慢靠岸——这个画面你愿意多说说。你记得最清楚的是哪一处，是船靠过来的过程，还是别的什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    },
+    {
+      "id": "pause",
+      "answer": "今天先到这里吧，我想歇一会儿。",
+      "expectation": "明确暂停，不再追问",
+      "latencyMs": 4839,
+      "ok": true,
+      "result": {
+        "dimension": "feeling",
+        "text": "那就先到这里，你好好歇一会儿。今天说的这些我都记着，之后想接着聊再叫我。",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    },
+    {
+      "id": "record-only",
+      "answer": "不太想解释原因，只想把这句话留下。",
+      "expectation": "尊重只记录，不追问原因",
+      "latencyMs": 6253,
+      "ok": true,
+      "result": {
+        "dimension": "feeling",
+        "text": "那就原样把这句话留在这儿，不解释原因也没关系。这份不赶的感觉，你想留多久就留多久，我不再往下问。",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      }
+    }
+  ]
+}

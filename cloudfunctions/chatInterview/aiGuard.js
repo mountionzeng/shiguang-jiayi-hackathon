@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { moderateTextWithTencent } = require("./tencentModeration");
 
 const OPENID = /^[0-9A-Za-z_-]{1,128}$/;
 const APP_ID = /^wx[0-9A-Za-z_-]{1,80}$/;
@@ -7,6 +8,7 @@ const FAMILY_ID = /^family_[0-9A-Za-z_-]{1,120}$/;
 const DEFAULT_DAILY_LIMIT = 60;
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 const MODERATION_CHUNK = 2_500;
+const MODERATION_CACHE_COLLECTION = "ai_moderation_checks";
 const AI_CONSENT_VERSION = 1;
 
 function aiError(code, message = code) {
@@ -98,7 +100,9 @@ async function assertIdentityStillActive(db, identity) {
 }
 
 async function reserveAiRequest(db, identity, kind, nowMs = Date.now()) {
-  const dailyLimit = positiveInteger(process.env.AI_DAILY_REQUEST_LIMIT, DEFAULT_DAILY_LIMIT, 500);
+  // Explicit zero enables metered usage without an application daily ceiling.
+  const dailyLimit = process.env.AI_DAILY_REQUEST_LIMIT === "0"
+    ? 0 : positiveInteger(process.env.AI_DAILY_REQUEST_LIMIT, DEFAULT_DAILY_LIMIT, 500);
   const minIntervalMs = positiveInteger(process.env.AI_MIN_INTERVAL_MS, DEFAULT_MIN_INTERVAL_MS, 60_000);
   const dayKey = chinaDayKey(nowMs);
   await db.runTransaction(async transaction => {
@@ -114,7 +118,7 @@ async function reserveAiRequest(db, identity, kind, nowMs = Date.now()) {
     const count = Number.isSafeInteger(previous.count) ? previous.count : 0;
     const lastAtMs = Number.isSafeInteger(previous.lastAtMs) ? previous.lastAtMs : 0;
     if (nowMs - lastAtMs < minIntervalMs) throw aiError("AI_RATE_LIMITED", "操作太频繁，请稍后再试");
-    if (count >= dailyLimit) throw aiError("AI_DAILY_LIMIT", "今天的 AI 使用次数已达到上限");
+    if (dailyLimit > 0 && count >= dailyLimit) throw aiError("AI_DAILY_LIMIT", "今天的 AI 使用次数已达到上限");
     const byKind = previous.byKind && typeof previous.byKind === "object" ? previous.byKind : {};
     await ref.update({ data: { aiUsage: {
       dayKey,
@@ -125,30 +129,124 @@ async function reserveAiRequest(db, identity, kind, nowMs = Date.now()) {
   });
 }
 
-async function moderateText(cloud, openid, value, title) {
+function hashText(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
+function moderationCacheId(openid, dayKey, scene, chunk, title) {
+  return `mod_${hashText(["v1", openid, dayKey, scene, title || "", chunk].join("\0")).slice(0, 48)}`;
+}
+
+async function readModerationCache(db, cacheId, dayKey) {
+  if (!db || !cacheId) return "miss";
+  try {
+    const data = (await db.collection(MODERATION_CACHE_COLLECTION).doc(cacheId).get()).data;
+    if (!data || data.dayKey !== dayKey) return "miss";
+    if (data.status === "pass") return "pass";
+    if (data.status === "reject") return "reject";
+  } catch {}
+  return "miss";
+}
+
+async function writeModerationCache(db, cacheId, data) {
+  if (!db || !cacheId) return;
+  try {
+    const ref = db.collection(MODERATION_CACHE_COLLECTION).doc(cacheId);
+    if (typeof ref.set === "function") await ref.set({ data });
+    else if (typeof ref.update === "function") await ref.update({ data });
+  } catch {}
+}
+
+async function tryPaidModeration(chunk, title, cacheId, dayKey, nowMs, options) {
+  const paidModeration = options && typeof options.paidModeration === "function"
+    ? options.paidModeration
+    : moderateTextWithTencent;
+  try {
+    const content = title ? `${title}\n${chunk}` : chunk;
+    const result = await paidModeration({ content, dataId: cacheId, env: options && options.env });
+    if (!result || result.available !== true) return { handled: false };
+    if (result.status === "pass") {
+      await writeModerationCache(options && options.db, cacheId, {
+        dayKey,
+        status: "pass",
+        suggest: "pass",
+        provider: "tencent-tms",
+        checkedAtMs: nowMs,
+      });
+      return { handled: true, passed: true };
+    }
+    await writeModerationCache(options && options.db, cacheId, {
+      dayKey,
+      status: "reject",
+      suggest: String(result.suggestion || "review").slice(0, 24),
+      provider: "tencent-tms",
+      checkedAtMs: nowMs,
+    });
+    throw aiError("AI_CONTENT_REJECTED", "这段内容暂时不能交给 AI 处理");
+  } catch (error) {
+    if (error && error.code === "AI_CONTENT_REJECTED") throw error;
+    console.warn("[ai-moderation]", {
+      reason: "paid-provider-unavailable",
+      ...(typeof error?.code === "string" ? { providerCode: error.code.slice(0, 80) } : {}),
+    });
+    return { handled: false };
+  }
+}
+
+async function moderateText(cloud, openid, value, title, options = {}) {
   const content = Array.from(String(value || "").trim());
   if (!content.length) return;
-  if (!cloud || !cloud.openapi || !cloud.openapi.security || typeof cloud.openapi.security.msgSecCheck !== "function") {
-    throw aiError("AI_CONTENT_CHECK_UNAVAILABLE", "内容安全检查暂时不可用");
-  }
+  const wechatModeration = cloud && cloud.openapi && cloud.openapi.security &&
+    typeof cloud.openapi.security.msgSecCheck === "function"
+    ? cloud.openapi.security.msgSecCheck.bind(cloud.openapi.security)
+    : null;
+  const db = options && options.db;
+  const nowMs = Number.isSafeInteger(options && options.nowMs) ? options.nowMs : Date.now();
+  const dayKey = chinaDayKey(nowMs);
   for (let offset = 0; offset < content.length; offset += MODERATION_CHUNK) {
+    const chunk = content.slice(offset, offset + MODERATION_CHUNK).join("");
+    const safeTitle = offset === 0 && title ? Array.from(String(title)).slice(0, 100).join("") : "";
+    const cacheId = db ? moderationCacheId(openid, dayKey, 4, chunk, safeTitle) : "";
+    const cached = await readModerationCache(db, cacheId, dayKey);
+    if (cached === "pass") continue;
+    if (cached === "reject") throw aiError("AI_CONTENT_REJECTED", "这段内容暂时不能交给 AI 处理");
     try {
-      const response = await cloud.openapi.security.msgSecCheck({
-        content: content.slice(offset, offset + MODERATION_CHUNK).join(""),
+      if (!wechatModeration) throw Object.assign(new Error("WECHAT_MODERATION_UNAVAILABLE"), { code: "WECHAT_MODERATION_UNAVAILABLE" });
+      const response = await wechatModeration({
+        content: chunk,
         version: 2,
         scene: 4,
         openid,
-        ...(offset === 0 && title ? { title: Array.from(String(title)).slice(0, 100).join("") } : {}),
+        ...(safeTitle ? { title: safeTitle } : {}),
       });
-      if (response && response.result && response.result.suggest === "pass") continue;
+      const result = response && response.result ? response.result : {};
+      if (result.suggest === "pass") {
+        await writeModerationCache(db, cacheId, { dayKey, status: "pass", suggest: "pass", checkedAtMs: nowMs });
+        continue;
+      }
+      await writeModerationCache(db, cacheId, {
+        dayKey,
+        status: "reject",
+        suggest: String(result.suggest || "review").slice(0, 24),
+        checkedAtMs: nowMs,
+      });
       throw aiError("AI_CONTENT_REJECTED", "这段内容暂时不能交给 AI 处理");
     } catch (error) {
       if (error && error.code === "AI_CONTENT_REJECTED") throw error;
+      const providerCode = Number(error && (error.errCode ?? error.errcode));
+      const quotaExhausted = providerCode === 45009 || /reach max api daily quota limit/i.test(String(error && (error.errMsg || error.message) || ""));
+      const paid = await tryPaidModeration(chunk, safeTitle, cacheId, dayKey, nowMs, { ...options, db });
+      if (paid.handled && paid.passed) continue;
+      // Record only a category and numeric code; SDK errors can contain private request data.
+      console.warn("[ai-moderation]", {
+        reason: quotaExhausted ? "daily-quota-exhausted" : "service-unavailable",
+        ...(Number.isSafeInteger(providerCode) ? { providerCode } : {}),
+      });
+      if (quotaExhausted) throw aiError("AI_CONTENT_CHECK_QUOTA_EXHAUSTED", "今日内容安全检查额度已用完，请稍后再试");
       throw aiError("AI_CONTENT_CHECK_UNAVAILABLE", "内容安全检查暂时不可用");
     }
   }
 }
-
 function diagnoseAuthorized(event) {
   const expected = String(process.env.AI_DIAGNOSE_TOKEN || "");
   return expected.length >= 24 && typeof event?.diagnoseToken === "string" && event.diagnoseToken === expected;
