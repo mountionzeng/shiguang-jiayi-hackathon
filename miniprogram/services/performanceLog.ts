@@ -1,5 +1,5 @@
 type Operation = 'room.load' | 'room.cloud' | 'room.identity' | 'room.state' | 'story.shelf'
-  | 'book.refresh' | 'book.identity' | 'book.photos' | 'book.images';
+  | 'book.refresh' | 'book.identity' | 'book.photos' | 'book.images' | 'book.cover-cache' | 'book.cover-render';
 
 export interface PerformanceMetrics {
   route?: 'local' | 'cloud' | 'identity' | 'story-service' | 'client-fallback';

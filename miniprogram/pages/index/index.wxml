@@ -15,7 +15,7 @@
         aria-label="打开我的"
       >
         <view class="member-avatar serif">
-          <view class="member-avatar-backdrop" aria-hidden="true"></view>
+          <image class="member-avatar-backdrop" src="/assets/illustrations/avatar-watercolor.png" mode="aspectFill" aria-hidden="true"></image>
           <text class="member-avatar-letter">{{ownerAvatarText || '我'}}</text>
         </view>
       </button>
@@ -49,30 +49,28 @@
         <swiper-item class="book-slide" wx:for="{{bookSlides}}" wx:key="key">
           <view class="book-slide-inner">
             <view
-              class="book {{item.coverUrl ? 'book-custom-cover' : ''}} {{bookOpening && activeBookIndex === index ? 'book-opening' : ''}}"
+              class="book {{bookOpening && activeBookIndex === index ? 'book-opening' : ''}}"
               bindtap="openMemoryArchive"
               role="button"
               aria-label="打开故事 {{item.title}}"
             >
               <view class="book-pages-under"></view>
               <view class="book-cover-leaf">
+                <view class="book-cover-picture" wx:if="{{item.bookArtUrl}}" aria-hidden="true">
+                  <image
+                    class="book-cover-picture-art"
+                    src="{{item.bookArtUrl}}"
+                    mode="scaleToFill"
+                  ></image>
+                </view>
                 <image
+                  wx:else
                   class="ancient-book-art"
                   src="/assets/illustrations/story-book-cover.png"
                   mode="aspectFill"
                   aria-hidden="true"
                 ></image>
-                <block wx:if="{{item.coverUrl}}">
-                  <view class="book-cover-picture" aria-hidden="true">
-                    <image
-                      class="book-cover-picture-art"
-                      src="{{item.coverUrl}}"
-                      mode="aspectFill"
-                    ></image>
-                  </view>
-                  <view class="book-cover-paper-texture" aria-hidden="true"></view>
-                </block>
-                <view class="book-cover-copy {{item.coverUrl ? 'book-cover-copy-printed' : ''}}">
+                <view class="book-cover-copy {{item.bookArtUrl ? 'book-cover-copy-printed' : ''}}">
                   <text class="book-kicker typewriter">拾 光 录</text>
                   <view class="book-copy">
                     <view class="book-slip">
@@ -257,3 +255,4 @@
 </scroll-view>
 
 <story-switcher current="home"></story-switcher>
+<canvas type="2d" id="book-frame-canvas" class="book-frame-canvas" aria-hidden="true"></canvas>

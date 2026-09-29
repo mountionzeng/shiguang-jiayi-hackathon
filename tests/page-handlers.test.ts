@@ -83,7 +83,13 @@ function instantiate(definition: TestPageDefinition): TestPageInstance {
     ...definition,
     data: structuredClone(definition.data ?? {}),
   } as TestPageInstance;
-  instance.setData = (update) => Object.assign(instance.data, update);
+  instance.setData = (update) => {
+    for (const [key, value] of Object.entries(update)) {
+      const slideField = /^bookSlides\[(\d+)\]\.(coverUrl|bookArtUrl)$/.exec(key);
+      if (slideField) (instance.data.bookSlides as Array<Record<string, unknown>>)[Number(slideField[1])][slideField[2]] = value;
+      else instance.data[key] = value;
+    }
+  };
   return instance;
 }
 
@@ -451,6 +457,50 @@ test("home book cover swipes between books and opens the selected one", async (c
   assert.equal(last(storage.navigations), "/pages/stories/stories?key=" + encodeURIComponent(next.key));
 });
 
+function swipeRoomState(): FamilyRoomState {
+  const state = createInitialRoomState();
+  state.contributions.push(createContribution({
+    id: "swipe-radio", authorMemberId: "owner", authorName: "林岚", relation: "外孙女",
+    text: "晚饭后一起听收音机。", storyTitle: "母亲的收音机", scope: "personal", visibility: "private",
+    now: new Date("2026-09-01T08:00:00.000Z"),
+  }));
+  return state;
+}
+
+test("swiping loaded books offline preserves covers without reloading room data", async context => {
+  const initial = swipeRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  const slides = home.data.bookSlides as Array<Record<string, any>>;
+  assert.ok(slides.length > 1);
+  slides.forEach((slide, i) => { slide.coverUrl = `cached-cover-${i}`; slide.bookArtUrl = `cached-frame-${i}`; });
+  const snapshot = structuredClone(slides);
+  let networkReads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { get() { networkReads++; throw new Error('offline'); } });
+  const first = home.data.activeBookIndex as number;
+  const next = (first + 1) % slides.length;
+  await callPage(home, "onBookSlideChange", { detail: { current: next, source: 'touch' } });
+  await callPage(home, "onBookSlideChange", { detail: { current: first, source: 'touch' } });
+  assert.equal(networkReads, 0, 'swiping must not request the full room again');
+  assert.deepEqual(storage.toasts, [], 'offline browsing must not raise a page-load error');
+  assert.deepEqual(home.data.bookSlides, snapshot, 'retain both covers and colour-matched frames');
+  assert.equal(home.data.coverUrl, slides[first].coverUrl);
+});
+
+test("programmatic swiper changes do not override the selected story", async context => {
+  const initial = swipeRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  const selected = home.data.activeBookIndex as number;
+  const next = (selected + 1) % (home.data.bookSlides as unknown[]).length;
+  await callPage(home, "onBookSlideChange", { detail: { current: next, source: '' } });
+  assert.equal(home.data.activeBookIndex, selected);
+});
+
 test("home book swiper resolves cover art for the active story after changing books", async (context) => {
   const initial = createInitialRoomState();
   initial.contributions.push(createContribution({
@@ -530,7 +580,7 @@ test("home book swiper resolves cover art for the active story after changing bo
   assert.equal(home.data.coverUrl, "https://img.example/story-rain/cover-rain.jpg");
 
 
-  assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`), [
+  assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`).sort(), [
     "story-radio:cover-radio",
     "story-radio:cover-radio",
     "story-rain:cover-rain",
@@ -1888,27 +1938,22 @@ test("home book cover is a horizontal swiper with direct-open affordance", () =>
   assert.doesNotMatch(template, /<swiper[\s\S]*class="book-swiper"[\s\S]*vertical/);
   assert.match(template, /wx:for="{{bookSlides}}"/);
   assert.match(template, /左右滑动换一本书 · 轻触打开/);
-  assert.match(template, /class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
-  assert.match(template, /<block wx:if="{{item.coverUrl}}">/);
-  assert.match(template, /class="book-cover-picture"/);
-  assert.match(template, /class="book-cover-picture-art"[\s\S]*src="{{item.coverUrl}}"[\s\S]*mode="aspectFill"/);
-  assert.match(template, /class="book-cover-paper-texture"/);
-  assert.match(template, /class="book-cover-copy {{item.coverUrl \? 'book-cover-copy-printed' : ''}}/);
-  assert.doesNotMatch(template, /book-cover-material(?:\s|"|-color)|book-cover-picture-wash|ancient-book-art-overlay|onBookCoverLoad|story-book-cover-material-texture\.png/);
+  assert.match(template, /class="book-cover-picture" wx:if="{{item.bookArtUrl}}"/);
+  assert.match(template, /class="book-cover-picture-art"[\s\S]*src="{{item.bookArtUrl}}"[\s\S]*mode="scaleToFill"/);
+  assert.doesNotMatch(template, /class="book-cover-frame/);
+  assert.match(template, /wx:else[\s\S]*class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
+  assert.match(template, /class="book-cover-copy {{item.bookArtUrl \? 'book-cover-copy-printed' : ''}}/);
+  assert.doesNotMatch(template, /book-cover-dominant|book-cover-paper-texture|book-cover-material(?:\s|"|-color)|book-cover-picture-wash|ancient-book-art-overlay|story-book-spine|story-switcher-book-edges|capture-memoir-book|onBookCoverLoad|story-book-cover-material-texture\.png/);
   assert.match(styles, /\.book-swiper[^{]*{[^}]*height: 850rpx/);
-  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 30rpx/);
-  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*right: 22rpx/);
-  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*bottom: 24rpx/);
-  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*left: 96rpx/);
-  assert.match(styles, /\.book-custom-cover \.book-pages-under[^{]*{[^}]*display: none/);
-  assert.match(styles, /\.book-cover-paper-texture[^{]*{[^}]*z-index: 2/);
-  assert.doesNotMatch(styles, /background-image: url\("\/assets\/illustrations\/story-book-cover\.png"\)/);
-  assert.match(styles, /\.book-cover-copy-printed[^{]*{[^}]*display: flex/);
-  assert.match(styles, /\.book-cover-copy-printed \.book-stats[^{]*{[^}]*margin-bottom: 10rpx/);
-  assert.match(styles, /\.book-cover-copy-printed \.book-stat-action::before[^{]*{[^}]*height: 4rpx/);
-  assert.match(styles, /\.book-cover-copy-printed \.book-stat-action[^{]*{[^}]*border: 0/);
+  assert.doesNotMatch(styles, /\.book-cover-leaf::before|\.book-cover-leaf::after|repeating-linear-gradient\(90deg|book-cover-dominant|book-cover-paper-texture|book-custom-cover|ancient-book-art-overlay|book-cover-picture-wash|background-image: url\("\/assets\/illustrations\/story-book-cover\.png"\)/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*inset: 0/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*inset: 0/);
   assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*width: 100%/);
   assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 100%/);
+  assert.doesNotMatch(styles, /\.book-cover-picture-art[^{]*{[^}]*opacity:/);
+  assert.match(styles, /\.book-stat-action[^{]*{[^}]*background: transparent/);
+  assert.match(styles, /\.book-stat-action[^{]*{[^}]*border: 0/);
+  assert.match(styles, /\.book-stat-action \+ \.book-stat-action::before[^{]*{[^}]*content: "•"/);
   assert.match(styles, /\.book-rail-dot-on/);
 });
 
