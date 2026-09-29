@@ -106,7 +106,7 @@ PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
 
 ## 5. 2026-09-29 补做：接入 archive 记忆编辑器（Claude 工作树续做）
 
-本轮把另一条 Codex 对话整理出的关键结论并入当前工作树：旧二维码没有功能，是因为出码分支没有就地小忆；已有记忆编辑器 `archive` 也缺入口。当前分支已补齐这个入口，待提交后以本节所在提交为准。
+本轮把另一条 Codex 对话整理出的关键结论并入当前工作树：旧二维码没有功能，是因为出码分支没有就地小忆；已有记忆编辑器 `archive` 也缺入口。当前分支已补齐这个入口，代码提交：`5cc5331 feat(xiaoyi): add inline companion to memory archive`。
 
 ### 做了什么
 
@@ -151,4 +151,5 @@ PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
 | 自动化检查 | 通过 | `npm run check`：1032 项通过，0 失败。 |
 | 代码审查 | 通过 | 发现的 P1/P2 已修并补测试。 |
 | 微信开发者工具真实流程验收 | 需要用户做 | 需要扫码后在预览版里人工审批：软键盘同屏、长按复制、连续编辑不打扰、问题贴合度。 |
-| 云函数同步 | 需要上线前确认 | 本轮改了 `familyInvite` 读回字段；生成二维码前应部署该函数或确认预览所需云端已同步。 |
+| 云函数同步 | 通过 | `familyInvite` 已用标准脚本部署到 `cloud1-d5ghzk30ve609f544` 并验证 Active；源码提交 `5cc5331`。 |
+| 预览二维码 | 通过 | `/Users/yuandai/Documents/Codex/2026-09-27/shiguang-conversation-intelligence/outputs/inline-xiaoyi-preview-5cc5331.png`；隔离副本 `/private/tmp/shiguang-inline-xiaoyi-preview-5cc5331` 仅在副本中打开 `CLOUD_AI_RELEASE_READY`。 |
