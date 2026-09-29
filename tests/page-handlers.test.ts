@@ -127,6 +127,9 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
       redirectTo: ({ url }: { url: string }) => navigations.push(url),
       switchTab: () => undefined,
       reLaunch: ({ url }: { url: string }) => relaunches.push(url),
+      getWindowInfo: () => ({ windowHeight: 800, windowWidth: 390 }),
+      onKeyboardHeightChange: () => undefined,
+      offKeyboardHeightChange: () => undefined,
     },
   });
 
@@ -2214,6 +2217,118 @@ test("interview local fallback preserves persisted speech without inventing AI r
   assert.equal(page.data.draftAiLabel, "");
 });
 
+test("finish() persists the spoken answer as a real memory before asking organizeMemory to organize it, and organizeMemory is called with that memory's id", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const { clearAiConsent } = await import("../miniprogram/services/aiConsent");
+  clearAiConsent();
+  context.after(clearAiConsent);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad");
+  page.setData({ answers: ["今天在巷口等了很久，外公才骑车过来。"], writingMode: "creative" });
+
+  const calls: Array<{ name: string; data: any }> = [];
+  const cloudTables = new Map<string, Map<string, any>>();
+  const records = (name: string) => {
+    if (!cloudTables.has(name)) cloudTables.set(name, new Map());
+    return cloudTables.get(name)!;
+  };
+  const persistedMemory = (id: string) => [...records("memories").values()].find(item => item.frontendContributionId === id);
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+    if (name === "storyBooks" && data?.action === "state") return {
+      result: {
+        ...storage.roomState(),
+        roomStateVersion: 1,
+        roomName: storage.roomState().roomName || "测试房间",
+        protagonistName: storage.roomState().protagonistName || "测试者",
+        members: storage.roomState().members ?? [],
+        contributions: storage.roomState().contributions ?? [],
+        manuscriptRevisions: storage.roomState().manuscriptRevisions ?? [],
+        deletedStories: storage.roomState().deletedStories ?? [],
+        stories: storage.roomState().stories ?? [],
+        personalDrafts: storage.roomState().personalDrafts ?? {},
+        draftSourceFingerprint: "",
+        personalDraftSourceFingerprints: Object.fromEntries(Object.keys(storage.roomState().personalDrafts ?? {}).map(memberId => [memberId, ""])),
+      },
+    };
+    if (name === "recordAiConsent") return { result: { success: true } };
+    if (name === "organizeMemory") {
+      // organizeMemory must see the memory that was just persisted, proving finish()
+      // saved the spoken answer first and only then asked the cloud to organize it.
+      const persisted = persistedMemory(data.memoryId);
+      assert.ok(persisted, "organizeMemory must be called with an id that already exists in storage");
+      assert.equal(persisted!.text, "今天在巷口等了很久，外公才骑车过来。");
+      return { result: { title: "巷口", summary: "等外公", body: "那天在巷口等了很久，外公才骑车过来。", memoryType: "memoir", generationMode: "cloud-ai" } };
+    }
+    throw new Error(`unexpected cloud function ${name}`);
+  }, database: () => ({
+    serverDate: () => new Date(),
+    collection: (name: string) => ({
+      doc: (id: string) => ({
+        set: async ({ data }: any) => { records(name).set(id, structuredClone(data)); },
+        get: async () => ({ data: records(name).get(id) }),
+        update: async ({ data }: any) => { records(name).set(id, { ...structuredClone(records(name).get(id) ?? {}), ...structuredClone(data) }); },
+        remove: async () => { records(name).delete(id); return { stats: { removed: 1 } }; },
+      }),
+    }),
+  }) };
+
+  await callPage(page, "finish");
+
+  const organizeCall = calls.find(call => call.name === "organizeMemory");
+  assert.ok(organizeCall, "organizeMemory must be called");
+  const spoken = page.pendingContribution as import("../miniprogram/domain/biography").MemoryContribution;
+  assert.equal(organizeCall!.data.memoryId, spoken.id);
+  // The memory existed in storage before organizeMemory was ever called, not just before finish() returned.
+  const organizeCallIndex = calls.findIndex(call => call.name === "organizeMemory");
+  const callsBeforeOrganize = calls.slice(0, organizeCallIndex);
+  assert.ok(
+    persistedMemory(spoken.id),
+    "the spoken answer must already be in storage by the time organizeMemory is called",
+  );
+  assert.equal(callsBeforeOrganize.every(call => call.name !== "organizeMemory"), true);
+});
+
+test("save() appends a manual revision only when the draft actually changed from the last saved version", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad");
+  page.setData({ answers: ["外公在灶台前忙了一整个下午。"], writingMode: "objective" });
+  await callPage(page, "finish");
+  const spoken = page.pendingContribution as import("../miniprogram/domain/biography").MemoryContribution;
+  const countAfterFinish = storage.roomState().contributions.length;
+
+  // First save: draft text is identical to what finish() already persisted. No manual revision, no new memory.
+  await callPage(page, "save");
+  let saved = storage.roomState().contributions.find(item => item.id === spoken.id)!;
+  assert.equal(storage.roomState().contributions.length, countAfterFinish, "save must update the same memory, not create another one");
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), [], "no aiRevisions were ever started, so an unchanged save must not invent one");
+  assert.equal(saved.text, "外公在灶台前忙了一整个下午。");
+
+  // Second save: user actually edited the draft text. This must append exactly one manual revision.
+  page.pendingContribution = saved;
+  page.setData({ saved: false, draftText: "外公在灶台前忙了一下午，我在旁边帮着添柴。" });
+  await callPage(page, "save");
+  saved = storage.roomState().contributions.find(item => item.id === spoken.id)!;
+  assert.equal(storage.roomState().contributions.length, countAfterFinish, "editing and saving again must still update the same memory");
+  assert.equal(saved.text, "外公在灶台前忙了一下午，我在旁边帮着添柴。");
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), ["spoken", "manual"]);
+
+  // Third save: draft is unchanged from what the previous save just wrote. Must not append a second manual revision.
+  page.pendingContribution = saved;
+  page.setData({ saved: false, draftText: saved.text });
+  await callPage(page, "save");
+  const savedAgain = storage.roomState().contributions.find(item => item.id === spoken.id)!;
+  assert.deepEqual(memoryAiRevisions(savedAgain).map(item => item.kind), ["spoken", "manual"], "re-saving the same text must not duplicate the manual revision");
+});
+
 test("continuous keyboard input never echoes bound values; send clears once and preserves intentional repetition", async context => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -2598,4 +2713,169 @@ test("inline xiaoyi in memory save appends the user's original answer to the dra
   callPage(page, "useXiaoyiOriginal");
   assert.match(String(page.data.draftText), /那天屋里很冷。[\s\S]*我妈在灶台前烙饼。/);
   assert.equal(page.data.xiaoyiAnswer, "");
+});
+
+
+
+test("archive page preserves its safe-area bottom padding when adding keyboard padding", () => {
+  const template = readFileSync("miniprogram/pages/archive/archive.wxml", "utf8");
+  assert.match(template, /padding-bottom:\s*calc\(72rpx \+ env\(safe-area-inset-bottom\) \+ /);
+  assert.doesNotMatch(template, /style="padding-bottom: \{\{keyboardHeight \? keyboardHeight \+ 48 : 0\}\}px"/);
+});
+
+test("inline xiaoyi in archive resets panel state when switching edited memories", async context => {
+  const state = createInitialRoomState();
+  state.contributions.push(createContribution({
+    id: "demo-personal-bicycle",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "外公后来教我骑自行车，他扶着后座跑了很久。",
+    storyTitle: "学骑车",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-08-29T02:05:00.000Z"),
+  }));
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "第一条记忆里的回答" } });
+  callPage(page, "xiaoyiMessagesAppend", { kind: "question", text: "第一条记忆的问题" });
+  (page as any).xiaoyiAskedDimensions = ["event"];
+  (page as any).xiaoyiConversation = [{ role: "assistant", text: "第一条记忆的问题" }];
+
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-bicycle" } } });
+
+  assert.equal(page.data.editingId, "demo-personal-bicycle");
+  assert.equal(page.data.xiaoyiOpen, false);
+  assert.equal(page.data.xiaoyiAnswer, "");
+  assert.deepEqual(page.data.xiaoyiMessages, []);
+  assert.deepEqual((page as any).xiaoyiAskedDimensions, []);
+  assert.deepEqual((page as any).xiaoyiConversation, []);
+});
+
+test("inline xiaoyi entry is embedded in the archive memory editor", () => {
+  const template = readFileSync("miniprogram/pages/archive/archive.wxml", "utf8");
+  assert.match(template, /class="xiaoyi-entry"[^>]*bindtap="openXiaoyi"/);
+  assert.match(template, /class="xiaoyi-panel"/);
+  assert.match(template, /就用我的原话/);
+  assert.match(template, /请小忆整理/);
+  assert.doesNotMatch(template, /xiaoyi-entry[\s\S]{0,240}navigateTo/, "inline xiaoyi must not jump to interview page");
+});
+
+test("inline xiaoyi in archive only asks a question when the user does not answer", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  (wx as any).cloud = { callFunction: async ({ name }: any) => {
+    if (name === "chatInterview") return { result: { dimension: "event", text: "巷口等你的时候，外公手里的伞是什么颜色？" } };
+    return { result: { status: "ok" } };
+  } };
+  const originalText = page.data.editText;
+
+  callPage(page, "openXiaoyi");
+  assert.match(String(page.data.xiaoyiContextPreview), /下雨天/);
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /伞/);
+
+  callPage(page, "closeXiaoyi");
+  assert.equal(page.data.editText, originalText, "not answering must not change the memory");
+});
+
+test("inline xiaoyi in archive lands the user's original answer into editText, saved only after saveEdit", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "useXiaoyiOriginal");
+  assert.match(String(page.data.editText), /下雨天[\s\S]*深绿色的，边上有点掉漆/);
+  assert.equal(page.data.xiaoyiAnswer, "");
+  assert.equal(storage.roomState().contributions.find(item => item.id === "demo-personal-rain")?.text.includes("深绿色"), false, "landing does not persist until saveEdit");
+
+  await callPage(page, "saveEdit");
+  assert.match(String(storage.roomState().contributions.find(item => item.id === "demo-personal-rain")?.text), /深绿色的，边上有点掉漆/);
+  assert.match(String(last(storage.toasts)), /修改已保存/);
+});
+
+
+
+test("inline xiaoyi organized draft saved from archive keeps AI provenance even for a raw memory", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiDraftInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "useXiaoyiDraft");
+  await callPage(page, "saveEdit");
+
+  const saved = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
+  assert.match(saved.text, /深绿色的，边上有点掉漆/);
+  assert.equal(saved.organizationMode, "cloud-ai");
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), ["spoken", "ai"]);
+  assert.match(memoryAiRevisions(saved)[1].text, /深绿色的，边上有点掉漆/);
+});
+
+test("inline xiaoyi organized draft followed by user edits records AI then manual history", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiDraftInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "useXiaoyiDraft");
+  callPage(page, "onEditText", { detail: { value: `${page.data.editText} 我又补了一句自己的话。` } });
+  await callPage(page, "saveEdit");
+
+  const saved = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), ["spoken", "ai", "manual"]);
+  assert.match(memoryAiRevisions(saved)[1].text, /深绿色的，边上有点掉漆/);
+  assert.match(memoryAiRevisions(saved)[2].text, /我又补了一句自己的话/);
+});
+
+test("inline xiaoyi in archive write mode asks first, organizes only the answer, then can be landed", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  const originalText = page.data.editText;
+  const calls: any[] = [];
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "chatInterview") return { result: { dimension: "event", text: "外公的伞，你还记得是什么颜色吗？" } };
+    if (name === "organizeMemory") return { result: { title: "巷口的伞", summary: "深绿色的伞", body: "外公的伞是深绿色的，边上有点掉漆。", memoryType: "note", generationMode: "cloud-ai" } };
+    return { result: { status: "ok" } };
+  } };
+
+  callPage(page, "openXiaoyi");
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "write" } } });
+  assert.match(String(page.data.xiaoyiStatus), /先回答这个问题/);
+  assert.equal(calls.filter(call => call.name === "organizeMemory").length, 0, "帮我写不会跳过提问直接整理");
+
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "organizeXiaoyiAnswer");
+  const organizeCall = calls.find(call => call.name === "organizeMemory");
+  assert.equal(organizeCall?.data.inlineAnswer, true);
+  assert.deepEqual(organizeCall?.data.transcript, ["外公的伞是深绿色的，边上有点掉漆。"]);
+  assert.equal(page.data.editText, originalText, "organizing does not touch editText before landing");
+
+  await callPage(page, "useXiaoyiDraft");
+  assert.match(String(page.data.editText), /深绿色的，边上有点掉漆/);
 });

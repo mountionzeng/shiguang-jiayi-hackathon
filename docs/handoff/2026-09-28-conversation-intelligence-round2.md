@@ -103,3 +103,52 @@ PR：https://github.com/mountionzeng/shiguang-jiayi-hackathon/pull/6
 - 预览二维码：`/Users/yuandai/Documents/Codex/2026-09-27/shiguang-conversation-intelligence/outputs/inline-xiaoyi-preview-7d14c17.png`
 - 预览副本：`/private/tmp/shiguang-inline-xiaoyi-preview-7d14c17`，仅该副本打开 `CLOUD_AI_RELEASE_READY`。
 - 需要扫码重点审批：章节编辑页小忆入口、就地面板、软键盘同屏、选中文字追问、帮我写先问再整理、原话/整理稿待确认写回、记忆保存页小忆追加原话、最新绿色书封封面框。
+
+## 5. 2026-09-29 补做：接入 archive 记忆编辑器（Claude 工作树续做）
+
+本轮把另一条 Codex 对话整理出的关键结论并入当前工作树：旧二维码没有功能，是因为出码分支没有就地小忆；已有记忆编辑器 `archive` 也缺入口。当前分支已补齐这个入口，待提交后以本节所在提交为准。
+
+### 做了什么
+
+- `archive.ts`/`archive.wxml`/`archive.wxss`：给已有记忆编辑器接上和 book/interview 一致的小忆头像入口与就地面板，复用 `xiaoyiCompanion` 的提问、原话落回、整理、整理稿落回逻辑。
+- archive 的 `帮我写一下` 继续遵守“先问一个问题 → 用户回答 → 只整理用户回答”的顺序；整理稿落回后仍需用户点“保存修改”才持久化。
+- 修复审查发现的 archive 边界：
+  - 切换/关闭编辑器时强制清空小忆面板、消息、草稿和已问维度，避免 A 记忆的问题串到 B 记忆。
+  - 小忆整理稿保存到原始记忆时追加 AI revision；用户落回后再手改，则记录 `spoken → ai → manual`，保留 AI 留痕和可回溯历史。
+  - archive 键盘 padding 叠加原本安全区底部留白，不覆盖底部 safe-area。
+- `familyInvite/loadRoom` 读回贡献时带上 `aiRevisions`，避免受邀投稿的原话/整理历史写库后客户端读不到。
+- 新增/更新测试：archive 入口、不跳转、只问不写、原话落回但保存前不持久化、写作模式先问再整理、跨记忆状态隔离、整理稿 AI 留痕、整理稿再手改历史链、safe-area padding、familyInvite 写库并读回 `aiRevisions`。
+
+### 没做什么，为什么
+
+- 没有把 `CLOUD_AI_RELEASE_READY = true` 提交进仓库；正式仓库仍保持发布闸门关闭，预览二维码只会在隔离副本中打开。
+- 没有合入 main，也没有上传正式版本；本轮只生成预览二维码给用户审批。
+- 还没有完成真机软键盘同屏 10 分钟、不打扰、长按复制等人工体验验收；这些需要上线/扫码后一并人工验证。
+
+### 和需求不一样的地方
+
+- archive 是普通滚动页，不像 book/interview 那样自管理整个视口；因此 archive 没有照抄 `adjust-position="{{false}}"`，而是保留原生输入框露出能力，并用底部 padding 随键盘高度让位。这比字面照抄更符合 archive 当前页面结构。
+- archive 的小忆上下文只读正在编辑的 `editText`；textarea 没有章节编辑器那种选区 API，因此不支持选区级上下文。
+- archive 的整理稿 AI revision 记录保存后的整段记忆，而不是只记录新增段落；这是为了让历史回退时能恢复到一个完整记忆版本。
+
+### 门禁表
+
+| 门禁项 | 状态 | 说明 |
+|---|---|---|
+| 章节编辑页小忆入口 | 通过 | 继承既有 book 接入，未在本轮改动。 |
+| 记忆保存页小忆入口 | 通过 | 继承既有 interview 保存阶段接入，未在本轮改动。 |
+| 已有记忆编辑页小忆入口 | 通过 | 本轮新增 archive 接入与测试。 |
+| 点击后不跳转 interview 页 | 通过 | WXML 和测试均验证 inline panel。 |
+| 默认只问，不主动代写 | 通过 | archive/book/interview 共用 `askXiaoyiQuestion`；测试覆盖只问不改正文。 |
+| “帮我写一下”先问再整理 | 通过 | archive/book 测试均验证整理前必须先有回答。 |
+| 整理只用用户刚回答的话 | 通过 | 测试断言 `organizeMemory` 收到的 transcript 只有 `xiaoyiAnswer`。 |
+| 原话可直接落回 | 通过 | archive/interview/book 均有测试。 |
+| 章节写回走待确认 | 通过 | 继承 book 的 PendingChapterRevision 测试。 |
+| archive 保存 AI 整理稿保留 AI 留痕 | 通过 | 本轮新增 `spoken → ai` 与 `spoken → ai → manual` 测试。 |
+| 跨记忆不串上下文 | 通过 | 本轮新增切换 A/B 记忆状态重置测试。 |
+| 受保护副本不显示章节小忆 | 通过 | 既有 book 测试覆盖；archive 为本人记忆编辑入口，不提供受保护副本入口。 |
+| `CLOUD_AI_RELEASE_READY` 不提交为 true | 通过 | `miniprogram/config/runtime.ts` 仍为 false。 |
+| 自动化检查 | 通过 | `npm run check`：1032 项通过，0 失败。 |
+| 代码审查 | 通过 | 发现的 P1/P2 已修并补测试。 |
+| 微信开发者工具真实流程验收 | 需要用户做 | 需要扫码后在预览版里人工审批：软键盘同屏、长按复制、连续编辑不打扰、问题贴合度。 |
+| 云函数同步 | 需要上线前确认 | 本轮改了 `familyInvite` 读回字段；生成二维码前应部署该函数或确认预览所需云端已同步。 |
