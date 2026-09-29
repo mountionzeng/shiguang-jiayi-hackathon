@@ -52,6 +52,7 @@ Page({
     createMemories: [] as Array<MemoryContribution & { checked: boolean }>, creating: false, pendingMigrationCount: 0,
   },
   openCreateOnShow: false,
+  memoryPoolCache: [] as MemoryContribution[],
   /** 从首页书封点进来时，直接停在那个故事上。 */
   onLoad(options: { key?: string; create?: string } = {}) {
     this.openCreateOnShow = options.create === "1";
@@ -62,6 +63,7 @@ Page({
   async refresh() {
     const state = usesCloudStorage() ? await ensureStoryBooks() : await loadRoomStateRemoteFirst();
     const pool = memoryPool(state.contributions);
+    this.memoryPoolCache = pool;
     const byId = new Map(pool.map(memory => [memory.id, memory]));
     const shelf = storyShelf(state);
     const selected = shelf.find(story => story.key === this.data.selectedKey);
@@ -218,10 +220,14 @@ Page({
   openCreate() {
     const pool = this.data.createMemories.length ? this.data.createMemories : [];
     if (pool.length) { this.setData({ createOpen: true }); return; }
-    void loadRoomStateRemoteFirst().then(state => this.setData({
-      createOpen: true,
-      createMemories: memoryPool(state.contributions).map(memory => ({ ...memory, checked: false })),
-    }));
+    if (this.memoryPoolCache.length) {
+      this.setData({ createOpen: true, createMemories: this.memoryPoolCache.map(memory => ({ ...memory, checked: false })) });
+      return;
+    }
+    void loadRoomStateRemoteFirst().then(state => {
+      this.memoryPoolCache = memoryPool(state.contributions);
+      this.setData({ createOpen: true, createMemories: this.memoryPoolCache.map(memory => ({ ...memory, checked: false })) });
+    });
   },
   closeCreate() { if (!this.data.creating) this.setData({ createOpen: false }); },
   keepCreateOpen() {},

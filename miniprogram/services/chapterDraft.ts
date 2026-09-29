@@ -14,13 +14,17 @@ export interface ChapterDraft {
   savedAt: string;
 }
 
+let cachedScope: string | undefined;
+
 // Resolve the signed-in identity before reading a draft, never a global last-draft key.
+// Cached for the life of the app instance, matching cloudRoomStorage's identity cache.
 export async function chapterDraftScope(): Promise<string> {
-  if (!usesCloudStorage()) return 'local';
+  if (cachedScope) return cachedScope;
+  if (!usesCloudStorage()) return (cachedScope = 'local');
   const response = await wx.cloud.callFunction({name:'getOpenId'});
   const result = response.result as {openid?: string; account?: {primaryFamilyId?: string}};
   if (!result?.openid) throw new Error('无法确认草稿所属账号，请重新打开');
-  return JSON.stringify([result.openid, result.account?.primaryFamilyId || '']);
+  return (cachedScope = JSON.stringify([result.openid, result.account?.primaryFamilyId || '']));
 }
 export function chapterDraftKey(scope: string, bookId: string): string {
   if (!scope || !bookId) throw new Error('草稿所属故事尚未确认');
