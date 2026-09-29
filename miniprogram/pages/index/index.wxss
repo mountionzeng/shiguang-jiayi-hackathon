@@ -123,8 +123,6 @@
   left: -20rpx;
   width: 120rpx;
   height: 156rpx;
-  border-radius: 44% 56% 48% 52%;
-  background: radial-gradient(circle at 42% 42%, rgba(255, 254, 251, 0.9), rgba(188, 213, 198, 0.62) 42%, rgba(79, 127, 107, 0.18) 76%, transparent 78%);
   opacity: 0.78;
   pointer-events: none;
 }

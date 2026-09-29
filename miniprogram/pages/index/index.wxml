@@ -15,7 +15,7 @@
         aria-label="打开我的"
       >
         <view class="member-avatar serif">
-          <view class="member-avatar-backdrop" aria-hidden="true"></view>
+          <image class="member-avatar-backdrop" src="/assets/illustrations/avatar-watercolor.png" mode="aspectFill" aria-hidden="true"></image>
           <text class="member-avatar-letter">{{ownerAvatarText || '我'}}</text>
         </view>
       </button>
