@@ -33,3 +33,5 @@
 - 调试器唯一红色记录是微信渲染层 DOMNodeInserted 浏览器弃用提示，书籍/章节加载日志均为 ok；未观察到首页业务异常。
 - 实际截图：材料目录 `artifacts/fix-cover-overlay-20260928/swipe-fixed-20260929.png`。网络断开场景由回归测试覆盖，真机触摸仍需扫码验证。
 - 未部署云函数，未包含工作树原有 storyImages 服务端修改。
+- 修复提交：`161179a2f691f8c516b997ebdd9fa7c7ea8bb7fc`；相对已确认界面版本，小程序仅 `pages/index/index.ts` 改变。
+- 修复版二维码：`/Users/yuandai/Desktop/拾光-左右滑动修复-20260929-1157.png`，代码包 1992 KB，2026-09-29 12:23 失效。
