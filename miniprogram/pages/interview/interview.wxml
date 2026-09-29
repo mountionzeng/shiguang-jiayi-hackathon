@@ -230,23 +230,27 @@
 
         <view class="draft-rule"></view>
 
-        <textarea
-          class="draft-field serif"
-          maxlength="500"
-          value="{{draftText}}"
-          auto-height
-          fixed="{{true}}"
-          adjust-position="{{false}}"
-          show-confirm-bar="{{false}}"
-          cursor-spacing="24"
-          bindinput="onDraftInput"
-          bindkeyboardheightchange="onKeyboardHeightChange"
-        ></textarea>
+        <view class="draft-field-wrap">
+          <textarea
+            class="draft-field serif"
+            maxlength="500"
+            value="{{draftText}}"
+            auto-height
+            fixed="{{true}}"
+            adjust-position="{{false}}"
+            show-confirm-bar="{{false}}"
+            cursor-spacing="24"
+            bindinput="onDraftInput"
+            bindkeyboardheightchange="onKeyboardHeightChange"
+          ></textarea>
+          <button class="xiaoyi-entry" bindtap="openXiaoyi" disabled="{{saving || saved}}" aria-label="小忆">
+            <image class="xiaoyi-entry-avatar" src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFill" aria-hidden="true" />
+          </button>
+        </view>
         <view class="draft-count {{tooLong ? 'draft-count-over' : ''}}">
           {{draftLength}} / 500 字{{tooLong ? '　超出部分请先删掉' : ''}}
         </view>
 
-        <button class="xiaoyi-entry" bindtap="openXiaoyi" disabled="{{saving || saved}}">小忆</button>
         <view wx:if="{{xiaoyiOpen}}" class="xiaoyi-panel">
           <view class="xiaoyi-head">
             <view>

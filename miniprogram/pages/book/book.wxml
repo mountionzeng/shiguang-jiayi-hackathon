@@ -133,7 +133,9 @@
       <view class="field-label">正文</view>
       <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
       <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{false}}" show-img-resize="{{false}}"></editor>
-      <button wx:if="{{!protectedCopy}}" class="xiaoyi-entry" catchtouchstart="openXiaoyi" disabled="{{saving || generating || pickingPhoto || !editorReady}}">小忆</button>
+      <button wx:if="{{!protectedCopy}}" class="xiaoyi-entry" catchtouchstart="openXiaoyi" disabled="{{saving || generating || pickingPhoto || !editorReady}}" aria-label="小忆">
+        <image class="xiaoyi-entry-avatar" src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFill" aria-hidden="true" />
+      </button>
     </view>
     <view class="pending-edits" wx:if="{{chapterPendingEdits.length}}">
       <view class="pending-title">待确认修改 <text>{{chapterPendingCount ? '还有 ' + chapterPendingCount + ' 处' : '都已选择'}}</text></view>

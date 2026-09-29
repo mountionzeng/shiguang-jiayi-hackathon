@@ -31,7 +31,11 @@ import {
   sharedQuestionSeed,
 } from "../../domain/interview";
 import { generateInterviewPrompt } from "../../services/interviewService";
-import { organizeInlineAnswer, organizeMemory } from "../../services/memoryOrganizerService";
+import { organizeMemory } from "../../services/memoryOrganizerService";
+import {
+  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer,
+  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
+} from "../../services/xiaoyiCompanion";
 import {
   appendContributionRemoteFirst,
   loadCurrentMemberRemoteFirst,
@@ -201,9 +205,7 @@ Page({
     saved: false,
     saveMessage: "",
     saveError: "",
-    xiaoyiOpen: false, xiaoyiLoading: false, xiaoyiStatus: "", xiaoyiContextPreview: "",
-    xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiCanOrganize: false,
-    xiaoyiMessages: [] as Array<{ id: string; kind: "question" | "answer" | "draft" | "status"; text: string; label?: string }>,
+    ...initialXiaoyiPanelData(),
     storageLabel: "",
 
     keyboardHeight: 0,
@@ -547,82 +549,34 @@ Page({
       xiaoyiContextPreview: text ? (text.length > 100 ? text.slice(0, 100) + "…" : text) : "这段记忆还没写正文，小忆会从你接下来要说的话问起。",
     });
   },
-  closeXiaoyi() {
-    if (this.data.xiaoyiLoading) return;
-    this.xiaoyiAskedDimensions = [];
-    this.xiaoyiConversation = [];
-    this.setData({ xiaoyiOpen: false, xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiStatus: "", xiaoyiMessages: [] });
+  closeXiaoyi: resetXiaoyiPanel,
+  /** 就地小忆共享机制要读的场景参数。 */
+  xiaoyiConfig(): XiaoyiConfig {
+    return {
+      memoryType: this.data.memoryType,
+      memberName: this.data.memberName,
+      storyTitle: this.data.storyTitle,
+      storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
+      mode: this.data.sharedFamilyId ? "family" : "personal",
+    };
   },
-  xiaoyiMessagesAppend(message: { kind: "question" | "answer" | "draft" | "status"; text: string; label?: string }) {
-    const id = `xiaoyi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-    this.setData({ xiaoyiMessages: [...this.data.xiaoyiMessages, { id, ...message }] });
+  /** 就地小忆共享机制要读的当前文本：这段记忆正在写的草稿。 */
+  xiaoyiContextText() {
+    return this.data.draftText.trim();
   },
-  async askXiaoyiQuestion(event?: { currentTarget?: { dataset?: { mode?: string } } }) {
-    if (this.data.xiaoyiLoading || this.data.stage !== "save") return;
-    if (!this.data.xiaoyiOpen) this.openXiaoyi();
-    const contextText = this.data.draftText.trim();
-    if (!contextText) {
-      this.setData({ xiaoyiStatus: "先写一句，或者直接告诉小忆你卡在哪里。" });
-      return;
-    }
-    const mode = event?.currentTarget?.dataset?.mode === "write" ? "write" : "ask";
-    this.setData({ xiaoyiLoading: true, xiaoyiStatus: mode === "write" ? "小忆会先问一个问题，不会直接替你写。" : "小忆正在想一个贴着这段记忆的问题…" });
-    try {
-      const prompt = await generateInterviewPrompt({
-        answer: contextText,
-        askedDimensions: this.xiaoyiAskedDimensions,
-        mode: this.data.sharedFamilyId ? "family" : "personal",
-        memoryType: this.data.memoryType,
-        memberName: this.data.memberName,
-        storyTitle: this.data.storyTitle,
-        storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
-        conversation: this.xiaoyiConversation,
-      });
-      const label = prompt.generationMode === "cloud-ai" ? CLOUD_FOLLOW_UP_LABEL
-        : prompt.fallbackReason === "moderation-quota-exhausted" ? QUOTA_EXHAUSTED_FOLLOW_UP_LABEL : FOLLOW_UP_LABEL;
-      this.xiaoyiAskedDimensions = [...this.xiaoyiAskedDimensions, prompt.dimension];
-      this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "assistant", text: prompt.text }];
-      this.xiaoyiMessagesAppend({ kind: "question", text: prompt.text, label });
-      this.setData({ xiaoyiStatus: mode === "write" ? "先回答这个问题，再让小忆整理你的回答。" : "", xiaoyiCanOrganize: prompt.generationMode === "cloud-ai" });
-    } catch {
-      this.setData({ xiaoyiStatus: "小忆刚刚走神了，请再试一次。" });
-    } finally {
-      this.setData({ xiaoyiLoading: false });
-    }
-  },
-  onXiaoyiAnswerInput(event: { detail: { value: string } }) { this.setData({ xiaoyiAnswer: event.detail.value }); },
-  onXiaoyiDraftInput(event: { detail: { value: string } }) { this.setData({ xiaoyiDraftText: event.detail.value }); },
-  appendXiaoyiText(text: string) {
+  xiaoyiMessagesAppend,
+  askXiaoyiQuestion,
+  onXiaoyiAnswerInput,
+  onXiaoyiDraftInput,
+  useXiaoyiOriginal,
+  organizeXiaoyiAnswer,
+  useXiaoyiDraft,
+  /** 就地小忆共享机制的落回目标：接到这段记忆的草稿末尾，保存时才真正持久化。 */
+  xiaoyiLand(text: string): Promise<boolean> {
     const next = normalizeMemoryText([this.data.draftText.trim(), text.trim()].filter(Boolean).join("\n\n"));
     const previewLabel = this.pendingContribution ? memoryAiLabel({ ...this.pendingContribution, text: next }) : this.data.draftAiLabel;
     this.setData({ draftText: next, draftLength: next.length, tooLong: next.length > MAX_MEMORY_LENGTH, draftAiLabel: previewLabel, xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiStatus: "已接到草稿后面，你还可以继续改。" });
-  },
-  useXiaoyiOriginal() {
-    const answer = this.data.xiaoyiAnswer.trim();
-    if (!answer) { wx.showToast({ title: "先回答一句吧", icon: "none" }); return; }
-    this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "user", text: answer }];
-    this.xiaoyiMessagesAppend({ kind: "answer", text: answer });
-    this.appendXiaoyiText(answer);
-  },
-  async organizeXiaoyiAnswer() {
-    const answer = this.data.xiaoyiAnswer.trim();
-    if (!answer || this.data.xiaoyiLoading) { if (!answer) wx.showToast({ title: "先回答一句吧", icon: "none" }); return; }
-    this.setData({ xiaoyiLoading: true, xiaoyiStatus: "小忆正在只整理你刚刚回答的话…" });
-    try {
-      const draft = await organizeInlineAnswer({ answer, memoryType: this.data.memoryType, memberName: this.data.memberName, storyTitle: this.data.storyTitle });
-      if (!draft) { this.setData({ xiaoyiStatus: "小忆暂时没连上，先用你的原话更稳妥。" }); return; }
-      this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "user", text: answer }];
-      this.xiaoyiMessagesAppend({ kind: "answer", text: answer });
-      this.xiaoyiMessagesAppend({ kind: "draft", text: draft.body, label: "小忆只整理了你的回答" });
-      this.setData({ xiaoyiDraftText: draft.body, xiaoyiStatus: "这段可以继续改，满意后接到草稿后面。" });
-    } finally {
-      this.setData({ xiaoyiLoading: false });
-    }
-  },
-  useXiaoyiDraft() {
-    const text = this.data.xiaoyiDraftText.trim();
-    if (!text) { wx.showToast({ title: "还没有整理好的文字", icon: "none" }); return; }
-    this.appendXiaoyiText(text);
+    return Promise.resolve(true);
   },
 
   onTitleInput(event: { detail: { value: string } }) {
