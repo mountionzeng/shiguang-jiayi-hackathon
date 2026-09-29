@@ -880,6 +880,44 @@ test("the organize cloud function returns a structured memory card", async () =>
   }
 });
 
+test("inline answers use a short-edit brief for both memory types without biography length targets", async context => {
+  const keys = ["ORGANIZE_AI_API_KEY", "ORGANIZE_AI_MODEL", "ORGANIZE_AI_BASE_URL"];
+  const previous = keys.map(key => process.env[key]);
+  const previousFetch = global.fetch;
+  context.after(() => {
+    global.fetch = previousFetch;
+    keys.forEach((key, index) => {
+      if (previous[index] === undefined) delete process.env[key];
+      else process.env[key] = previous[index];
+    });
+  });
+  process.env.ORGANIZE_AI_API_KEY = "test-organize-key";
+  process.env.ORGANIZE_AI_MODEL = "memory-card-model";
+  process.env.ORGANIZE_AI_BASE_URL = "https://organize-model.invalid/v1";
+  const answer = "【虚构验收】小林把银杏叶夹进旧书，十分钟后离开。";
+  const requests = [];
+  global.fetch = async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ choices: [{ message: {
+      content: JSON.stringify({ title: "夹叶", summary: "短回答", body: answer }),
+    } }] }) };
+  };
+  for (const memoryType of ["note", "memoir"]) {
+    const result = await organizeMemoryMain({ inlineAnswer: true, transcript: [answer], memoryType });
+    assert.equal(result.body, answer);
+    assert.equal(result.generationMode, "cloud-ai");
+    assert.equal(result.memoryType, memoryType);
+  }
+  for (const request of requests) {
+    const prompt = request.messages.map(message => message.content).join("\n");
+    assert.match(prompt, /没有最低字数/);
+    assert.match(prompt, /保留测试或虚构标记/);
+    assert.match(prompt, /禁止添加/);
+    assert.match(prompt, /【虚构验收】小林把银杏叶夹进旧书/);
+    assert.doesNotMatch(prompt, /body 200 到 500 字|body 80 到 260 字|突出人生阶段/);
+  }
+});
+
 test("the organize cloud function falls back when the provider times out", async () => {
   const previousFetch = global.fetch;
   const previousKey = process.env.ORGANIZE_AI_API_KEY;
