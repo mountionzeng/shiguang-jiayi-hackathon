@@ -294,6 +294,8 @@ function interviewUrl(
 Page({
   recommendationOffset: 0,
   coverRefreshId: 0,
+  roomSnapshot: undefined as FamilyRoomState | undefined,
+  coverRequests: {} as Record<string, boolean>,
 
   data: {
     hasProfile: false,
@@ -379,9 +381,19 @@ Page({
     const activeBook = bookSlides[activeBookIndex] ?? bookSlides[0];
 
     if (coverRefreshId !== this.coverRefreshId) return;
+    this.roomSnapshot = currentState;
+    this.coverRequests = {};
+    const previousSlides = new Map((this.data.bookSlides as BookSlideView[]).map(slide => [slide.key, slide]));
+    bookSlides.forEach(slide => {
+      const previous = previousSlides.get(slide.key);
+      if (slide.coverImageId && previous?.coverImageId === slide.coverImageId) {
+        slide.coverUrl = previous.coverUrl;
+        slide.frameUrl = previous.frameUrl;
+      }
+    });
     const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
     this.setData({
-      coverUrl: "", coverImageId: coverStory?.coverImageId || "",
+      coverUrl: activeBook?.coverUrl || "", coverImageId: coverStory?.coverImageId || "",
       hasProfile: Boolean(owner),
       ownerAvatarText: owner?.avatarText ?? "",
       coverTitle: activeBook?.title || "先随便聊聊",
@@ -410,43 +422,71 @@ Page({
       hasRecentStories: recentStories.length > 0,
     });
 
-    if (coverStory?.coverImageId) this.resolveActiveBookCover(coverRefreshId, coverStory.id, coverStory.coverImageId);
+    this.preloadBookCovers(activeBookIndex);
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
   },
 
+  preloadBookCovers(index: number) {
+    const slides = this.data.bookSlides as BookSlideView[];
+    if (!slides.length) return;
+    for (const offset of [0, -1, 1]) {
+      const slide = slides[(index + offset + slides.length) % slides.length];
+      if (!slide?.storyId || !slide.coverImageId || (slide.coverUrl && slide.frameUrl)) continue;
+      const key = `${slide.storyId}:${slide.coverImageId}`;
+      if (this.coverRequests[key]) continue;
+      this.coverRequests[key] = true;
+      this.resolveActiveBookCover(this.coverRefreshId, slide.storyId, slide.coverImageId);
+    }
+  },
+
   resolveActiveBookCover(coverRefreshId: number, storyId: string, coverImageId: string, attempt = 0) {
-    void storyCoverApi.resolveUrl(storyId, coverImageId).then(url => {
+    if (coverRefreshId !== this.coverRefreshId) return;
+    const cachedCover = (this.data.bookSlides as BookSlideView[]).find(slide =>
+      slide.storyId === storyId && slide.coverImageId === coverImageId)?.coverUrl;
+    void (cachedCover ? Promise.resolve(cachedCover) : storyCoverApi.resolveUrl(storyId, coverImageId)).then(url => {
       if (coverRefreshId !== this.coverRefreshId) return;
       if (!url && attempt < 2) {
         setTimeout(() => this.resolveActiveBookCover(coverRefreshId, storyId, coverImageId, attempt + 1), 700 * (attempt + 1));
         return;
       }
-      if (!url) return;
-      const nextSlides = (this.data.bookSlides as BookSlideView[]).map((slide) => (
-        slide.storyId === storyId ? { ...slide, coverUrl: url } : slide
-      ));
+      if (!url) { delete this.coverRequests[`${storyId}:${coverImageId}`]; return; }
+      const index = (this.data.bookSlides as BookSlideView[]).findIndex(slide =>
+        slide.storyId === storyId && slide.coverImageId === coverImageId);
+      if (index < 0) return;
       this.setData({
-        bookSlides: nextSlides,
+        [`bookSlides[${index}].coverUrl`]: url,
         ...(this.data.storyId === storyId ? { coverUrl: url } : {}),
       });
       void renderBookFrame(this, url, `${storyId}:${coverImageId}`).then(frameUrl => {
         if (coverRefreshId !== this.coverRefreshId) return;
-        this.setData({ bookSlides: (this.data.bookSlides as BookSlideView[]).map(slide =>
-          slide.storyId === storyId && slide.coverImageId === coverImageId ? { ...slide, frameUrl } : slide) });
-      }).catch(error => logLoadError("index-book-frame", error));
+        this.setData({ [`bookSlides[${index}].frameUrl`]: frameUrl });
+      }).catch(error => {
+        if (coverRefreshId === this.coverRefreshId) delete this.coverRequests[`${storyId}:${coverImageId}`];
+        logLoadError("index-book-frame", error);
+      });
     }).catch(() => {
-      if (coverRefreshId !== this.coverRefreshId || attempt >= 2) return;
+      if (coverRefreshId !== this.coverRefreshId) return;
+      if (attempt >= 2) { delete this.coverRequests[`${storyId}:${coverImageId}`]; return; }
       setTimeout(() => this.resolveActiveBookCover(coverRefreshId, storyId, coverImageId, attempt + 1), 700 * (attempt + 1));
     });
   },
 
-  async onBookSlideChange(event: { detail: { current: number } }) {
+  async onBookSlideChange(event: { detail: { current: number; source?: string } }) {
+    // Controlled-current updates are not another user swipe.
+    if (event.detail.source === "") return;
     const index = event.detail.current;
     const slide = (this.data.bookSlides as BookSlideView[])[index];
     if (!slide || index === this.data.activeBookIndex) return;
     saveCurrentStoryTitle(slide.storyTitle);
     saveCurrentStoryId(slide.storyId || "");
     this.recommendationOffset = 0;
+    const state = this.roomSnapshot;
+    const pool = state ? memoryPool(state.contributions) : [];
+    const selectedStory = state?.storyMigration?.status === "active"
+      ? storyShelf(state).find(story => story.key === slide.key) : undefined;
+    const memories = selectedStory ? pool.filter(memory => selectedStory.memoryIds.includes(memory.id))
+      : pool.filter(memory => contributionStoryTitle(memory) === slide.storyTitle);
+    const recommended = recommendedQuestionFor(latestContribution(memories), this.recommendationOffset);
     this.setData({
       activeBookIndex: index,
       storyChooserOpen: false,
@@ -462,8 +502,17 @@ Page({
       storyManuscriptMemberId: slide.manuscriptMemberId,
       currentStoryTitle: slide.storyTitle,
       currentStoryLabel: slide.storyTitle || "先随便聊聊",
+      storyOptions: this.data.storyOptions.map(option => ({ ...option, selected: option.key === slide.key })),
+      dailyQuestion: dailyQuestionFor(this.recommendationOffset),
+      recommendedQuestionLabel: recommended?.label ?? "",
+      recommendedQuestionContext: recommended?.context ?? "",
+      recommendedQuestion: recommended?.text ?? "",
+      recommendedSourceId: recommended?.sourceId ?? "",
+      recommendedStoryTitle: recommended?.storyTitle ?? "",
+      recommendedDimension: recommended?.dimension ?? "",
+      hasRecommendedQuestion: Boolean(recommended),
     });
-    await this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
+    this.preloadBookCovers(index);
   },
 
   startInterview() {

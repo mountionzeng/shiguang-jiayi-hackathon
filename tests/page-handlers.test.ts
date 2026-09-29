@@ -83,7 +83,13 @@ function instantiate(definition: TestPageDefinition): TestPageInstance {
     ...definition,
     data: structuredClone(definition.data ?? {}),
   } as TestPageInstance;
-  instance.setData = (update) => Object.assign(instance.data, update);
+  instance.setData = (update) => {
+    for (const [key, value] of Object.entries(update)) {
+      const slideField = /^bookSlides\[(\d+)\]\.(coverUrl|frameUrl)$/.exec(key);
+      if (slideField) (instance.data.bookSlides as Array<Record<string, unknown>>)[Number(slideField[1])][slideField[2]] = value;
+      else instance.data[key] = value;
+    }
+  };
   return instance;
 }
 
@@ -448,6 +454,50 @@ test("home book cover swipes between books and opens the selected one", async (c
   assert.equal(last(storage.navigations), "/pages/stories/stories?key=" + encodeURIComponent(next.key));
 });
 
+function swipeRoomState(): FamilyRoomState {
+  const state = createInitialRoomState();
+  state.contributions.push(createContribution({
+    id: "swipe-radio", authorMemberId: "owner", authorName: "林岚", relation: "外孙女",
+    text: "晚饭后一起听收音机。", storyTitle: "母亲的收音机", scope: "personal", visibility: "private",
+    now: new Date("2026-09-01T08:00:00.000Z"),
+  }));
+  return state;
+}
+
+test("swiping loaded books offline preserves covers without reloading room data", async context => {
+  const initial = swipeRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  const slides = home.data.bookSlides as Array<Record<string, any>>;
+  assert.ok(slides.length > 1);
+  slides.forEach((slide, i) => { slide.coverUrl = `cached-cover-${i}`; slide.frameUrl = `cached-frame-${i}`; });
+  const snapshot = structuredClone(slides);
+  let networkReads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { get() { networkReads++; throw new Error('offline'); } });
+  const first = home.data.activeBookIndex as number;
+  const next = (first + 1) % slides.length;
+  await callPage(home, "onBookSlideChange", { detail: { current: next, source: 'touch' } });
+  await callPage(home, "onBookSlideChange", { detail: { current: first, source: 'touch' } });
+  assert.equal(networkReads, 0, 'swiping must not request the full room again');
+  assert.deepEqual(storage.toasts, [], 'offline browsing must not raise a page-load error');
+  assert.deepEqual(home.data.bookSlides, snapshot, 'retain both covers and colour-matched frames');
+  assert.equal(home.data.coverUrl, slides[first].coverUrl);
+});
+
+test("programmatic swiper changes do not override the selected story", async context => {
+  const initial = swipeRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  const selected = home.data.activeBookIndex as number;
+  const next = (selected + 1) % (home.data.bookSlides as unknown[]).length;
+  await callPage(home, "onBookSlideChange", { detail: { current: next, source: '' } });
+  assert.equal(home.data.activeBookIndex, selected);
+});
+
 test("home book swiper resolves cover art for the active story after changing books", async (context) => {
   const initial = createInitialRoomState();
   initial.contributions.push(createContribution({
@@ -527,7 +577,7 @@ test("home book swiper resolves cover art for the active story after changing bo
   assert.equal(home.data.coverUrl, "https://img.example/story-rain/cover-rain.jpg");
 
 
-  assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`), [
+  assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`).sort(), [
     "story-radio:cover-radio",
     "story-radio:cover-radio",
     "story-rain:cover-rain",
