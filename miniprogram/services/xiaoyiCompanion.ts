@@ -82,15 +82,19 @@ export async function askXiaoyiQuestion(this: XiaoyiHost, event?: { currentTarge
   if (this.data.xiaoyiLoading) return;
   const mode = event?.currentTarget?.dataset?.mode === "write" ? "write" : "ask";
   const contextText = this.xiaoyiContextText().trim();
-  if (!contextText) {
+  const answer = this.data.xiaoyiAnswer.trim();
+  if (!contextText && !answer) {
     this.setData({ xiaoyiStatus: "先写一句，或者直接告诉小忆你卡在哪里。" });
     return;
   }
   this.setData({ xiaoyiLoading: true, xiaoyiStatus: mode === "write" ? "小忆会先问一个问题，不会直接替你写。" : "小忆正在想一个贴着这段文字的问题…" });
   try {
     const config = this.xiaoyiConfig();
+    const conversation: InterviewTurn[] = this.xiaoyiConversation.length
+      ? [...this.xiaoyiConversation]
+      : contextText ? [{ role: "user", text: contextText }] : [];
     const prompt = await generateInterviewPrompt({
-      answer: contextText,
+      answer: answer || contextText,
       askedDimensions: this.xiaoyiAskedDimensions,
       mode: config.mode ?? "personal",
       memoryType: config.memoryType ?? "memoir",
@@ -98,12 +102,17 @@ export async function askXiaoyiQuestion(this: XiaoyiHost, event?: { currentTarge
       storyTitle: config.storyTitle,
       storyId: config.storyId,
       previousAnswers: [],
-      conversation: this.xiaoyiConversation,
+      conversation,
     });
     const label = prompt.generationMode === "cloud-ai" ? CLOUD_FOLLOW_UP_LABEL
       : prompt.fallbackReason === "moderation-quota-exhausted" ? QUOTA_EXHAUSTED_FOLLOW_UP_LABEL : FOLLOW_UP_LABEL;
     this.xiaoyiAskedDimensions = [...this.xiaoyiAskedDimensions, prompt.dimension];
-    this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "assistant", text: prompt.text }];
+    const lastAnswer = [...conversation].reverse().find(turn => turn.role === "user");
+    if (answer && lastAnswer?.text !== answer) {
+      conversation.push({ role: "user", text: answer });
+      xiaoyiMessagesAppend.call(this, { kind: "answer", text: answer });
+    }
+    this.xiaoyiConversation = [...conversation, { role: "assistant", text: prompt.text }];
     xiaoyiMessagesAppend.call(this, { kind: "question", text: prompt.text, label });
     this.setData({ xiaoyiStatus: mode === "write" ? "先回答这个问题，再让小忆整理你的回答。" : "", xiaoyiCanOrganize: prompt.generationMode === "cloud-ai" });
   } catch {

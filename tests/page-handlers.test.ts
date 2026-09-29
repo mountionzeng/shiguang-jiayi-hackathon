@@ -2672,6 +2672,15 @@ test("inline xiaoyi in a chapter reads selected text and creates a pending inser
   await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
   assert.equal(calls.find(call => call.name === "chatInterview")?.data.answer, "我妈在灶台前忙着");
   assert.match(JSON.stringify(page.data.xiaoyiMessages), /灶台前/);
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "她在烙饼，我想讲那口旧锅。" } });
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
+  const nextQuestion = calls.filter(call => call.name === "chatInterview")[1];
+  assert.equal(nextQuestion.data.answer, "她在烙饼，我想讲那口旧锅。", "继续追问必须读取当前回答");
+  assert.equal(nextQuestion.data.conversation[0].text, "我妈在灶台前忙着", "仍保留选区上下文");
+  assert.equal(nextQuestion.data.conversation[1].role, "assistant");
+  assert.equal(page.data.xiaoyiAnswer, "她在烙饼，我想讲那口旧锅。", "追问后仍能整理或使用原话");
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /那口旧锅/);
+  assert.equal((page.data.draft as any).chapters[0].pendingRevision, undefined, "只聊天不会写正文");
   (wx as any).cloud = undefined;
 
   callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
