@@ -38,16 +38,23 @@ export function formatComputeBalance(computeMicros: number): string {
   return `${(Math.floor(safe / 10_000) / 100).toFixed(2)} 算力`;
 }
 
+let cachedAccount: ShiguangAccount | undefined;
+
 async function callAccount(action: "get" | "updateProfile", displayName = ""): Promise<ShiguangAccount> {
   if (!wx.cloud) throw new Error("当前微信版本暂不支持账号关联");
   const response = await wx.cloud.callFunction({
     name: "getOpenId",
     data: action === "updateProfile" ? { action, displayName } : { action },
   });
-  return parseAccount(response.result);
+  const account = parseAccount(response.result);
+  cachedAccount = account;
+  return account;
 }
 
+// 账号身份很少变化，缓存住避免每次进「我的」/接受邀请都调用 getOpenId 云函数。
+// 改名（saveCurrentAccountName）会用新结果覆盖缓存。
 export function loadCurrentAccount(): Promise<ShiguangAccount> {
+  if (cachedAccount) return Promise.resolve(cachedAccount);
   return callAccount("get");
 }
 
