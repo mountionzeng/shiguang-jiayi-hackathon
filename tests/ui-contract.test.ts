@@ -39,12 +39,12 @@ test("transparent story tabs never use WeChat's native pressed or disabled paint
 });
 
 test("custom book covers are locked to the green book frame with a seam mask", () => {
-  assert.match(homeMarkup, /class="book-cover-picture" wx:if="\{\{item.coverUrl\}\}"/);
-  assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*src="\{\{item.coverUrl\}\}"[\s\S]*mode="aspectFill"/);
-  assert.match(homeMarkup, /class="book-cover-frame [\s\S]*story-book-cover-frame\.png/);
+  assert.match(homeMarkup, /class="book-cover-picture" wx:if="\{\{item.bookArtUrl\}\}"/);
+  assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*src="\{\{item.bookArtUrl\}\}"[\s\S]*mode="scaleToFill"/);
+  assert.doesNotMatch(homeMarkup, /class="book-cover-frame/);
   assert.match(homeMarkup, /wx:else[\s\S]*class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
   assert.doesNotMatch(homeMarkup, /book-cover-dominant|book-cover-paper-texture|book-cover-material|book-cover-material-color|book-cover-picture-wash|book-cover-edge-mask|ancient-book-art-overlay|story-book-spine|story-switcher-book-edges|capture-memoir-book|story-book-cover-paper-texture\.png|onBookCoverLoad/);
-  assert.match(homeMarkup, /class="book-cover-copy \{\{item.coverUrl \? 'book-cover-copy-printed' : ''\}\}"/);
+  assert.match(homeMarkup, /class="book-cover-copy \{\{item.bookArtUrl \? 'book-cover-copy-printed' : ''\}\}"/);
   assert.match(homeMarkup, /<text class="book-kicker typewriter">拾 光 录<\/text>/);
   assert.match(homeMarkup, /<view class="book-title typewriter">\{\{item.title\}\}<\/view>/);
   assert.match(homeMarkup, /<text class="book-stat-label">段记忆<\/text>/);

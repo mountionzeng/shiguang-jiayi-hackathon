@@ -85,7 +85,7 @@ function instantiate(definition: TestPageDefinition): TestPageInstance {
   } as TestPageInstance;
   instance.setData = (update) => {
     for (const [key, value] of Object.entries(update)) {
-      const slideField = /^bookSlides\[(\d+)\]\.(coverUrl|frameUrl)$/.exec(key);
+      const slideField = /^bookSlides\[(\d+)\]\.(coverUrl|bookArtUrl)$/.exec(key);
       if (slideField) (instance.data.bookSlides as Array<Record<string, unknown>>)[Number(slideField[1])][slideField[2]] = value;
       else instance.data[key] = value;
     }
@@ -472,7 +472,7 @@ test("swiping loaded books offline preserves covers without reloading room data"
   await callPage(home, "refresh", initial);
   const slides = home.data.bookSlides as Array<Record<string, any>>;
   assert.ok(slides.length > 1);
-  slides.forEach((slide, i) => { slide.coverUrl = `cached-cover-${i}`; slide.frameUrl = `cached-frame-${i}`; });
+  slides.forEach((slide, i) => { slide.coverUrl = `cached-cover-${i}`; slide.bookArtUrl = `cached-frame-${i}`; });
   const snapshot = structuredClone(slides);
   let networkReads = 0;
   Object.defineProperty((globalThis as any).wx, 'cloud', { get() { networkReads++; throw new Error('offline'); } });
@@ -1914,21 +1914,19 @@ test("home book cover is a horizontal swiper with direct-open affordance", () =>
   assert.doesNotMatch(template, /<swiper[\s\S]*class="book-swiper"[\s\S]*vertical/);
   assert.match(template, /wx:for="{{bookSlides}}"/);
   assert.match(template, /左右滑动换一本书 · 轻触打开/);
-  assert.match(template, /class="book-cover-picture" wx:if="{{item.coverUrl}}"/);
-  assert.match(template, /class="book-cover-picture-art"[\s\S]*src="{{item.coverUrl}}"[\s\S]*mode="aspectFill"/);
-  assert.match(template, /class="book-cover-frame [\s\S]*story-book-cover-frame\.png[\s\S]*mode="aspectFill"/);
+  assert.match(template, /class="book-cover-picture" wx:if="{{item.bookArtUrl}}"/);
+  assert.match(template, /class="book-cover-picture-art"[\s\S]*src="{{item.bookArtUrl}}"[\s\S]*mode="scaleToFill"/);
+  assert.doesNotMatch(template, /class="book-cover-frame/);
   assert.match(template, /wx:else[\s\S]*class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
-  assert.match(template, /class="book-cover-copy {{item.coverUrl \? 'book-cover-copy-printed' : ''}}/);
+  assert.match(template, /class="book-cover-copy {{item.bookArtUrl \? 'book-cover-copy-printed' : ''}}/);
   assert.doesNotMatch(template, /book-cover-dominant|book-cover-paper-texture|book-cover-material(?:\s|"|-color)|book-cover-picture-wash|ancient-book-art-overlay|story-book-spine|story-switcher-book-edges|capture-memoir-book|onBookCoverLoad|story-book-cover-material-texture\.png/);
   assert.match(styles, /\.book-swiper[^{]*{[^}]*height: 850rpx/);
   assert.doesNotMatch(styles, /\.book-cover-leaf::before|\.book-cover-leaf::after|repeating-linear-gradient\(90deg|book-cover-dominant|book-cover-paper-texture|book-custom-cover|ancient-book-art-overlay|book-cover-picture-wash|background-image: url\("\/assets\/illustrations\/story-book-cover\.png"\)/);
   assert.match(styles, /\.book-cover-picture[^{]*{[^}]*inset: 0/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*top: -8%/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*right: -5%/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*width: 110%/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 116%/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*inset: 0/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*width: 100%/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 100%/);
   assert.doesNotMatch(styles, /\.book-cover-picture-art[^{]*{[^}]*opacity:/);
-  assert.match(styles, /\.book-cover-frame[^{]*{[^}]*z-index: 3/);
   assert.match(styles, /\.book-stat-action[^{]*{[^}]*background: transparent/);
   assert.match(styles, /\.book-stat-action[^{]*{[^}]*border: 0/);
   assert.match(styles, /\.book-stat-action \+ \.book-stat-action::before[^{]*{[^}]*content: "•"/);

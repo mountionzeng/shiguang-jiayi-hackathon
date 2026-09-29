@@ -1,5 +1,6 @@
 import { storyCoverApi } from "../../services/storyCoverService";
-import { renderBookFrame } from "../../services/bookFrameColor";
+import { renderBookCover } from "../../services/bookFrameColor";
+import { bookCoverExists, cachedBookCover } from "../../services/bookCoverCache";
 import {
   accountOwner,
   contributionRelatedMemberIds,
@@ -54,7 +55,7 @@ interface BookSlideView {
   manuscriptMemberId: string;
   coverImageId: string;
   coverUrl: string;
-  frameUrl?: string;
+  bookArtUrl?: string;
   memoryCount: number;
   chapterCount: number;
   peopleCount: number;
@@ -388,8 +389,11 @@ Page({
       const previous = previousSlides.get(slide.key);
       if (slide.coverImageId && previous?.coverImageId === slide.coverImageId) {
         slide.coverUrl = previous.coverUrl;
-        slide.frameUrl = previous.frameUrl;
+        slide.bookArtUrl = previous.bookArtUrl;
       }
+      const cached = slide.storyId && slide.coverImageId
+        ? cachedBookCover(`${slide.storyId}:${slide.coverImageId}`) : '';
+      if (cached) { slide.bookArtUrl = cached; slide.coverUrl = cached; }
     });
     const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
     this.setData({
@@ -430,9 +434,17 @@ Page({
     const slides = this.data.bookSlides as BookSlideView[];
     if (!slides.length) return;
     for (const offset of [0, -1, 1]) {
-      const slide = slides[(index + offset + slides.length) % slides.length];
-      if (!slide?.storyId || !slide.coverImageId || (slide.coverUrl && slide.frameUrl)) continue;
+      const slideIndex = (index + offset + slides.length) % slides.length;
+      const slide = slides[slideIndex];
+      if (!slide?.storyId || !slide.coverImageId) continue;
+      if (slide.bookArtUrl && bookCoverExists(slide.bookArtUrl)) continue;
       const key = `${slide.storyId}:${slide.coverImageId}`;
+      if (slide.bookArtUrl) {
+        // A bounded cache or the OS may evict a previously displayed derivative.
+        delete this.coverRequests[key];
+        this.setData({ [`bookSlides[${slideIndex}].bookArtUrl`]: '',
+          ...(slide.coverUrl === slide.bookArtUrl ? { [`bookSlides[${slideIndex}].coverUrl`]: '' } : {}) });
+      }
       if (this.coverRequests[key]) continue;
       this.coverRequests[key] = true;
       this.resolveActiveBookCover(this.coverRefreshId, slide.storyId, slide.coverImageId);
@@ -457,9 +469,9 @@ Page({
         [`bookSlides[${index}].coverUrl`]: url,
         ...(this.data.storyId === storyId ? { coverUrl: url } : {}),
       });
-      void renderBookFrame(this, url, `${storyId}:${coverImageId}`).then(frameUrl => {
+      void renderBookCover(this, url, `${storyId}:${coverImageId}`).then(bookArtUrl => {
         if (coverRefreshId !== this.coverRefreshId) return;
-        this.setData({ [`bookSlides[${index}].frameUrl`]: frameUrl });
+        this.setData({ [`bookSlides[${index}].bookArtUrl`]: bookArtUrl });
       }).catch(error => {
         if (coverRefreshId === this.coverRefreshId) delete this.coverRequests[`${storyId}:${coverImageId}`];
         logLoadError("index-book-frame", error);

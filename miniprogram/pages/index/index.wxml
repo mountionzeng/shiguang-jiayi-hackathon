@@ -56,16 +56,11 @@
             >
               <view class="book-pages-under"></view>
               <view class="book-cover-leaf">
-                <view class="book-cover-picture" wx:if="{{item.coverUrl}}" aria-hidden="true">
+                <view class="book-cover-picture" wx:if="{{item.bookArtUrl}}" aria-hidden="true">
                   <image
                     class="book-cover-picture-art"
-                    src="{{item.coverUrl}}"
-                    mode="aspectFill"
-                  ></image>
-                  <image
-                    class="book-cover-frame {{item.frameUrl ? '' : 'book-cover-frame-loading'}}"
-                    src="{{item.frameUrl || '/assets/illustrations/story-book-cover-frame.png'}}"
-                    mode="aspectFill"
+                    src="{{item.bookArtUrl}}"
+                    mode="scaleToFill"
                   ></image>
                 </view>
                 <image
@@ -75,7 +70,7 @@
                   mode="aspectFill"
                   aria-hidden="true"
                 ></image>
-                <view class="book-cover-copy {{item.coverUrl ? 'book-cover-copy-printed' : ''}}">
+                <view class="book-cover-copy {{item.bookArtUrl ? 'book-cover-copy-printed' : ''}}">
                   <text class="book-kicker typewriter">拾 光 录</text>
                   <view class="book-copy">
                     <view class="book-slip">

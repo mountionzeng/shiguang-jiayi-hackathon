@@ -1,3 +1,6 @@
+import { cacheBookCover, cachedBookCover } from './bookCoverCache';
+import { startPerformanceMeasure } from './performanceLog';
+
 type Hsl = [number, number, number];
 
 function hsl(r: number, g: number, b: number): Hsl {
@@ -61,7 +64,7 @@ export function softenLeftSeam(pixels: Uint8ClampedArray, width: number, height:
   }
 }
 
-const frames = new Map<string, string>();
+const pending = new Map<string, Promise<string>>();
 let rendering: Promise<unknown> = Promise.resolve();
 
 function loadImage(canvas: WechatMiniprogram.Canvas, src: string): Promise<WechatMiniprogram.Image> {
@@ -74,45 +77,62 @@ function loadImage(canvas: WechatMiniprogram.Canvas, src: string): Promise<Wecha
   });
 }
 
-/** One existing frame; recolouring never adds another material or changes geometry. */
-export function renderBookFrame(page: WechatMiniprogram.Page.TrivialInstance, url: string, key: string): Promise<string> {
+/** Compose once, clip to the original paper silhouette, then reuse the local image. */
+export function renderBookCover(page: WechatMiniprogram.Page.TrivialInstance, url: string, key: string): Promise<string> {
+  const cached = cachedBookCover(key);
+  if (cached) return Promise.resolve(cached);
+  const existing = pending.get(key);
+  if (existing) return existing;
   const render = async () => {
-    const cached = frames.get(key);
-    if (cached) return cached;
-    const canvas = await new Promise<WechatMiniprogram.Canvas>((resolve, reject) => {
-      page.createSelectorQuery().select('#book-frame-canvas').fields({ node: true }).exec(results => {
-        if (results[0]?.node) resolve(results[0].node);
-        else reject(new Error('书框画布未准备好'));
+    const finish = startPerformanceMeasure('book.cover-render');
+    let outcome: 'ok' | 'error' = 'error';
+    try {
+      const canvas = await new Promise<WechatMiniprogram.Canvas>((resolve, reject) => {
+        page.createSelectorQuery().select('#book-frame-canvas').fields({ node: true }).exec(results => {
+          if (results[0]?.node) resolve(results[0].node);
+          else reject(new Error('书框画布未准备好'));
+        });
       });
-    });
-    const info = await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve, reject) =>
-      wx.getImageInfo({ src: url, success: resolve, fail: reject }));
-    const cover = await loadImage(canvas, info.path);
-    canvas.width = 48; canvas.height = 48;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(cover, 0, 0, 48, 48);
-    const color = coverColor(ctx.getImageData(0, 0, 48, 48).data);
-    const frame = await loadImage(canvas, '/assets/illustrations/story-book-cover-frame.png');
-    canvas.width = frame.width; canvas.height = frame.height;
-    ctx.drawImage(frame, 0, 0);
-    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    recolorFrame(pixels.data, color);
-    softenLeftSeam(pixels.data, canvas.width, canvas.height);
-    ctx.putImageData(pixels, 0, 0);
-    const path = await new Promise<string>((resolve, reject) => wx.canvasToTempFilePath({
-      canvas, fileType: 'png', width: canvas.width, height: canvas.height,
-      destWidth: canvas.width, destHeight: canvas.height,
-      success: result => resolve(result.tempFilePath), fail: reject,
-    }, page));
-    // Bound the cache; these files are disposable preview derivatives, never source assets.
-    if (frames.size >= 12) {
-      const oldest = frames.keys().next().value!;
-      frames.delete(oldest);
-    }
-    frames.set(key, path);
-    return path;
+      const info = await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve, reject) =>
+        wx.getImageInfo({ src: url, success: resolve, fail: reject }));
+      const cover = await loadImage(canvas, info.path);
+      const silhouette = await loadImage(canvas, '/assets/illustrations/story-book-cover.png');
+      canvas.width = 48; canvas.height = 48;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(cover, 0, 0, 48, 48);
+      const color = coverColor(ctx.getImageData(0, 0, 48, 48).data);
+      const frame = await loadImage(canvas, '/assets/illustrations/story-book-cover-frame.png');
+      // Two source pixels per display pixel keep generated artwork crisp on phones.
+      canvas.width = frame.width * 2; canvas.height = frame.height * 2;
+      ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      recolorFrame(pixels.data, color);
+      softenLeftSeam(pixels.data, canvas.width, canvas.height);
+      ctx.putImageData(pixels, 0, 0);
+      // Keep the established cover crop. Only its outer outline changes: artwork
+      // cannot show through the transparent corners and paper fibres of the book.
+      ctx.globalCompositeOperation = 'destination-over';
+      const targetWidth = canvas.width * 1.1, targetHeight = canvas.height * 1.16;
+      const scale = Math.max(targetWidth / cover.width, targetHeight / cover.height);
+      const sourceWidth = targetWidth / scale, sourceHeight = targetHeight / scale;
+      ctx.drawImage(cover, (cover.width - sourceWidth) / 2, (cover.height - sourceHeight) / 2,
+        sourceWidth, sourceHeight, -canvas.width * .05, -canvas.height * .08, targetWidth, targetHeight);
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(silhouette, 0, 0, canvas.width, canvas.height);
+      ctx.globalCompositeOperation = 'source-over';
+      const path = await new Promise<string>((resolve, reject) => wx.canvasToTempFilePath({
+        canvas, fileType: 'png', width: canvas.width, height: canvas.height,
+        destWidth: canvas.width, destHeight: canvas.height,
+        success: result => resolve(result.tempFilePath), fail: reject,
+      }, page));
+      const saved = await cacheBookCover(key, path);
+      outcome = 'ok';
+      return saved;
+    } finally { finish(outcome); }
   };
   const result = rendering.then(render, render);
   rendering = result.catch(() => undefined);
+  pending.set(key, result);
+  void result.finally(() => pending.delete(key)).catch(() => undefined);
   return result;
 }
