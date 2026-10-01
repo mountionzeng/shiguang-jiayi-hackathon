@@ -1314,6 +1314,43 @@ test("the memory archive filters story names and confirms a new story before org
   assert.equal(query.get("memoryIds"), "demo-personal-rain");
 });
 
+test("the memory archive requires confirming a typed new story before previewing or saving", async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const modals: string[] = [];
+  const page = instantiate(await pageDefinition("archive"));
+
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  callPage(page, "startDocumentEdit");
+
+  (wx as any).showModal = ({ title, success }: { title: string; success?: (result: { confirm: boolean; cancel: boolean }) => void }) => {
+    modals.push(title);
+    success?.({ confirm: false, cancel: true });
+  };
+  callPage(page, "onEditStory", { detail: { value: "未确认故事" } });
+  await callPage(page, "createDocumentPreview");
+  assert.deepEqual(modals, ["新建故事？"]);
+  assert.equal(page.data.previewOpen, false);
+  assert.equal(page.data.storyCreateTitle, "未确认故事");
+
+  callPage(page, "chooseEditStory", { currentTarget: { dataset: { title: "" } } });
+  await callPage(page, "createDocumentPreview");
+  assert.equal(page.data.previewOpen, true);
+
+  (wx as any).showModal = ({ title, success }: { title: string; success?: (result: { confirm: boolean; cancel: boolean }) => void }) => {
+    modals.push(title);
+    success?.({ confirm: true, cancel: false });
+  };
+  callPage(page, "onEditStory", { detail: { value: "保存前确认" } });
+  await callPage(page, "savePreview", { currentTarget: { dataset: { mode: "update-current" } } });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(page.data.storyCreateTitle, "");
+  assert.equal(storage.roomState().contributions.find(item => item.id === "demo-personal-rain")?.storyTitle, "保存前确认");
+  assert.deepEqual(modals, ["新建故事？", "新建故事？"]);
+});
+
 test("the memory archive supports swipe reveal and deleting a quick note", async (context) => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);

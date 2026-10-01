@@ -455,6 +455,7 @@ Page({
 
   async createDocumentPreview() {
     if (this.data.organizingPreview || this.data.savingEdit || !this.editingOriginal) return;
+    if (!this.confirmEditStoryCreation(() => { void this.createDocumentPreview(); })) return;
     const text = normalizeMemoryText(this.data.editText);
     if (!text || text.length > MAX_MEMORY_LENGTH) {
       wx.showToast({ title: "请保留 1—500 字的记忆", icon: "none" });
@@ -518,6 +519,7 @@ Page({
   async savePreview(event: { currentTarget: { dataset: { mode: "update-current" | "dated-version" } } }) {
     const mode = event.currentTarget.dataset.mode;
     if (!this.data.previewOpen || this.data.savingEdit || !this.editingOriginal || !["update-current", "dated-version"].includes(mode)) return;
+    if (!this.confirmEditStoryCreation(() => { void this.savePreview(event); })) return;
     this.setData({ savingEdit: true, loadError: "" });
     try {
       const title = this.data.previewTitle.trim().slice(0, 40) || undefined;
@@ -556,14 +558,17 @@ Page({
         throw new Error("保存结果暂未确认，草稿仍保留；请重试前先重新加载核对");
       }
       this.editingOriginal = confirmed;
+      const confirmedStory = contributionStoryTitle(confirmed);
+      const storyOptions = uniqueStoryNames(this.data.storyOptions.concat(confirmedStory ? [confirmedStory] : []));
       this.setData({
         editTitle: confirmed.title || "",
         editText: confirmed.text,
         selectedRevisionId: savedRevision.id,
         selectedVersionLabel: memoryVersionLabel(savedRevision),
         isCurrentVersion: true,
-        editStory: contributionStoryTitle(confirmed),
-        ...storyGroupingState(this.data.storyOptions, contributionStoryTitle(confirmed)),
+        storyOptions,
+        editStory: confirmedStory,
+        ...storyGroupingState(storyOptions, confirmedStory),
         editAiLabel: memoryAiLabel(confirmed),
         originalText: memoryOriginalSpokenText(confirmed),
         historyItems: historyRows(memoryAiRevisions(confirmed)),
@@ -651,9 +656,10 @@ Page({
     const editStory = event.currentTarget.dataset.title || "";
     this.setData({ editStory, ...storyGroupingState(this.data.storyOptions, editStory) });
   },
-  createEditStory() {
-    const title = normalizeStoryName(this.data.storyCreateTitle || this.data.editStory);
-    if (!title || this.data.savingEdit) return;
+  confirmEditStoryCreation(afterConfirm?: () => void): boolean {
+    const title = normalizeStoryName(this.data.storyCreateTitle);
+    if (!title) return true;
+    if (this.data.savingEdit) return false;
     wx.showModal({
       title: "新建故事？",
       content: `没有找到同名故事。要新建「${title}」并把这段记忆放进去吗？`,
@@ -662,8 +668,13 @@ Page({
         if (!result.confirm) return;
         const storyOptions = uniqueStoryNames(this.data.storyOptions.concat([title]));
         this.setData({ storyOptions, editStory: title, ...storyGroupingState(storyOptions, title) });
+        afterConfirm?.();
       },
     });
+    return false;
+  },
+  createEditStory() {
+    this.confirmEditStoryCreation();
   },
   hasUnsavedEditorWork() {
     const original = this.editingOriginal;
