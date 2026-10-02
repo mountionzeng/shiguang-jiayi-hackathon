@@ -29,7 +29,6 @@ export interface XiaoyiPanelData {
   xiaoyiContextPreview: string;
   xiaoyiAnswer: string;
   xiaoyiDraftText: string;
-  xiaoyiCanOrganize: boolean;
   xiaoyiStatus: string;
   xiaoyiMessages: XiaoyiMessage[];
 }
@@ -38,7 +37,7 @@ export interface XiaoyiPanelData {
 export function initialXiaoyiPanelData(): XiaoyiPanelData {
   return {
     xiaoyiOpen: false, xiaoyiLoading: false, xiaoyiContextPreview: "",
-    xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiCanOrganize: false,
+    xiaoyiAnswer: "", xiaoyiDraftText: "",
     xiaoyiStatus: "", xiaoyiMessages: [],
   };
 }
@@ -114,7 +113,7 @@ export async function askXiaoyiQuestion(this: XiaoyiHost, event?: { currentTarge
     }
     this.xiaoyiConversation = [...conversation, { role: "assistant", text: prompt.text }];
     xiaoyiMessagesAppend.call(this, { kind: "question", text: prompt.text, label });
-    this.setData({ xiaoyiStatus: mode === "write" ? "先回答这个问题，再让小忆整理你的回答。" : "", xiaoyiCanOrganize: prompt.generationMode === "cloud-ai" });
+    this.setData({ xiaoyiStatus: mode === "write" ? "先回答这个问题，再让小忆整理你的回答。" : "" });
   } catch {
     this.setData({ xiaoyiStatus: "小忆刚刚走神了，请再试一次。" });
   } finally {
@@ -123,10 +122,12 @@ export async function askXiaoyiQuestion(this: XiaoyiHost, event?: { currentTarge
 }
 
 export function onXiaoyiAnswerInput(this: XiaoyiHost, event: { detail: { value: string } }) {
-  this.setData({ xiaoyiAnswer: event.detail.value });
+  // The native input owns its live value/cursor, especially during IME dictation.
+  // Keep the latest value for actions without replaying it through setData.
+  this.data.xiaoyiAnswer = event.detail.value;
 }
 export function onXiaoyiDraftInput(this: XiaoyiHost, event: { detail: { value: string } }) {
-  this.setData({ xiaoyiDraftText: event.detail.value });
+  this.data.xiaoyiDraftText = event.detail.value;
 }
 
 export async function useXiaoyiOriginal(this: XiaoyiHost) {

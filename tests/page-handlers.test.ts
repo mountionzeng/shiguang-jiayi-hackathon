@@ -2731,7 +2731,6 @@ test("inline xiaoyi write mode asks first, organizes only the answer, then creat
   callPage(page, "openXiaoyi");
   await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "write" } } });
   assert.match(String(page.data.xiaoyiStatus), /先回答这个问题/);
-  assert.equal(page.data.xiaoyiCanOrganize, true);
   assert.equal(calls.filter(call => call.name === "organizeMemory").length, 0, "帮我写不会跳过提问直接整理");
 
   callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });

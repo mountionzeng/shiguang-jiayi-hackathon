@@ -162,21 +162,21 @@
         <button class="xiaoyi-option" data-mode="write" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">帮我写一下</button>
         <button class="xiaoyi-option" bindtap="openXiaoyiMemories" disabled="{{xiaoyiLoading}}">看看这一章的记忆</button>
       </view>
-      <view class="xiaoyi-status" wx:if="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
       <scroll-view class="xiaoyi-thread" scroll-y wx:if="{{xiaoyiMessages.length}}">
         <view class="xiaoyi-message xiaoyi-message-{{item.kind}}" wx:for="{{xiaoyiMessages}}" wx:key="id" selectable>
           <view class="xiaoyi-message-label" wx:if="{{item.label}}">{{item.label}}</view>
           <view>{{item.text}}</view>
         </view>
       </scroll-view>
-      <textarea class="xiaoyi-answer" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+      <view class="xiaoyi-status" wx:if="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
       <view class="xiaoyi-actions">
         <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{xiaoyiLoading}}">就用我的原话</button>
-        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading || !xiaoyiCanOrganize}}">请小忆整理</button>
+        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '请小忆整理'}}</button>
       </view>
       <view wx:if="{{xiaoyiDraftText}}" class="xiaoyi-draft-box">
         <view class="xiaoyi-message-label">整理稿，可以改</view>
-        <textarea class="xiaoyi-draft" value="{{xiaoyiDraftText}}" maxlength="800" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" bindinput="onXiaoyiDraftInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+        <textarea class="xiaoyi-draft" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiDraftText}}" maxlength="800" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" bindinput="onXiaoyiDraftInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
         <button class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{xiaoyiLoading}}">把这段放进正文待确认</button>
       </view>
     </view>

@@ -226,7 +226,6 @@ Page({
       xiaoyiContextPreview: "",
       xiaoyiAnswer: "",
       xiaoyiDraftText: "",
-      xiaoyiCanOrganize: false,
       xiaoyiStatus: "",
       xiaoyiMessages: [],
     });
