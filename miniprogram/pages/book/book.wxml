@@ -70,13 +70,12 @@
   </view>
   <view class="panel-actions" wx:if="{{panel && panel !== 'organize' && panel !== 'organize-preview'}}">
     <button class="tool-button" bindtap="closePanel" disabled="{{saving || generating || appendingOwn}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '回到正文' : '回到目录'}}</button>
-    <button wx:if="{{panel === 'organize'}}" class="tool-button save-button" bindtap="runOrganize" disabled="{{saving || generating}}"><view class="action-icon icon-ai" aria-hidden="true"></view>{{generating ? '整理中…' : '生成正文预览'}}</button>
-    <button wx:if="{{panel === 'organize-preview'}}" class="tool-button save-button" bindtap="confirmOrganize" disabled="{{saving}}">确认写入正文</button>
     <button wx:if="{{panel === 'history' && previewVersion}}" class="tool-button save-button" bindtap="restoreVersion" disabled="{{saving}}"><view class="action-icon icon-restore" aria-hidden="true"></view>恢复此版</button>
     <button wx:if="{{panel === 'version'}}" class="tool-button save-button" bindtap="saveVersion" disabled="{{saving}}"><view class="action-icon icon-version" aria-hidden="true"></view>存为版本</button>
     <button wx:if="{{panel === 'share-excerpt'}}" class="tool-button save-button" bindtap="sendExcerpt" disabled="{{sharingExcerpt}}">{{sharingExcerpt ? '发送中…' : '确认发送'}}</button>
     <button wx:if="{{panel === 'append-own'}}" class="tool-button save-button" bindtap="appendOwnExperience" disabled="{{appendingOwn}}">{{appendingOwn ? '保存中…' : '保存我的补充'}}</button>
   </view>
+  <view class="book-generation" wx:if="{{generating}}"><generation-status text="正在整理正文，完成后可以先预览…" /></view>
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
   <scroll-view class="reading-panel contents-view" scroll-y hidden="{{!draft || panel || view !== 'contents'}}">
     <view class="panel-content contents-content">
@@ -169,7 +168,8 @@
         </view>
       </scroll-view>
       <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
-      <view class="xiaoyi-status" wx:if="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
+      <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
+      <view class="xiaoyi-status" wx:elif="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
       <view class="xiaoyi-actions">
         <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{xiaoyiLoading}}">就用我的原话</button>
         <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '请小忆整理'}}</button>

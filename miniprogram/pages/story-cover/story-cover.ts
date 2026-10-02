@@ -11,7 +11,7 @@ Page({
     references: [] as ReferenceCard[], selectedCount: 0, covers: [] as CoverCard[], jobs: [] as StoryImageJob[],
     loading: true, submitting: false, selecting: false, activeJob: false, notice: '', loadError: '', artDirection: '',
   },
-  hidden: false, unloaded: false, refreshId: 0, polling: false, startQueued: false,
+  hidden: false, unloaded: false, refreshId: 0, polling: false, startQueued: false, pendingImageRefresh: false,
   timer: undefined as ReturnType<typeof setTimeout> | undefined,
   onLoad(options: {storyId?: string}) {
     this.setData({storyId: options.storyId || ''});
@@ -43,13 +43,14 @@ Page({
       jobs:list.pending.filter(job => job.purpose === 'cover'),
       activeJob:list.pending.some(job => job.purpose === 'cover' && isActiveJob(job)), loading:false, loadError:'',
     });
+    this.pendingImageRefresh = false;
     this.schedulePoll();
   },
   schedulePoll(immediate = false) {
     this.startQueued = this.startQueued || immediate;
     this.stopPoll();
     if (this.hidden || this.unloaded || this.polling) return;
-    if (this.data.jobs.some(isActiveJob) || this.data.covers.some(image => image.moderation === 'pending' || image.quality === 'pending')) {
+    if (this.pendingImageRefresh || this.data.jobs.some(isActiveJob) || this.data.covers.some(image => image.moderation === 'pending' || image.quality === 'pending')) {
       this.timer = setTimeout(() => { void this.poll(); }, this.startQueued ? 0 : 4000);
       this.startQueued = false;
     }
@@ -59,7 +60,7 @@ Page({
     if (this.hidden || this.unloaded || this.polling) return;
     this.polling = true;
     const jobs = this.data.jobs.filter(isActiveJob);
-    let refreshImages = !jobs.length;
+    let refreshImages = this.pendingImageRefresh || !jobs.length;
     try {
       for (let offset = 0; offset < jobs.length; offset += 2) {
         if (this.hidden || this.unloaded) return;
@@ -67,10 +68,14 @@ Page({
           try {
             const result = await storyImageApi.checkImageJob(job.jobId, this.data.storyId);
             if (this.hidden || this.unloaded) return;
-            if (!isActiveJob(result.job)) refreshImages = true;
-            // Keep terminal jobs until the list reload succeeds, so a failed reload can retry.
+            if (!isActiveJob(result.job)) {
+              refreshImages = true;
+              this.pendingImageRefresh = true;
+            }
+            // Stop generation feedback at the terminal state, even if loading the image fails.
+            const updatedJobs = this.data.jobs.map(item => item.jobId === job.jobId ? result.job : item);
             this.setData({notice:result.job.status === 'stored' ? '封面画好了，看看是否喜欢' : result.job.message,
-              ...(isActiveJob(result.job) ? {jobs:this.data.jobs.map(item => item.jobId === job.jobId ? result.job : item)} : {})});
+              jobs:updatedJobs, activeJob:updatedJobs.some(isActiveJob)});
           } catch (error) {
             if (!this.hidden && !this.unloaded) this.setData({notice:message(error)});
           }

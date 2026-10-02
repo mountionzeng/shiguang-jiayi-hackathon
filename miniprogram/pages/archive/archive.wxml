@@ -38,7 +38,8 @@
         </view>
       </scroll-view>
       <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
-      <view class="xiaoyi-status" wx:if="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
+      <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
+      <view class="xiaoyi-status" wx:elif="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
       <view class="xiaoyi-actions">
         <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{xiaoyiLoading}}">就用我的原话</button>
         <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '请小忆整理'}}</button>

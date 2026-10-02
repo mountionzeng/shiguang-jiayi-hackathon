@@ -129,3 +129,5 @@ page { height: 100%; overflow: hidden; }
 .pending-card { margin-top: 12rpx; padding: 14rpx; border-radius: 14rpx; background: var(--paper-sunk); }
 .pending-label { font-size: 23rpx; color: var(--ink-soft); }
 .pending-text { margin-top: 6rpx; font-size: 28rpx; line-height: 1.65; white-space: pre-wrap; color: var(--ink); }
+
+.book-generation { flex: none; padding: 0 32rpx; }

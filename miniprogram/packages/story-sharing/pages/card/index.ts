@@ -41,6 +41,7 @@ Page({
     finally{if(!this.hidden && epoch===this.epoch)this.setData({busy:false});}
   },
   async draw(descriptor:ShareCardDescriptor,media:Array<{photoId:string;url:string}>){
+    this.setData({notice:'正在排版故事卡…'});
     const images=new Map<string,WechatMiniprogram.GetImageInfoSuccessCallbackResult>();for(const item of media)images.set(item.photoId,await imageInfo(item.url));
     const ctx=wx.createCanvasContext('storyCard',this);ctx.setFontSize(46);const titleLines=lines(ctx,descriptor.title,630);ctx.setFontSize(28);
     const chapterLines=descriptor.chapterTitle?lines(ctx,descriptor.chapterTitle,630):[];ctx.setFontSize(30);const paragraphLines=descriptor.paragraphs.flatMap(text=>[...lines(ctx,text,630),' ']);

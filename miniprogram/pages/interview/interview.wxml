@@ -121,9 +121,7 @@
             mode="aspectFit"
             aria-label="小忆"
           ></image>
-          <view class="bubble bubble-ai typing">
-            <text class="dot"></text><text class="dot"></text><text class="dot"></text>
-          </view>
+          <view class="bubble bubble-ai"><generation-status text="小忆正在想下一句…" /></view>
         </view>
 
         <view class="scroll-tail"></view>
@@ -151,6 +149,7 @@
         </view>
       </view>
 
+      <generation-status wx:if="{{organizing}}" text="正在把刚才的对话整理成片段…" />
       <view class="tool-row">
         <view class="tool-chip {{importing ? 'tool-chip-off' : ''}}" bindtap="importMemory">{{importing ? '正在导入…' : '导入'}}</view>
         <view class="tool-spacer"></view>
@@ -177,6 +176,7 @@
         ></textarea>
         <view class="import-ai-label" wx:if="{{importAiLabel}}">{{importAiLabel}}</view>
         <button wx:if="{{importCaptionAiReady}}" class="btn btn-ghost import-ai" bindtap="generateImportCaption" disabled="{{importAiLoading}}">{{importAiLoading ? '正在看…' : '让 AI 看看照片'}}</button>
+        <generation-status wx:if="{{importAiLoading}}" text="正在看照片，整理成文字…" />
         <view class="import-actions">
           <button class="btn btn-ghost" bindtap="cancelPhotoImport" disabled="{{importAiLoading || importing}}">取消</button>
           <button class="btn btn-primary" bindtap="savePhotoImport" disabled="{{importing}}">{{importing ? '正在保存…' : (importCaption ? '保存' : '跳过并保存')}}</button>
@@ -270,7 +270,8 @@
             </view>
           </scroll-view>
           <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeightChange"></textarea>
-          <view class="xiaoyi-status" wx:if="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
+          <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
+          <view class="xiaoyi-status" wx:elif="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
           <view class="xiaoyi-actions">
             <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{xiaoyiLoading}}">就用我的原话</button>
             <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '请小忆整理'}}</button>

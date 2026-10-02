@@ -1485,3 +1485,67 @@ test('图片生成完成后继续轻量更新审核与美观检查，完成后�
   assert.equal(page.pendingImageChecks,false);
   assert.equal(timers.scheduled.length,1);
 });
+
+test('配图结束后列表加载失败仍停止生成反馈，重试后显示图片', async context => {
+  const env = installWx({}, stateWithBook()); env.setApp(false);
+  const timers = captureTimers();
+  let lists = 0;
+  let status: 'stored' | 'failed' | 'unknown' = 'stored';
+  const job = listWith().pending[0];
+  const restoreApi = withApi({
+    listStoryImages: async () => {
+      if (++lists === 1) return listWith({images:[], pending:[job]});
+      if (lists === 2) throw new Error('图片列表暂时断线');
+      return listWith({pending:[], images:[]});
+    },
+    checkImageJob: async () => ({job:{...job, status, message:'任务已结束'}}),
+  });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+  for (status of ['stored', 'failed', 'unknown'] as const) {
+    lists = 0;
+    const page = instantiate(await pageDefinition('story-images'));
+    await call(page, 'refresh');
+    await call(page, 'pollOnce');
+    const rows = page.data.groups as Array<{pending:Array<{active:boolean;message:string}>}>;
+    assert.equal(rows[1].pending[0].active, false, status);
+    assert.equal(rows[1].pending[0].message, '任务已结束');
+    assert.match(String(page.data.notice), /断线/);
+    assert.ok(page.pollTimer !== undefined, 'reload is retried without keeping the animation active');
+    await call(page, 'pollOnce');
+    assert.deepEqual(page.activeJobIds, []);
+    assert.equal(page.pollTimer, undefined);
+  }
+});
+
+test('封面结束后列表加载失败停止动画并只重试列表，不再请求生成状态', async context => {
+  const env = installWx(); env.setApp(false);
+  const timers = captureTimers();
+  let lists = 0, checks = 0;
+  let status: 'stored' | 'failed' | 'unknown' = 'stored';
+  const job = {...listWith().pending[0], purpose:'cover', chapterId:'book-cover'};
+  const restoreApi = withApi({
+    listStoryImages: async () => {
+      if (++lists === 1) throw new Error('封面列表暂时断线');
+      return listWith({pending:[], images:[]});
+    },
+    checkImageJob: async () => { checks++; return {job:{...job, status, message:'任务已结束'}}; },
+  });
+  const originalSources = storyCoverApi.sources;
+  storyCoverApi.sources = async () => { throw new Error('completion must not reload the manuscript'); };
+  context.after(() => { storyCoverApi.sources = originalSources; restoreApi(); timers.restore(); env.restore(); });
+  for (status of ['stored', 'failed', 'unknown'] as const) {
+    lists = 0; checks = 0;
+    const page = instantiate(await pageDefinition('story-cover'));
+    page.setData({storyId:'story-one', jobs:[job], activeJob:true, loading:false});
+    await call(page, 'poll');
+    assert.equal(page.data.activeJob, false);
+    assert.equal((page.data.jobs as Array<{status:string}>)[0].status, status);
+    assert.match(String(page.data.notice), /断线/);
+    assert.ok(page.timer !== undefined, 'retry survives a terminal job');
+    await call(page, 'poll');
+    assert.equal(checks, 1);
+    assert.equal(lists, 2);
+    assert.deepEqual(page.data.jobs, []);
+    assert.equal(page.timer, undefined);
+  }
+});

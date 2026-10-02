@@ -42,6 +42,7 @@
       <view class="caption">封面单独一张；正文会沿用每章已经选好的底图，没有底图时使用纸张背景。正文不会截断。</view>
       <view class="notice" wx:if="{{capabilityKnown && !exportAvailable}}">图片导出服务暂时没有打开，请稍后重新进入。</view>
       <button class="primary" bindtap="generateImages" loading="{{exportBusy}}" disabled="{{!exportAvailable || exportBusy || albumSaving || sharingIndex >= 0}}">{{exportBusy ? renderProgress : imagePaths.length ? '重新生成图片' : '生成图片预览'}}</button>
+      <generation-status wx:if="{{exportBusy}}" kind="image" text="{{renderProgress || '正在排版图片…'}}" />
       <block wx:if="{{imagePaths.length}}">
         <view class="section-title serif">共 {{imagePaths.length}} 张图片</view>
         <view class="export-image" wx:for="{{imagePaths}}" wx:key="*this">

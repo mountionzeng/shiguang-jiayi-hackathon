@@ -171,7 +171,12 @@ Page({
           try {
             const { job } = await storyImageApi.checkImageJob(jobId, this.data.storyId || this.data.memberId);
             if (this.unloaded || this.hidden) return;
-            if (job.chapterId === this.data.noticeChapterId) this.setData({ notice: job.message });
+            this.setData({
+              groups: this.data.groups.map(group => ({ ...group,
+                pending: group.pending.map(item => item.jobId === job.jobId ? jobRow(job) : item),
+              })),
+              ...(job.chapterId === this.data.noticeChapterId ? { notice: job.message } : {}),
+            });
             if (!isActiveJob(job)) changed = true;
           } catch (error) {
             if (!this.unloaded && !this.hidden) this.setData({ notice: messageOf(error, "暂时查不到进度，稍后会再看一次"), noticeChapterId: "" });

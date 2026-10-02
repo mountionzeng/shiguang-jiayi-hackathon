@@ -40,6 +40,7 @@
         <text>你们是什么关系</text>
         <input value="{{relation}}" maxlength="12" placeholder="例如：母女、老朋友、同学" bindinput="onRelationInput" />
       </label>
+      <generation-status wx:if="{{creating}}" kind="image" text="正在准备邀请和图片…" />
       <button class="invite-primary" bindtap="createInvitation" loading="{{creating}}" disabled="{{creating}}">生成邀请图片</button>
       <view class="invite-privacy">邀请只进入这一个记忆之家。对方写下的故事会先交给你确认，不会直接改动正式书稿。</view>
     </view>
