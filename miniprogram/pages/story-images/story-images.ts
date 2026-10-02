@@ -1,6 +1,6 @@
 import { saveChapterBackdrop } from "../../services/chapterBackdrop";
 import { chapterLabel, chaptersOf } from "../../services/chapters";
-import { isRecordingProfile, ManuscriptChapter } from "../../domain/biography";
+import { FamilyRoomState, isRecordingProfile, ManuscriptChapter } from "../../domain/biography";
 import { currentManuscript } from "../../services/manuscript";
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst } from "../../services/roomRepository";
 import {
@@ -62,6 +62,11 @@ Page({
   unloaded: false,
   hidden: false,
   activeJobIds: [] as string[],
+  roomState: undefined as FamilyRoomState | undefined,
+  refreshId: 0,
+  polling: false,
+  pendingImageChecks: false,
+  startQueued: false,
   pollStartedAt: 0,
   pollTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   requestedMemberId: "",
@@ -94,8 +99,9 @@ Page({
     this.unloaded = true;
     this.clearPoll();
   },
-  async refresh() {
-    const state = await loadRoomStateRemoteFirst();
+  async refresh(imagesOnly = false) {
+    const refreshId = ++this.refreshId;
+    const state = imagesOnly && this.roomState ? this.roomState : await loadRoomStateRemoteFirst();
     const story = this.requestedStoryId ? activeStory(state, this.requestedStoryId) : undefined;
     const member = story ? undefined : (this.requestedMemberId
       ? state.members.find(item => item.id === this.requestedMemberId && isRecordingProfile(item))
@@ -105,11 +111,13 @@ Page({
     const current = currentManuscript(state, bookId);
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
     const list = await storyImageApi.listStoryImages(bookId);
-    if (this.unloaded) return;
+    if (this.unloaded || refreshId !== this.refreshId) return;
+    this.roomState = state;
     const known = new Set(chapters.map(chapter => chapter.id));
     const listed = new Set(list.images.map(image => image.imageId));
     this.activeJobIds = list.pending.filter(isActiveJob).map(job => job.jobId);
-    if (!this.activeJobIds.length) this.pollStartedAt = 0;
+    this.pendingImageChecks = list.images.some(image => image.moderation === "pending" || image.quality === "pending");
+    if (!this.activeJobIds.length && !this.pendingImageChecks) this.pollStartedAt = 0;
     this.setData({
       storyId: story?.id || "", memberId: member?.id || this.requestedMemberId,
       bookTitle: current.draft?.title ?? story?.bookTitle ?? story?.title ?? "",
@@ -140,29 +148,44 @@ Page({
     if (this.pollTimer !== undefined) clearTimeout(this.pollTimer);
     this.pollTimer = undefined;
   },
-  schedulePoll() {
+  schedulePoll(immediate = false) {
+    this.startQueued = this.startQueued || immediate;
     this.clearPoll();
-    if (this.unloaded || this.hidden || !this.activeJobIds.length) return;
+    if (this.unloaded || this.hidden || this.polling || (!this.activeJobIds.length && !this.pendingImageChecks)) return;
     if (!this.pollStartedAt) this.pollStartedAt = Date.now();
-    this.pollTimer = setTimeout(() => { void this.pollOnce(); }, nextPollDelayMs(Date.now() - this.pollStartedAt));
+    const delay = this.startQueued ? 0 : nextPollDelayMs(Date.now() - this.pollStartedAt);
+    this.startQueued = false;
+    this.pollTimer = setTimeout(() => { void this.pollOnce(); }, delay);
   },
   async pollOnce() {
-    this.pollTimer = undefined;
-    if (this.unloaded || this.hidden) return;
-    let changed = false;
-    for (const jobId of this.activeJobIds) {
-      try {
-        const { job } = await storyImageApi.checkImageJob(jobId,this.data.storyId || this.data.memberId);
-        if (!this.unloaded && !this.hidden && job.chapterId === this.data.noticeChapterId) this.setData({ notice: job.message });
-        if (!isActiveJob(job)) changed = true;
-      } catch (error) {
-        this.setData({ notice: messageOf(error, "暂时查不到进度，稍后会再看一次"), noticeChapterId: "" });
+    this.clearPoll();
+    if (this.unloaded || this.hidden || this.polling) return;
+    this.polling = true;
+    const jobs = [...this.activeJobIds];
+    let changed = this.pendingImageChecks;
+    try {
+      // A status call can draw for tens of seconds. Two independent jobs may progress together.
+      for (let offset = 0; offset < jobs.length; offset += 2) {
+        if (this.unloaded || this.hidden) return;
+        await Promise.all(jobs.slice(offset, offset + 2).map(async jobId => {
+          try {
+            const { job } = await storyImageApi.checkImageJob(jobId, this.data.storyId || this.data.memberId);
+            if (this.unloaded || this.hidden) return;
+            if (job.chapterId === this.data.noticeChapterId) this.setData({ notice: job.message });
+            if (!isActiveJob(job)) changed = true;
+          } catch (error) {
+            if (!this.unloaded && !this.hidden) this.setData({ notice: messageOf(error, "暂时查不到进度，稍后会再看一次"), noticeChapterId: "" });
+          }
+        }));
       }
-    }
-    if (this.unloaded || this.hidden) return;
-    if (changed) {
-      await this.refresh().catch(error => { logLoadError("story-images", error); this.setData({ notice: messageOf(error, "配图暂时没加载出来，请重试。"), noticeChapterId: "" }); });
-    } else {
+      if (changed && !this.unloaded && !this.hidden) {
+        await this.refresh(true).catch(error => {
+          logLoadError("story-images", error);
+          if (!this.unloaded && !this.hidden) this.setData({ notice: messageOf(error, "配图暂时没加载出来，请重试。"), noticeChapterId: "" });
+        });
+      }
+    } finally {
+      this.polling = false;
       this.schedulePoll();
     }
   },
@@ -184,13 +207,17 @@ Page({
         ...(this.data.artDirections[chapterId]?.trim() ? { artDirection: this.data.artDirections[chapterId].trim() } : {}),
       });
       if (this.unloaded) return;
-      this.setData({ notice: job.message });
-      await this.refresh();
+      // submit already contains the job; a full reload here delays the first generation call.
+      ++this.refreshId;
+      this.setData({ notice: job.message, groups: this.data.groups.map(group => group.id === job.chapterId
+        ? { ...group, pending: [jobRow(job), ...group.pending.filter(item => item.jobId !== job.jobId)] } : group) });
+      if (isActiveJob(job)) this.activeJobIds = [...new Set([...this.activeJobIds, job.jobId])];
+      this.schedulePoll(true);
     } catch (error) {
       if (this.unloaded) return;
       this.setData({ notice: messageOf(error, "配图没成功，请稍后再试") });
       if (error instanceof StoryImageServiceError && error.code === "TIMEOUT") {
-        await this.refresh().catch((error) => logLoadError("story-images", error));
+        await this.refresh(true).catch((error) => logLoadError("story-images", error));
       }
     } finally {
       if (!this.unloaded) this.setData({ submitting: "" });

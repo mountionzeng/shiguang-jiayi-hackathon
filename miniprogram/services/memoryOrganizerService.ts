@@ -1,3 +1,4 @@
+import { measurePerformance } from "./performanceLog";
 import type { ShiguangAppOptions } from "../app";
 import {
   MemoryType,
@@ -121,7 +122,7 @@ export async function organizeMemory(
   if (!await requestAiConsent()) return fallback;
 
   try {
-    const response = await wx.cloud.callFunction({
+    const response = await measurePerformance("ai.organize", () => wx.cloud.callFunction({
       name: "organizeMemory",
       data: {
         memoryId: input.memoryId,
@@ -130,7 +131,7 @@ export async function organizeMemory(
         storyTitle: input.storyTitle,
         consentVersion: currentConsentVersion(),
       },
-    });
+    }));
     const cloudDraft = parseCloudDraft(response.result, fallback);
     if (cloudDraft) return cloudDraft;
     console.warn("AI 整理返回格式不完整，将保留原话草稿");
@@ -150,7 +151,7 @@ export async function organizeInlineAnswer(
   const fallback = localOrganizedDraft([answer], input.memoryType ?? "note");
 
   try {
-    const response = await wx.cloud.callFunction({
+    const response = await measurePerformance("ai.organize", () => wx.cloud.callFunction({
       name: "organizeMemory",
       data: {
         inlineAnswer: true,
@@ -160,7 +161,7 @@ export async function organizeInlineAnswer(
         storyTitle: input.storyTitle,
         consentVersion: currentConsentVersion(),
       },
-    });
+    }));
     const cloudDraft = parseCloudDraft(response.result, fallback);
     return cloudDraft?.generationMode === "cloud-ai" ? cloudDraft : undefined;
   } catch (error) {

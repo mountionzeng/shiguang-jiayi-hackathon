@@ -1,3 +1,4 @@
+import { measurePerformance } from "./performanceLog";
 import type { ShiguangAppOptions } from "../app";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
@@ -128,7 +129,8 @@ export async function callStoryImages<T>(action: string, data: Record<string, un
   const familyId = await currentFamilyId();
   let raw: unknown;
   try {
-    const response = await wx.cloud.callFunction({ name: "storyImages", data: { ...data, action, familyId } });
+    const operation = action === "submit" ? "image.submit" : action === "status" ? "image.status" : action === "list" ? "image.list" : "image.other";
+    const response = await measurePerformance(operation, () => wx.cloud.callFunction({ name: "storyImages", data: { ...data, action, familyId } }));
     raw = response.result;
   } catch (error) {
     throw callFailure(error);

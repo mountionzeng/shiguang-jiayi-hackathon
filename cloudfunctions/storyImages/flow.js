@@ -9,7 +9,7 @@ const SWEEP_BUDGET_MS = 20_000;
 const GENERATE_START_WINDOW_MS = 5_000;
 /** Downloading and uploading need a few seconds of the remaining time. */
 const STORE_START_WINDOW_MS = 48_000;
-/** The quality check waits up to 12 seconds; otherwise the sweep runs it later. */
+/** Quality checks run only in the sweep and must fit within its deadline. */
 const QUALITY_START_WINDOW_MS = 40_000;
 const QUALITY_BATCH = 3;
 
@@ -348,7 +348,7 @@ function createStoryImageHandlers(deps) {
     return { ...job, ...patch };
   }
 
-  async function store(job, startedMs) {
+  async function store(job) {
     const release = async () => {
       const patch = { status: "generated", updatedAtMs: now() };
       await repo.updateJob(job._id, patch);
@@ -415,7 +415,7 @@ function createStoryImageHandlers(deps) {
     const patch = { status: "stored", imageId, aigcProduceId, storedAtMs: nowMs, updatedAtMs: nowMs };
     await repo.updateJob(job._id, patch);
     await requestModeration(imageId, imageDoc, job.requesterOpenId);
-    if (qualityEnabled && now() - startedMs <= QUALITY_START_WINDOW_MS) await runQualityCheck(imageId, imageDoc);
+    // Cosmetic checks are optional; the existing sweep updates their pending result.
     return { ...job, ...patch };
   }
 
@@ -430,7 +430,7 @@ function createStoryImageHandlers(deps) {
       // Two polls can see the same finished picture; only the one that claims it stores the file.
       const claimed = await repo.claimJob(current._id, ["generated"], { status: "storing", updatedAtMs: now() });
       if (!claimed) return (await repo.getJob(current._id)) || current;
-      current = await store({ ...current, status: "storing" }, startedMs);
+      current = await store({ ...current, status: "storing" });
     }
     return current;
   }
@@ -553,7 +553,7 @@ function createStoryImageHandlers(deps) {
       results.push({ jobId: job._id, action });
     }
 
-    // Pictures whose quality check did not fit inside the request that stored them.
+    // Persisted pending checks survive page closure and function restarts.
     let qualityChecked = 0;
     if (qualityEnabled) {
       for (const image of await repo.listImagesPendingQuality(QUALITY_BATCH)) {

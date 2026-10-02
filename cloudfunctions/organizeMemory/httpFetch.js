@@ -1,11 +1,15 @@
 const http = require("node:http");
 const https = require("node:https");
 
+// Node 16 does not reuse connections by default. Keep the warm pool bounded.
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 4, maxFreeSockets: 2, timeout: 60_000 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 4, maxFreeSockets: 2, timeout: 60_000 });
+
 function nodeFetch(url, { method = "GET", headers = {}, body, signal } = {}) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
     const transport = target.protocol === "http:" ? http : https;
-    const request = transport.request(target, { method, headers }, response => {
+    const request = transport.request(target, { method, headers, agent: target.protocol === "http:" ? httpAgent : httpsAgent }, response => {
       const chunks = [];
       response.on("data", chunk => chunks.push(chunk));
       response.on("error", reject);
@@ -33,6 +37,7 @@ function nodeFetch(url, { method = "GET", headers = {}, body, signal } = {}) {
       request.destroy(error);
     };
     request.on("error", reject);
+    request.once("close", () => signal?.removeEventListener("abort", abort));
     if (signal) {
       if (signal.aborted) {
         abort();

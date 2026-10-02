@@ -1288,7 +1288,7 @@ test("查询别人家的任务一律说找不到", async () => {
     error => error.code === "JOB_NOT_FOUND");
 });
 
-test("转存后用云存储链接做质检，发现乱码字就标出来给用户看", async () => {
+test("出图返回不等待美观质检，后台检查后仍能显示乱码提示", async () => {
   const checked = [];
   const { handlers, repo } = harness({
     deps: {
@@ -1299,6 +1299,12 @@ test("转存后用云存储链接做质检，发现乱码字就标出来给用�
     },
   });
   const { job } = await handlers.submit(ctx, submitEvent());
+  const initial = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(initial.job.status, "stored");
+  assert.ok(initial.image.url);
+  assert.equal(initial.image.quality, "pending");
+  assert.equal(checked.length, 0, "可选美观检查不能卡住已生成图片的返回");
+  await handlers.sweep();
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(checked.length, 1);
   assert.match(checked[0], /^https:\/\/tmp\.example\//);

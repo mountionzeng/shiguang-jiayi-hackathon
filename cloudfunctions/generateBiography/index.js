@@ -23,6 +23,18 @@ async function loadAll(db, collection, familyId) {
   }
 }
 
+// Current writes use a stable document ID. Only missing/legacy records need the scan.
+async function loadMemoryById(db, familyId, memoryId) {
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(memoryId)) return undefined;
+  try {
+    const memory = (await db.collection("memories").doc(`${familyId}_${memoryId}`).get()).data;
+    return memory && memoryIdOf(memory, familyId) === memoryId ? memory : undefined;
+  } catch (error) {
+    if (/DOCUMENT_NOT_FOUND|does not exist|not found|cannot find document|document\.get:fail -1\b/i.test(String(error?.errMsg || error?.message || ""))) return undefined;
+    throw error;
+  }
+}
+
 function memoryIdOf(memory, familyId) {
   return memory.frontendContributionId || memory.id || String(memory.sourceRecordId || "").replace(/^src_/, "").replace(`${familyId}_`, "") || String(memory._id || "").replace(`${familyId}_`, "");
 }
@@ -62,9 +74,21 @@ async function loadStoryMemories(event, cloud, resolvedIdentity) {
   const requested = Array.isArray(event.memoryIds) ? [...new Set(event.memoryIds.map(String))] : [];
   if (!requested.length || requested.length > 20 || (story && requested.some(id => !(story.memoryIds || []).includes(id)))) throw new Error("INVALID_STORY_SOURCES");
   const requestedSet = new Set(requested);
-  const records = await loadAll(db, "memories", familyId);
+  let records;
+  if (requested.length === 1) {
+    records = [await loadMemoryById(db, familyId, requested[0])];
+  } else {
+    const documentIds = requested.filter(id => /^[a-zA-Z0-9_-]{1,128}$/.test(id)).map(id => `${familyId}_${id}`);
+    records = documentIds.length ? (await db.collection("memories")
+      .where({ _id: db.command.in(documentIds) }).limit(20).get()).data : [];
+  }
+  const found = new Set(records.filter(Boolean).map(memory => memoryIdOf(memory, familyId)));
+  if (requested.some(id => !found.has(id))) {
+    const legacy = await loadAll(db, "memories", familyId);
+    records.push(...legacy.filter(memory => !found.has(memoryIdOf(memory, familyId))));
+  }
   const byId = new Map();
-  records.filter(memory => !memory.deletedAt && memory.scope === "personal").forEach(memory => {
+  records.filter(memory => memory && memory.familyId === familyId && !memory.deletedAt && memory.scope === "personal").forEach(memory => {
     const id = memoryIdOf(memory, familyId);
     if (requestedSet.has(id)) byId.set(id, memory);
   });

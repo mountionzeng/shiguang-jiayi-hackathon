@@ -1,7 +1,7 @@
 import { storyCoverApi } from "../miniprogram/services/storyCoverService";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 
 import { BiographyDraft, FamilyRoomState, ManuscriptChapter } from "../miniprogram/domain/biography";
 import { clearAiConsent } from "../miniprogram/services/aiConsent";
@@ -44,9 +44,15 @@ async function pageDefinition(name: "story-images" | "book" | "story-cover"): Pr
   return captured;
 }
 
+const pollingPages: PageInstance[] = [];
+afterEach(() => {
+  for (const page of pollingPages.splice(0)) call(page, "onUnload");
+});
+
 function instantiate(definition: PageDefinition): PageInstance {
   const instance = { ...definition, data: structuredClone(definition.data ?? {}) } as PageInstance;
   instance.setData = update => Object.assign(instance.data, update);
+  if (typeof instance.schedulePoll === 'function') pollingPages.push(instance);
   return instance;
 }
 
@@ -756,7 +762,7 @@ test("轮询到图画好后刷新列表，没有正在画的图就不再轮询�
   let listCalls = 0;
   const checked: string[] = [];
   const restoreApi = withApi({
-    listStoryImages: async () => { listCalls++; return listCalls === 1 ? listWith() : listWith({ pending: [] }); },
+    listStoryImages: async () => { listCalls++; return listCalls === 1 ? listWith() : listWith({ pending: [], images: [] }); },
     checkImageJob: async jobId => { checked.push(jobId); return { job: { ...listWith().pending[0], status: "stored", message: "画好了" } }; },
   });
   context.after(() => { restoreApi(); timers.restore(); env.restore(); });
@@ -833,6 +839,7 @@ test("本章正文里的照片会随直接配图请求发送，AI 插图引用�
   context.after(() => { restoreApi(); env.restore(); });
 
   const page = instantiate(await pageDefinition("story-images"));
+  context.after(() => call(page, "onUnload"));
   call(page, "onLoad", {});
   await call(page, "refresh");
   const groups = page.data.groups as Array<{ referencePhotoIds: string[] }>;
@@ -1397,4 +1404,84 @@ test("封面选用需审核通过且携带故事版本，刷新后同步显示�
   assert.equal(page.data.coverImageId,'cover-a');
   assert.match(String(page.data.notice),/首页.*同步/);
   assert.equal(page.data.selecting,false);
+});
+
+test('配图提交后直接进入启动轮询，不先重读整房与列表', async context => {
+  const env = installWx({}, stateWithBook()); env.setApp(false);
+  const timers = captureTimers();
+  let listCalls = 0;
+  const job = listWith().pending[0];
+  const restoreApi = withApi({
+    listStoryImages: async () => { listCalls++; return listWith({ pending: [] }); },
+    submitChapterImage: async () => job,
+  });
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+  const page = instantiate(await pageDefinition('story-images'));
+  await call(page, 'refresh');
+  await call(page, 'generate', {currentTarget:{dataset:{id:'chapter-b'}}});
+  assert.equal(listCalls, 1, 'submit already returned the authoritative job');
+  assert.deepEqual(page.activeJobIds, [job.jobId]);
+  assert.equal(timers.scheduled[timers.scheduled.length - 1]?.delay, 0, 'start generation on the next event-loop turn');
+});
+
+test('封面提交后直接进入启动轮询，不重新读取封面来源', async context => {
+  const env = installWx(); env.setApp(false);
+  const timers = captureTimers();
+  const original = {...storyCoverApi};
+  const job = {...listWith().pending[0], purpose:'cover', chapterId:'book-cover'};
+  storyCoverApi.submit = async () => job;
+  context.after(() => { Object.assign(storyCoverApi, original); timers.restore(); env.restore(); });
+  const page = instantiate(await pageDefinition('story-cover'));
+  page.setData({storyId:'story-one', loading:false});
+  let refreshes = 0; page.refresh = async () => { refreshes++; };
+  await call(page, 'generate');
+  assert.equal(refreshes, 0);
+  assert.deepEqual(page.data.jobs, [job]);
+  assert.equal(timers.scheduled[timers.scheduled.length - 1]?.delay, 0);
+});
+
+test('图片轮询最多两路，重复进入不重发，离开后不再启动剩余任务', async context => {
+  const env = installWx(); env.setApp(false);
+  const timers = captureTimers();
+  const requested: string[] = [];
+  let stopped = false;
+  const finishers: Array<() => void> = [];
+  const restoreApi = withApi({checkImageJob: jobId => {
+    requested.push(jobId);
+    if (stopped) return Promise.resolve({job:{...listWith().pending[0], jobId}});
+    return new Promise(resolve => finishers.push(() => resolve({job:{...listWith().pending[0], jobId}})));
+  }});
+  context.after(() => { restoreApi(); timers.restore(); env.restore(); });
+  const page = instantiate(await pageDefinition('story-images'));
+  page.activeJobIds = ['a','b','c'];
+  const polling = call(page,'pollOnce');
+  await new Promise(resolve => setImmediate(resolve));
+  const second = call(page,'pollOnce');
+  const started = [...requested];
+  stopped = true;
+  call(page,'onHide');
+  finishers.forEach(finish => finish());
+  await Promise.all([polling,second]);
+  assert.deepEqual(started,['a','b']);
+  assert.deepEqual(requested,['a','b']);
+  assert.equal(timers.scheduled.length,0);
+});
+
+
+test('图片生成完成后继续轻量更新审核与美观检查，完成后停止', async context => {
+  const env = installWx({}, stateWithBook()); env.setApp(false);
+  const timers = captureTimers();
+  let lists = 0;
+  const restoreApi = withApi({listStoryImages:async() => {
+    lists++;
+    return listWith({pending:[],images:[{...listWith().images[1], quality:lists === 1 ? 'pending':'pass'}]});
+  },checkImageJob:async() => {throw new Error('no generation job should be polled');}});
+  context.after(() => {restoreApi();timers.restore();env.restore();});
+  const page = instantiate(await pageDefinition('story-images'));
+  await call(page,'refresh');
+  assert.equal(page.pendingImageChecks,true);
+  await call(page,'pollOnce');
+  assert.equal(lists,2);
+  assert.equal(page.pendingImageChecks,false);
+  assert.equal(timers.scheduled.length,1);
 });

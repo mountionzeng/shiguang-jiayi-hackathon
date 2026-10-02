@@ -50,6 +50,18 @@ async function loadAll(db, collection, familyId) {
   }
 }
 
+// Current writes use a stable document ID. Only missing/legacy records need the scan.
+async function loadMemoryById(db, familyId, memoryId) {
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(memoryId)) return undefined;
+  try {
+    const memory = (await db.collection("memories").doc(`${familyId}_${memoryId}`).get()).data;
+    return memory && memoryIdOf(memory, familyId) === memoryId ? memory : undefined;
+  } catch (error) {
+    if (/DOCUMENT_NOT_FOUND|does not exist|not found|cannot find document|document\.get:fail -1\b/i.test(String(error?.errMsg || error?.message || ""))) return undefined;
+    throw error;
+  }
+}
+
 function memoryIdOf(memory, familyId) {
   return memory.frontendContributionId || memory.id || String(memory.sourceRecordId || "").replace(/^src_/, "").replace(`${familyId}_`, "") || String(memory._id || "").replace(`${familyId}_`, "");
 }
@@ -69,8 +81,8 @@ async function loadMemorySource(event, cloud, resolvedIdentity) {
   if (!openid) throw new Error("LOGIN_REQUIRED");
   const familyId = resolvedIdentity?.familyId || `family_${openid}`;
   const db = cloud.database();
-  const records = await loadAll(db, "memories", familyId);
-  const memory = records.find((item) => memoryIdOf(item, familyId) === memoryId);
+  const memory = await loadMemoryById(db, familyId, memoryId)
+    ?? (await loadAll(db, "memories", familyId)).find(item => memoryIdOf(item, familyId) === memoryId);
   if (!memory || memory.familyId !== familyId || memory.deletedAt || memory.scope !== "personal") {
     throw new Error("MEMORY_NOT_FOUND");
   }
