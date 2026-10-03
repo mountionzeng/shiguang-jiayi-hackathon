@@ -48,15 +48,14 @@
 .spine-body { position: absolute; right: 0; bottom: 0; left: 0; height: 100%; filter: drop-shadow(3rpx 6rpx 6rpx rgba(42,46,43,.16)); transition: transform 160ms ease; }
 .spine-h-1 .spine-body { height: 93%; }
 .spine-h-2 .spine-body { height: 86%; }
-.spine-art { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: block; width: 100%; height: 100%; border-radius: 7rpx 12rpx 8rpx 5rpx; background: linear-gradient(90deg, rgba(66,55,42,.18) 0 7rpx, rgba(255,253,247,.42) 7rpx 10rpx, transparent 10rpx 100%), linear-gradient(180deg, rgba(255,253,247,.72), rgba(221,211,187,.78)); box-shadow: inset -8rpx 0 0 rgba(42,46,43,.06), inset 0 0 18rpx rgba(255,255,255,.38); }
-.spine-tint { position: absolute; top: 3%; right: 20%; bottom: 1%; left: 3%; background: rgba(79,127,107,.06); }
-.spine-tone-1 .spine-tint { background: rgba(74,110,136,.2); }
-.spine-tone-2 .spine-tint { background: rgba(176,130,57,.22); }
-.spine-tone-3 .spine-tint { background: rgba(180,80,60,.16); }
+/* 复用原始透明书脊插图；只转色相，不用矩形蒙层遮住纸纹、绑线和书页。 */
+.spine-art { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: block; width: 100%; height: 100%; }
+.spine-tone-1 .spine-art { filter: hue-rotate(65deg); }
+.spine-tone-2 .spine-art { filter: hue-rotate(-65deg); }
+.spine-tone-3 .spine-art { filter: hue-rotate(-135deg); }
 .spine-label { position: absolute; top: 12%; right: 25%; bottom: 13%; left: 10%; display: flex; justify-content: center; padding-top: 16rpx; overflow: hidden; }
 .spine-title { width: 1.1em; color: var(--ink); font-size: 30rpx; font-weight: 600; line-height: 1.2; text-align: center; word-break: break-all; }
 .spine-no { position: absolute; right: 20%; bottom: 3%; left: 3%; color: rgba(255,253,246,.92); font-size: 18rpx; text-align: center; }
-.spine-empty .spine-art { opacity: .82; }
 .spine-pressed .spine-body { transform: translateY(-14rpx); }
 .shelf-books .spine-new .spine-body { display: flex; flex-direction: column; align-items: center; height: 86%; padding-top: 26rpx; border: 3rpx dashed rgba(79,127,107,.45); border-radius: 8rpx; background: rgba(234,241,237,.6); filter: none; }
 .spine-new-plus { margin-bottom: 12rpx; color: var(--jade); font-size: 40rpx; line-height: 1; }

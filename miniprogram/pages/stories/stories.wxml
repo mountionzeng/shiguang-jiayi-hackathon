@@ -36,8 +36,7 @@
         <view class="shelf-books">
           <button class="story-book spine spine-tone-{{index % 4}} spine-h-{{index % 3}} {{!item.chapterCount ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
             <view class="spine-body">
-              <view class="spine-art" aria-hidden="true"></view>
-              <view class="spine-tint" aria-hidden="true"></view>
+              <image class="spine-art" src="/assets/illustrations/story-book-spine.png" mode="scaleToFill" aria-hidden="true"></image>
               <view class="spine-label"><text class="spine-title serif">{{item.title}}</text></view>
               <text class="spine-no" aria-hidden="true">{{index + 1 < 10 ? '0' : ''}}{{index + 1}}</text>
             </view>
