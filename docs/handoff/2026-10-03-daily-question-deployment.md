@@ -52,3 +52,9 @@
 用户要求重新生成二维码。原会话CLI再次上传超时；正常退出并重开微信开发者工具后，官方CLI preview退出0并返回成功，未更改VPN、网络、权限或应用源码。
 
 新二维码：材料目录 `artifacts/button-acceptance-20261003/preview-daily-fac39d1-20261003-220503.png`（47,266字节）。同名 `-info.json`、`-manifest.json` 与 `.log` 保存包信息、源码哈希和成功日志。代码版本仍为已验收的fac39d1；源码HEAD ad4a859仅追加文档。生成前后191个客户端文件哈希再次验证无漂移，既有完整流程验收与测试清理仍适用。总包2,161,058字节，主包2,060,923字节。图片已实际打开确认是新生成二维码；手机扫码体验仍需真机验证。
+
+## 23:24过期码更新与工程入口核对
+
+用户报告二维码失效并询问同名工程如何选择。官方CLI preview再次成功退出0，生成材料目录 `artifacts/button-acceptance-20261003/preview-daily-fac39d1-20261003-232430.png`（46,831字节）；同名manifest/info/log保存。191个客户端文件出码前后无变化，仍使用本轮已经完成实际流程与清理的fac39d1版本。官方CLI open成功打开 `/private/tmp/shiguang-xiaoyi-input-fix-20261002`，未修改其名称或源码。
+
+开发者工具列表是本地目录入口，不是线上发布版本：ui-interface-20260927、conversation-round2-preview-20260928、shiguang-approved-ui-xiaoyi-5beb3f2三个目录已不存在；ai-preview-8f6fb7c、ai-preview-19212f1、ai-preview-e2e8bf9为旧验收副本。主仓库main仍有个人记忆未提交工作，不能删除。建议清理失效/旧测试列表入口，保留源码及恢复记录；本次未执行删除。
