@@ -1275,3 +1275,6 @@
 .recent-timeline::before { position: absolute; top: 20rpx; bottom: 20rpx; left: 47rpx; width: 2rpx; background: rgba(79, 127, 107, 0.26); content: ""; }
 .timeline-row { position: relative; display: flex; align-items: stretch; margin-top: 22rpx; }
 .timeline-row:active { opacity: 0.72; }
+
+.daily-status { margin: 12rpx 0; color: var(--ink-soft); font-size: 23rpx; line-height: 1.5; }
+.recommended-refresh[disabled] { opacity: .6; }

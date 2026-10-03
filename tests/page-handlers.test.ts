@@ -3098,3 +3098,26 @@ test('new-story form reports a failed initial read and can be retried', async co
   await callPage(page, 'openCreate');
   assert.equal(page.data.createOpen, true);
 });
+
+test('daily question ignores late response after switching sources and carries the displayed question into chat',async context=>{
+ const initial=createInitialRoomState();const storage=installWxMock(initial);context.after(storage.restore);
+ const priorApp=Object.getOwnPropertyDescriptor(globalThis,'getApp');
+ Object.defineProperty(globalThis,'getApp',{configurable:true,value:()=>({globalData:{cloudReady:true,aiReady:true}})});
+ context.after(()=>{if(priorApp)Object.defineProperty(globalThis,'getApp',priorApp);else delete (globalThis as any).getApp});
+ const wxMock=(globalThis as any).wx;const get=wxMock.getStorageSync;
+ wxMock.getStorageSync=(key:string)=>key==='aiConsentDecision'?{granted:true,version:1}:get(key);
+ const resolvers=new Map<string,(value:unknown)=>void>();
+ wxMock.cloud={callFunction:({data}:any)=>new Promise(resolve=>resolvers.set(data.memoryId,resolve))};
+ const home=instantiate(await pageDefinition('index'));home.roomSnapshot=initial;
+ home.setData({hasProfile:true,recommendedSourceId:'daily-race-a',currentStoryTitle:'测试'});
+ const first=callPage(home,'updateDailyQuestion') as Promise<void>;
+ home.setData({recommendedSourceId:'daily-race-b'});
+ const second=callPage(home,'updateDailyQuestion') as Promise<void>;
+ await new Promise(resolve=>setImmediate(resolve));
+ const result=(sourceId:string,text:string)=>({result:{generationMode:'cloud-ai',dimension:'feeling',text,sourceId,anchor:'蓝色旧书'}});
+ resolvers.get('daily-race-b')!(result('daily-race-b','蓝色旧书对你意味着什么？'));await second;
+ resolvers.get('daily-race-a')!(result('daily-race-a','旧问题为什么还在这里？'));await first;
+ assert.equal(home.data.recommendedQuestion,'蓝色旧书对你意味着什么？');assert.equal(home.data.dailyLoading,false);
+ callPage(home,'continueRecommendedQuestion');assert.match(last(storage.navigations)!,/sourceId=daily-race-b/);
+ const query=new URLSearchParams(last(storage.navigations)!.split('?')[1]);assert.equal(query.get('question'),home.data.recommendedQuestion);
+});

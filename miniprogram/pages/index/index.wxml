@@ -141,10 +141,13 @@
         <button
           class="recommended-refresh"
           bindtap="changeRecommendedQuestion"
+          disabled="{{dailyLoading}}"
           hover-class="none"
           aria-label="换一个推荐问题"
-        >换一个问题</button>
+        >{{dailyLoading ? '正在更新…' : '换一个问题'}}</button>
       </view>
+      <generation-status wx:if="{{dailyLoading}}" text="正在读你的故事，想一个新问题…" />
+      <view wx:elif="{{dailyStatus}}" class="daily-status">{{dailyStatus}}</view>
       <view
         wx:if="{{hasRecommendedQuestion}}"
         class="recommended-card"

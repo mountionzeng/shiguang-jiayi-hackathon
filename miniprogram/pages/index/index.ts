@@ -1,3 +1,5 @@
+import {dailyQuestionAvailable, dailyQuestionCache, generateDailyQuestion} from "../../services/dailyQuestion";
+import {hasAiConsent} from "../../services/aiConsent";
 import { storyCoverApi } from "../../services/storyCoverService";
 import { renderBookCover } from "../../services/bookFrameColor";
 import { bookCoverExists, cachedBookCover } from "../../services/bookCoverCache";
@@ -294,6 +296,7 @@ function interviewUrl(
  */
 Page({
   recommendationOffset: 0,
+  dailyRequestId: 0,
   coverRefreshId: 0,
   roomSnapshot: undefined as FamilyRoomState | undefined,
   coverRequests: {} as Record<string, boolean>,
@@ -320,6 +323,9 @@ Page({
     currentStoryTitle: "",
     currentStoryLabel: "",
     dailyQuestion: "",
+    dailyLoading: false,
+    dailyAi: false,
+    dailyStatus: "",
     recommendedQuestionLabel: "",
     recommendedQuestionContext: "",
     recommendedQuestion: "",
@@ -336,7 +342,10 @@ Page({
     void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
+  onHide() { this.dailyRequestId += 1; },
+
   async refresh(state?: FamilyRoomState) {
+    this.dailyRequestId += 1;
     const coverRefreshId = ++this.coverRefreshId;
     const currentState = state ?? await loadRoomStateRemoteFirst();
     const current = await loadCurrentMemberRemoteFirst(currentState);
@@ -422,11 +431,13 @@ Page({
       recommendedStoryTitle: recommendedQuestion?.storyTitle ?? "",
       recommendedDimension: recommendedQuestion?.dimension ?? "",
       hasRecommendedQuestion: Boolean(recommendedQuestion),
+      dailyAi: false, dailyLoading: false, dailyStatus: "",
       recentStories,
       hasRecentStories: recentStories.length > 0,
     });
 
     this.preloadBookCovers(activeBookIndex);
+    void this.updateDailyQuestion();
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
   },
 
@@ -489,6 +500,7 @@ Page({
     const index = event.detail.current;
     const slide = (this.data.bookSlides as BookSlideView[])[index];
     if (!slide || index === this.data.activeBookIndex) return;
+    this.dailyRequestId += 1;
     saveCurrentStoryTitle(slide.storyTitle);
     saveCurrentStoryId(slide.storyId || "");
     this.recommendationOffset = 0;
@@ -523,8 +535,10 @@ Page({
       recommendedStoryTitle: recommended?.storyTitle ?? "",
       recommendedDimension: recommended?.dimension ?? "",
       hasRecommendedQuestion: Boolean(recommended),
+      dailyAi: false, dailyLoading: false, dailyStatus: "",
     });
     this.preloadBookCovers(index);
+    void this.updateDailyQuestion();
   },
 
   startInterview() {
@@ -628,7 +642,48 @@ Page({
     wx.navigateTo({ url: "/pages/room/room" });
   },
 
+  async updateDailyQuestion(manual = false) {
+    const state = this.roomSnapshot;
+    if (!state || !this.data.hasProfile || !dailyQuestionAvailable()) return;
+    if (!manual && !hasAiConsent()) {
+      this.setData({dailyStatus: "点换一个问题，让小忆结合这本故事来问"});
+      return;
+    }
+    const story = state.stories?.find(story => story.id === this.data.storyId && !story.deletedAt);
+    if (story?.sourcePolicyRequired) return;
+    const memoryId = this.data.recommendedSourceId;
+    if (!story && !memoryId) {
+      this.setData({dailyStatus: "留下一段记忆后，小忆会顺着你的故事来问"});
+      return;
+    }
+    const memories = memoryPool(state.contributions).filter(memory => story ? story.memoryIds.includes(memory.id) : memory.id === memoryId);
+    const version = JSON.stringify([story?.currentRevisionId, story?.version, story?.updatedAt, memories.map(memory => [memory.id,memory.text]), state.manuscriptRevisions?.find(revision => revision.id === story?.currentRevisionId)?.draft]);
+    const scope = story ? `${story.familyId}:${story.id}` : `memory:${memoryId}`;
+    const requestId = ++this.dailyRequestId;
+    this.setData({dailyLoading:true, dailyStatus:""});
+    try {
+      const question = await dailyQuestionCache.get(scope, version, sharedQuestionSeed(), manual, previous =>
+        generateDailyQuestion(story ? {storyId:story.id} : {memoryId}, previous, manual));
+      if (requestId !== this.dailyRequestId) return;
+      this.setData({dailyAi:true, hasRecommendedQuestion:true, recommendedQuestion:question.text,
+        recommendedSourceId:question.sourceId, recommendedDimension:question.dimension,
+        recommendedStoryTitle:this.data.currentStoryTitle, recommendedQuestionContext:`从你写的「${question.anchor}」接着聊`,
+        dailyStatus:"已结合保存的故事更新"});
+    } catch (error) {
+      if (requestId !== this.dailyRequestId) return;
+      this.setData({dailyStatus:"这次没能生成新问题，点换一个问题重试"});
+      logLoadError("daily-question", error);
+    } finally {
+      if (requestId === this.dailyRequestId) this.setData({dailyLoading:false});
+    }
+  },
+
   changeRecommendedQuestion() {
+    if (this.data.dailyLoading) return;
+    if (dailyQuestionAvailable() && (this.data.storyId || this.data.recommendedSourceId)) {
+      void this.updateDailyQuestion(true);
+      return;
+    }
     const previous = this.data.dailyQuestion;
     this.recommendationOffset += 1;
     // 题库不大，换种子可能又挑到同一题；这个故事还没有记忆可追问时，多换几次直到换出新题。
@@ -640,7 +695,7 @@ Page({
 
   continueRecommendedQuestion() {
     const sourceId = this.data.recommendedSourceId || "";
-    if (!sourceId) {
+    if (!sourceId && !this.data.dailyAi) {
       wx.showToast({ title: "还没有可追问的记忆", icon: "none" });
       return;
     }
@@ -650,7 +705,7 @@ Page({
       url: interviewUrl(sourceId, this.data.recommendedStoryTitle || "", {
         text: this.data.recommendedQuestion || "",
         dimension: this.data.recommendedDimension || "",
-      }),
+      }) + (this.data.dailyAi && this.data.storyId ? `&storyId=${encodeURIComponent(this.data.storyId)}` : ""),
     });
   },
 

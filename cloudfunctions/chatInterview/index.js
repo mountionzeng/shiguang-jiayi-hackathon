@@ -1,3 +1,4 @@
+const {loadDailySources, dailyMessages, validateDailyQuestion} = require('./dailyQuestion');
 const {createRepository: createMemoryRepository} = require('./personalMemoryRepository');
 const {prepareContext,commitContext} = require('./personalMemoryContext');
 const {formatContext} = require('./personalMemoryCore');
@@ -522,6 +523,29 @@ async function generateInviteCopy(event, options) {
   }
 }
 
+async function generateDailyQuestion(event, options) {
+  const {cloud, db, identity, apiKey, model, baseUrl, dependencies} = options;
+  if (!dependencies.skipGuard) assertConsentVersion(identity.account, AI_CONSENT_VERSION);
+  const context = await loadDailySources(db, identity, event);
+  const messages = dailyMessages(context, event.previousQuestions);
+  if (!dependencies.skipGuard) {
+    await moderateText(cloud, identity.openid, messages[1].content, "每日一问输入", {db, nowMs: dependencies.nowMs});
+    await reserveAiRequest(db, identity, "chatInterview", dependencies.nowMs);
+  }
+  const meter = createTextMeter({db, identity, kind:"chatInterview", model, baseUrl, fetcher:defaultFetch});
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 35_000);
+  try {
+    const content = await requestChatCompletion({baseUrl, apiKey, model, messages, temperature:0.7, signal:controller.signal, fetcher:meter.fetch});
+    const result = validateDailyQuestion(content, context.sources, event.previousQuestions);
+    if (!dependencies.skipGuard) {
+      await moderateText(cloud, identity.openid, result.text, "每日一问回复", {db, nowMs:dependencies.nowMs});
+      await assertIdentityStillActive(db, identity);
+    }
+    return {...result, aiDisclosure:"文字 AI 生成", computeUsage:meter.snapshot()};
+  } finally { clearTimeout(timeoutId); }
+}
+
 async function main(event, dependencies = {}) {
   const apiKey = process.env.CHAT_AI_API_KEY || process.env.AI_API_KEY;
   const model = process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
@@ -557,6 +581,10 @@ async function main(event, dependencies = {}) {
     if (cloud.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
     db = db || cloud.database();
     identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
+  }
+
+  if (event?.action === "dailyQuestion") {
+    return generateDailyQuestion(event, {cloud, db, identity, apiKey, model, baseUrl, dependencies});
   }
 
   if (event?.action === "inviteCopy") {
