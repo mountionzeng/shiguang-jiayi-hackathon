@@ -3054,3 +3054,47 @@ test('confirming an organized chapter locks the preview before validation and ig
   assert.equal(page.data.confirmingOrganize, false);
   assert.equal(page.data.panel, '');
 });
+
+
+test('loaded story choices and the new-story form reuse the visible snapshot, including an empty memory pool', async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('stories'));
+  await callPage(page, 'refresh');
+  let reads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { configurable: true, get() { reads++; return undefined; } });
+  await callPage(page, 'openCreate');
+  assert.equal(page.data.createOpen, true);
+  assert.ok((page.data.createMemories as unknown[]).length > 0);
+  callPage(page, 'closeCreate');
+  const story = (page.data.stories as Array<{ key: string }>).find(item => !item.key.startsWith('manuscript:'))!;
+  assert.ok(story);
+  await callPage(page, 'openStory', { currentTarget: { dataset: { key: story.key } } });
+  assert.equal(page.data.selectedKey, story.key);
+  assert.equal(reads, 0, 'opening existing views must not reload an already displayed room');
+
+  delete (wx as any).cloud;
+  const empty = createInitialRoomState();
+  empty.contributions = [];
+  wx.setStorageSync(ROOM_KEY, empty);
+  await callPage(page, 'refresh');
+  reads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { get() { reads++; return undefined; } });
+  await callPage(page, 'openCreate');
+  assert.equal(page.data.createOpen, true);
+  assert.deepEqual(page.data.createMemories, [], 'a refreshed empty pool must not reuse stale choices');
+  assert.equal(reads, 0);
+});
+
+test('new-story form reports a failed initial read and can be retried', async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('stories'));
+  Object.defineProperty((globalThis as any).wx, 'cloud', { configurable: true, get() { throw new Error('initial read unavailable'); } });
+  await callPage(page, 'openCreate');
+  assert.equal(page.data.createOpen, false);
+  assert.match(String(last(storage.toasts)), /initial read unavailable/);
+  delete (wx as any).cloud;
+  await callPage(page, 'openCreate');
+  assert.equal(page.data.createOpen, true);
+});

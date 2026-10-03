@@ -40,6 +40,7 @@ function deletedLabel(iso: string): string {
  * 书稿也是一个故事。点开一个故事看它的记忆，接着讲，或者打开整理好的章节。
  */
 Page({
+  roomSnapshot: undefined as Awaited<ReturnType<typeof loadRoomStateRemoteFirst>> | undefined,
   data: {
     stories: [] as StoryRow[],
     deletedStories: [] as DeletedStoryRow[],
@@ -58,9 +59,10 @@ Page({
     if (options.key) try { this.setData({ selectedKey: decodeURIComponent(options.key) }); } catch { /* 显示全部故事 */ }
   },
 
-  onShow() { void this.refresh().then(() => { if (this.openCreateOnShow) { this.openCreateOnShow = false; this.openCreate(); } }).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
-  async refresh() {
-    const state = usesCloudStorage() ? await ensureStoryBooks() : await loadRoomStateRemoteFirst();
+  onShow() { this.roomSnapshot = undefined; void this.refresh().then(() => { if (this.openCreateOnShow) { this.openCreateOnShow = false; this.openCreate(); } }).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
+  async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+    const state = nextState ?? (usesCloudStorage() ? await ensureStoryBooks() : await loadRoomStateRemoteFirst());
+    this.roomSnapshot = state;
     const pool = memoryPool(state.contributions);
     const byId = new Map(pool.map(memory => [memory.id, memory]));
     const shelf = storyShelf(state);
@@ -99,7 +101,7 @@ Page({
     if (!row) return;
     if (row.key.startsWith("manuscript:") && row.manuscriptMemberId) { this.openLegacyManuscript(row.manuscriptMemberId); return; }
     this.setData({ selectedKey: row.key });
-    await this.refresh().catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); });
+    await this.refresh(this.roomSnapshot).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); });
   },
   openManuscript(storyId: string) {
     saveCurrentStoryId(storyId);
@@ -215,13 +217,17 @@ Page({
   },
   openMemories() { wx.navigateTo({ url: "/pages/archive/archive" }); },
   openMigration() { wx.navigateTo({ url: "/pages/story-migration/story-migration" }); },
-  openCreate() {
-    const pool = this.data.createMemories.length ? this.data.createMemories : [];
-    if (pool.length) { this.setData({ createOpen: true }); return; }
-    void loadRoomStateRemoteFirst().then(state => this.setData({
-      createOpen: true,
-      createMemories: memoryPool(state.contributions).map(memory => ({ ...memory, checked: false })),
-    }));
+  async openCreate() {
+    try {
+      const state = this.roomSnapshot ?? await loadRoomStateRemoteFirst();
+      const selected = new Set(this.data.createMemories.filter(memory => memory.checked).map(memory => memory.id));
+      this.setData({
+        createOpen: true,
+        createMemories: memoryPool(state.contributions).map(memory => ({ ...memory, checked: selected.has(memory.id) })),
+      });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : "新建故事暂时打不开，请重试", icon: "none" });
+    }
   },
   closeCreate() { if (!this.data.creating) this.setData({ createOpen: false }); },
   keepCreateOpen() {},
