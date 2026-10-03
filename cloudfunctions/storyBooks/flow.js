@@ -265,7 +265,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     legacyImageJobs:[...(source.legacyImageJobs || [])].filter(job=>!job.storyId).sort((a,b)=>String(a._id).localeCompare(String(b._id))),
   });
   const sourceDigest = source => core.hash(core.stable(legacySource(source)));
-  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false}={}) {
+  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false,home=false}={}) {
     const measure = readState ? measurePerformance : (_operation,work)=>work();
     const readFamily = async () => {
       const family = await measure('state.query.families',()=>repo.get('families',ctx.familyId));
@@ -283,9 +283,32 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     ]);
     // With access enabled, the service's owner check precedes these reads.
     // They only depend on ctx.familyId; keep command/migration ordering unchanged.
-    const [family,rows] = readState
-      ? await Promise.all([readFamily(),readCollections()])
-      : [await readFamily(),await readCollections()];
+    let family, rows;
+    if (home) {
+      const initial = await Promise.all([
+        readFamily(),
+        measure('state.query.stories',()=>repo.all('stories',ctx.familyId)),
+        measure('state.query.memories',()=>repo.all('memories',ctx.familyId)),
+        measure('state.query.family_members',()=>repo.all('family_members',ctx.familyId)),
+      ]);
+      family = initial[0];
+      // Legacy shelves still derive books from personal manuscripts. Keep their
+      // full reader until migration is active; a home projection is read-only.
+      if (family.storyBooks?.status !== 'active') return load(ctx,{includeMemories,includeMembers,readState});
+      const stories = initial[1].filter(story=>story.familyId===ctx.familyId && !story.deletedAt);
+      const drafts = await measure('state.query.biography_drafts',()=>Promise.all(stories
+        .filter(story=>story.currentRevisionId).map(async story=>{
+          const record=await repo.get('biography_drafts',docId(ctx.familyId,story.currentRevisionId));
+          return record?.familyId===ctx.familyId && record.storyId===story.id &&
+            record.revision?.id===story.currentRevisionId && record.revision.storyId===story.id ? record : undefined;
+        })));
+      const memories = initial[2].filter(memory=>!memory.deletedAt).map(({aiRevisions,...memory})=>memory);
+      rows = [stories,drafts.filter(Boolean),[],memories,initial[3],[],[]];
+    } else {
+      [family,rows] = readState
+        ? await Promise.all([readFamily(),readCollections()])
+        : [await readFamily(),await readCollections()];
+    }
     const [stories,drafts,pending,memories,members,legacyImages,legacyImageJobs] = rows;
     const membersById=new Map(members.map(member=>[storedMemberId(member),member]));
     const contributions=memories.map(memory=>{
@@ -307,8 +330,8 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     if (family.storyBooks) state.storyMigration={...family.storyBooks,pending:pending.map(p=>p.item)};
     return state;
   }
-  async function state(ctx) {
-    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true});
+  async function state(ctx,event={}) {
+    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true,home:event.view==='home'});
     const membersById=new Map(loaded.members.map(member=>[member.id,member]));
     return {
       roomStateVersion:1,

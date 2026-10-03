@@ -1278,3 +1278,7 @@
 
 .daily-status { margin: 12rpx 0; color: var(--ink-soft); font-size: 23rpx; line-height: 1.5; }
 .recommended-refresh[disabled] { opacity: .6; }
+
+.home-load-state { margin: 28rpx 36rpx; color: #587a69; font-size: 26rpx; text-align: center; }
+.home-retry { display: inline-block; margin: 16rpx 0; padding: 0 28rpx; color: #4f7f6b; background: #eaf1ed; font-size: 26rpx; border-radius: 32rpx; }
+.home-retry::after { border: 0; }

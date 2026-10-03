@@ -302,6 +302,8 @@ Page({
   coverRequests: {} as Record<string, boolean>,
 
   data: {
+    homeLoading: true,
+    homeLoadError: false,
     hasProfile: false,
     ownerAvatarText: "",
     // 书封就是正在聊的那个故事；所有故事的目录在底部的「人生之书」。
@@ -339,7 +341,7 @@ Page({
 
   onShow() {
     this.setData({ bookOpening: false });
-    void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
+    void this.refresh().catch(() => undefined);
   },
 
   onHide() { this.dailyRequestId += 1; },
@@ -347,7 +349,15 @@ Page({
   async refresh(state?: FamilyRoomState) {
     this.dailyRequestId += 1;
     const coverRefreshId = ++this.coverRefreshId;
-    const currentState = state ?? await loadRoomStateRemoteFirst();
+    this.setData({homeLoading:true, homeLoadError:false});
+    let currentState: FamilyRoomState;
+    try {
+      currentState = state ?? await loadRoomStateRemoteFirst({view:"home"});
+    } catch (error) {
+      if (coverRefreshId === this.coverRefreshId) this.setData({homeLoading:false,homeLoadError:true});
+      logLoadError("index", error);
+      throw error;
+    }
     const current = await loadCurrentMemberRemoteFirst(currentState);
     const owner = accountOwner(currentState.members) ?? (current.id ? current : undefined);
     const pool = memoryPool(currentState.contributions);
@@ -406,6 +416,7 @@ Page({
     });
     const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
     this.setData({
+      homeLoading:false, homeLoadError:false,
       coverUrl: activeBook?.coverUrl || "", coverImageId: coverStory?.coverImageId || "",
       hasProfile: Boolean(owner),
       ownerAvatarText: owner?.avatarText ?? "",
@@ -439,6 +450,10 @@ Page({
     this.preloadBookCovers(activeBookIndex);
     void this.updateDailyQuestion();
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
+  },
+
+  retryHomeLoad() {
+    if (!this.data.homeLoading) void this.refresh().catch(() => undefined);
   },
 
   preloadBookCovers(index: number) {

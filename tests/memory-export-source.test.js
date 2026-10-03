@@ -162,7 +162,8 @@ test('memory source action stays behind owner identity and access rules without 
   assert.equal((await legacy(context, { action: 'memoryExportSource', memoryId: 'memory-one' })).source.text, legacyMemory.text);
   const service = createStoryService(f.repo, common);
   const capabilities = await service(context, { action: 'capabilities' });
-  assert.equal(capabilities.bookExport, false);
+  assert.equal(capabilities.bookExport, true);
+  assert.equal(capabilities.shareCard, false);
   assert.equal(capabilities.memoryBookExport, true);
   const result = await service(context, { action: 'memoryExportSource', memoryId: 'memory-one', text: '伪造正文', familyId: 'family_reader' });
   assert.equal(result.source.text, f.memory.text);

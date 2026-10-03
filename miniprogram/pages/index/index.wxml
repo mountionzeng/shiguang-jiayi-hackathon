@@ -36,7 +36,15 @@
       </button>
     </view>
 
-    <view class="book-stage {{bookSlides.length > 1 ? 'book-stage-scrollable' : ''}}">
+    <view class="home-load-state" wx:if="{{homeLoading || homeLoadError}}">
+      <generation-status wx:if="{{homeLoading}}" text="正在翻开你的故事书…" />
+      <block wx:else>
+        <text>故事书暂时没能加载出来</text>
+        <button bindtap="retryHomeLoad" class="home-retry" hover-class="none">重新加载</button>
+      </block>
+    </view>
+
+    <view wx:if="{{bookSlides.length}}" class="book-stage {{bookSlides.length > 1 ? 'book-stage-scrollable' : ''}}">
       <swiper
         class="book-swiper"
         circular="{{bookSlides.length > 1}}"
@@ -123,7 +131,7 @@
       <view class="book-open-label typewriter">{{bookSlides.length > 1 ? '左右滑动换一本书 · 轻触打开' : '轻触打开这个故事'}}</view>
     </view>
 
-    <view class="home-setup" wx:if="{{!hasProfile}}">
+    <view class="home-setup" wx:if="{{!homeLoading && !homeLoadError && !hasProfile}}">
       <view class="home-setup-title serif">先写下你的名字</view>
       <view class="home-setup-note">从你自己开始，把经历慢慢留下来。</view>
       <button

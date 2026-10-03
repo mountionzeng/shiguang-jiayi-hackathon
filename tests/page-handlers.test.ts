@@ -3121,3 +3121,26 @@ test('daily question ignores late response after switching sources and carries t
  callPage(home,'continueRecommendedQuestion');assert.match(last(storage.navigations)!,/sourceId=daily-race-b/);
  const query=new URLSearchParams(last(storage.navigations)!.split('?')[1]);assert.equal(query.get('question'),home.data.recommendedQuestion);
 });
+
+test('home shows loading and recoverable errors instead of first-profile setup during a slow cloud read', async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const previousApp=(globalThis as any).getApp;
+  context.after(()=>{(globalThis as any).getApp=previousApp;});
+  (globalThis as any).getApp=()=>({globalData:{cloudReady:true}});
+  let fail:(error:Error)=>void=()=>{};
+  (globalThis as any).wx.cloud={callFunction:({name}:any)=>name==='getOpenId' ? Promise.resolve({result:{openid:'fixture-user'}})
+    :new Promise((_resolve,reject)=>{fail=reject})};
+  const home=instantiate(await pageDefinition('index'));
+  const pending=callPage(home,'refresh') as Promise<void>;
+  const rejected=assert.rejects(pending,/offline/);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(home.data.homeLoading,true);
+  assert.equal(home.data.homeLoadError,false);
+  fail(new Error('offline'));await rejected;
+  assert.equal(home.data.homeLoading,false);
+  assert.equal(home.data.homeLoadError,true);
+  await callPage(home,'refresh',createInitialRoomState());
+  assert.equal(home.data.homeLoadError,false);
+  assert.equal(home.data.homeLoading,false);
+  assert.ok((home.data.bookSlides as unknown[]).length);
+});
