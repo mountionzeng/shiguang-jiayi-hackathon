@@ -946,6 +946,16 @@ test("the organize cloud function falls back when the provider times out", async
   }
 });
 
+test("short source memories must not be padded to a minimum length or inventory missing facts", () => {
+  for (const type of ["note", "memoir"]) {
+    const brief = organizeMemoryTest.organizationBrief(type);
+    assert.doesNotMatch(brief.rule, /body \d+ 到 \d+ 字/);
+    assert.match(brief.rule, /没有最低字数/);
+    assert.match(brief.rule, /不添加.*缺失说明/);
+    assert.match(brief.rule, /保留测试或虚构标记/);
+  }
+});
+
 test("the organize cloud function separates note cards and memoir chapters", () => {
   const note = organizeMemoryTest.organizationBrief("note");
   const memoir = organizeMemoryTest.organizationBrief("memoir");
