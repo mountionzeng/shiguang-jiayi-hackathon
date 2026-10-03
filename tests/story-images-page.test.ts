@@ -1549,3 +1549,74 @@ test('封面结束后列表加载失败停止动画并只重试列表，不再�
     assert.equal(page.timer, undefined);
   }
 });
+
+test('故事里的插图返回正文后按故事查询，旧档案回退仍可用', async context => {
+  const env = installWx(); env.setApp(false);
+  const books: string[] = [];
+  const selected = {imageId:'family_o-owner_img_req-abcdefgh', chapterId:'chapter-a', url:'https://tmp.example/old.png'};
+  const restoreApi = withApi({listStoryImages:async bookId => {
+    books.push(bookId);
+    return listWith({images:bookId === 'story-one' || bookId === 'legacy-owner' ? [{...listWith().images[0], imageId:selected.imageId, url:'https://tmp.example/fresh.png'}] : []});
+  }});
+  context.after(() => { restoreApi(); env.restore(); });
+  for (const storyId of ['story-one', '']) {
+    const page = instantiate(await pageDefinition('book'));
+    page.setData({storyId, memberId:storyId ? 'owner':'legacy-owner', storyImageSelected:true, refreshingStoryImage:true});
+    page.pendingStoryImage = {...selected};
+    await call(page,'refreshSelectedStoryImageUrl');
+    assert.equal((page.pendingStoryImage as typeof selected)?.url, 'https://tmp.example/fresh.png');
+    assert.equal(page.data.storyImageSelected,true);
+    assert.equal(page.data.refreshingStoryImage,false);
+  }
+  assert.deepEqual(books,['story-one','legacy-owner']);
+});
+
+test('读取书稿与确认草稿账号并行，二者都成功前不读本机草稿', async context => {
+  const state = {...stateWithBook(), roomStateVersion:1, deletedStories:[], stories:[], personalDrafts:{}, personalDraftSourceFingerprints:{}};
+  let warmed = false, identityCalls = 0;
+  let releaseState!: () => void, releaseIdentity!: () => void;
+  const stateResponse = new Promise(resolve => { releaseState = () => resolve({result:state}); });
+  const identityResponse = new Promise(resolve => { releaseIdentity = () => resolve({result:{openid:'o-owner'}}); });
+  const draftReads: string[] = [];
+  const env = installWx({getStorageSync:(key:string) => { if (key.startsWith('shiguang-chapter-draft-v1:')) draftReads.push(key); return undefined; },
+    cloud:{callFunction:async ({name}: {name:string}) => {
+      if (name === 'getOpenId') { if (!warmed) return {result:{openid:'o-owner'}}; identityCalls++; return identityResponse; }
+      if (name === 'storyBooks') return stateResponse;
+      throw new Error('unexpected function');
+    }},
+  });
+  env.setApp(true);
+  context.after(() => { releaseState(); releaseIdentity(); env.restore(); });
+  const {currentFamilyId} = await import('../miniprogram/services/cloudRoomStorage');
+  await currentFamilyId(); warmed = true;
+  const page = instantiate(await pageDefinition('book'));
+  const loading = call(page,'refresh');
+  await new Promise(resolve => setImmediate(resolve));
+  const startedConcurrently = identityCalls;
+  assert.deepEqual(draftReads, []);
+  releaseState();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(draftReads, [], 'unconfirmed account must not read local drafts');
+  releaseIdentity(); await loading;
+  assert.equal(startedConcurrently,1,'draft identity starts before the room response');
+  assert.equal(draftReads.length,1);
+  assert.equal(page.data.loading,false);
+});
+
+test('declining cover consent stops busy feedback without refreshing; uncertain failures still reconcile jobs', async context => {
+  const original = storyCoverApi.submit;
+  context.after(() => { storyCoverApi.submit = original; });
+  const page = instantiate(await pageDefinition('story-cover'));
+  page.setData({ storyId: 'story-test', loading: false });
+  let refreshes = 0;
+  page.refresh = async () => { refreshes++; };
+  storyCoverApi.submit = async () => { throw new StoryImageServiceError('CONSENT_DECLINED', '本次没有生成封面'); };
+  await call(page, 'generate');
+  assert.equal(refreshes, 0, 'cancelled consent never submitted a paid task to reconcile');
+  assert.equal(page.data.submitting, false);
+  assert.equal(page.data.notice, '本次没有生成封面');
+  storyCoverApi.submit = async () => { throw new StoryImageServiceError('TIMEOUT', '状态未确认'); };
+  await call(page, 'generate');
+  assert.equal(refreshes, 1, 'a lost acknowledgement may hide a queued paid task');
+  assert.equal(page.data.submitting, false);
+});

@@ -1,4 +1,7 @@
 {
   "navigationBarTitleText": "人生之书",
-  "disableScroll": true
+  "disableScroll": true,
+  "usingComponents": {
+    "generation-status": "/components/generation-status/generation-status"
+  }
 }

@@ -71,6 +71,7 @@ function noteTitle(memory: MemoryContribution): string {
 }
 
 Page({
+  roomSnapshot: undefined as Awaited<ReturnType<typeof loadRoomStateRemoteFirst>> | undefined,
   data: {
     placements: [] as Array<{ storyId?: string; memberId: string; bookName: string; bookTitle: string; chapter: string; chapterId: string }>,
     memberName: "",
@@ -148,6 +149,7 @@ Page({
   },
 
   onShow() {
+    this.roomSnapshot = undefined;
     void this.refresh().catch((error) => { logLoadError("archive", error); this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }); });
   },
 
@@ -162,6 +164,7 @@ Page({
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(state);
+    this.roomSnapshot = state;
     // One pool for every book. A memory is either not written yet, or written into
     // one or more books; the label says where.
     const personal = memoryPool(state.contributions);
@@ -298,7 +301,7 @@ Page({
   async openMemory(event: { currentTarget: { dataset: { id: string } } }) {
     if (this.data.swipedItemId) { this.closeSwipe(); return; }
     try {
-      const state = await loadRoomStateRemoteFirst();
+      const state = this.roomSnapshot ?? await loadRoomStateRemoteFirst();
       const memory = memoryPool(state.contributions).find(item => item.id === event.currentTarget.dataset.id);
       if (!memory) throw new Error("这段记忆已不存在，请刷新列表");
       this.showEditor(memory);

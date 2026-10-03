@@ -2174,6 +2174,7 @@ test("organize preview can be cancelled without writing and rejects changed sour
   appendContribution(createContribution({ authorMemberId: "owner", authorName: "测试", relation: "自己", text: "素材发生了变化", scope: "personal", visibility: "private" }));
   await callPage(page, "confirmOrganize");
   assert.match(String(page.data.saveNotice), /已有更新/);
+  assert.equal(page.data.confirmingOrganize, false, "a failed validation must allow another attempt");
   assert.equal(storage.roomState().manuscriptRevisions, undefined);
 });
 
@@ -2931,4 +2932,125 @@ test("inline xiaoyi in archive write mode asks first, organizes only the answer,
 
   await callPage(page, "useXiaoyiDraft");
   assert.match(String(page.data.editText), /深绿色的，边上有点掉漆/);
+});
+
+test("loaded home questions and story choices remain usable without another room request", async context => {
+  const initial = swipeRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  let networkReads = 0;
+  Object.defineProperty((globalThis as any).wx, "cloud", { get() {
+    networkReads++;
+    throw new Error("offline after homepage loaded");
+  } });
+
+  const next = (home.data.bookSlides as Array<{ key: string; storyTitle: string }>).find(
+    slide => slide.storyTitle && slide.storyTitle !== home.data.currentStoryTitle,
+  );
+  assert.ok(next);
+  await callPage(home, "chooseStory", { currentTarget: { dataset: { key: next.key, title: next.storyTitle } } });
+  assert.equal(home.data.currentStoryTitle, next.storyTitle);
+  await callPage(home, "chooseNoStory");
+  assert.equal(home.data.currentStoryTitle, "");
+  assert.equal(home.data.hasRecommendedQuestion, false);
+  const before = home.data.dailyQuestion;
+  callPage(home, "changeRecommendedQuestion");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.notEqual(home.data.dailyQuestion, before, "the button must actually show a different question");
+  assert.equal(networkReads, 0, "local choices must not reload the room");
+  assert.deepEqual(storage.toasts, []);
+});
+
+test('filtering an already loaded personal room uses its visible snapshot offline', async context => {
+  const initial = createInitialRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('room'));
+  await callPage(page, 'refresh', initial);
+  const all = structuredClone(page.data.memories);
+  const person = (page.data.people as Array<{ id: string; count: number }>).find(p => p.id !== 'me');
+  assert.ok(person);
+  let reads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { get() { reads++; throw new Error('offline'); } });
+  callPage(page, 'choosePerson', { currentTarget: { dataset: { id: person.id } } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal((page.data.memories as unknown[]).length, person.count);
+  callPage(page, 'choosePerson', { currentTarget: { dataset: { id: 'me' } } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(page.data.memories, all);
+  assert.equal(reads, 0);
+  assert.equal(page.data.loadError, '');
+});
+
+test('incomplete family invitations report missing fields without making a cloud request', async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('invite'));
+  let requests = 0;
+  (wx as any).cloud = { callFunction: async () => { requests++; throw new Error('must not call cloud'); } };
+  await callPage(page, 'createInvitation');
+  assert.match(String(page.data.errorMessage), /称呼/);
+  page.setData({ inviteeName: '虚构测试亲友', relation: '  ' });
+  await callPage(page, 'createInvitation');
+  assert.match(String(page.data.errorMessage), /关系/);
+  assert.equal(requests, 0);
+  assert.equal(page.data.creating, false);
+});
+
+test('opening an already listed memory needs no second room request, while save still detects changes', async context => {
+  const initial = createInitialRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('archive'));
+  await callPage(page, 'refresh');
+  const original = initial.contributions.find(item => item.id === 'demo-personal-rain')!;
+  let reads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { configurable: true, get() {
+    reads++;
+    throw new Error('offline after list loaded');
+  } });
+  await callPage(page, 'openMemory', { currentTarget: { dataset: { id: original.id } } });
+  assert.equal(page.data.editText, original.text);
+  assert.equal(reads, 0, 'opening the visible record must not reload the whole room');
+
+  delete (wx as any).cloud;
+  const changed = structuredClone(initial);
+  changed.contributions.find(item => item.id === original.id)!.text = '另一个页面刚刚保存的内容';
+  wx.setStorageSync(ROOM_KEY, changed);
+  callPage(page, 'onEditText', { detail: { value: '本页尚未保存的内容' } });
+  await callPage(page, 'saveEdit');
+  assert.match(String(last(storage.toasts)), /已有新修改/);
+  assert.equal((wx.getStorageSync(ROOM_KEY) as FamilyRoomState).contributions.find(item => item.id === original.id)!.text,
+    '另一个页面刚刚保存的内容');
+});
+
+test('confirming an organized chapter locks the preview before validation and ignores a second tap', async context => {
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('book'));
+  await callPage(page, 'refresh');
+  callPage(page, 'showOrganize');
+  await callPage(page, 'runOrganize');
+  const title = page.data.previewTitle;
+  const body = page.data.previewText;
+  let writes = 0;
+  const persist = page.persist as (...args: unknown[]) => Promise<boolean>;
+  page.persist = function (...args: unknown[]) { writes++; return persist.apply(page, args); };
+  const first = callPage(page, 'confirmOrganize');
+  const second = callPage(page, 'confirmOrganize');
+  callPage(page, 'closePanel');
+  assert.equal(page.data.panel, 'organize-preview', 'validation must lock cancellation immediately');
+  callPage(page, 'onPreviewTitle', { detail: { value: 'late native input' } });
+  callPage(page, 'onPreviewText', { detail: { value: 'late native input' } });
+  assert.equal(page.data.previewTitle, title);
+  assert.equal(page.data.previewText, body);
+  await Promise.all([first, second]);
+  assert.equal(writes, 1, 'a double tap must not start two persistence attempts');
+  assert.equal(page.data.confirmingOrganize, false);
+  assert.equal(page.data.panel, '');
 });

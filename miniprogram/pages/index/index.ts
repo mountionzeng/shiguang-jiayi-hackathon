@@ -551,7 +551,7 @@ Page({
     if (event.currentTarget.dataset.key?.startsWith("story-")) saveCurrentStoryId(event.currentTarget.dataset.key);
     this.recommendationOffset = 0;
     this.setData({ storyChooserOpen: false });
-    await this.refresh();
+    await this.refresh(this.roomSnapshot);
   },
 
   async chooseNoStory() {
@@ -559,7 +559,7 @@ Page({
     saveCurrentStoryId("");
     this.recommendationOffset = 0;
     this.setData({ storyChooserOpen: false });
-    await this.refresh();
+    await this.refresh(this.roomSnapshot);
   },
 
   startNewStory() {
@@ -635,7 +635,7 @@ Page({
     for (let tries = 0; !this.data.hasRecommendedQuestion && tries < 12 && dailyQuestionFor(this.recommendationOffset) === previous; tries += 1) {
       this.recommendationOffset += 1;
     }
-    void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
+    void this.refresh(this.roomSnapshot).catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   continueRecommendedQuestion() {

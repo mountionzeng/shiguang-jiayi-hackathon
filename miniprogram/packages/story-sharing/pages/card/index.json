@@ -1,1 +1,7 @@
-{"navigationBarTitleText":"制作故事卡","disableScroll":false}
+{
+  "navigationBarTitleText": "制作故事卡",
+  "disableScroll": false,
+  "usingComponents": {
+    "generation-status": "/components/generation-status/generation-status"
+  }
+}

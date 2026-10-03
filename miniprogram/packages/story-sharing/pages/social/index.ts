@@ -1,3 +1,4 @@
+import { measurePerformance } from '../../../../services/performanceLog';
 import { loadSendSnapshot, selectSendText, SendChapter, SendScope, SendSnapshot, SendVersion } from '../../../../services/bookSend';
 import { storyCoverApi } from '../../../../services/storyCoverService';
 import { bookExportApi, bookExportSelection, BookExportSelection, BookExportDescriptor } from '../../../../services/bookExport';
@@ -231,7 +232,9 @@ Page({
       const selection = bookExportSelection(snapshot, { scope: this.data.scope,
         chapterIds: this.data.chapters.filter(c => c.checked).map(c => c.id),
         textChapterId: snapshot.chapters[this.data.textChapterIndex]?.id || '', text: this.data.selectedText });
+      this.setData({ renderProgress: '正在准备所选内容…' });
       const preview = await bookExportApi.preview(selection); if (!active()) return;
+      this.setData({ renderProgress: '正在读取封面和底图…' });
       const material = await bookExportApi.material(selection, preview.descriptor.id); if (!active()) return;
       const chosen = this.selected();
       if (material.descriptor.storyId !== snapshot.storyId || material.descriptor.revisionId !== snapshot.revisionId ||
@@ -239,11 +242,13 @@ Page({
         material.descriptor.chapters.some((chapter, i) => chapter.id !== chosen[i].id || chapter.text !== chosen[i].text)) {
         throw new Error('导出内容与所选版本不一致，请重新进入发送');
       }
-      const task = renderBookImages(material, this.data.layout, this.data.fontSize, this, active,
-        (done, total) => { if (active()) this.setData({ renderProgress: '已生成 ' + done + ' / ' + total + ' 张' }); });
+      this.setData({ renderProgress: '正在排版图片…' });
+      const task = measurePerformance('book.export-render', () => renderBookImages(material, this.data.layout, this.data.fontSize, this, active,
+        (done, total) => { if (active()) this.setData({ renderProgress: '已生成 ' + done + ' / ' + total + ' 张' }); }));
       this.renderTask = task;
       try { paths = await task; } finally { if (this.renderTask === task) this.renderTask = undefined; }
       if (!active()) { removeImageFiles(paths); return; }
+      this.setData({ renderProgress: '图片已排好，正在确认最新版本…' });
       const checked = await bookExportApi.material(selection, preview.descriptor.id);
       await this.verifySnapshot(snapshot);
       if (!active()) { removeImageFiles(paths); return; }

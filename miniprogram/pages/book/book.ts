@@ -73,7 +73,7 @@ Page({
     organizeBooks: [] as Array<{ id: string; title: string; memberId: string; detail: string; memoryIds: string[] }>, organizeBookKey: "", previewText: "", previewTitle: "", previewAiLabel: "",
     protagonistName: "", memberId: "", storyId: "", savedRevisionId: "", writingMode: "objective" as "objective" | "creative", sources: [] as Array<{ id: string; text: string; byline: string }>,
     sourceCount: 0, draft: null as BiographyDraft | null,
-    generating: false, saving: false, isCloudDraft: false, modeLabel: "", modeNote: "",
+    loading: true, generating: false, saving: false, confirmingOrganize: false, isCloudDraft: false, modeLabel: "", modeNote: "",
     stale: false, showSources: false, editing: false, editTitle: "", editBody: "",
     history: [] as ManuscriptRevision[], showHistory: false,
     previewVersion: null as ManuscriptRevision | null,
@@ -128,6 +128,7 @@ Page({
   fullWindowHeight: 0,
   windowWidth: 0,
   refreshId: 0,
+  loadingId: 0,
   keyboardListener: undefined as ((event: { height: number }) => void) | undefined,
   revisionId: "",
   sourceFingerprint: "",
@@ -206,19 +207,25 @@ Page({
     }
   },
   async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+    const loadingId = ++this.loadingId;
+    this.setData({loading:true});
     const finish = startPerformanceMeasure('book.refresh');
     let outcome: 'ok' | 'error' = 'error';
     try {
       await this.refreshBook(nextState);
       outcome = 'ok';
     } finally {
+      if (!this.unloaded && loadingId === this.loadingId) this.setData({loading:false});
       finish(outcome);
     }
   },
   async refreshBook(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
     const refreshId = ++this.refreshId;
     const storyId = this.requestedStoryKey || loadCurrentStoryId();
-    const state = nextState ?? await loadRoomStateRemoteFirst();
+    const [state, draftScope] = await Promise.all([
+      nextState ? Promise.resolve(nextState) : loadRoomStateRemoteFirst(),
+      measurePerformance('book.identity', chapterDraftScope),
+    ]);
     if (storyId.startsWith("story-") && !(state.stories ?? []).some(item => item.id === storyId && !item.deletedAt)) {
       throw new Error("这本故事书已不可用，请返回书架");
     }
@@ -243,7 +250,7 @@ Page({
       .filter(memory => !this.storyScopeMemoryIds || this.storyScopeMemoryIds.has(memory.id));
     const bookId = story?.id || member.id;
     let current = currentManuscript(state, bookId);
-    const localDraftKey = chapterDraftKey(await measurePerformance('book.identity', chapterDraftScope), bookId);
+    const localDraftKey = chapterDraftKey(draftScope, bookId);
     let backup = story?.sourcePolicyRequired ? undefined : readChapterDraft(localDraftKey);
     const acknowledged = backup?.pendingSave?.id === current.revisionId;
     if (backup && acknowledged && JSON.stringify(backup.draft) === JSON.stringify(backup.pendingSave?.draft)) {
@@ -660,7 +667,7 @@ Page({
     const selected = this.pendingStoryImage;
     if (!selected) { this.setData({ refreshingStoryImage: false }); return; }
     try {
-      const list = await storyImageApi.listStoryImages(this.data.memberId);
+      const list = await storyImageApi.listStoryImages(this.data.storyId || this.data.memberId);
       const current = list.images.find(image => image.imageId === selected.imageId && image.url);
       if (current && this.pendingStoryImage?.imageId === selected.imageId) {
         this.pendingStoryImage = { ...selected, url: current.url };
@@ -725,7 +732,7 @@ Page({
   toggleHistory() {
     if (this.canLeaveEditor()) this.setData({ panel: "history", showHistory: true, previewVersion: null });
   },
-  closePanel() { if (this.data.generating || this.data.saving || this.data.appendingOwn) return; this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
+  closePanel() { if (this.data.generating || this.data.saving || this.data.confirmingOrganize || this.data.appendingOwn) return; this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
   showMore() {
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
@@ -1357,12 +1364,14 @@ Page({
     } finally { this.setData({ switchingBook: false }); }
   },
   onPreviewText(event: WechatMiniprogram.Input) {
+    if (this.data.saving || this.data.confirmingOrganize) return;
     this.setData({
       previewText: event.detail.value,
       previewAiLabel: this.data.previewAiLabel ? "文字 AI 生成 · 已由你修改" : "",
     });
   },
   onPreviewTitle(event: WechatMiniprogram.Input) {
+    if (this.data.saving || this.data.confirmingOrganize) return;
     this.setData({
       previewTitle: event.detail.value,
       previewAiLabel: this.data.previewAiLabel ? "文字 AI 生成 · 已由你修改" : "",
@@ -1396,7 +1405,7 @@ Page({
     if (point) this.setData({ insertionPoint: point.id, insertionIndex: index });
   },
   onInsertionText(event: WechatMiniprogram.Input) {
-    if (this.data.saving) return;
+    if (this.data.saving || this.data.confirmingOrganize) return;
     const insertion = this.organizeCandidate?.insertion;
     if (!insertion) return;
     const text = event.detail.value;
@@ -1487,8 +1496,9 @@ Page({
   },
   async confirmOrganize() {
     const candidate = this.organizeCandidate;
-    if (!candidate || this.data.saving || this.data.generating) return;
+    if (!candidate || this.data.saving || this.data.generating || this.data.confirmingOrganize) return;
     if (!this.data.previewText.trim()) { this.setData({ saveNotice: "正文不能为空" }); return; }
+    this.setData({ confirmingOrganize: true, saveNotice: "正在核对最新版本并写入…" });
     try {
       const state = await loadRoomStateRemoteFirst();
       const currentFingerprint = this.data.storyId ? storySourceFingerprint(state, this.data.storyId) : personalBookSourceFingerprint(state, this.data.memberId);
@@ -1509,6 +1519,7 @@ Page({
         this.setData({ canUndo: !!before, saveNotice: "已写入" + candidate.label + "。" + candidate.notice });
       }
     } catch (error) { this.setData({ saveNotice: error instanceof Error ? error.message : "写入失败，请重试" }); }
+    finally { this.setData({ confirmingOrganize: false }); }
   },
   async undoOrganize() {
     const undo = this.undoState;

@@ -8,7 +8,7 @@
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button save-button" bindtap="openAppendOwn" disabled="{{panel || appendingOwn}}">补充经历</button>
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button" bindtap="returnOwnExperience" disabled="{{panel || returningOwn || appendingOwn}}">{{returningOwn ? '发送中' : '发回原作者'}}</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}"><view class="action-icon icon-save" aria-hidden="true"></view>{{saving ? '保存中' : '保存'}}</button>
-    <button class="tool-button" bindtap="showMore" disabled="{{saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-more" aria-hidden="true"></view>更多</button>
+    <button class="tool-button" bindtap="showMore" disabled="{{loading || saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-more" aria-hidden="true"></view>更多</button>
   </view>
   <view wx:if="{{photoMenu}}" class="send-dismiss" bindtap="closePhotoMenu" aria-label="收起照片菜单"></view>
   <view wx:if="{{photoMenu}}" class="photo-menu">
@@ -63,7 +63,7 @@
     </block>
   </view>
   <view class="notice" wx:if="{{saveNotice || loadError}}">{{saveNotice || loadError}}</view>
-  <view class="notice" wx:else>{{modeLabel}} · {{modeNote}}</view>
+  <view class="notice" wx:elif="{{modeLabel}}">{{modeLabel}} · {{modeNote}}</view>
   <view class="panel-actions" wx:if="{{loadError}}"><button class="tool-button" bindtap="retryLoad">重新加载</button></view>
   <view class="panel-actions" wx:if="{{canUndo && !panel && !editing}}">
     <button class="tool-button" bindtap="undoOrganize" disabled="{{saving || generating}}"><view class="action-icon icon-undo" aria-hidden="true"></view>撤回这次整理</button>
@@ -75,6 +75,7 @@
     <button wx:if="{{panel === 'share-excerpt'}}" class="tool-button save-button" bindtap="sendExcerpt" disabled="{{sharingExcerpt}}">{{sharingExcerpt ? '发送中…' : '确认发送'}}</button>
     <button wx:if="{{panel === 'append-own'}}" class="tool-button save-button" bindtap="appendOwnExperience" disabled="{{appendingOwn}}">{{appendingOwn ? '保存中…' : '保存我的补充'}}</button>
   </view>
+  <view class="book-generation" wx:if="{{loading && !draft && !loadError}}"><generation-status text="正在打开这本书…" /></view>
   <view class="book-generation" wx:if="{{generating}}"><generation-status text="正在整理正文，完成后可以先预览…" /></view>
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
   <scroll-view class="reading-panel contents-view" scroll-y hidden="{{!draft || panel || view !== 'contents'}}">
@@ -265,14 +266,14 @@
         <view class="panel-title serif">确认这一章的正文</view>
         <view class="panel-note">{{previewInsertion ? '可以修改新增文字，下面会显示插入后的全文。' : '可以修改标题和文字。'}}确认写入前，已保存的书稿不会改变。</view>
         <view wx:if="{{previewAiLabel}}" class="chapter-ai-label">{{previewAiLabel}}</view>
-        <input class="version-name" value="{{previewTitle}}" bindinput="onPreviewTitle" maxlength="40" disabled="{{saving}}" placeholder="章节标题" />
+        <input class="version-name" value="{{previewTitle}}" bindinput="onPreviewTitle" maxlength="40" disabled="{{saving || confirmingOrganize}}" placeholder="章节标题" />
         <block wx:if="{{previewInsertion}}">
           <view class="field-label">本次插入的文字 · 可修改</view>
-          <textarea class="preview-editor" value="{{insertionText}}" bindinput="onInsertionText" maxlength="20000" auto-height disabled="{{saving}}" />
+          <textarea class="preview-editor" value="{{insertionText}}" bindinput="onInsertionText" maxlength="20000" auto-height disabled="{{saving || confirmingOrganize}}" />
           <view class="field-label contents-label">插入后的完整章节</view>
           <view class="insertion-preview"><text selectable>{{previewText}}</text></view>
         </block>
-        <textarea wx:else class="preview-editor" value="{{previewText}}" bindinput="onPreviewText" maxlength="20000" auto-height disabled="{{saving}}" />
+        <textarea wx:else class="preview-editor" value="{{previewText}}" bindinput="onPreviewText" maxlength="20000" auto-height disabled="{{saving || confirmingOrganize}}" />
       </block>
       <block wx:if="{{panel === 'sources'}}">
         <view class="panel-title serif">原始记忆 · {{sourceCount}}</view>
@@ -321,7 +322,7 @@
       </block>
     </view>
   </scroll-view>
-  <view class="empty-state" wx:if="{{!draft && !loadError && !panel}}">
+  <view class="empty-state" wx:if="{{!draft && !loading && !loadError && !panel}}">
     <view class="panel-title serif">{{sourceCount ? '把记忆写成一本书' : '从一段记忆开始'}}</view>
     <view class="panel-note">{{sourceCount ? '新开第一章，把记忆放进去；也可以点「更多」请 AI 整理。' : '点右上角「更多」，开始记录经历。'}}</view>
     <button wx:if="{{sourceCount}}" class="tool-button save-button add-chapter" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新开第一章</button>
@@ -329,9 +330,9 @@
   <view class="organize-footer" wx:if="{{panel === 'organize' || panel === 'organize-preview'}}">
     <view class="organize-summary">{{panel === 'organize' ? ('已选 ' + organizeCount + ' 段记忆 · ' + organizeBookTitle) : '先看看文字，满意后再写入'}}</view>
     <view class="organize-footer-actions">
-      <button class="tool-button" bindtap="closePanel" disabled="{{saving || generating || switchingBook}}">暂不整理</button>
-      <button wx:if="{{panel === 'organize'}}" class="tool-button workflow-next" bindtap="runOrganize" disabled="{{saving || generating || switchingBook || !organizeCount}}">{{switchingBook ? '正在切换…' : generating ? '正在整理…' : '下一步：预览正文'}}</button>
-      <button wx:else class="tool-button workflow-next" bindtap="confirmOrganize" disabled="{{saving || generating}}">{{saving ? '正在写入…' : '确认写入正文'}}</button>
+      <button class="tool-button" bindtap="closePanel" disabled="{{saving || confirmingOrganize || generating || switchingBook}}">暂不整理</button>
+      <button wx:if="{{panel === 'organize'}}" class="tool-button workflow-next" bindtap="runOrganize" disabled="{{saving || confirmingOrganize || generating || switchingBook || !organizeCount}}">{{switchingBook ? '正在切换…' : generating ? '正在整理…' : '下一步：预览正文'}}</button>
+      <button wx:else class="tool-button workflow-next" bindtap="confirmOrganize" disabled="{{saving || confirmingOrganize || generating}}">{{(saving || confirmingOrganize) ? '正在写入…' : '确认写入正文'}}</button>
     </view>
   </view>
 </view>

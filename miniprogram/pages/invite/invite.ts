@@ -96,6 +96,13 @@ Page({
 
   async createInvitation() {
     if (this.data.creating) return;
+    const missing = !this.data.inviteeName.trim() ? '请填写对方的称呼'
+      : !this.data.relation.trim() ? '请填写你们的关系' : '';
+    if (missing) {
+      this.setData({ errorMessage: missing });
+      wx.showToast({ title: missing, icon: 'none' });
+      return;
+    }
     this.setData({ creating: true, errorMessage: "", posterPath: "" });
     try {
       const result = await createFamilyInvitation(

@@ -77,6 +77,6 @@
     <view class="invite-error" wx:else>{{errorMessage || '这份邀请已经无法打开'}}</view>
   </block>
 
-  <view class="invite-error" wx:if="{{errorMessage && invitation}}">{{errorMessage}}</view>
+  <view class="invite-error" wx:if="{{errorMessage && (mode === 'create' || invitation)}}">{{errorMessage}}</view>
   <canvas class="invite-canvas" canvas-id="invitePoster"></canvas>
 </view>

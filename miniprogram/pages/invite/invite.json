@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "邀请亲友"
+  "navigationBarTitleText": "邀请亲友",
+  "usingComponents": {
+    "generation-status": "/components/generation-status/generation-status"
+  }
 }

@@ -1,5 +1,5 @@
 import { storyCoverApi } from '../../services/storyCoverService';
-import { isActiveJob, qualityLabel, moderationLabel, storyImageApi, StoryImage, StoryImageJob } from '../../services/storyImageService';
+import { isActiveJob, qualityLabel, moderationLabel, storyImageApi, StoryImage, StoryImageJob, StoryImageServiceError } from '../../services/storyImageService';
 
 interface ReferenceCard { id: string; kind: 'photo' | 'image'; url: string; selected: boolean }
 interface CoverCard extends StoryImage { selected: boolean; qualityLabel: string; moderationLabel: string; ready: boolean }
@@ -114,8 +114,10 @@ Page({
     } catch (error) {
       if (!this.unloaded) {
         this.setData({notice:message(error)});
-        // A dropped response may still have queued a paid job. Read it before allowing another tap.
-        await this.refresh().catch(() => undefined);
+        // Declining consent never submitted a job. Uncertain failures still need reconciliation.
+        if (!(error instanceof StoryImageServiceError && error.code === 'CONSENT_DECLINED')) {
+          await this.refresh().catch(() => undefined);
+        }
       }
     } finally { if (!this.unloaded) this.setData({submitting:false}); }
   },

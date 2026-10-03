@@ -1,3 +1,4 @@
+import { measurePerformance } from './performanceLog';
 import { SendChapter, SendSelection, SendSnapshot } from './bookSend';
 export interface BookExportSelection {
   storyId: string; revisionId: string; expectedVersion: number; scope: SendSelection['scope']; chapterIds: string[];
@@ -31,6 +32,6 @@ export function bookExportSelection(snapshot: SendSnapshot, selection: SendSelec
 }
 export const bookExportApi = {
   available: async () => (await call<{ bookExport?: boolean }>('capabilities')).bookExport === true,
-  preview: (selection: BookExportSelection) => call<{ descriptor: BookExportDescriptor }>('bookExportPreview', selection),
-  material: (selection: BookExportSelection, descriptorId: string) => call<BookExportMaterial>('bookExportImages', { ...selection, descriptorId }),
+  preview: (selection: BookExportSelection) => measurePerformance('book.export-preview', () => call<{ descriptor: BookExportDescriptor }>('bookExportPreview', selection)),
+  material: (selection: BookExportSelection, descriptorId: string) => measurePerformance('book.export-material', () => call<BookExportMaterial>('bookExportImages', { ...selection, descriptorId })),
 };

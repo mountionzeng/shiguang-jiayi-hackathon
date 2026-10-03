@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "这本书的图"
+  "navigationBarTitleText": "这本书的图",
+  "usingComponents": {
+    "generation-status": "/components/generation-status/generation-status"
+  }
 }
