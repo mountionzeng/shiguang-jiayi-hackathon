@@ -186,6 +186,7 @@ test("the invitation poster draws packaged assets and exports a scannable-size c
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const drawImages: unknown[][] = [];
+  const drawnText: string[] = [];
   const canvas = {
     setFillStyle: () => undefined,
     fillRect: () => undefined,
@@ -202,7 +203,7 @@ test("the invitation poster draws packaged assets and exports a scannable-size c
     stroke: () => undefined,
     setTextAlign: () => undefined,
     setFontSize: () => undefined,
-    fillText: () => undefined,
+    fillText: (value: string) => drawnText.push(value),
     arc: () => undefined,
     draw: (_reserve: boolean, callback: () => void) => callback(),
   };
@@ -217,6 +218,8 @@ test("the invitation poster draws packaged assets and exports a scannable-size c
   const page = instantiate(await pageDefinition("invite"));
   const result = await callPage(page, "drawPoster", {
     token: "token", inviterName: "岱", inviteeName: "如", relation: "胎教朋友",
+    headline: "一起写下我们的故事", message: "想听你说说记得的细节。", signature: "岱",
+    illustrationStyle: "book",
     roomName: "我的拾光房间", familyId: "family", memberId: "member",
     status: "pending", acceptedByMe: false, expiresAt: "2026-09-20T00:00:00.000Z",
   }, "/tmp/code.png");
@@ -224,7 +227,9 @@ test("the invitation poster draws packaged assets and exports a scannable-size c
   assert.equal(result, "/tmp/invite.jpg");
   const packaged = drawImages.map(args => String(args[0])).filter(path => path.startsWith("/assets/"));
   packaged.forEach(path => assert.ok(existsSync("miniprogram" + path), `missing poster asset ${path}`));
-  assert.ok(drawImages.some(args => args[0] === "/tmp/code.png" && args[3] === 260 && args[4] === 260));
+  assert.ok(drawImages.some(args => args[0] === "/assets/illustrations/story-book-cover.png"));
+  assert.ok(drawImages.some(args => args[0] === "/tmp/code.png" && args[3] === 240 && args[4] === 240));
+  assert.ok(drawnText.some(value => value.includes("想听你说说")));
   assert.equal(exportOptions?.fileType, "jpg");
   assert.equal(exportOptions?.quality, 0.95);
 });
