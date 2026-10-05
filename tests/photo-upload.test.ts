@@ -47,16 +47,17 @@ test("照片上传队列生成 1600 显示图和不超过 100KB 的 768 小图�
   };
 
   enqueuePhotoUpload("photo-abc-123", "wxfile://usr/original.jpg", "book");
-  assert.equal(pendingPhotoUploads().length, 1);
+  enqueuePhotoUpload("photo-next-123", "wxfile://usr/next.jpg", "book");
+  assert.equal(pendingPhotoUploads().length, 2);
   await resumePhotoUploads();
 
-  assert.deepEqual(compressions, [
+  assert.deepEqual(compressions.slice(0, 3), [
     { width: 1600, quality: 80 },
     { width: 768, quality: 70 },
     { width: 768, quality: 55 },
   ]);
-  assert.equal(uploads.length, 2);
-  assert.ok(uploads.every(upload => upload.cloudPath.startsWith("user-photos/family_owner-openid/photo-abc-123/")));
+  assert.equal(uploads.length, 4);
+  assert.ok(uploads.slice(0, 2).every(upload => upload.cloudPath.startsWith("user-photos/family_owner-openid/photo-abc-123/")));
   const register = calls.find(call => call.name === "photoAccess");
   assert.equal(register?.data?.action, "register");
   assert.equal(register?.data?.displayBytes, 320000);

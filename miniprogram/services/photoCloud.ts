@@ -181,26 +181,47 @@ async function uploadOne(item: PhotoUploadItem) {
 
 let processing: Promise<void> | undefined;
 
-export function resumePhotoUploads(): Promise<void> {
-  if (processing) return processing;
+export function resumePhotoUploads(photoIds?: string[]): Promise<void> {
+  if (processing) return processing.then(() => resumePhotoUploads(photoIds));
   processing = (async () => {
     if (!wx.cloud) return;
-    const queue = readQueue();
-    for (const item of queue) {
-      if (item.attempts >= MAX_ATTEMPTS_PER_SESSION) continue;
+    // Read fresh storage between uploads: removing an item must not skip its neighbour,
+    // and a concurrent import/cancel must not be overwritten by an old queue snapshot.
+    const attempted = new Set<string>();
+    while (true) {
+      const queue = readQueue();
+      const item = queue.find(entry => !attempted.has(entry.photoId) &&
+        entry.attempts < MAX_ATTEMPTS_PER_SESSION && (!photoIds || photoIds.includes(entry.photoId)));
+      if (!item) break;
+      attempted.add(item.photoId);
       item.status = "uploading";
       item.attempts += 1;
       writeQueue(queue);
+      let failure = "";
       try {
         await uploadOne(item);
-        const index = queue.findIndex(entry => entry.photoId === item.photoId);
-        if (index >= 0) queue.splice(index, 1);
       } catch (error) {
-        item.status = "failed";
-        item.error = String((error as { errMsg?: string; message?: string })?.errMsg || (error as Error)?.message || error).slice(0, 120);
+        failure = String((error as { errMsg?: string; message?: string })?.errMsg || (error as Error)?.message || error).slice(0, 120);
       }
-      writeQueue(queue);
+      const latest = readQueue();
+      const index = latest.findIndex(entry => entry.photoId === item.photoId && entry.localPath === item.localPath &&
+        entry.source === item.source && entry.attempts === item.attempts);
+      if (index >= 0) {
+        if (failure) latest[index] = { ...latest[index], status: "failed", error: failure };
+        else latest.splice(index, 1);
+        writeQueue(latest);
+      }
     }
   })().finally(() => { processing = undefined; });
   return processing;
+}
+
+/** An explicit generation tap can retry exhausted uploads, and must wait for registration. */
+export async function ensurePhotoUploads(photoIds: string[]): Promise<void> {
+  if (!photoIds.length) return;
+  if (processing) await processing;
+  for (const id of photoIds) retryPhotoUpload(id);
+  await resumePhotoUploads(photoIds);
+  const failed = readQueue().find(item => photoIds.includes(item.photoId));
+  if (failed) throw new Error("参考照片上传没有完成，请检查网络后重新生成；若照片在本机已失效，请在正文中重新添加原照片。");
 }

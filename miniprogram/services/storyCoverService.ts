@@ -1,3 +1,5 @@
+import { prepareReferencePhotos } from "./referencePhotos";
+import { resumePhotoUploads } from "./photoCloud";
 import { callStoryImages, newImageRequestId, StoryImageJob, StoryImageServiceError, storyImageApi } from './storyImageService';
 
 export interface CoverSources {
@@ -30,6 +32,7 @@ async function submit(input: CoverInput): Promise<StoryImageJob> {
     success: result => resolve(result.confirm), fail: () => resolve(false),
   }));
   if (!allowed) throw new StoryImageServiceError('CONSENT_DECLINED', '本次没有生成封面');
+  await prepareReferencePhotos(input.referencePhotoIds, 'small');
   const result = await callStoryImages<{job: StoryImageJob}>('submit', {
     ...input, purpose: 'cover', coverConsent: true, requestId: input.requestId ?? newImageRequestId(),
   });
@@ -39,6 +42,7 @@ async function submit(input: CoverInput): Promise<StoryImageJob> {
   return job;
 }
 async function sources(storyId: string) {
+  await resumePhotoUploads();
   return callStoryImages<CoverSources>('coverSources', {storyId});
 }
 async function select(storyId: string, imageId: string, expectedVersion: number) {

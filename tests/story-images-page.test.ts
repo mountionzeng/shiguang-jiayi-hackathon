@@ -368,6 +368,7 @@ test("带本章照片生成插图和底图都会先确认能力与照片同意�
   const env = installWx({
     cloud: { callFunction: async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
       calls.push({ name, data });
+      if (name === "photoAccess") return { result: { photos: [{ photoId: "photo-cat", status: "ok", url: "https://tmp.example/cat.jpg" }] } };
       if (name === "getOpenId") return { result: { openid: "o-owner" } };
       if (data.action === "capabilities") return { result: { apiVersion: 5, referencePhotos: true } };
       return { result: { job: {

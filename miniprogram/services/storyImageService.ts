@@ -1,3 +1,4 @@
+import { prepareReferencePhotos } from "./referencePhotos";
 import { measurePerformance } from "./performanceLog";
 import type { ShiguangAppOptions } from "../app";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
@@ -192,6 +193,7 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
       throw new StoryImageServiceError("GUIDED_GENERATION_UNAVAILABLE", "配图服务还没更新到画面想法功能，请稍后再试");
     }
   }
+  await prepareReferencePhotos(referencePhotoIds);
   const result = await callStoryImages<{ job?: unknown }>("submit", {
     ...(input.storyId ? { storyId: input.storyId } : { memberId: input.memberId || "" }),
     chapterId: input.chapterId,
