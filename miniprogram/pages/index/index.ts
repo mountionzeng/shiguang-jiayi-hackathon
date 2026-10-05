@@ -624,7 +624,7 @@ Page({
     this.setData({ bookOpening: true });
     setTimeout(() => {
       this.setData({ bookOpening: false });
-      wx.navigateTo({ url: this.storyUrl() });
+      this.openStoryChapters();
     }, 620);
   },
 
@@ -644,8 +644,9 @@ Page({
       wx.navigateTo({ url: this.storyUrl() });
       return;
     }
+    saveCurrentStoryId("");
     saveCurrentMemberIdLocal(memberId);
-    wx.navigateTo({ url: "/pages/book/book" });
+    wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(memberId) });
   },
 
   /** 人都在记忆之家：先看人，再看和这个人有关的记忆。 */

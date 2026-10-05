@@ -1213,7 +1213,7 @@ test("a story with chapters opens them from the cover, for the profile that hold
 
   callPage(page, "openStoryChapters");
   assert.equal(storage.currentMemberId(), "member-1");
-  assert.equal(last(storage.navigations), "/pages/book/book");
+  assert.equal(last(storage.navigations), "/pages/book/book?memberId=member-1");
 });
 
 test("opening 人生之书 with a story key lands on that story", async (context) => {
@@ -1282,7 +1282,7 @@ test("人生之书 lists every story; a book-only story opens its chapters for t
   callPage(page, "backToStories");
   await callPage(page, "openStory", { currentTarget: { dataset: { key: "manuscript:member-1" } } });
   assert.equal(storage.currentMemberId(), "member-1", "the book page still reads the profile it belongs to");
-  assert.equal(last(storage.navigations), "/pages/book/book");
+  assert.equal(last(storage.navigations), "/pages/book/book?memberId=member-1");
   assert.equal(storage.roomState().manuscriptRevisions?.length, 1, "opening the list writes nothing");
 });
 
@@ -3379,4 +3379,28 @@ test('leaving the shelf cancels pending spine rendering before it touches a dest
   await pending;
   assert.equal(canvasTouched, false);
   assert.equal((page.data.stories as Array<{ spineArtUrl: string }>)[0].spineArtUrl, '');
+});
+
+
+test("首页书封和书架直接打开已保存或空白的独立故事书，记忆入口仍可单独打开", async context => {
+  const state = createInitialRoomState();
+  state.stories = [{ id: "story-direct", title: "直接读书", bookTitle: "直接读书", writingMode: "objective",
+    memoryIds: [], imageIds: [], ownerMemberId: "owner", version: 1, createdAt: "2026-10-05", updatedAt: "2026-10-05" } as any];
+  state.storyMigration = { status: "active", pending: [] } as any;
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", state);
+  const index = (home.data.bookSlides as Array<{storyId:string}>).findIndex(slide => slide.storyId === "story-direct");
+  assert.ok(index >= 0);
+  await callPage(home, "onBookSlideChange", { detail: { current: index } });
+  await withImmediateTimeouts(() => callPage(home, "openMemoryArchive"));
+  assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-direct");
+  callPage(home, "openStoryMemories");
+  assert.equal(last(storage.navigations), "/pages/stories/stories?key=story-direct");
+  const shelf = instantiate(await pageDefinition("stories"));
+  await callPage(shelf, "refresh", state);
+  await callPage(shelf, "openStory", { currentTarget: { dataset: { key: "story-direct" } } });
+  assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-direct");
+  assert.equal(shelf.data.selectedKey, "");
 });

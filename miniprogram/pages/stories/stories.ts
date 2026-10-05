@@ -44,7 +44,7 @@ function deletedLabel(iso: string): string {
 
 /**
  * 人生之书：你所有的故事。书就是故事——同名的记忆是一个故事，以前每个档案整理好的
- * 书稿也是一个故事。点开一个故事看它的记忆，接着讲，或者打开整理好的章节。
+ * 书稿也是一个故事。点击书籍直接打开书稿；专用记忆入口保留素材管理。
  */
 Page({
   spineRefreshId: 0,
@@ -131,7 +131,8 @@ Page({
   async openStory(event: { currentTarget: { dataset: { key: string } } }) {
     const row = this.data.stories.find(story => story.key === event.currentTarget.dataset.key);
     if (!row) return;
-    if (row.key.startsWith("manuscript:") && row.manuscriptMemberId) { this.openLegacyManuscript(row.manuscriptMemberId); return; }
+    if (row.storyId) { this.openManuscript(row.storyId); return; }
+    if (row.manuscriptMemberId) { this.openLegacyManuscript(row.manuscriptMemberId); return; }
     this.setData({ selectedKey: row.key });
     await this.refresh(this.roomSnapshot).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); });
   },
@@ -140,8 +141,9 @@ Page({
     wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(storyId) });
   },
   openLegacyManuscript(memberId: string) {
+    saveCurrentStoryId("");
     saveCurrentMemberIdLocal(memberId);
-    wx.navigateTo({ url: "/pages/book/book" });
+    wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(memberId) });
   },
   openSelectedManuscript() { this.openManuscript(this.data.selectedKey); },
   backToStories() { this.setData({ selectedKey: "", selectedTitle: "", selectedBookTitle: "", memories: [] }); },
