@@ -1,5 +1,5 @@
-const { CANDIDATE_POOL_LIMIT, SELECTOR_VERSION, selectInsights, promptContext, suppressed, textKey } = require('./personalMemoryCore');
-const { TABLES, digest, assertEpoch, bumpEpoch, error } = require('./personalMemoryRepository');
+const { CANDIDATE_POOL_LIMIT, SELECTOR_VERSION, selectInsights, promptContext, suppressed, textKey, distinctTellingCount } = require('./personalMemoryCore');
+const { TABLES, digest, assertEpoch, bumpEpoch, error, validInsightEvidence } = require('./personalMemoryRepository');
 
 async function prepareContext(repo, identity, {nowMs = Date.now(), excludeMemoryId} = {}) {
   await repo.authorize(identity, true);
@@ -13,17 +13,13 @@ async function prepareContext(repo, identity, {nowMs = Date.now(), excludeMemory
     const sources = new Map();
     const records = mentionable.length && repo.sourceRecords ? await repo.sourceRecords(identity) : undefined;
     for (const insight of mentionable) {
-      const evidence = snapshot.evidence.filter(item => item.userId === identity.accountId && insight.evidenceIds.includes(item.id) && item.memoryId !== excludeMemoryId);
-      const valid = [];
-      for (const item of evidence) {
-        if (!sources.has(item.memoryId)) sources.set(item.memoryId,await repo.source(identity,item.memoryId,records));
-        const source = sources.get(item.memoryId);
-        if (source?.fingerprint === item.fingerprint) valid.push(item);
-      }
+      const valid = await validInsightEvidence(repo, identity, insight, snapshot.evidence, {records, sources, excludeMemoryId});
       if (!valid.length) continue;
+      const distinctSourceCount = distinctTellingCount(valid);
       candidates.push({lineageKey:insight.lineageKey,category:insight.category,origin:insight.origin,text:insight.text,
-        projectScoped:insight.projectScoped,confidence:insight.confidence,updatedAt:insight.updatedAt,
+        projectScoped:insight.projectScoped,conversationTendency:insight.conversationTendency===true,confidence:insight.confidence,updatedAt:insight.updatedAt,
         lastMentionedAt:insight.lastMentionedAt,evidenceIds:valid.map(item=>item.id),
+        distinctSourceCount,
         earliestEvidenceOn:valid.map(item=>item.occurredOn).filter(Boolean).sort()[0] || null});
     }
   }
@@ -41,6 +37,13 @@ async function commitContext(repo, identity, context, nowMs = Date.now()) {
       if (!current || current.status !== 'active' || current.allowProactiveMention !== true || !control.enabled) throw error('PERSONAL_MEMORY_CHANGED');
       for (const evidenceId of item.evidenceIds) {
         const evidence = context.snapshot.evidence.find(value=>value.id===evidenceId);
+        if (evidence?.kind==='user_correction') {
+          const stored = await tx.get(TABLES.evidence,evidence.id);
+          if (!stored || stored.userId!==identity.accountId || stored.fingerprint!==evidence.fingerprint ||
+              current.correctionEvidenceId!==evidence.id || current.text!==current.correctionText ||
+              stored.correctionText!==current.correctionText || digest(String(current.correctionText || '').trim())!==evidence.fingerprint) throw error('PERSONAL_MEMORY_CHANGED');
+          continue;
+        }
         const memory = evidence && await tx.get('memories',evidence.sourceDocId);
         const text = Array.isArray(memory?.aiRevisions) ? memory.aiRevisions[0]?.text : memory?.text;
         if (!memory || memory.deletedAt || memory.scope!=='personal' || digest(String(text || '').trim())!==evidence.fingerprint) throw error('PERSONAL_MEMORY_SOURCE_CHANGED');

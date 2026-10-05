@@ -96,6 +96,13 @@ Page({
 
   async createInvitation() {
     if (this.data.creating) return;
+    const missing = !this.data.inviteeName.trim() ? '请填写对方的称呼'
+      : !this.data.relation.trim() ? '请填写你们的关系' : '';
+    if (missing) {
+      this.setData({ errorMessage: missing });
+      wx.showToast({ title: missing, icon: 'none' });
+      return;
+    }
     this.setData({ creating: true, errorMessage: "", posterPath: "" });
     try {
       const result = await createFamilyInvitation(
@@ -129,8 +136,6 @@ Page({
 
     // 原有拾光插画语言：淡彩晕染、树枝、小鸟与鸟窝。
     context.setGlobalAlpha(0.18);
-    context.drawImage("/assets/illustrations/book-wash.png", 528, -70, 260, 346);
-    context.drawImage("/assets/illustrations/book-wash.png", -74, 744, 250, 334);
     context.setGlobalAlpha(0.72);
     context.drawImage("/assets/illustrations/memory-branch.png", 368, 16, 430, 143);
     context.setGlobalAlpha(0.9);

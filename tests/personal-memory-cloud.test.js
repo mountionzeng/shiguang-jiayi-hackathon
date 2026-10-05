@@ -22,7 +22,7 @@ function fixture() {
     where(filter){let offset=0,count=100;const q={orderBy(){return q;},skip(n){offset=n;return q;},limit(n){count=n;return q;},async get(){return {data:[...records].filter(([k,v])=>k.startsWith(name+':')&&Object.entries(filter).every(([key,value])=>v[key]===value)).map(([k,v])=>structuredClone({_id:k.slice(name.length+1),...v})).slice(offset,offset+count)};}};return q;},
   };},async runTransaction(fn){const before=structuredClone(records);try{return await fn(db);}catch(e){records.clear();for(const[k,v]of before)records.set(k,v);throw e;}}};
   const cloud={init(){},database:()=>db,getWXContext:()=>({OPENID:openid,APPID:'wxmemorytest'}),openapi:{security:{msgSecCheck:async()=>({result:{suggest:'pass'}})}}};
-  const extract=async()=>({statementType:'direct_statement',insights:[{matchLineage:null,isContradiction:false,category:'preference',text:'喜欢安静地阅读。',projectScoped:false,confidence:0.8,sensitive:false}]});
+  const extract=async()=>({statementType:'direct_statement',insights:[{matchLineage:null,isContradiction:false,category:'preference',conversationTendency:false,text:'喜欢安静地阅读。',projectScoped:false,confidence:0.8,sensitive:false}]});
   return {records,db,cloud,extract,as(name){openid=name+'-openid';},async learn(){await memoryCloud.main({action:'configure',enabled:true,consentVersion:1},{cloud,extract});await memoryCloud.main({action:'extract',memoryId:'m1'},{cloud,extract});}};
 }
 function env(context) {
@@ -50,6 +50,8 @@ test('real cloud entry resolves account ownership; another account cannot extrac
   f.as('bob');
   assert.deepEqual((await memoryCloud.main({action:'list',userId:'alice'},{cloud:f.cloud})).insights,[]);
   await assert.rejects(memoryCloud.main({action:'forget',lineageKey:alice.insights[0].lineageKey},{cloud:f.cloud}),/NOT_FOUND/);
+  await assert.rejects(memoryCloud.main({action:'confirm',lineageKey:alice.insights[0].lineageKey},{cloud:f.cloud}),/NOT_FOUND/);
+  await assert.rejects(memoryCloud.main({action:'correct',lineageKey:alice.insights[0].lineageKey,text:'不属于这个账号的纠正。'},{cloud:f.cloud}),/NOT_FOUND/);
   await memoryCloud.main({action:'configure',enabled:true,consentVersion:1},{cloud:f.cloud});
   assert.equal((await memoryCloud.main({action:'extract',memoryId:'m1',familyId:'family_alice'},{cloud:f.cloud,extract:f.extract})).status,'ineligible');
 });
@@ -59,7 +61,7 @@ test('interview and organizer consume persisted private-account context with ori
     const f=fixture();await f.learn();let request;
     global.fetch=async(_url,options)=>{request=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(name==='chat'?{dimension:'event',text:'书店里哪一处让你停了下来？'}:{title:'书店',body:'今天我走进了一家书店。',summary:'逛书店',emotions:[],people:[],places:[]})}}]})};};
     const result=name==='chat'?await chatCloud.main({answer:'今天我走进了一家书店。'},{cloud:f.cloud}):await organizeCloud.main({memoryId:'m2'},{cloud:f.cloud});
-    assert.equal(result.personalMemorySelectorVersion,'u6-v1');
+    assert.equal(result.personalMemorySelectorVersion,'u6-v2');
     assert.match(request.messages[1].content,/喜欢安静地阅读/);
     assert.match(request.messages[1].content,/user_stated/);
     assert.match(request.messages[1].content,/不得补写为本次故事的事实/);
@@ -75,6 +77,28 @@ test('deleted evidence does not enter later prompts; malformed AI history never 
   assert.deepEqual((await prepareContext(createRepository(f.db),identity)).promptContext,[]);
   const source=f.records.get('memories:family_alice_m2');source.aiRevisions=[{kind:'ai',text:'模型猜测'}];
   assert.equal((await memoryCloud.main({action:'extract',memoryId:'m2'},{cloud:f.cloud,extract:f.extract})).status,'ineligible');
+});
+test('all three tendency angles reach the interview prompt and correction or forgetting changes the next request',async context=>{
+  env(context);const originalFetch=global.fetch;context.after(()=>global.fetch=originalFetch);
+  const angles=['更愿意从身边的人讲起。','更愿意从自己的感受讲起。','更愿意从物件与场景讲起。'];
+  for(const angle of angles){
+    const f=fixture();let request;
+    const extract=async(_source,candidates)=>({statementType:'direct_statement',insights:[{matchLineage:candidates[0]?.ref || null,
+      isContradiction:false,category:'preference',conversationTendency:true,text:angle,projectScoped:false,confidence:0.8,sensitive:false}]});
+    f.records.set('memories:family_alice_m3',{familyId:'family_alice',frontendContributionId:'m3',authorMemberId:'owner',scope:'personal',text:'我把旧茶杯重新放到窗边。',createdAt:'2026-09-23'});
+    await memoryCloud.main({action:'configure',enabled:true,consentVersion:1},{cloud:f.cloud});
+    for(const memoryId of ['m1','m2','m3'])await memoryCloud.main({action:'extract',memoryId},{cloud:f.cloud,extract});
+    const insight=(await memoryCloud.main({action:'list'},{cloud:f.cloud})).insights[0];
+    assert.equal(insight.evidence.length,3);
+    global.fetch=async(_url,options)=>{request=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({dimension:'feeling',text:'这句话中的哪个意思最贴近你？'})}}]})};};
+    const ask=step=>chatCloud.main({answer:'越是迷茫的时候，越是要往远处看。'},{cloud:f.cloud,nowMs:Date.now()+step*3000});
+    await ask(1);assert.ok(request.messages[1].content.includes(angle));assert.match(request.messages[1].content,/"conversationTendency":true/);
+    const correction='我更想自己选择这一次从哪里讲起。';
+    await memoryCloud.main({action:'correct',lineageKey:insight.lineageKey,text:correction},{cloud:f.cloud});
+    await ask(2);assert.ok(request.messages[1].content.includes(correction));assert.ok(!request.messages[1].content.includes(angle));
+    await memoryCloud.main({action:'forget',lineageKey:insight.lineageKey},{cloud:f.cloud});
+    await ask(3);assert.ok(!request.messages[1].content.includes(correction));assert.ok(!request.messages[1].content.includes(angle));
+  }
 });
 test('independent cloud bundles stay in sync and all personal collections deny direct client access',()=>{
   for(const name of ['personalMemoryCore.js','personalMemoryRepository.js','personalMemoryContext.js']) for(const target of ['chatInterview','organizeMemory']) assert.equal(fs.readFileSync('cloudfunctions/'+target+'/'+name,'utf8'),fs.readFileSync('cloudfunctions/personalMemory/'+name,'utf8'));

@@ -34,10 +34,9 @@
       <view class="shelf-caption"><text>{{stories.length}} 个故事</text><text>点一本书打开</text></view>
       <view class="bookshelf">
         <view class="shelf-books">
-          <button class="story-book spine spine-tone-{{index % 4}} spine-h-{{index % 3}} {{!item.chapterCount ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
+          <button class="story-book spine spine-h-{{index % 3}} {{!item.chapterCount ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
             <view class="spine-body">
-              <image class="spine-art" src="/assets/illustrations/story-book-spine.png" mode="scaleToFill" aria-hidden="true"></image>
-              <view class="spine-tint" aria-hidden="true"></view>
+              <image class="spine-art" src="{{item.spineArtUrl || '/assets/illustrations/story-book-spine.png'}}" mode="scaleToFill" aria-hidden="true"></image>
               <view class="spine-label"><text class="spine-title serif">{{item.title}}</text></view>
               <text class="spine-no" aria-hidden="true">{{index + 1 < 10 ? '0' : ''}}{{index + 1}}</text>
             </view>
@@ -110,3 +109,5 @@
 </view>
 
 <story-switcher current="personal"></story-switcher>
+
+<canvas type="2d" id="book-spine-canvas" class="book-spine-canvas" aria-hidden="true"></canvas>

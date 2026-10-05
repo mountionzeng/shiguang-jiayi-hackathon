@@ -1,0 +1,937 @@
+{
+  "title": "对话智能真实模型验收样本",
+  "source": "虚构测试材料，首条沿用需求中的基线句子",
+  "baselineCommit": "937210af1b77a03e7a3d9325ee78f2b6b6a8b30a",
+  "realModelStatus": "completed_20_cloud_responses_human_review_pending",
+  "rubric": "逐条指出回答回应原话的词或意思；至少18/20相关，前5条0次事实要素追问。18/19应不追问；所有结果须人工评审。模板输出不计入真实模型通过率。",
+  "cases": [
+    {
+      "id": "01",
+      "type": "箴言",
+      "answer": "越是迷茫的时候，越是要往远处看。",
+      "anchor": "迷茫／往远处看对自己的意义",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "“往远处看”这句挺有画面。我有个不一定对的理解：你说的“远”，也许不是某个具体地方，而是不让眼前这点占据全部视线。对你来说，往远处看更像是去看长远想做的事，还是把眼下的事放小一点看？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 12518,
+      "realModelRequestId": "f3f5d255-eb79-4410-8bbb-54d545047097",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "02",
+      "type": "箴言",
+      "answer": "慢一点，也未必会错过什么。",
+      "anchor": "慢一点／害怕错过",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "这句话像是在把“慢”和“错过”放在一起掂量。对你来说，“慢一点”最想留住的是什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 8334,
+      "realModelRequestId": "6e91e457-526f-4f90-83d0-ba286500a036",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "03",
+      "type": "感想",
+      "answer": "比起热闹，我越来越珍惜能安静待着的时刻。",
+      "anchor": "热闹与安静的变化",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "比起热闹，安静待着的时刻好像更让你想留住。你说“越来越珍惜”，这样的时刻里，最让你看重的是什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 7693,
+      "realModelRequestId": "cee1cdb2-c627-40db-86d5-c5b499361d44",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "04",
+      "type": "感想",
+      "answer": "真正让我安心的，是不用急着证明自己。",
+      "anchor": "安心／证明自己",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "听着像是：让你松下来的，不是被谁认可，而是不必赶着证明自己。这份「不用急」的安心，对你来说最实在的是哪一点？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 5479,
+      "realModelRequestId": "ef811ccf-8650-4a5c-b6a8-7537701060b5",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "05",
+      "type": "感想",
+      "answer": "有些遗憾不用补回来，承认它在那里就够了。",
+      "anchor": "遗憾／承认它存在",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "“承认它在那里就够了”——听起来不是要把它抹掉，而是允许它留在原处。这个“够了”，对你是够在不再跟它拉扯，还是够在能带着它继续过日子？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 7456,
+      "realModelRequestId": "254a7d91-afe9-4ba4-9584-4519ef05f5e1",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "06",
+      "type": "感受延续",
+      "answer": "没新事情，就想聊聊这种踏实的感觉。",
+      "anchor": "踏实；不得强索取新事件或告别",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "没新事情也可以，就聊这份踏实。你说“这种踏实”，它在你那儿是什么样子的——身体上先松下来，还是心里某件事终于不用悬着了？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 10302,
+      "realModelRequestId": "d528e1eb-8926-42c7-835a-97bad656beef",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "07",
+      "type": "气味与场景",
+      "answer": "下班路上闻到桂花香，我一下想起老家的院子。",
+      "anchor": "桂花香／老家院子",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "place",
+        "text": "下班路上的桂花香，一下把你带回老家的院子。那会儿先冒出来的是院子的哪个角落，或者什么画面？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 7634,
+      "realModelRequestId": "ce7d2892-e117-4c76-8241-73908df4b026",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "08",
+      "type": "关系",
+      "answer": "父亲把旧收音机修好了，第一件事是调到我小时候爱听的节目。",
+      "anchor": "修收音机／儿时节目；不猜父亲动机",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "place",
+        "text": "这件事发生在哪儿？屋里还是外头？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "person",
+        "text": "修好后的第一件事，是调到小时候那个节目。他调台那会儿，你是在旁边吗？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 9600,
+      "realModelRequestId": "0efea384-4743-4be7-80ef-6a86ff0de0e0",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "09",
+      "type": "物件",
+      "answer": "搬家时发现一个掉了漆的铁盒，我舍不得扔。",
+      "anchor": "铁盒／舍不得",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "event",
+        "text": "掉了漆的铁盒，搬家收拾时翻出来，你说舍不得扔——看来它不只是个盒子。它里面现在还有东西吗？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 7683,
+      "realModelRequestId": "201daafe-e129-4729-bcc5-50f2ce4a5fc4",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "10",
+      "type": "经历与感受",
+      "answer": "今天同事走前给我留了一杯热茶，我原本很烦的心情缓过来了。",
+      "anchor": "热茶／心情缓过来",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "time",
+        "text": "大概是哪一年，或者你多大的时候？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "人已经走了，那杯热茶却像还替他说了句话，你原本绷着的烦也跟着松了一点。当时那阵烦，是手头正卡着的事，还是从别处带过来的？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 4948,
+      "realModelRequestId": "ba04cd31-123f-41fd-b08c-d03b9136291b",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "11",
+      "type": "经历与沉默",
+      "answer": "我辞职那天没有哭，回家在楼下坐了很久。",
+      "anchor": "没有哭／楼下坐很久；不代判创伤",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "辞职那天没哭，却在楼下坐了很久——这两件事放在一起，像是身体替你停了一会儿。那段时间里，你注意到的是什么？比如楼下的灯、路过的人，还是手边某样东西。",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 6568,
+      "realModelRequestId": "1ba3abfc-ccbc-4a85-9613-212ef32d0b79",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "12",
+      "type": "感官细节",
+      "answer": "第一次学会骑车，我最记得的是把手上的那层橡胶味。",
+      "anchor": "把手橡胶味／记得的细节",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "把手上的橡胶味被你记到了现在，闻着它的时候，你是正扶着车准备骑，还是已经骑起来、手攥得紧紧的呢？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 4830,
+      "realModelRequestId": "1f8daad6-2d7c-42eb-81d6-bdc418dad0c4",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "13",
+      "type": "拒绝单一话题",
+      "answer": "我不想聊那个人，想说说我后来怎样决定离开的。",
+      "anchor": "离开的决定；停止那个人的话题并继续",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "event",
+        "text": "那就不聊那个人，只说你后来怎样决定离开。你记得这个决定是一点点成形的，还是某一天突然定下来的？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 6938,
+      "realModelRequestId": "ed6d4523-00da-4d32-b785-7fed8b702bae",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "14",
+      "type": "记不清",
+      "answer": "具体哪一年我忘了，但记得那天屋里很冷。",
+      "anchor": "屋里很冷；不重复追问年份",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "年份记不得了，那天的冷倒是留了下来。那种冷是什么样——裹着被子也暖不过来，还是整个屋子透着一股阴冷？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 5720,
+      "realModelRequestId": "818d8feb-e05f-4419-a8a6-d665257d858d",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "15",
+      "type": "家人不同版本",
+      "answer": "我和姐姐记得不一样，她说是在冬天，我只记得窗外有蝉声。",
+      "anchor": "两个来源／蝉声；不裁决谁对",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "place",
+        "text": "这件事发生在哪儿？屋里还是外头？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "time",
+        "text": "同一次经历，你留下的是窗外的蝉声，姐姐记得的却是冬天，这两份记忆先各自放着，不用这会儿分出谁对。蝉声常和夏天连在一起——那时你还在窗边注意到别的什么吗？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 6012,
+      "realModelRequestId": "1b88322c-89ab-42ae-a19a-46ede60291e8",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "16",
+      "type": "每日一问",
+      "answer": "我每天起床先给阳台上的花浇水，今天又冒出了一个小芽。",
+      "anchor": "浇水／新芽；接住后继续",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [
+        {
+          "role": "assistant",
+          "text": "今天有什么你想留下的小事？"
+        }
+      ],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "event",
+        "text": "每天起床先浇水，今天多冒出一个小芽，算是浇花时撞见的小变化。你是怎么注意到它的——浇水时一眼就看见，还是后来才发现的？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 5222,
+      "realModelRequestId": "444c3fda-c45c-44e8-ab00-ea14338035d7",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "17",
+      "type": "短回答",
+      "answer": "嗯，就是那种终于不用赶着去哪里的感觉。",
+      "anchor": "不用赶路的感觉；短回答不自动结束",
+      "noFactQuestions": true,
+      "askedDimensions": [
+        "feeling"
+      ],
+      "conversation": [
+        {
+          "role": "assistant",
+          "text": "刚才说的踏实，对你更像是什么感觉？"
+        }
+      ],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "这句话对你来说，最贴近的是哪一部分？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "“不用赶着去哪里”，那种踏实听起来像是不必再被下一个目的地推着走。现在没有要赶去的地方时，你一般会待在哪儿、做点什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 6472,
+      "realModelRequestId": "d4c3e739-e09b-40b6-8430-e0fbd4597688",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。仍追问地点和活动，超出本条 noFactQuestions 的偏好；保持相关，列为待改进。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "18",
+      "type": "只记录",
+      "answer": "不太想解释原因，只想把这句话留下。",
+      "anchor": "尊重只记录，不追问原因",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "好，这里先不追问。",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "那就只把这句话留下，原因不必解释。我在这儿替你记着。",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 7442,
+      "realModelRequestId": "a48b20cf-5f96-41c6-9d53-24af58604421",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "19",
+      "type": "明确暂停",
+      "answer": "今天先到这里吧，我想歇一会儿。",
+      "anchor": "暂停，不追加问题",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "person",
+        "text": "那时候谁和你在一起？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "好，我们先停在这里。",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "feeling",
+        "text": "那就先歇一会儿，今天到这里。",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 4306,
+      "realModelRequestId": "7d71e217-188a-4b5f-b5f3-133923d62a0f",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    },
+    {
+      "id": "20",
+      "type": "纠正归属",
+      "answer": "我说的是我自己喜欢一个人走走，不是说我妈妈。",
+      "anchor": "讲述者本人／一个人走走；接受归属纠正",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "baseline": {
+        "dimension": "time",
+        "text": "大概是哪一年，或者你多大的时候？"
+      },
+      "currentTemplate": {
+        "dimension": "feeling",
+        "text": "你刚才这句话里，最想留下来的是哪个意思？",
+        "generationMode": "local-fallback",
+        "fallbackReason": "cloud-not-ready"
+      },
+      "modelResponse": null,
+      "humanVerdict": null,
+      "realModel": {
+        "dimension": "event",
+        "text": "记下了，是你自己喜欢一个人走走，不是在说你妈妈。那这种一个人走走，一般是什么时候出门——比如下班后、还是想静一静的时候？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "realModelLatencyMs": 7213,
+      "realModelRequestId": "639ded8c-db7c-4f48-912d-fd4644f5061d",
+      "codexReview": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      },
+      "humanReview": "pending"
+    }
+  ],
+  "codeCommit": "a760eaf2d67bf8740a2a2a88c8837d5e8a469ec5",
+  "realModelSummary": {
+    "successfulModelResponses": 20,
+    "total": 20,
+    "codexSemanticRelevant": 20,
+    "firstFiveUnrelatedFactQuestions": 0,
+    "recordOnlyAndPauseRespected": true,
+    "humanReview": "pending",
+    "latencyMedianMs": 7075.5,
+    "latencyMaxMs": 12518,
+    "tokenUsage": "响应 computeUsage 全为 null，不能推算实际 token 或费用。"
+  },
+  "singleAccountPersonalMemory": {
+    "date": "2026-09-27",
+    "environment": "cloud1-d5ghzk30ve609f544",
+    "sourceCommit": "26a0fd0bba2abf94141b975e8129482b3302c402",
+    "consentUi": "enabled successfully after 09fc653 modal label fix",
+    "samples": [
+      {
+        "id": "memory-1790500640555-l1succ",
+        "title": "小院散步，心里松下来",
+        "text": "今天在小院里散步，我想先讲那种心里松下来的感觉。终于没有催促，我整个人都安静了。说起这段经历，最想谈的是自己的感受。今天先记下来，不用追问。",
+        "path": "UI"
+      },
+      {
+        "id": "memory-1790501329940-ajpoup",
+        "title": "画坏了也没有重来",
+        "text": "昨天练习画画，画坏了也没有重来。我先想到的是自己的心情，从着急变成了轻松，允许自己慢慢来很舒服。我讲经历时总想从心里的感觉开始。先记着，不用追问。",
+        "path": "UI input/save; runtime page handlers for send/finish"
+      },
+      {
+        "id": "memory-1790501592326-cl5u5j",
+        "title": "雨声里读书",
+        "text": "前天在雨声里读书，读到一半我停住了。我想先说的是内心的踏实，不用急着证明什么，安安静静就很好。每次回想事情，我在意的是自己的感受怎么变化。先记录，不用问下去了。",
+        "path": "UI input/save; runtime page handlers for send/finish; extraction retry returned complete"
+      },
+      {
+        "id": "memory-1790506070241-czni4c",
+        "title": "把一盆小花搬到窗边",
+        "text": "今天把一盆小花搬到窗边。讲这件事时，我最想先说的是心里忽然有了盼头的感觉，不是物件的样子。回看散步、画画和读书的经历，我也总从自己的感受讲起。先记下来，不用追问。",
+        "path": "UI"
+      }
+    ],
+    "beforeFix": {
+      "listAfter1": [],
+      "listAfter2": [],
+      "listAfter3": [],
+      "candidateConfidence": 0.4,
+      "candidateEvidenceCount": 3,
+      "candidateText": "讲述个人经历时，倾向先谈自己内心的感受。",
+      "lineageKey": "9c55e5bba1eef84b572970f27629cbc6"
+    },
+    "fix": "Only a matched new independent source may reassess confidence from valid original excerpts; copies, same-source edits and missed matches cannot raise it. Three distinct sources and 0.75 gate preserved.",
+    "afterFix": {
+      "status": "visible",
+      "evidenceCount": 4,
+      "text": "讲述个人经历时，倾向先谈自己内心的感受。",
+      "sourceLabel": "小忆的暂定理解",
+      "confirmUi": "说得对 succeeded; label changed to 依据你的讲述",
+      "correction": {
+        "text": "我更愿意从物件和场景的具体细节讲起。",
+        "origin": "user_corrected",
+        "evidenceLabel": "你的纠正 · 2026-09-27",
+        "uiLabel": "依据你的纠正",
+        "sameInput": "傍晚走过小公园，看见一张空长椅，我停了一会儿。",
+        "before": {
+          "dimension": "event",
+          "text": "傍晚路过公园，一张空长椅让你停了一会儿。那一下是脚步先慢下来，还是看见椅子空着，才想站一站？"
+        },
+        "after": {
+          "dimension": "place",
+          "text": "傍晚的小公园里，一张空着的长椅让你停了一会儿。停下那会儿，你先注意到的是长椅本身——比如它的样子、位置，还是周围的光线和声响？"
+        },
+        "generationMode": "cloud-ai",
+        "selectorVersion": "u6-v2",
+        "caveat": "Before response was about action, not strongly emotional; one before/after pair does not establish style accuracy across accounts."
+      },
+      "correctionInputFix": {
+        "commit": "2c88670",
+        "checkedUi": true,
+        "defaultEmpty": true
+      },
+      "forgetUi": "confirmed; visible list empty",
+      "forgetReplay": [
+        {
+          "memoryId": "memory-1790500640555-l1succ",
+          "status": "suppressed"
+        },
+        {
+          "memoryId": "memory-1790501329940-ajpoup",
+          "status": "suppressed"
+        },
+        {
+          "memoryId": "memory-1790501592326-cl5u5j",
+          "status": "suppressed"
+        },
+        {
+          "memoryId": "memory-1790506070241-czni4c",
+          "status": "suppressed"
+        }
+      ],
+      "listAfterForget": [],
+      "pauseUi": "confirmed; memory disabled",
+      "originalsAfterForget": "Four sample memories still present before cleanup; forgetting did not delete them",
+      "pauseCloudVerified": true
+    },
+    "cleanup": {
+      "verified": true,
+      "mode": "normal UI soft delete; recoverable",
+      "memories": [
+        {
+          "id": "memory-1790497809872-eefc1d",
+          "deletedAt": "2026-09-27T08:54:30.558Z"
+        },
+        {
+          "id": "memory-1790500640555-l1succ",
+          "deletedAt": "2026-09-27T11:17:36.047Z"
+        },
+        {
+          "id": "memory-1790501329940-ajpoup",
+          "deletedAt": "2026-09-27T11:13:13.180Z"
+        },
+        {
+          "id": "memory-1790501592326-cl5u5j",
+          "deletedAt": "2026-09-27T11:11:20.848Z"
+        },
+        {
+          "id": "memory-1790506070241-czni4c",
+          "deletedAt": "2026-09-27T11:09:00.994Z"
+        }
+      ]
+    },
+    "baselineMemoryCleanup": {
+      "id": "memory-1790497809872-eefc1d",
+      "deletedAt": "2026-09-27T08:54:30.558Z",
+      "verified": true
+    },
+    "fallback": {
+      "simulatedCloudUnavailable": true,
+      "input": "越是迷茫的时候，越是要往远处看。",
+      "label": "模板追问",
+      "reply": "你刚才这句话里，最想留下来的是哪个意思？",
+      "savedWithoutAiLabel": true,
+      "id": "memory-1790508119546-js1mzx",
+      "deletedAt": "2026-09-27T11:28:05.090Z",
+      "previewRuntimeRestored": true
+    }
+  },
+  "pending": [
+    "腾讯云内容检查服务恢复后，复测 a760eaf 的 10 条追问样例；最新版本尚无成功的线上复测回复。",
+    "20 条真实模型结果由人逐条评审；Codex 判断不能代替人工硬门禁。",
+    "真实手机复测基线原句；目前只在微信开发者工具模拟器完成。",
+    "至少 3 个不同风格的真实测试账号评估倾向准确性。",
+    "双账号、至少两台设备验证读取/纠正/忘记隔离。",
+    "持续观察个人记忆页面打开率和确认/纠正点击率。"
+  ],
+  "followupOptimization": {
+    "sourceCommit": "a760eaf2d67bf8740a2a2a88c8837d5e8a469ec5",
+    "summary": {
+      "status": "deployed_live_retest_blocked",
+      "firstIterationSuccessfulResponses": 6,
+      "firstIterationAttempted": 10,
+      "originalRepeatsWithoutWhereOrActivities": 3,
+      "originalRepeats": 3,
+      "firstIterationFullyAccepted": false,
+      "finalSuccessfulResponses": 0,
+      "finalAttempted": 2,
+      "finalNotAttempted": 8,
+      "typecheck": "passed",
+      "testsPassed": 993,
+      "testsFailed": 0,
+      "humanReview": "pending"
+    }
+  },
+  "realModelSourceCommit": "8f6fb7cbad4d35cf1ea32bf0dd7dab3fb288778d",
+  "latestVersionLiveStatus": "deployed_live_retest_blocked"
+}

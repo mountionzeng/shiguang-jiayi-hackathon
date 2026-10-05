@@ -1,5 +1,5 @@
 import { storyCoverApi } from '../../services/storyCoverService';
-import { isActiveJob, qualityLabel, moderationLabel, storyImageApi, StoryImage, StoryImageJob } from '../../services/storyImageService';
+import { isActiveJob, qualityLabel, moderationLabel, storyImageApi, StoryImage, StoryImageJob, StoryImageServiceError } from '../../services/storyImageService';
 
 interface ReferenceCard { id: string; kind: 'photo' | 'image'; url: string; selected: boolean }
 interface CoverCard extends StoryImage { selected: boolean; qualityLabel: string; moderationLabel: string; ready: boolean }
@@ -11,7 +11,7 @@ Page({
     references: [] as ReferenceCard[], selectedCount: 0, covers: [] as CoverCard[], jobs: [] as StoryImageJob[],
     loading: true, submitting: false, selecting: false, activeJob: false, notice: '', loadError: '', artDirection: '',
   },
-  hidden: false, unloaded: false, refreshId: 0,
+  hidden: false, unloaded: false, refreshId: 0, polling: false, startQueued: false, pendingImageRefresh: false,
   timer: undefined as ReturnType<typeof setTimeout> | undefined,
   onLoad(options: {storyId?: string}) {
     this.setData({storyId: options.storyId || ''});
@@ -20,45 +20,73 @@ Page({
   onHide() { this.hidden = true; this.stopPoll(); },
   onUnload() { this.unloaded = true; this.stopPoll(); },
   stopPoll() { if (this.timer !== undefined) clearTimeout(this.timer); this.timer = undefined; },
-  async refresh() {
+  async refresh(imagesOnly = false) {
     const id = ++this.refreshId;
-    const [source, list] = await Promise.all([storyCoverApi.sources(this.data.storyId), storyImageApi.listStoryImages(this.data.storyId)]);
+    const [source, list] = await Promise.all([
+      imagesOnly ? undefined : storyCoverApi.sources(this.data.storyId),
+      storyImageApi.listStoryImages(this.data.storyId),
+    ]);
     if (this.unloaded || id !== this.refreshId) return;
     const chosen = new Set(this.data.references.filter(item => item.selected).map(item => item.id));
     const references: ReferenceCard[] = [
-      ...source.photos.map(photo => ({id:photo.photoId, kind:'photo' as const, url:photo.url, selected:chosen.has(photo.photoId)})),
+      ...(source ? source.photos.map(photo => ({id:photo.photoId, kind:'photo' as const, url:photo.url, selected:chosen.has(photo.photoId)}))
+        : this.data.references.filter(item => item.kind === 'photo').map(item => ({...item, selected:chosen.has(item.id)}))),
       ...list.images.filter(image => image.moderation === 'pass' && image.url).map(image => ({id:image.imageId,kind:'image' as const,url:image.url,selected:chosen.has(image.imageId)})),
     ];
     this.setData({
-      title:source.title, version:source.version, coverImageId:source.coverImageId,
-      chapterCount:source.chapterCount, textLength:source.textLength,
+      ...(source ? {title:source.title, version:source.version, coverImageId:source.coverImageId,
+        chapterCount:source.chapterCount, textLength:source.textLength} : {}),
       references, selectedCount:references.filter(item => item.selected).length,
       covers:list.images.filter(image => image.purpose === 'cover').map(image => ({...image,
-        selected:image.imageId === source.coverImageId, qualityLabel:qualityLabel(image),
+        selected:image.imageId === (source?.coverImageId ?? this.data.coverImageId), qualityLabel:qualityLabel(image),
         moderationLabel:moderationLabel(image.moderation), ready:image.moderation === 'pass'})),
       jobs:list.pending.filter(job => job.purpose === 'cover'),
       activeJob:list.pending.some(job => job.purpose === 'cover' && isActiveJob(job)), loading:false, loadError:'',
     });
+    this.pendingImageRefresh = false;
     this.schedulePoll();
   },
-  schedulePoll() {
+  schedulePoll(immediate = false) {
+    this.startQueued = this.startQueued || immediate;
     this.stopPoll();
-    if (this.hidden || this.unloaded) return;
-    if (this.data.jobs.some(isActiveJob) || this.data.covers.some(image => image.moderation === 'pending' || image.quality === 'pending')) {
-      this.timer = setTimeout(() => { void this.poll(); }, 4000);
+    if (this.hidden || this.unloaded || this.polling) return;
+    if (this.pendingImageRefresh || this.data.jobs.some(isActiveJob) || this.data.covers.some(image => image.moderation === 'pending' || image.quality === 'pending')) {
+      this.timer = setTimeout(() => { void this.poll(); }, this.startQueued ? 0 : 4000);
+      this.startQueued = false;
     }
   },
   async poll() {
-    if (this.hidden || this.unloaded) return;
+    this.stopPoll();
+    if (this.hidden || this.unloaded || this.polling) return;
+    this.polling = true;
+    const jobs = this.data.jobs.filter(isActiveJob);
+    let refreshImages = this.pendingImageRefresh || !jobs.length;
     try {
-      for (const job of this.data.jobs.filter(isActiveJob)) {
-        const result = await storyImageApi.checkImageJob(job.jobId, this.data.storyId);
+      for (let offset = 0; offset < jobs.length; offset += 2) {
         if (this.hidden || this.unloaded) return;
-        this.setData({notice:result.job.status === 'stored' ? '封面画好了，看看是否喜欢' : result.job.message});
+        await Promise.all(jobs.slice(offset, offset + 2).map(async job => {
+          try {
+            const result = await storyImageApi.checkImageJob(job.jobId, this.data.storyId);
+            if (this.hidden || this.unloaded) return;
+            if (!isActiveJob(result.job)) {
+              refreshImages = true;
+              this.pendingImageRefresh = true;
+            }
+            // Stop generation feedback at the terminal state, even if loading the image fails.
+            const updatedJobs = this.data.jobs.map(item => item.jobId === job.jobId ? result.job : item);
+            this.setData({notice:result.job.status === 'stored' ? '封面画好了，看看是否喜欢' : result.job.message,
+              jobs:updatedJobs, activeJob:updatedJobs.some(isActiveJob)});
+          } catch (error) {
+            if (!this.hidden && !this.unloaded) this.setData({notice:message(error)});
+          }
+        }));
       }
-      await this.refresh();
+      if (!this.hidden && !this.unloaded && refreshImages) await this.refresh(true);
     } catch (error) {
-      if (!this.hidden && !this.unloaded) { this.setData({notice:message(error)}); this.schedulePoll(); }
+      if (!this.hidden && !this.unloaded) this.setData({notice:message(error)});
+    } finally {
+      this.polling = false;
+      this.schedulePoll();
     }
   },
   toggleReference(event: {currentTarget:{dataset:{id:string}}}) {
@@ -80,13 +108,16 @@ Page({
         referencePhotoIds:selected.filter(item => item.kind === 'photo').map(item => item.id),
         ...(this.data.artDirection.trim() ? {artDirection:this.data.artDirection.trim()} : {})});
       if (this.unloaded) return;
-      this.setData({notice:job.message});
-      await this.refresh();
+      ++this.refreshId;
+      this.setData({notice:job.message, jobs:[job, ...this.data.jobs.filter(item => item.jobId !== job.jobId)], activeJob:isActiveJob(job)});
+      this.schedulePoll(true);
     } catch (error) {
       if (!this.unloaded) {
         this.setData({notice:message(error)});
-        // A dropped response may still have queued a paid job. Read it before allowing another tap.
-        await this.refresh().catch(() => undefined);
+        // Declining consent never submitted a job. Uncertain failures still need reconciliation.
+        if (!(error instanceof StoryImageServiceError && error.code === 'CONSENT_DECLINED')) {
+          await this.refresh().catch(() => undefined);
+        }
       }
     } finally { if (!this.unloaded) this.setData({submitting:false}); }
   },

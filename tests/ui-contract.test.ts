@@ -25,6 +25,14 @@ const socialMarkup = readFileSync(
   ),
   "utf8",
 );
+const homeStyles = readFileSync(
+  resolve(process.cwd(), "miniprogram/pages/index/index.wxss"),
+  "utf8",
+);
+const switcherStyles = readFileSync(
+  resolve(process.cwd(), "miniprogram/components/story-switcher/story-switcher.wxss"),
+  "utf8",
+);
 
 test("transparent story tabs never use WeChat's native pressed or disabled paint", () => {
   const entrances = switcherMarkup.match(
@@ -38,10 +46,31 @@ test("transparent story tabs never use WeChat's native pressed or disabled paint
   });
 });
 
-test("custom book covers fill their fixed cover frames", () => {
-  assert.match(homeMarkup, /class="book-cover-picture" wx:if="\{\{item.coverUrl\}\}"/);
-  assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
-  assert.match(homeMarkup, /class="ancient-book-art \{\{item.coverUrl \? 'ancient-book-art-overlay' : ''\}\}"[\s\S]*mode="aspectFill"/);
+test("capture options keep both note and memoir illustrations as real assets", () => {
+  assert.match(
+    switcherMarkup,
+    /class="capture-art capture-art-note"[\s\S]*src="\/assets\/illustrations\/capture-note-paper\.png"[\s\S]*mode="aspectFit"/,
+  );
+  assert.match(
+    switcherMarkup,
+    /class="capture-art capture-art-memoir"[\s\S]*src="\/assets\/illustrations\/capture-memoir-book\.png"[\s\S]*mode="aspectFit"/,
+  );
+  const memoirStyle = switcherStyles.match(/\.capture-art-memoir\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.doesNotMatch(memoirStyle, /background:/);
+});
+
+test("custom book covers use a generated book image while keeping the printed text layer separate", () => {
+  assert.match(homeMarkup, /class="book-cover-picture" wx:if="\{\{item.bookArtUrl\}\}"/);
+  assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*src="\{\{item.bookArtUrl\}\}"[\s\S]*mode="scaleToFill"/);
+  assert.doesNotMatch(homeMarkup, /class="book-cover-frame/);
+  assert.match(homeMarkup, /wx:else[\s\S]*class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
+  assert.doesNotMatch(homeMarkup, /book-cover-dominant|book-cover-paper-texture|book-cover-material|book-cover-material-color|book-cover-picture-wash|book-cover-edge-mask|ancient-book-art-overlay|story-book-spine|story-switcher-book-edges|capture-memoir-book|story-book-cover-paper-texture\.png|onBookCoverLoad/);
+  assert.match(homeMarkup, /class="book-cover-copy \{\{item.bookArtUrl \? 'book-cover-copy-printed' : ''\}\}"/);
+  assert.match(homeMarkup, /<text class="book-kicker typewriter">拾 光 录<\/text>/);
+  assert.match(homeMarkup, /<view class="book-title typewriter">\{\{item.title\}\}<\/view>/);
+  assert.match(homeMarkup, /<text class="book-stat-label">段记忆<\/text>/);
+  assert.match(homeMarkup, /<text class="book-stat-label">章节<\/text>/);
+  assert.match(homeMarkup, /<text class="book-stat-label">人物<\/text>/);
   assert.match(
     coverMarkup,
     /<image class="cover-art"[^>]*mode="aspectFill"/,

@@ -1,0 +1,139 @@
+{
+  "observedAt": "2026-09-27T13:24:54.362Z",
+  "environment": "cloud1-d5ghzk30ve609f544",
+  "appId": "wx86ae3e9d507ce52d",
+  "codeCommit": "a760eaf2d67bf8740a2a2a88c8837d5e8a469ec5",
+  "integratedMain": "f805c155d8e3fdb0fef693602959a35d06fb7b68",
+  "branch": "codex/conversation-intelligence-20260927",
+  "mergedIntoMain": false,
+  "pushed": false,
+  "functions": {
+    "chatInterview": {
+      "sourceCommit": "a760eaf2d67bf8740a2a2a88c8837d5e8a469ec5",
+      "businessSourceAndPackageVerified": true,
+      "serverReady": true,
+      "personalMemoryEnabled": false,
+      "model": "deepseek/deepseek-flash",
+      "baseUrl": "https://tokenhub.tencentmaas.com/v1",
+      "credentialConfigured": true,
+      "runtime": "Nodejs16.13"
+    },
+    "organizeMemory": {
+      "sourceCommit": "01dd7a295fb1675c42639aafa166597bf4e76464",
+      "businessSourceAndPackageVerified": true,
+      "serverReady": true,
+      "personalMemoryEnabled": false,
+      "model": "deepseek/deepseek-flash",
+      "baseUrl": "https://tokenhub.tencentmaas.com/v1",
+      "credentialConfigured": true,
+      "runtime": "Nodejs16.13"
+    },
+    "personalMemory": {
+      "sourceCommit": "26a0fd0bba2abf94141b975e8129482b3302c402",
+      "businessSourceAndPackageVerified": true,
+      "serverReady": false,
+      "personalMemoryEnabled": false,
+      "model": "deepseek/deepseek-flash",
+      "baseUrl": "https://tokenhub.tencentmaas.com/v1",
+      "credentialConfigured": true,
+      "runtime": "Nodejs16.13"
+    }
+  },
+  "flagRestore": {
+    "status": "verified",
+    "statement": "个人记忆的云端临时开关已恢复关闭。",
+    "verification": {
+      "environment": "cloud1-d5ghzk30ve609f544",
+      "verificationMethod": "Tencent Cloud saved configuration view after WeChat MFA",
+      "functions": {
+        "organizeMemory": {
+          "verifiedAt": "2026-09-27T12:18:39.793Z",
+          "AI_SERVER_RELEASE_READY": true,
+          "PERSONAL_MEMORY_ENABLED": false
+        },
+        "chatInterview": {
+          "verifiedAt": "2026-09-27T12:22:48.902Z",
+          "AI_SERVER_RELEASE_READY": true,
+          "PERSONAL_MEMORY_ENABLED": false
+        },
+        "personalMemory": {
+          "verifiedAt": "2026-09-27T12:27:34.283Z",
+          "AI_SERVER_RELEASE_READY": false,
+          "PERSONAL_MEMORY_ENABLED": false
+        }
+      }
+    }
+  },
+  "perUserMemory": {
+    "enabled": false,
+    "insights": [],
+    "verifiedUi": true
+  },
+  "personalMemoryCollections": {
+    "count": 5,
+    "exist": true,
+    "userIdIndexesVerified": true,
+    "clientProbes": {
+      "read": "denied -502003",
+      "update": "denied -502003",
+      "create": "denied -502003",
+      "recordsCreatedOrChanged": 0
+    },
+    "exactRuleText": "not retrieved; console rendered blank",
+    "dualAccountVerification": "pending"
+  },
+  "localVerification": {
+    "typecheck": "passed",
+    "passed": 993,
+    "failed": 0,
+    "skipped": 0
+  },
+  "preview": {
+    "sourceCommit": "2c886707d803726fe28908b3a90554a237bc6273",
+    "filesChecked": 183,
+    "clientGateRepo": false,
+    "clientGatePreview": true,
+    "mismatches": []
+  },
+  "realModelSourceCommit": "8f6fb7cbad4d35cf1ea32bf0dd7dab3fb288778d",
+  "realModelSummary": {
+    "successfulModelResponses": 20,
+    "total": 20,
+    "codexSemanticRelevant": 20,
+    "firstFiveUnrelatedFactQuestions": 0,
+    "recordOnlyAndPauseRespected": true,
+    "humanReview": "pending",
+    "latencyMedianMs": 7075.5,
+    "latencyMaxMs": 12518,
+    "tokenUsage": "响应 computeUsage 全为 null，不能推算实际 token 或费用。"
+  },
+  "credentialReuseAuthorization": "User authorized reuse; key saved after WeChat MFA and verified. No key values in code, outputs or logs.",
+  "preservedInvitationSource": "681c4811e4591bdde578ee412600fb57921aab87",
+  "qrIssued": false,
+  "followupOptimization": {
+    "sourceCommit": "a760eaf2d67bf8740a2a2a88c8837d5e8a469ec5",
+    "summary": {
+      "status": "deployed_live_retest_blocked",
+      "firstIterationSuccessfulResponses": 6,
+      "firstIterationAttempted": 10,
+      "originalRepeatsWithoutWhereOrActivities": 3,
+      "originalRepeats": 3,
+      "firstIterationFullyAccepted": false,
+      "finalSuccessfulResponses": 0,
+      "finalAttempted": 2,
+      "finalNotAttempted": 8,
+      "typecheck": "passed",
+      "testsPassed": 993,
+      "testsFailed": 0,
+      "humanReview": "pending"
+    }
+  },
+  "pending": [
+    "腾讯云内容检查服务恢复后，复测 a760eaf 的 10 条追问样例；最新版本尚无成功的线上复测回复。",
+    "20 条真实模型结果由人逐条评审；Codex 判断不能代替人工硬门禁。",
+    "真实手机复测基线原句；目前只在微信开发者工具模拟器完成。",
+    "至少 3 个不同风格的真实测试账号评估倾向准确性。",
+    "双账号、至少两台设备验证读取/纠正/忘记隔离。",
+    "持续观察个人记忆页面打开率和确认/纠正点击率。"
+  ]
+}

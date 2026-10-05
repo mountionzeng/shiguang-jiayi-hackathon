@@ -634,6 +634,41 @@ test("the interview cloud function retries one empty provider response", async (
   }
 });
 
+test("interview allows a slow model reply but still aborts at forty seconds", async (t) => {
+  const previousFetch = global.fetch;
+  const previousKey = process.env.CHAT_AI_API_KEY;
+  const previousModel = process.env.CHAT_AI_MODEL;
+  process.env.CHAT_AI_API_KEY = "test-chat-key";
+  process.env.CHAT_AI_MODEL = "smart-chat-model";
+  let requestSignal;
+  global.fetch = async (_url, options) => {
+    requestSignal = options.signal;
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(Object.assign(new Error("timed out"), { name: "AbortError" })), { once: true });
+    });
+  };
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const pending = chatInterviewMain({ answer: "这是虚构的慢请求验收。" });
+    const rejected = assert.rejects(pending, { name: "AbortError" });
+    // main awaits story-context resolution before requesting the model.
+    await Promise.resolve();
+    assert.ok(requestSignal);
+    t.mock.timers.tick(20_001);
+    assert.equal(requestSignal.aborted, false);
+    t.mock.timers.tick(19_999);
+    await rejected;
+    assert.equal(requestSignal.aborted, true);
+  } finally {
+    t.mock.timers.reset();
+    global.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.CHAT_AI_API_KEY;
+    else process.env.CHAT_AI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.CHAT_AI_MODEL;
+    else process.env.CHAT_AI_MODEL = previousModel;
+  }
+});
+
 test("the interview cloud function rejects two empty provider responses", async () => {
   const previousFetch = global.fetch;
   const previousKey = process.env.CHAT_AI_API_KEY;
@@ -679,8 +714,8 @@ test("the interview cloud function separates note and memoir prompts", () => {
   assert.equal(chatInterviewTest.validateMemoryType("unknown"), "note");
   assert.match(note.rule, /保持轻量/);
   assert.match(note.rule, /不自动引导成长意义/);
-  assert.match(memoir.rule, /先理清人生阶段/);
-  assert.match(memoir.rule, /不按轮数强行进入情感挖掘/);
+  assert.match(memoir.rule, /客观处境和当时感受都可以从一开始谈/);
+  assert.match(memoir.rule, /不按固定顺序补字段/);
 });
 
 test("the interview strategy reacts to emotion and off-track replies", () => {
@@ -845,6 +880,44 @@ test("the organize cloud function returns a structured memory card", async () =>
   }
 });
 
+test("inline answers use a short-edit brief for both memory types without biography length targets", async context => {
+  const keys = ["ORGANIZE_AI_API_KEY", "ORGANIZE_AI_MODEL", "ORGANIZE_AI_BASE_URL"];
+  const previous = keys.map(key => process.env[key]);
+  const previousFetch = global.fetch;
+  context.after(() => {
+    global.fetch = previousFetch;
+    keys.forEach((key, index) => {
+      if (previous[index] === undefined) delete process.env[key];
+      else process.env[key] = previous[index];
+    });
+  });
+  process.env.ORGANIZE_AI_API_KEY = "test-organize-key";
+  process.env.ORGANIZE_AI_MODEL = "memory-card-model";
+  process.env.ORGANIZE_AI_BASE_URL = "https://organize-model.invalid/v1";
+  const answer = "【虚构验收】小林把银杏叶夹进旧书，十分钟后离开。";
+  const requests = [];
+  global.fetch = async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ choices: [{ message: {
+      content: JSON.stringify({ title: "夹叶", summary: "短回答", body: answer }),
+    } }] }) };
+  };
+  for (const memoryType of ["note", "memoir"]) {
+    const result = await organizeMemoryMain({ inlineAnswer: true, transcript: [answer], memoryType });
+    assert.equal(result.body, answer);
+    assert.equal(result.generationMode, "cloud-ai");
+    assert.equal(result.memoryType, memoryType);
+  }
+  for (const request of requests) {
+    const prompt = request.messages.map(message => message.content).join("\n");
+    assert.match(prompt, /没有最低字数/);
+    assert.match(prompt, /保留测试或虚构标记/);
+    assert.match(prompt, /禁止添加/);
+    assert.match(prompt, /【虚构验收】小林把银杏叶夹进旧书/);
+    assert.doesNotMatch(prompt, /body 200 到 500 字|body 80 到 260 字|突出人生阶段/);
+  }
+});
+
 test("the organize cloud function falls back when the provider times out", async () => {
   const previousFetch = global.fetch;
   const previousKey = process.env.ORGANIZE_AI_API_KEY;
@@ -870,6 +943,16 @@ test("the organize cloud function falls back when the provider times out", async
     else process.env.ORGANIZE_AI_API_KEY = previousKey;
     if (previousModel === undefined) delete process.env.ORGANIZE_AI_MODEL;
     else process.env.ORGANIZE_AI_MODEL = previousModel;
+  }
+});
+
+test("short source memories must not be padded to a minimum length or inventory missing facts", () => {
+  for (const type of ["note", "memoir"]) {
+    const brief = organizeMemoryTest.organizationBrief(type);
+    assert.doesNotMatch(brief.rule, /body \d+ 到 \d+ 字/);
+    assert.match(brief.rule, /没有最低字数/);
+    assert.match(brief.rule, /不添加.*缺失说明/);
+    assert.match(brief.rule, /保留测试或虚构标记/);
   }
 });
 
@@ -922,8 +1005,56 @@ test("interview prompt distinguishes a feeling pivot from an explicit goodbye", 
   assert.match(messages[0].content, /默认每轮一个问题/);
   assert.match(messages[0].content, /深入来自用户自己的思考/);
   assert.match(messages[0].content, /不要替他回答/);
+  assert.match(messages[0].content, /箴言、感想或评价/);
+  assert.match(messages[0].content, /不追问人物、时间、地点或事件事实/);
+  assert.match(messages[0].content, /人物、时间、地点、行为和感受都是并列的记忆素材/);
+  assert.match(messages[0].content, /能否指出这处依据/);
   assert.doesNotMatch(messages[0].content, /不要求每轮提问/);
   assert.match(messages[1].content, /没什么新鲜事，我想讲的是现在的心情/);
   assert.match(messages[1].content, /以前搬家总紧张/);
   assert.match(messages[1].content, /我和外婆坐在院子里听雨/);
+});
+
+test("interview follow-up checks the question's meaning rather than echoed words", () => {
+  for (const memoryType of ["note", "memoir"]) {
+    const answer = "嗯，就是那种终于不用赶着去哪里的感觉。";
+    const messages = chatInterviewTest.buildOutputMessages({
+      answer,
+      history: [{ role: "assistant", text: "刚才说的踏实，对你更像是什么感觉？" }],
+      lastDimension: "feeling",
+      mode: "personal",
+      memoryType,
+      memberName: "测试讲述者",
+    });
+    const rules = messages[0].content;
+    assert.match(rules, /检查实际问句/);
+    assert.match(rules, /只在开头复述原词不算贴合/);
+    assert.match(rules, /否定、比喻或感受描述中的地点、时间、动作词/);
+    assert.match(rules, /同一感受可以连续聊/);
+    assert.match(rules, /已经说清的感受定义不换词重问/);
+    assert.match(rules, /不把感受延续变成感官扫描/);
+    assert.match(rules, /不再问.*最先感觉到什么/);
+    assert.match(rules, /只有用户主动转向具体经历或明确想谈细节/);
+    assert.match(rules, /如何安排时间/);
+    assert.match(rules, /把空下来的时间留给什么/);
+    assert.match(rules, /接下来做什么/);
+    assert.doesNotMatch(rules, /你最想把这段时间留给什么/);
+    assert.match(messages[1].content, /上一轮是感受，可以继续同一方向/);
+    assert.ok(messages[1].content.includes(answer));
+  }
+});
+
+test("interview follow-up preserves negation and a feeling that has ended", () => {
+  const answer = "最可贵的是，我不用连休息都觉得自己欠着什么。";
+  const messages = chatInterviewTest.buildOutputMessages({
+    answer,
+    history: [{ role: "assistant", text: "这份不用赶的自在，对你最可贵的是什么？" }],
+    lastDimension: "feeling",
+    mode: "personal",
+    memoryType: "note",
+    memberName: "测试讲述者",
+  });
+  assert.match(messages[0].content, /保留否定的作用范围与时间状态/);
+  assert.match(messages[0].content, /不能把已经否定或结束的感受当成仍在发生/);
+  assert.ok(messages[1].content.includes(answer));
 });

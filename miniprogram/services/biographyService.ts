@@ -1,3 +1,4 @@
+import { measurePerformance } from "./performanceLog";
 import {
   BiographyDraft,
   buildLocalChapterDraft,
@@ -83,7 +84,7 @@ export async function generateBiographyWithStatus(
   else if (!await requestAiConsent()) fallbackReason = "consent-declined";
   else {
     try {
-      const response = await wx.cloud.callFunction({
+      const response = await measurePerformance("ai.biography", () => wx.cloud.callFunction({
         name: "generateBiography",
         data: {
           protagonistName: member.name,
@@ -93,7 +94,7 @@ export async function generateBiographyWithStatus(
           ...(chapter?.storyId ? { storyId: chapter.storyId } : {}),
           ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),
         },
-      });
+      }));
 
       if (isCloudBiographyResult(response.result)) {
         return { draft: response.result };

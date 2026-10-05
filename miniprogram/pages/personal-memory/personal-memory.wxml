@@ -1,7 +1,7 @@
 <view class="memory-page page-enter">
   <view class="memory-eyebrow">小忆与你</view>
   <view class="memory-heading serif">小忆记住的事</view>
-  <view class="memory-intro">这些是从你的讲述里提炼的少量理解，可能不够准确。你可以随时让小忆忘记。</view>
+  <view class="memory-intro">这些是从你的讲述里提炼的少量理解，可能不够准确。你可以确认、纠正或忘掉；小忆会按你的选择调整。</view>
   <view wx:if="{{loading}}" class="memory-status">正在读取…</view>
   <view wx:elif="{{error}}" class="memory-status">{{error}}<button class="btn btn-jade" bindtap="refresh">重新读取</button></view>
   <block wx:else>
@@ -12,10 +12,10 @@
     <view class="memory-empty" wx:if="{{!insights.length}}">这里还没有理解。不是每段讲述都需要被提炼，原话和故事始终留在你的记忆里。</view>
     <view class="memory-item" wx:for="{{insights}}" wx:key="lineageKey">
       <view class="memory-text">{{item.text}}</view>
-      <view class="memory-evidence" wx:if="{{item.evidence.length}}">
-        <view class="memory-note">依据你的讲述</view>
-        <view class="memory-evidence-source" wx:for="{{item.evidence}}" wx:for-item="source" wx:key="occurredOn">
-          <text>{{source.label || source.occurredOn || '日期未记录'}}</text>
+      <view class="memory-evidence" wx:if="{{item.evidence && item.evidence.length}}">
+        <view class="memory-note">依据</view>
+        <view class="memory-evidence-source" wx:for="{{item.evidence}}" wx:for-item="source" wx:key="id">
+          <text>{{source.label || '讲述'}} · {{source.occurredOn || '日期未记录'}}</text>
           <text>{{source.excerpt}}</text>
         </view>
       </view>

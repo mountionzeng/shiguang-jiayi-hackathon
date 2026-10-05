@@ -63,6 +63,7 @@ function formatDate(iso: string): string {
 }
 
 Page({
+  roomSnapshot: undefined as FamilyRoomState | undefined,
   data: {
     people: [] as PersonTab[],
     activeId: ME,
@@ -103,6 +104,7 @@ Page({
       // 新用户还没有人物档案时，个人记忆之家仍可浏览空状态。
       viewerRole = viewer?.role ?? "";
     }
+    this.roomSnapshot = this.data.sharedFamilyId ? undefined : currentState;
     const pool = memoryPool(currentState.contributions);
     const placements = memoryPlacements(currentState);
     const people: PersonTab[] = [
@@ -153,7 +155,7 @@ Page({
 
   choosePerson(event: { currentTarget: { dataset: { id: string } } }) {
     this.setData({ activeId: event.currentTarget.dataset.id });
-    void this.refresh().catch((error) => { logLoadError("room", error); this.setData({ loadError: "记忆暂时没加载出来，请重试。" }); });
+    void this.refresh(this.roomSnapshot).catch((error) => { logLoadError("room", error); this.setData({ loadError: "记忆暂时没加载出来，请重试。" }); });
   },
 
   openMemory(event: { currentTarget: { dataset: { id: string } } }) {

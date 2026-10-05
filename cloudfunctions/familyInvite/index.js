@@ -302,6 +302,7 @@ async function loadRoom(event, accountId) {
             : []),
         visibility: memory.visibility,
         reviewStatus: memory.reviewStatus,
+        aiRevisions: memory.aiRevisions,
         createdAt: memory.createdAt,
       })),
       personalDrafts: {},

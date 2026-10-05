@@ -33,8 +33,9 @@ Page({
     wx.showModal({
       title: `把「${title}」放到电脑？`,
       content: "会生成一个五分钟有效的一次性登录码。电脑登录后，这个故事的记忆和章节就能继续制作视频。",
-      confirmText: "生成登录码",
+      confirmText: "生成",
       success: result => { if (result.confirm) void this.createCode(key, title); },
+      fail: () => wx.showToast({ title: "确认窗口未打开，请重试", icon: "none" }),
     });
   },
   async createCode(key: string, title: string) {

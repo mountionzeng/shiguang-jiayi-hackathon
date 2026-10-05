@@ -395,8 +395,8 @@ function missingStoryService(error: unknown): boolean {
   );
 }
 
-async function loadStoryServiceRoomState(): Promise<StoryServiceRoomState> {
-  const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state" } });
+async function loadStoryServiceRoomState(view?: "home"): Promise<StoryServiceRoomState> {
+  const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state", ...(view ? {view} : {}) } });
   const result = (response.result ?? {}) as StoryServiceRoomState;
   if (result.error) throw storyServiceError(result);
   return result;
@@ -467,7 +467,7 @@ function normalizeStoryServiceRoomState(result: StoryServiceRoomState): FamilyRo
   return state;
 }
 
-export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): Promise<FamilyRoomState> {
+export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "home" } = {}): Promise<FamilyRoomState> {
   const finish = startPerformanceMeasure('room.cloud');
   const metrics: PerformanceMetrics = { route: 'identity', clientPageReads: 0 };
   let outcome: 'ok' | 'error' = 'error';
@@ -482,12 +482,12 @@ export async function loadCloudRoomState(options: { readOnly?: boolean } = {}): 
   }
 }
 
-async function readCloudRoomState(options: { readOnly?: boolean }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
+async function readCloudRoomState(options: { readOnly?: boolean; view?: "home" }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
   const familyId = await measurePerformance('room.identity', currentFamilyId);
   metrics.route = 'story-service';
   let storyServiceState: StoryServiceRoomState | undefined;
   try {
-    storyServiceState = await measurePerformance('room.state', loadStoryServiceRoomState);
+    storyServiceState = await measurePerformance('room.state', () => loadStoryServiceRoomState(options.view));
     const responseAnalysisStarted = Date.now();
     metrics.responseBytes = jsonUtf8ByteLength(storyServiceState);
     metrics.responseAnalysisMs = Math.max(0, Date.now() - responseAnalysisStarted);

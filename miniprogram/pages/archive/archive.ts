@@ -20,6 +20,11 @@ import {
 import { memoryPlacements } from "../../services/manuscript";
 import { logLoadError } from "../../services/loadErrorLog";
 import { loadCurrentStoryId } from "../../services/storySelection";
+import { InterviewDimension, InterviewTurn } from "../../domain/interview";
+import {
+  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer,
+  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
+} from "../../services/xiaoyiCompanion";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -66,6 +71,7 @@ function noteTitle(memory: MemoryContribution): string {
 }
 
 Page({
+  roomSnapshot: undefined as Awaited<ReturnType<typeof loadRoomStateRemoteFirst>> | undefined,
   data: {
     placements: [] as Array<{ storyId?: string; memberId: string; bookName: string; bookTitle: string; chapter: string; chapterId: string }>,
     memberName: "",
@@ -95,19 +101,55 @@ Page({
     reverting: false,
     historyItems: [] as Array<{ id: string; kindLabel: string; text: string; dateLabel: string }>,
     showHistory: false,
+    keyboardHeight: 0, viewportHeight: 0,
+    ...initialXiaoyiPanelData(),
   },
 
   swipeStartX: 0,
   swipeStartY: 0,
   swipeActiveId: "",
   editingOriginal: undefined as MemoryContribution | undefined,
+  xiaoyiAskedDimensions: [] as InterviewDimension[],
+  xiaoyiConversation: [] as InterviewTurn[],
+  fullWindowHeight: 0,
+  windowWidth: 0,
+  keyboardListener: undefined as ((event: { height: number }) => void) | undefined,
+  xiaoyiLandedAiText: "",
 
   onLoad(options: { tab?: string; id?: string }) {
     this.setData({ activeTab: options.tab === "memoir" ? "memoir" : "note" });
     if (options.id) this.setData({ editingId: options.id });
+    const window = wx.getWindowInfo();
+    this.fullWindowHeight = window.windowHeight;
+    this.windowWidth = window.windowWidth;
+    this.setData({ viewportHeight: window.windowHeight });
+    this.keyboardListener = event => this.onKeyboardHeight({ detail: event });
+    wx.onKeyboardHeightChange(this.keyboardListener);
+  },
+  onResize(event: { size: { windowHeight: number; windowWidth: number } }) {
+    const size = event.size;
+    if (size.windowWidth !== this.windowWidth || size.windowHeight > this.fullWindowHeight) {
+      this.windowWidth = size.windowWidth;
+      this.fullWindowHeight = size.windowHeight + this.data.keyboardHeight;
+      this.updateViewport();
+    }
+  },
+  updateViewport() {
+    if (!this.fullWindowHeight) return;
+    const viewportHeight = Math.max(180, this.fullWindowHeight - this.data.keyboardHeight);
+    if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
+  },
+  onKeyboardHeight(event: { detail: { height: number } }) {
+    const keyboardHeight = Math.max(0, event.detail.height || 0);
+    if (keyboardHeight !== this.data.keyboardHeight) this.setData({ keyboardHeight });
+    this.updateViewport();
+  },
+  onUnload() {
+    if (this.keyboardListener) wx.offKeyboardHeightChange(this.keyboardListener);
   },
 
   onShow() {
+    this.roomSnapshot = undefined;
     void this.refresh().catch((error) => { logLoadError("archive", error); this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }); });
   },
 
@@ -122,6 +164,7 @@ Page({
   async refresh() {
     const state = await loadRoomStateRemoteFirst();
     const member = await loadCurrentMemberRemoteFirst(state);
+    this.roomSnapshot = state;
     // One pool for every book. A memory is either not written yet, or written into
     // one or more books; the label says where.
     const personal = memoryPool(state.contributions);
@@ -176,7 +219,23 @@ Page({
 
   retryLoad() { this.onShow(); },
 
+  resetArchiveXiaoyiState() {
+    this.xiaoyiAskedDimensions = [];
+    this.xiaoyiConversation = [];
+    this.xiaoyiLandedAiText = "";
+    this.setData({
+      xiaoyiOpen: false,
+      xiaoyiLoading: false,
+      xiaoyiContextPreview: "",
+      xiaoyiAnswer: "",
+      xiaoyiDraftText: "",
+      xiaoyiStatus: "",
+      xiaoyiMessages: [],
+    });
+  },
+
   showEditor(memory: MemoryContribution) {
+    this.resetArchiveXiaoyiState();
     this.editingOriginal = memory;
     const revisions = memoryAiRevisions(memory);
     const original = memoryOriginalSpokenText(memory);
@@ -242,7 +301,7 @@ Page({
   async openMemory(event: { currentTarget: { dataset: { id: string } } }) {
     if (this.data.swipedItemId) { this.closeSwipe(); return; }
     try {
-      const state = await loadRoomStateRemoteFirst();
+      const state = this.roomSnapshot ?? await loadRoomStateRemoteFirst();
       const memory = memoryPool(state.contributions).find(item => item.id === event.currentTarget.dataset.id);
       if (!memory) throw new Error("这段记忆已不存在，请刷新列表");
       this.showEditor(memory);
@@ -267,6 +326,7 @@ Page({
   },
   discardEditor() {
     this.editingOriginal = undefined;
+    this.resetArchiveXiaoyiState();
     this.setData({ editingId: "" });
     this.onShow();
   },
@@ -287,12 +347,22 @@ Page({
       const textChanged = text !== latest.text;
       const withEdits = { ...latest, title, storyTitle: this.data.editStory.trim().slice(0, 30) || undefined,
         summary: textChanged ? undefined : latest.summary };
-      // 只有正文真的改了才追加一条 manual 历史；只改标题/分组不会假装成一次人工修改。
-      const next = textChanged && memoryAiRevisions(latest).length > 0
-        ? appendAiRevision(withEdits, "manual", text, title, latest.organizationMode)
-        : { ...withEdits, text };
+      // 只有正文真的改了才追加历史；只改标题/分组不会假装成一次人工修改。
+      // 如果本次正文来自“小忆整理稿”，先记录一条 AI revision；用户落回后又继续手改时，
+      // 再追加 manual revision，保留“AI 整理 → 人工修改”的来源链。
+      let next: MemoryContribution = { ...withEdits, text };
+      const revisions = memoryAiRevisions(latest);
+      if (textChanged && this.xiaoyiLandedAiText) {
+        const withAi = appendAiRevision(withEdits, "ai", this.xiaoyiLandedAiText, title, "cloud-ai");
+        next = text === this.xiaoyiLandedAiText
+          ? withAi
+          : appendAiRevision(withAi, "manual", text, title, "cloud-ai");
+      } else if (textChanged && revisions.length > 0) {
+        next = appendAiRevision(withEdits, "manual", text, title, latest.organizationMode);
+      }
       await replaceContributionRemoteFirst(next);
       this.editingOriginal = next;
+      this.xiaoyiLandedAiText = "";
       this.setData({
         editAiLabel: memoryAiLabel(next),
         originalText: memoryOriginalSpokenText(next),
@@ -305,6 +375,49 @@ Page({
     } finally { this.setData({ savingEdit: false }); }
   },
 
+  openXiaoyi() {
+    if (!this.data.editingId || this.data.savingEdit) return;
+    const text = this.data.editText.trim();
+    const preview = text ? (text.length > 120 ? text.slice(0, 120) + "…" : text) : "这段记忆还没写正文，小忆会先从你接下来要说的话问起。";
+    this.setData({ xiaoyiOpen: true, xiaoyiStatus: "", xiaoyiContextPreview: preview });
+  },
+  closeXiaoyi: resetXiaoyiPanel,
+  /** 就地小忆共享机制要读的场景参数：这条记忆自己的类型与所属故事分组。 */
+  xiaoyiConfig(): XiaoyiConfig {
+    return {
+      memoryType: this.editingOriginal?.memoryType ?? "note",
+      storyTitle: this.data.editStory,
+      mode: "personal",
+    };
+  },
+  /** 就地小忆共享机制要读的当前文本：记忆正文本身，没有选区 API。 */
+  xiaoyiContextText() {
+    return this.data.editText.trim();
+  },
+  xiaoyiMessagesAppend,
+  askXiaoyiQuestion,
+  onXiaoyiAnswerInput,
+  onXiaoyiDraftInput,
+  useXiaoyiOriginal,
+  organizeXiaoyiAnswer,
+  useXiaoyiDraft,
+  /** 就地小忆共享机制的落回目标：接到 editText 末尾，仍需点“保存修改”才真正持久化。 */
+  async xiaoyiLand(text: string, kind: XiaoyiLandKind): Promise<boolean> {
+    if (!this.editingOriginal || this.data.savingEdit) return false;
+    const landed = normalizeMemoryText(text);
+    const next = normalizeMemoryText([this.data.editText, landed].filter(Boolean).join("\n\n"));
+    this.xiaoyiLandedAiText = kind === "organized" ? next : "";
+    const previewMemory = kind === "organized"
+      ? appendAiRevision(this.editingOriginal, "ai", next, this.data.editTitle.trim() || this.editingOriginal.title, "cloud-ai")
+      : { ...this.editingOriginal, text: next };
+    this.setData({
+      editText: next,
+      editAiLabel: memoryAiLabel(previewMemory),
+      xiaoyiAnswer: "", xiaoyiDraftText: "",
+      xiaoyiStatus: "已接到记忆后面，点“保存修改”才会真正保存。",
+    });
+    return true;
+  },
   openPlacement(event: { currentTarget: { dataset: { member: string; chapter: string } } }) {
     const placement = this.data.placements.find(item => item.chapterId === event.currentTarget.dataset.chapter);
     const bookParam = placement?.storyId

@@ -18,7 +18,7 @@ Page({
     const enabled = !this.data.enabled;
     wx.showModal({title:enabled ? '让小忆记住你的讲述？' : '暂停小忆的记忆？',
       content:enabled ? '你今后保存的本人原话会交给在线 AI 提炼少量个人背景，并用于以后的个人访谈和文字整理。此过程可能产生模型调用费用。不把家人或作品人物当作你；敏感理解不主动提及。你可以逐条忘记，原故事仍保留。' : '暂停后不再提炼或使用个人背景；已有理解仍可查看和忘记。',
-      confirmText:enabled ? '同意并开启' : '暂停',success:result=>{if(result.confirm)void this.confirmEnabled(enabled);}});
+      confirmText:enabled ? '同意开启' : '暂停',success:result=>{if(result.confirm)void this.confirmEnabled(enabled);}});
   },
   async confirmEnabled(enabled: boolean) {
     if (this.data.busy) return;
@@ -55,11 +55,12 @@ Page({
     const lineageKey=event.currentTarget.dataset.key;
     const item=this.data.insights.find(value=>value.lineageKey===lineageKey);
     if (this.data.busy || !item) return;
-    wx.showModal({title:'改正这条理解',content:'可以补一句你更认可的说法。留空会停用这条理解，小忆不会猜相反答案。',editable:true,
-      placeholderText:'写下更准确的说法（可留空）',confirmText:'保存纠正',success:result=>{if(result.confirm)void this.confirmCorrection(lineageKey,result.content || '');}});
+    wx.showModal({title:'改正这条理解',content:'',editable:true,
+      placeholderText:'更准确的说法，留空则停用（60字内）',confirmText:'保存纠正',success:result=>{if(result.confirm)void this.confirmCorrection(lineageKey,result.content || '');}});
   },
   async confirmCorrection(lineageKey:string,text:string) {
     if (this.data.busy) return;
+    if (Array.from(text.trim()).length > 60) { wx.showToast({title:'请把纠正控制在60字以内',icon:'none'}); return; }
     this.setData({busy:true});
     try { await personalMemory.correct(lineageKey,text); await this.refresh(); }
     catch { wx.showToast({title:'纠正未保存，请重试',icon:'none'}); }

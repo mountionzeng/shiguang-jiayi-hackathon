@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const Module = require("node:module");
 
 const invite = require("../cloudfunctions/familyInvite/core.js");
 
@@ -201,4 +202,152 @@ test("邀请页为系统顶部留出空间并允许小屏滚动", () => {
   assert.match(styles, /overflow-y:\s*auto/);
   const pageRule = styles.slice(0, styles.indexOf("}\n") + 1);
   assert.doesNotMatch(pageRule, /overflow:\s*hidden/);
+});
+
+/*
+ * submitContribution 在服务端把客户端带来的 aiRevisions 原样写进
+ * source_records 和 memories；曾经被静默丢弃（core.js 校验通过但
+ * index.js 写库时漏字段）。这里用真实 index.js + 内存数据库跑一次完整
+ * 提交，锁死 aiRevisions 真的落到两处文档里，不靠只读 core.js 的单测。
+ */
+function createMemoryDatabase(seed = {}) {
+  const store = new Map();
+  for (const [collectionName, docs] of Object.entries(seed)) {
+    for (const [id, data] of Object.entries(docs)) store.set(`${collectionName}/${id}`, { ...data, _id: id });
+  }
+  const key = (name, id) => `${name}/${id}`;
+  const notFound = () => { const error = new Error("document.get:fail document does not exist"); throw error; };
+  const docRef = (name, id) => ({
+    get: async () => { const data = store.get(key(name, id)); if (!data) notFound(); return { data }; },
+    set: async ({ data }) => { store.set(key(name, id), { ...data, _id: id }); },
+    update: async ({ data }) => { const existing = store.get(key(name, id)) || { _id: id }; store.set(key(name, id), { ...existing, ...data }); },
+  });
+  const queryFor = (name, whereClause = {}) => {
+    const rows = () => [...store.entries()]
+      .filter(([storeKey]) => storeKey.startsWith(`${name}/`))
+      .map(([, value]) => value)
+      .filter(row => Object.entries(whereClause).every(([field, value]) => row[field] === value));
+    return {
+      where: (clause) => queryFor(name, { ...whereClause, ...clause }),
+      orderBy: () => queryFor(name, whereClause),
+      skip: () => queryFor(name, whereClause),
+      limit: () => queryFor(name, whereClause),
+      get: async () => ({ data: rows() }),
+    };
+  };
+  const collection = (name) => ({ doc: (id) => docRef(name, id), ...queryFor(name) });
+  return {
+    collection,
+    serverDate: () => "now",
+    runTransaction: async (run) => run({ collection }),
+    _dump: () => store,
+  };
+}
+
+function loadFamilyInviteMain({ openid = "openid-contributor", contentSecurityOk = true } = {}) {
+  const cloudCalls = [];
+  const db = createMemoryDatabase();
+  const stub = {
+    init: () => {},
+    DYNAMIC_CURRENT_ENV: "dynamic",
+    database: () => db,
+    getWXContext: () => ({ OPENID: openid, APPID: "appid" }),
+    callFunction: async (options) => {
+      cloudCalls.push(options);
+      if (options.name === "contentSecurityCheck") return { result: { ok: contentSecurityOk } };
+      throw new Error(`unexpected cloud function ${options.name}`);
+    },
+  };
+  const resolved = require.resolve("../cloudfunctions/familyInvite/index.js");
+  delete require.cache[resolved];
+  const originalLoad = Module._load;
+  Module._load = function (request, ...rest) {
+    if (request === "wx-server-sdk") return stub;
+    return originalLoad.call(this, request, ...rest);
+  };
+  try {
+    return { main: require(resolved).main, db, cloudCalls };
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[resolved];
+  }
+}
+
+test("家人投稿提交时，客户端整理过的原话历史被写入服务端记忆和留档，不再被静默丢弃", async () => {
+  const openid = "openid-contributor";
+  const accountId = invite.accountIdFor(openid);
+  const familyId = "family-shared";
+  const memberId = "member-shared";
+  const { main, db } = loadFamilyInviteMain({ openid });
+
+  await db.collection("user_accounts").doc(accountId).set({ data: { primaryFamilyId: "family-owner-of-contributor" } });
+  await db.collection("families").doc(familyId).set({ data: { roomName: "共享房间", protagonistName: "外公", ownerAccountId: "owner-account" } });
+  await db.collection("family_access").doc(`${familyId}_${accountId}`).set({ data: { status: "active", memberId } });
+  await db.collection("family_members").doc(`${familyId}_${memberId}`).set({
+    data: { accountId, memberId, name: "秋", relation: "女儿" },
+  });
+
+  const aiRevisions = [
+    { id: "rev-1", kind: "spoken", text: "那天我们一起回家。", title: undefined, createdAt: "2026-09-23T00:00:00.000Z", organizationMode: undefined },
+    { id: "rev-2", kind: "ai", text: "那天傍晚，我们一起走回家。", title: "回家路", createdAt: "2026-09-23T00:05:00.000Z", organizationMode: "cloud-ai" },
+  ];
+
+  const result = await main({
+    action: "submitContribution",
+    familyId,
+    contribution: {
+      id: "memory-1720000000000-abc123",
+      text: "那天傍晚，我们一起走回家。",
+      title: "回家路",
+      storyTitle: "回家的路",
+      aiRevisions,
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.reviewStatus, "pending");
+
+  const memoryId = `${familyId}_${memberId}_memory-1720000000000-abc123`;
+  const savedMemory = (await db.collection("memories").doc(memoryId).get()).data;
+  assert.deepEqual(savedMemory.aiRevisions, aiRevisions);
+
+  const sourceRecordId = `src_${familyId}_${memberId}_memory-1720000000000-abc123`;
+  const savedSource = (await db.collection("source_records").doc(sourceRecordId).get()).data;
+  assert.deepEqual(savedSource.aiRevisions, aiRevisions);
+
+  const loaded = await main({ action: "loadRoom", familyId });
+  const loadedMemory = loaded.state.contributions.find(item => item.id === "memory-1720000000000-abc123");
+  assert.deepEqual(loadedMemory.aiRevisions, aiRevisions);
+});
+
+test("投稿的 aiRevisions 校验不通过时，服务端按无历史处理，不伪造或猜测字段", async () => {
+  const openid = "openid-contributor-2";
+  const accountId = invite.accountIdFor(openid);
+  const familyId = "family-shared-2";
+  const memberId = "member-shared-2";
+  const { main, db } = loadFamilyInviteMain({ openid });
+
+  await db.collection("user_accounts").doc(accountId).set({ data: { primaryFamilyId: "family-owner-of-contributor-2" } });
+  await db.collection("family_access").doc(`${familyId}_${accountId}`).set({ data: { status: "active", memberId } });
+  await db.collection("family_members").doc(`${familyId}_${memberId}`).set({
+    data: { accountId, memberId, name: "秋", relation: "女儿" },
+  });
+
+  await main({
+    action: "submitContribution",
+    familyId,
+    contribution: {
+      id: "memory-1720000000001-def456",
+      text: "那天下午我们去了公园。",
+      aiRevisions: [{ id: "rev-1", kind: "not-a-real-kind", text: "坏数据", createdAt: "2026-09-23T00:00:00.000Z" }],
+    },
+  });
+
+  const memoryId = `${familyId}_${memberId}_memory-1720000000001-def456`;
+  const savedMemory = (await db.collection("memories").doc(memoryId).get()).data;
+  assert.equal(savedMemory.aiRevisions, undefined);
+
+  const sourceRecordId = `src_${familyId}_${memberId}_memory-1720000000001-def456`;
+  const savedSource = (await db.collection("source_records").doc(sourceRecordId).get()).data;
+  assert.equal(savedSource.aiRevisions, undefined);
 });

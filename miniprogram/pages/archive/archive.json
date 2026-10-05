@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "管理记忆档案"
+  "navigationBarTitleText": "管理记忆档案",
+  "usingComponents": {
+    "generation-status": "/components/generation-status/generation-status"
+  }
 }

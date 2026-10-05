@@ -1,0 +1,19 @@
+{
+  "sourceCommit": "47aabdfad2eaeb1b8e14b8701824590a6d8cf0e5",
+  "environment": "cloud1-d5ghzk30ve609f544",
+  "function": "organizeMemory",
+  "verifiedAt": "2026-09-30",
+  "downloadedSourceMatches": true,
+  "files": {
+    "personalMemoryCore.js": "148dd178b19ffb1d3d1eae899fddb41317aa4ea9115ba2bb7f7deb945405ceb5",
+    "config.json": "d55ea5ad29659dc39a9a56264ff4e47ed3b6460e41a9d9035813ab5fc665aa26",
+    "index.js": "277c7da82e5c216a625deb8c80b43900a61248b754cb531c2bbc6f0a9c6e3026",
+    "tencentModeration.js": "fe15338f341957cdc7135083efb900a52bb76399854f232196a80a3661481465",
+    "personalMemoryContext.js": "defab269168b4db525a89aba91ab2cf4fccabe302fce0b488c09a4c39d0facdd",
+    "package.json": "f46e0d5d01367cc153d7598a31d62c7df5f6c7c9daa2016d78080f40a4e79290",
+    "aiGuard.js": "4ee754ffb1bc19b1cc23b10e058dd511c786a23d2378938910fbefc4233c1d2b",
+    "personalMemoryRepository.js": "62f15ce0872f219ae96ce66e3e00065474228cdb084a5895e3de0a6c193bb64a",
+    "httpFetch.js": "6beab23fc14ee458874a92bb0e8aea31651a0bcc4256185d10a63ea1c7b8d8df",
+    "textComputeUsage.js": "dce998355c138b42ebf53a505681b6b93dcd137071bc9f3805e6bb11e6cb708a"
+  }
+}

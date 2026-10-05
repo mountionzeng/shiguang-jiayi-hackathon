@@ -1,7 +1,7 @@
 <view class="invite-page page-enter">
   <image class="invite-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true"></image>
-  <image class="invite-wash invite-wash-top" src="/assets/illustrations/book-wash.png" mode="aspectFit" aria-hidden="true"></image>
-  <image class="invite-wash invite-wash-bottom" src="/assets/illustrations/book-wash.png" mode="aspectFit" aria-hidden="true"></image>
+  <view class="invite-wash invite-wash-top" aria-hidden="true"></view>
+  <view class="invite-wash invite-wash-bottom" aria-hidden="true"></view>
 
   <view class="invite-branch-scene" aria-hidden="true">
     <image class="invite-branch" src="/assets/illustrations/memory-branch.png" mode="aspectFit"></image>
@@ -23,7 +23,7 @@
     <view class="invite-form" wx:if="{{!posterPath}}">
       <view class="invite-letter-head">
         <view class="invite-avatar serif">
-          <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
+          <view class="invite-profile-wash"></view>
           <text>{{inviteeAvatarText}}</text>
         </view>
         <view class="invite-letter-copy">
@@ -40,6 +40,7 @@
         <text>你们是什么关系</text>
         <input value="{{relation}}" maxlength="12" placeholder="例如：母女、老朋友、同学" bindinput="onRelationInput" />
       </label>
+      <generation-status wx:if="{{creating}}" kind="image" text="正在准备邀请和图片…" />
       <button class="invite-primary" bindtap="createInvitation" loading="{{creating}}" disabled="{{creating}}">生成邀请图片</button>
       <view class="invite-privacy">邀请只进入这一个记忆之家。对方写下的故事会先交给你确认，不会直接改动正式书稿。</view>
     </view>
@@ -60,7 +61,7 @@
       <image class="accept-branch" src="/assets/illustrations/memory-branch.png" mode="aspectFit" aria-hidden="true"></image>
       <image class="accept-bird" src="/assets/illustrations/memory-bird.png" mode="aspectFit" aria-hidden="true"></image>
       <view class="invite-avatar accept-avatar serif">
-        <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
+        <view class="accept-avatar-wash"></view>
         <text>{{invitationAvatarText}}</text>
       </view>
       <view class="accept-kicker">{{invitation.inviterName}} 想和你一起记住</view>
@@ -76,6 +77,6 @@
     <view class="invite-error" wx:else>{{errorMessage || '这份邀请已经无法打开'}}</view>
   </block>
 
-  <view class="invite-error" wx:if="{{errorMessage && invitation}}">{{errorMessage}}</view>
+  <view class="invite-error" wx:if="{{errorMessage && (mode === 'create' || invitation)}}">{{errorMessage}}</view>
   <canvas class="invite-canvas" canvas-id="invitePoster"></canvas>
 </view>

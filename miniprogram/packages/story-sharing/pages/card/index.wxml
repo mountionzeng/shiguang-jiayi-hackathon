@@ -13,6 +13,7 @@
     </label>
   </checkbox-group>
   <button class="primary" bindtap="preview" disabled="{{!canPreview || busy}}">{{busy ? '正在生成…' : '预览故事卡'}}</button>
+  <generation-status wx:if="{{busy}}" kind="image" text="{{notice}}" />
   <image wx:if="{{previewPath}}" class="card-preview" src="{{previewPath}}" mode="widthFix"></image>
   <button wx:if="{{previewPath}}" class="secondary" bindtap="save" disabled="{{busy}}">重新核对并保存到相册</button>
   <view class="caption">保存图片不代表已经发布；发布前请再次确认文字和照片适合公开。</view>

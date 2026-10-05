@@ -83,7 +83,13 @@ function instantiate(definition: TestPageDefinition): TestPageInstance {
     ...definition,
     data: structuredClone(definition.data ?? {}),
   } as TestPageInstance;
-  instance.setData = (update) => Object.assign(instance.data, update);
+  instance.setData = (update) => {
+    for (const [key, value] of Object.entries(update)) {
+      const slideField = /^bookSlides\[(\d+)\]\.(coverUrl|bookArtUrl)$/.exec(key);
+      if (slideField) (instance.data.bookSlides as Array<Record<string, unknown>>)[Number(slideField[1])][slideField[2]] = value;
+      else instance.data[key] = value;
+    }
+  };
   return instance;
 }
 
@@ -127,6 +133,9 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
       redirectTo: ({ url }: { url: string }) => navigations.push(url),
       switchTab: () => undefined,
       reLaunch: ({ url }: { url: string }) => relaunches.push(url),
+      getWindowInfo: () => ({ windowHeight: 800, windowWidth: 390 }),
+      onKeyboardHeightChange: () => undefined,
+      offKeyboardHeightChange: () => undefined,
     },
   });
 
@@ -448,6 +457,50 @@ test("home book cover swipes between books and opens the selected one", async (c
   assert.equal(last(storage.navigations), "/pages/stories/stories?key=" + encodeURIComponent(next.key));
 });
 
+function swipeRoomState(): FamilyRoomState {
+  const state = createInitialRoomState();
+  state.contributions.push(createContribution({
+    id: "swipe-radio", authorMemberId: "owner", authorName: "林岚", relation: "外孙女",
+    text: "晚饭后一起听收音机。", storyTitle: "母亲的收音机", scope: "personal", visibility: "private",
+    now: new Date("2026-09-01T08:00:00.000Z"),
+  }));
+  return state;
+}
+
+test("swiping loaded books offline preserves covers without reloading room data", async context => {
+  const initial = swipeRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  const slides = home.data.bookSlides as Array<Record<string, any>>;
+  assert.ok(slides.length > 1);
+  slides.forEach((slide, i) => { slide.coverUrl = `cached-cover-${i}`; slide.bookArtUrl = `cached-frame-${i}`; });
+  const snapshot = structuredClone(slides);
+  let networkReads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { get() { networkReads++; throw new Error('offline'); } });
+  const first = home.data.activeBookIndex as number;
+  const next = (first + 1) % slides.length;
+  await callPage(home, "onBookSlideChange", { detail: { current: next, source: 'touch' } });
+  await callPage(home, "onBookSlideChange", { detail: { current: first, source: 'touch' } });
+  assert.equal(networkReads, 0, 'swiping must not request the full room again');
+  assert.deepEqual(storage.toasts, [], 'offline browsing must not raise a page-load error');
+  assert.deepEqual(home.data.bookSlides, snapshot, 'retain both covers and colour-matched frames');
+  assert.equal(home.data.coverUrl, slides[first].coverUrl);
+});
+
+test("programmatic swiper changes do not override the selected story", async context => {
+  const initial = swipeRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  const selected = home.data.activeBookIndex as number;
+  const next = (selected + 1) % (home.data.bookSlides as unknown[]).length;
+  await callPage(home, "onBookSlideChange", { detail: { current: next, source: '' } });
+  assert.equal(home.data.activeBookIndex, selected);
+});
+
 test("home book swiper resolves cover art for the active story after changing books", async (context) => {
   const initial = createInitialRoomState();
   initial.contributions.push(createContribution({
@@ -493,17 +546,24 @@ test("home book swiper resolves cover art for the active story after changing bo
   context.after(storage.restore);
   const previousResolveUrl = storyCoverApi.resolveUrl;
   const resolved: Array<{ storyId: string; imageId?: string }> = [];
-  storyCoverApi.resolveUrl = async (storyId, imageId) => {
-    resolved.push({ storyId, imageId });
-    return `https://img.example/${storyId}/${imageId}.jpg`;
-  };
   context.after(() => {
     storyCoverApi.resolveUrl = previousResolveUrl;
   });
 
   const home = instantiate(await pageDefinition("index"));
-  await callPage(home, "refresh", initial);
-  await Promise.resolve();
+  let radioAttempts = 0;
+  storyCoverApi.resolveUrl = async (storyId, imageId) => {
+    resolved.push({ storyId, imageId });
+    if (storyId === "story-radio" && radioAttempts++ === 0) return "";
+    return `https://img.example/${storyId}/${imageId}.jpg`;
+  };
+
+  await withImmediateTimeouts(async () => {
+    await callPage(home, "refresh", initial);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
   assert.equal(home.data.storyId, "story-radio");
   assert.equal(home.data.coverUrl, "https://img.example/story-radio/cover-radio.jpg");
   assert.ok((home.data.bookSlides as Array<{ storyId: string; coverUrl: string }>).some(
@@ -512,11 +572,16 @@ test("home book swiper resolves cover art for the active story after changing bo
 
   const rainIndex = (home.data.bookSlides as Array<{ storyId: string }>).findIndex(slide => slide.storyId === "story-rain");
   assert.ok(rainIndex >= 0, "the second story should be available as another book cover");
-  await callPage(home, "onBookSlideChange", { detail: { current: rainIndex } });
-  await Promise.resolve();
+  await withImmediateTimeouts(async () => {
+    await callPage(home, "onBookSlideChange", { detail: { current: rainIndex } });
+    await Promise.resolve();
+  });
   assert.equal(home.data.storyId, "story-rain");
   assert.equal(home.data.coverUrl, "https://img.example/story-rain/cover-rain.jpg");
-  assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`), [
+
+
+  assert.deepEqual(resolved.map(item => `${item.storyId}:${item.imageId}`).sort(), [
+    "story-radio:cover-radio",
     "story-radio:cover-radio",
     "story-rain:cover-rain",
   ]);
@@ -1253,6 +1318,27 @@ test("daily question keeps guiding the next two answers even in an objective boo
   assert.equal(page.data.writingMode, "objective");
 });
 
+test("interview explains exhausted content-check quota beside its local template", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  const previousApp = (globalThis as any).getApp;
+  const previousWarn = console.warn;
+  console.warn = () => undefined;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; console.warn = previousWarn; });
+  (wx as any).cloud = { callFunction: async ({ name }: any) => {
+    if (name === "recordAiConsent") return { result: { success: true } };
+    throw { errMsg: "cloud.callFunction:fail Error: 今日内容安全检查额度已用完，请稍后再试" };
+  } };
+  page.setData({ inputText: "我想把这句话留下。", answers: [], messages: [], askedDimensions: [] });
+  await callPage(page, "send");
+  const messages = page.data.messages as Array<{ kind: string; text: string; label: string }>;
+  assert.equal(messages.find(message => message.kind === "answer")?.text, "我想把这句话留下。");
+  assert.equal(messages.find(message => message.kind === "followup")?.label, "小忆今天有点迟钝，先按常问的陪你说");
+  assert.equal(page.data.asking, false);
+});
+
 test("continue chatting in an objective book keeps all three turns without modifying the book", async context => {
   const state = createInitialRoomState();
   state.stories = [{ id: "story-daily", familyId: "local", title: "日常", writingMode: "objective", memoryIds: [], protagonistMemberIds: [], createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z", version: 0 }];
@@ -1852,13 +1938,22 @@ test("home book cover is a horizontal swiper with direct-open affordance", () =>
   assert.doesNotMatch(template, /<swiper[\s\S]*class="book-swiper"[\s\S]*vertical/);
   assert.match(template, /wx:for="{{bookSlides}}"/);
   assert.match(template, /左右滑动换一本书 · 轻触打开/);
-  assert.match(template, /class="book-cover-picture" wx:if="{{item.coverUrl}}"/);
-  assert.match(template, /class="book-cover-picture-art"[\s\S]*mode="aspectFill"/);
-  assert.match(template, /class="ancient-book-art {{item.coverUrl \? 'ancient-book-art-overlay' : ''}}"/);
+  assert.match(template, /class="book-cover-picture" wx:if="{{item.bookArtUrl}}"/);
+  assert.match(template, /class="book-cover-picture-art"[\s\S]*src="{{item.bookArtUrl}}"[\s\S]*mode="scaleToFill"/);
+  assert.doesNotMatch(template, /class="book-cover-frame/);
+  assert.match(template, /wx:else[\s\S]*class="ancient-book-art"[\s\S]*story-book-cover\.png[\s\S]*mode="aspectFill"/);
+  assert.match(template, /class="book-cover-copy {{item.bookArtUrl \? 'book-cover-copy-printed' : ''}}/);
+  assert.doesNotMatch(template, /book-cover-dominant|book-cover-paper-texture|book-cover-material(?:\s|"|-color)|book-cover-picture-wash|ancient-book-art-overlay|story-book-spine|story-switcher-book-edges|capture-memoir-book|onBookCoverLoad|story-book-cover-material-texture\.png/);
   assert.match(styles, /\.book-swiper[^{]*{[^}]*height: 850rpx/);
-  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*top: 12rpx/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*top: -34%/);
-  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 160%/);
+  assert.doesNotMatch(styles, /\.book-cover-leaf::before|\.book-cover-leaf::after|repeating-linear-gradient\(90deg|book-cover-dominant|book-cover-paper-texture|book-custom-cover|ancient-book-art-overlay|book-cover-picture-wash|background-image: url\("\/assets\/illustrations\/story-book-cover\.png"\)/);
+  assert.match(styles, /\.book-cover-picture[^{]*{[^}]*inset: 0/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*inset: 0/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*width: 100%/);
+  assert.match(styles, /\.book-cover-picture-art[^{]*{[^}]*height: 100%/);
+  assert.doesNotMatch(styles, /\.book-cover-picture-art[^{]*{[^}]*opacity:/);
+  assert.match(styles, /\.book-stat-action[^{]*{[^}]*background: transparent/);
+  assert.match(styles, /\.book-stat-action[^{]*{[^}]*border: 0/);
+  assert.match(styles, /\.book-stat-action \+ \.book-stat-action::before[^{]*{[^}]*content: "•"/);
   assert.match(styles, /\.book-rail-dot-on/);
 });
 
@@ -2079,6 +2174,7 @@ test("organize preview can be cancelled without writing and rejects changed sour
   appendContribution(createContribution({ authorMemberId: "owner", authorName: "测试", relation: "自己", text: "素材发生了变化", scope: "personal", visibility: "private" }));
   await callPage(page, "confirmOrganize");
   assert.match(String(page.data.saveNotice), /已有更新/);
+  assert.equal(page.data.confirmingOrganize, false, "a failed validation must allow another attempt");
   assert.equal(storage.roomState().manuscriptRevisions, undefined);
 });
 
@@ -2167,6 +2263,118 @@ test("interview local fallback preserves persisted speech without inventing AI r
   assert.equal(page.data.draftAiLabel, "");
 });
 
+test("finish() persists the spoken answer as a real memory before asking organizeMemory to organize it, and organizeMemory is called with that memory's id", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const { clearAiConsent } = await import("../miniprogram/services/aiConsent");
+  clearAiConsent();
+  context.after(clearAiConsent);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad");
+  page.setData({ answers: ["今天在巷口等了很久，外公才骑车过来。"], writingMode: "creative" });
+
+  const calls: Array<{ name: string; data: any }> = [];
+  const cloudTables = new Map<string, Map<string, any>>();
+  const records = (name: string) => {
+    if (!cloudTables.has(name)) cloudTables.set(name, new Map());
+    return cloudTables.get(name)!;
+  };
+  const persistedMemory = (id: string) => [...records("memories").values()].find(item => item.frontendContributionId === id);
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+    if (name === "storyBooks" && data?.action === "state") return {
+      result: {
+        ...storage.roomState(),
+        roomStateVersion: 1,
+        roomName: storage.roomState().roomName || "测试房间",
+        protagonistName: storage.roomState().protagonistName || "测试者",
+        members: storage.roomState().members ?? [],
+        contributions: storage.roomState().contributions ?? [],
+        manuscriptRevisions: storage.roomState().manuscriptRevisions ?? [],
+        deletedStories: storage.roomState().deletedStories ?? [],
+        stories: storage.roomState().stories ?? [],
+        personalDrafts: storage.roomState().personalDrafts ?? {},
+        draftSourceFingerprint: "",
+        personalDraftSourceFingerprints: Object.fromEntries(Object.keys(storage.roomState().personalDrafts ?? {}).map(memberId => [memberId, ""])),
+      },
+    };
+    if (name === "recordAiConsent") return { result: { success: true } };
+    if (name === "organizeMemory") {
+      // organizeMemory must see the memory that was just persisted, proving finish()
+      // saved the spoken answer first and only then asked the cloud to organize it.
+      const persisted = persistedMemory(data.memoryId);
+      assert.ok(persisted, "organizeMemory must be called with an id that already exists in storage");
+      assert.equal(persisted!.text, "今天在巷口等了很久，外公才骑车过来。");
+      return { result: { title: "巷口", summary: "等外公", body: "那天在巷口等了很久，外公才骑车过来。", memoryType: "memoir", generationMode: "cloud-ai" } };
+    }
+    throw new Error(`unexpected cloud function ${name}`);
+  }, database: () => ({
+    serverDate: () => new Date(),
+    collection: (name: string) => ({
+      doc: (id: string) => ({
+        set: async ({ data }: any) => { records(name).set(id, structuredClone(data)); },
+        get: async () => ({ data: records(name).get(id) }),
+        update: async ({ data }: any) => { records(name).set(id, { ...structuredClone(records(name).get(id) ?? {}), ...structuredClone(data) }); },
+        remove: async () => { records(name).delete(id); return { stats: { removed: 1 } }; },
+      }),
+    }),
+  }) };
+
+  await callPage(page, "finish");
+
+  const organizeCall = calls.find(call => call.name === "organizeMemory");
+  assert.ok(organizeCall, "organizeMemory must be called");
+  const spoken = page.pendingContribution as import("../miniprogram/domain/biography").MemoryContribution;
+  assert.equal(organizeCall!.data.memoryId, spoken.id);
+  // The memory existed in storage before organizeMemory was ever called, not just before finish() returned.
+  const organizeCallIndex = calls.findIndex(call => call.name === "organizeMemory");
+  const callsBeforeOrganize = calls.slice(0, organizeCallIndex);
+  assert.ok(
+    persistedMemory(spoken.id),
+    "the spoken answer must already be in storage by the time organizeMemory is called",
+  );
+  assert.equal(callsBeforeOrganize.every(call => call.name !== "organizeMemory"), true);
+});
+
+test("save() appends a manual revision only when the draft actually changed from the last saved version", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad");
+  page.setData({ answers: ["外公在灶台前忙了一整个下午。"], writingMode: "objective" });
+  await callPage(page, "finish");
+  const spoken = page.pendingContribution as import("../miniprogram/domain/biography").MemoryContribution;
+  const countAfterFinish = storage.roomState().contributions.length;
+
+  // First save: draft text is identical to what finish() already persisted. No manual revision, no new memory.
+  await callPage(page, "save");
+  let saved = storage.roomState().contributions.find(item => item.id === spoken.id)!;
+  assert.equal(storage.roomState().contributions.length, countAfterFinish, "save must update the same memory, not create another one");
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), [], "no aiRevisions were ever started, so an unchanged save must not invent one");
+  assert.equal(saved.text, "外公在灶台前忙了一整个下午。");
+
+  // Second save: user actually edited the draft text. This must append exactly one manual revision.
+  page.pendingContribution = saved;
+  page.setData({ saved: false, draftText: "外公在灶台前忙了一下午，我在旁边帮着添柴。" });
+  await callPage(page, "save");
+  saved = storage.roomState().contributions.find(item => item.id === spoken.id)!;
+  assert.equal(storage.roomState().contributions.length, countAfterFinish, "editing and saving again must still update the same memory");
+  assert.equal(saved.text, "外公在灶台前忙了一下午，我在旁边帮着添柴。");
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), ["spoken", "manual"]);
+
+  // Third save: draft is unchanged from what the previous save just wrote. Must not append a second manual revision.
+  page.pendingContribution = saved;
+  page.setData({ saved: false, draftText: saved.text });
+  await callPage(page, "save");
+  const savedAgain = storage.roomState().contributions.find(item => item.id === spoken.id)!;
+  assert.deepEqual(memoryAiRevisions(savedAgain).map(item => item.kind), ["spoken", "manual"], "re-saving the same text must not duplicate the manual revision");
+});
+
 test("continuous keyboard input never echoes bound values; send clears once and preserves intentional repetition", async context => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
@@ -2199,19 +2407,54 @@ test("personal memory is reachable from Me, forget waits for success, and failed
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
   const { personalMemory } = await import("../miniprogram/services/personalMemory");
   const original = { ...personalMemory }; context.after(() => Object.assign(personalMemory, original));
-  const item = { lineageKey: "lineage-one", text: "喜欢安静地阅读。", origin: "inferred" as const, allowProactiveMention: true };
+  const item = { lineageKey: "lineage-one", text: "喜欢安静地阅读。", origin: "inferred" as const, allowProactiveMention: true,
+    evidence: [{ id: "e1", occurredOn: "2026-09-01", excerpt: "我喜欢安静地读书。" }] };
   let forgotten = false;
   personalMemory.list = async () => ({ enabled: true, insights: forgotten ? [] : [item] });
   personalMemory.forget = async key => { assert.equal(key, item.lineageKey); forgotten = true; };
+  personalMemory.confirm = async key => { assert.equal(key, item.lineageKey); };
+  personalMemory.correct = async (key,text) => { assert.equal(key, item.lineageKey); assert.equal(text, "我更愿意从自己的感受讲起。"); };
   personalMemory.configure = async () => { throw new Error("offline"); };
   const me = instantiate(await pageDefinition("me")); callPage(me, "openPersonalMemory");
   assert.equal(storage.navigations[0], "/pages/personal-memory/personal-memory");
   const page = instantiate(await pageDefinition("personal-memory")); await callPage(page, "refresh");
   assert.equal((page.data.insights as Array<{ originLabel: string }>)[0].originLabel, "小忆的暂定理解");
+  assert.deepEqual((page.data.insights as Array<{ evidence: unknown[] }>)[0].evidence, item.evidence);
+  await callPage(page, "confirmInsight", { currentTarget: { dataset: { key: item.lineageKey } } });
+  await callPage(page, "confirmCorrection", item.lineageKey, "我更愿意从自己的感受讲起。");
   await callPage(page, "confirmEnabled", false);
   assert.equal(page.data.enabled, true); assert.equal(page.data.busy, false);
   await callPage(page, "confirmForget", item.lineageKey);
   assert.deepEqual(page.data.insights, []); assert.equal(page.data.busy, false);
+});
+
+test("personal memory consent uses modal buttons within WeChat's four-character limit", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const dialogs: WechatMiniprogram.ShowModalOption[] = [];
+  wx.showModal = ((options: WechatMiniprogram.ShowModalOption) => { dialogs.push(options); }) as typeof wx.showModal;
+  const page = instantiate(await pageDefinition("personal-memory"));
+  page.setData({ loading: false, enabled: false });
+  callPage(page, "toggleEnabled");
+  page.setData({ enabled: true });
+  callPage(page, "toggleEnabled");
+  assert.equal(dialogs.length, 2);
+  for (const dialog of dialogs) {
+    assert.ok(Array.from(dialog.confirmText || "确定").length <= 4, dialog.confirmText);
+    assert.ok(Array.from(dialog.cancelText || "取消").length <= 4, dialog.cancelText);
+  }
+  assert.match(dialogs[0].content || "", /本人原话.*在线 AI/);
+});
+
+test("personal memory correction starts empty instead of saving instruction text", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  let dialog: WechatMiniprogram.ShowModalOption | undefined;
+  wx.showModal = ((options: WechatMiniprogram.ShowModalOption) => { dialog = options; }) as typeof wx.showModal;
+  const page = instantiate(await pageDefinition("personal-memory"));
+  page.setData({ insights: [{ lineageKey: "lineage-one", text: "更愿意从自己的感受讲起。" }] });
+  callPage(page, "correct", { currentTarget: { dataset: { key: "lineage-one" } } });
+  assert.equal(dialog?.editable, true);
+  assert.equal(dialog?.content || "", "");
+  assert.match(dialog?.placeholderText || "", /留空.*停用/);
 });
 
 test("saved-memory learning is nonblocking, sends only an id and respects local consent denial", async context => {
@@ -2386,4 +2629,565 @@ test("inserting into a scoped chapter uses the chapter number displayed in its p
   assert.match(String(page.data.saveNotice), /^已写入第一章/);
   assert.equal(page.data.chapterLabelText, "第一章");
   assert.deepEqual((page.data.draft as any).chapters[0], state.personalDrafts.owner.chapters![0]);
+});
+
+test("inline xiaoyi entry is embedded in chapter editor and hidden for protected copies", () => {
+  const template = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
+  assert.match(template, /class="xiaoyi-entry"[^>]*catchtouchstart="openXiaoyi"/);
+  assert.match(template, /wx:if="\{\{!protectedCopy\}\}"[^>]*class="xiaoyi-entry"/);
+  assert.match(template, /class="xiaoyi-panel"/);
+  assert.match(template, /看看这一章的记忆/);
+  assert.match(template, /就用我的原话/);
+  assert.match(template, /请小忆整理/);
+  assert.match(template, /class="pending-edits"/);
+  assert.doesNotMatch(template, /xiaoyi-entry[\s\S]{0,240}navigateTo/, "inline xiaoyi must not jump to interview page");
+});
+
+test("inline xiaoyi in a chapter reads selected text and creates a pending insert before final acceptance", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "灶台", paragraphs: ["那天屋里很冷，我妈在灶台前忙着。"], sourceCount: 0, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-1", title: "灶台", memoryIds: [], content: [{ text: "那天屋里很冷，我妈在灶台前忙着。" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const calls: any[] = [];
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "chatInterview") return { result: { dimension: "event", text: "灶台前忙着的时候，你最先注意到的是火光、声音，还是妈妈手上的动作？" } };
+    return { result: { status: "ok" } };
+  } };
+  page.editorContext = {
+    getSelectionText: ({ success }: any) => success({ text: "我妈在灶台前忙着" }),
+    getContents: ({ success }: any) => success({ delta: { ops: [{ insert: "那天屋里很冷，我妈在灶台前忙着。" }] } }),
+    setContents: ({ success }: any) => success(),
+  };
+  page.setData({ editorReady: true, view: "chapter" });
+
+  callPage(page, "openXiaoyi");
+  assert.equal((page as any).xiaoyiContextCapturedText, "我妈在灶台前忙着");
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
+  assert.equal(calls.find(call => call.name === "chatInterview")?.data.answer, "我妈在灶台前忙着");
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /灶台前/);
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "她在烙饼，我想讲那口旧锅。" } });
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
+  const nextQuestion = calls.filter(call => call.name === "chatInterview")[1];
+  assert.equal(nextQuestion.data.answer, "她在烙饼，我想讲那口旧锅。", "继续追问必须读取当前回答");
+  assert.equal(nextQuestion.data.conversation[0].text, "我妈在灶台前忙着", "仍保留选区上下文");
+  assert.equal(nextQuestion.data.conversation[1].role, "assistant");
+  assert.equal(page.data.xiaoyiAnswer, "她在烙饼，我想讲那口旧锅。", "追问后仍能整理或使用原话");
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /那口旧锅/);
+  assert.equal((page.data.draft as any).chapters[0].pendingRevision, undefined, "只聊天不会写正文");
+  (wx as any).cloud = undefined;
+
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
+  page.setData({ editing: true });
+  assert.equal(page.data.editing, true, "用户可能先打字，再让小忆把回答放进待确认修改");
+  await callPage(page, "useXiaoyiOriginal");
+  let draft = (page.data.draft as any);
+  let chapter = draft.chapters[0];
+  assert.equal(chapter.content.map((item: any) => item.text || "").join(""), "那天屋里很冷，我妈在灶台前忙着。", "正文尚未直接改变");
+  assert.equal(chapter.pendingRevision.edits[0].source, "ai");
+  assert.match(chapter.pendingRevision.edits[0].text, /烙饼/);
+
+  await callPage(page, "decidePendingEdit", { currentTarget: { dataset: { id: chapter.pendingRevision.edits[0].id, decision: "accept" } } });
+  await callPage(page, "finishPendingEdits");
+  draft = (page.data.draft as any);
+  chapter = draft.chapters[0];
+  assert.match(chapter.content.map((item: any) => item.text || "").join(""), /烙饼/);
+  assert.equal(chapter.containsAiText, true);
+  assert.equal(chapter.pendingRevision, undefined);
+});
+
+test("inline xiaoyi write mode asks first, organizes only the answer, then creates a pending insert", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "灶台", paragraphs: ["那天屋里很冷，我妈在灶台前忙着。"], sourceCount: 0, generatedAt: "", generationMode: "local-demo", chapters: [
+    { id: "chapter-1", title: "灶台", memoryIds: [], content: [{ text: "那天屋里很冷，我妈在灶台前忙着。" }] },
+  ] } };
+  const storage = installWxMock(state); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const calls: any[] = [];
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "chatInterview") return { result: { dimension: "event", text: "灶台前忙着的时候，你想补哪一个细节？" } };
+    if (name === "organizeMemory") return { result: { title: "灶台前", summary: "烙饼和烧火", body: "我妈那天在灶台前烙饼，我在旁边烧火。", memoryType: "memoir", generationMode: "cloud-ai" } };
+    return { result: { status: "ok" } };
+  } };
+  page.editorContext = {
+    getSelectionText: ({ success }: any) => success({ text: "" }),
+    getContents: ({ success }: any) => success({ delta: { ops: [{ insert: "那天屋里很冷，我妈在灶台前忙着。" }] } }),
+    setContents: ({ success }: any) => success(),
+  };
+  page.setData({ editorReady: true, view: "chapter" });
+
+  callPage(page, "openXiaoyi");
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "write" } } });
+  assert.match(String(page.data.xiaoyiStatus), /先回答这个问题/);
+  assert.equal(calls.filter(call => call.name === "organizeMemory").length, 0, "帮我写不会跳过提问直接整理");
+
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
+  await callPage(page, "organizeXiaoyiAnswer");
+  const organizeCall = calls.find(call => call.name === "organizeMemory");
+  assert.equal(organizeCall?.data.inlineAnswer, true);
+  assert.deepEqual(organizeCall?.data.transcript, ["我妈那天在灶台前烙饼，我在旁边烧火。"]);
+  assert.equal(page.data.xiaoyiDraftText, "我妈那天在灶台前烙饼，我在旁边烧火。");
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /小忆只整理了你的回答/);
+  (wx as any).cloud = undefined;
+
+  await callPage(page, "useXiaoyiDraft");
+  let draft = (page.data.draft as any);
+  let chapter = draft.chapters[0];
+  assert.equal(chapter.content.map((item: any) => item.text || "").join(""), "那天屋里很冷，我妈在灶台前忙着。", "整理稿不会直接写入正文");
+  assert.equal(chapter.pendingRevision.edits[0].source, "ai");
+  assert.match(chapter.pendingRevision.edits[0].text, /烙饼/);
+
+  await callPage(page, "decidePendingEdit", { currentTarget: { dataset: { id: chapter.pendingRevision.edits[0].id, decision: "accept" } } });
+  await callPage(page, "finishPendingEdits");
+  draft = (page.data.draft as any);
+  chapter = draft.chapters[0];
+  assert.match(chapter.content.map((item: any) => item.text || "").join(""), /烙饼/);
+  assert.equal(chapter.containsAiText, true);
+});
+
+test("inline xiaoyi in memory save appends the user's original answer to the draft", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("interview"));
+  page.setData({ stage: "save", draftText: "那天屋里很冷。", draftLength: 7, memoryType: "note", storyTitle: "灶台" });
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈在灶台前烙饼。" } });
+  callPage(page, "useXiaoyiOriginal");
+  assert.match(String(page.data.draftText), /那天屋里很冷。[\s\S]*我妈在灶台前烙饼。/);
+  assert.equal(page.data.xiaoyiAnswer, "");
+});
+
+
+
+test("archive page preserves its safe-area bottom padding when adding keyboard padding", () => {
+  const template = readFileSync("miniprogram/pages/archive/archive.wxml", "utf8");
+  assert.match(template, /padding-bottom:\s*calc\(72rpx \+ env\(safe-area-inset-bottom\) \+ /);
+  assert.doesNotMatch(template, /style="padding-bottom: \{\{keyboardHeight \? keyboardHeight \+ 48 : 0\}\}px"/);
+});
+
+test("inline xiaoyi in archive resets panel state when switching edited memories", async context => {
+  const state = createInitialRoomState();
+  state.contributions.push(createContribution({
+    id: "demo-personal-bicycle",
+    authorMemberId: "owner",
+    authorName: "林岚",
+    relation: "外孙女",
+    text: "外公后来教我骑自行车，他扶着后座跑了很久。",
+    storyTitle: "学骑车",
+    scope: "personal",
+    visibility: "private",
+    now: new Date("2026-08-29T02:05:00.000Z"),
+  }));
+  const storage = installWxMock(state); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "第一条记忆里的回答" } });
+  callPage(page, "xiaoyiMessagesAppend", { kind: "question", text: "第一条记忆的问题" });
+  (page as any).xiaoyiAskedDimensions = ["event"];
+  (page as any).xiaoyiConversation = [{ role: "assistant", text: "第一条记忆的问题" }];
+
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-bicycle" } } });
+
+  assert.equal(page.data.editingId, "demo-personal-bicycle");
+  assert.equal(page.data.xiaoyiOpen, false);
+  assert.equal(page.data.xiaoyiAnswer, "");
+  assert.deepEqual(page.data.xiaoyiMessages, []);
+  assert.deepEqual((page as any).xiaoyiAskedDimensions, []);
+  assert.deepEqual((page as any).xiaoyiConversation, []);
+});
+
+test("inline xiaoyi entry is embedded in the archive memory editor", () => {
+  const template = readFileSync("miniprogram/pages/archive/archive.wxml", "utf8");
+  assert.match(template, /class="xiaoyi-entry"[^>]*bindtap="openXiaoyi"/);
+  assert.match(template, /class="xiaoyi-panel"/);
+  assert.match(template, /就用我的原话/);
+  assert.match(template, /请小忆整理/);
+  assert.doesNotMatch(template, /xiaoyi-entry[\s\S]{0,240}navigateTo/, "inline xiaoyi must not jump to interview page");
+});
+
+test("inline xiaoyi in archive only asks a question when the user does not answer", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  (wx as any).cloud = { callFunction: async ({ name }: any) => {
+    if (name === "chatInterview") return { result: { dimension: "event", text: "巷口等你的时候，外公手里的伞是什么颜色？" } };
+    return { result: { status: "ok" } };
+  } };
+  const originalText = page.data.editText;
+
+  callPage(page, "openXiaoyi");
+  assert.match(String(page.data.xiaoyiContextPreview), /下雨天/);
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /伞/);
+
+  callPage(page, "closeXiaoyi");
+  assert.equal(page.data.editText, originalText, "not answering must not change the memory");
+});
+
+test("inline xiaoyi in archive lands the user's original answer into editText, saved only after saveEdit", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "useXiaoyiOriginal");
+  assert.match(String(page.data.editText), /下雨天[\s\S]*深绿色的，边上有点掉漆/);
+  assert.equal(page.data.xiaoyiAnswer, "");
+  assert.equal(storage.roomState().contributions.find(item => item.id === "demo-personal-rain")?.text.includes("深绿色"), false, "landing does not persist until saveEdit");
+
+  await callPage(page, "saveEdit");
+  assert.match(String(storage.roomState().contributions.find(item => item.id === "demo-personal-rain")?.text), /深绿色的，边上有点掉漆/);
+  assert.match(String(last(storage.toasts)), /修改已保存/);
+});
+
+
+
+test("inline xiaoyi organized draft saved from archive keeps AI provenance even for a raw memory", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiDraftInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "useXiaoyiDraft");
+  await callPage(page, "saveEdit");
+
+  const saved = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
+  assert.match(saved.text, /深绿色的，边上有点掉漆/);
+  assert.equal(saved.organizationMode, "cloud-ai");
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), ["spoken", "ai"]);
+  assert.match(memoryAiRevisions(saved)[1].text, /深绿色的，边上有点掉漆/);
+});
+
+test("inline xiaoyi organized draft followed by user edits records AI then manual history", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+
+  callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiDraftInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "useXiaoyiDraft");
+  callPage(page, "onEditText", { detail: { value: `${page.data.editText} 我又补了一句自己的话。` } });
+  await callPage(page, "saveEdit");
+
+  const saved = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
+  assert.deepEqual(memoryAiRevisions(saved).map(item => item.kind), ["spoken", "ai", "manual"]);
+  assert.match(memoryAiRevisions(saved)[1].text, /深绿色的，边上有点掉漆/);
+  assert.match(memoryAiRevisions(saved)[2].text, /我又补了一句自己的话/);
+});
+
+test("inline xiaoyi in archive write mode asks first, organizes only the answer, then can be landed", async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
+  const page = instantiate(await pageDefinition("archive"));
+  await callPage(page, "refresh");
+  await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  const originalText = page.data.editText;
+  const calls: any[] = [];
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    calls.push({ name, data });
+    if (name === "chatInterview") return { result: { dimension: "event", text: "外公的伞，你还记得是什么颜色吗？" } };
+    if (name === "organizeMemory") return { result: { title: "巷口的伞", summary: "深绿色的伞", body: "外公的伞是深绿色的，边上有点掉漆。", memoryType: "note", generationMode: "cloud-ai" } };
+    return { result: { status: "ok" } };
+  } };
+
+  callPage(page, "openXiaoyi");
+  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "write" } } });
+  assert.match(String(page.data.xiaoyiStatus), /先回答这个问题/);
+  assert.equal(calls.filter(call => call.name === "organizeMemory").length, 0, "帮我写不会跳过提问直接整理");
+
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "organizeXiaoyiAnswer");
+  const organizeCall = calls.find(call => call.name === "organizeMemory");
+  assert.equal(organizeCall?.data.inlineAnswer, true);
+  assert.deepEqual(organizeCall?.data.transcript, ["外公的伞是深绿色的，边上有点掉漆。"]);
+  assert.equal(page.data.editText, originalText, "organizing does not touch editText before landing");
+
+  await callPage(page, "useXiaoyiDraft");
+  assert.match(String(page.data.editText), /深绿色的，边上有点掉漆/);
+});
+
+test("loaded home questions and story choices remain usable without another room request", async context => {
+  const initial = swipeRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const home = instantiate(await pageDefinition("index"));
+  await callPage(home, "refresh", initial);
+  let networkReads = 0;
+  Object.defineProperty((globalThis as any).wx, "cloud", { get() {
+    networkReads++;
+    throw new Error("offline after homepage loaded");
+  } });
+
+  const next = (home.data.bookSlides as Array<{ key: string; storyTitle: string }>).find(
+    slide => slide.storyTitle && slide.storyTitle !== home.data.currentStoryTitle,
+  );
+  assert.ok(next);
+  await callPage(home, "chooseStory", { currentTarget: { dataset: { key: next.key, title: next.storyTitle } } });
+  assert.equal(home.data.currentStoryTitle, next.storyTitle);
+  await callPage(home, "chooseNoStory");
+  assert.equal(home.data.currentStoryTitle, "");
+  assert.equal(home.data.hasRecommendedQuestion, false);
+  const before = home.data.dailyQuestion;
+  callPage(home, "changeRecommendedQuestion");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.notEqual(home.data.dailyQuestion, before, "the button must actually show a different question");
+  assert.equal(networkReads, 0, "local choices must not reload the room");
+  assert.deepEqual(storage.toasts, []);
+});
+
+test('filtering an already loaded personal room uses its visible snapshot offline', async context => {
+  const initial = createInitialRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('room'));
+  await callPage(page, 'refresh', initial);
+  const all = structuredClone(page.data.memories);
+  const person = (page.data.people as Array<{ id: string; count: number }>).find(p => p.id !== 'me');
+  assert.ok(person);
+  let reads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { get() { reads++; throw new Error('offline'); } });
+  callPage(page, 'choosePerson', { currentTarget: { dataset: { id: person.id } } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal((page.data.memories as unknown[]).length, person.count);
+  callPage(page, 'choosePerson', { currentTarget: { dataset: { id: 'me' } } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(page.data.memories, all);
+  assert.equal(reads, 0);
+  assert.equal(page.data.loadError, '');
+});
+
+test('incomplete family invitations report missing fields without making a cloud request', async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('invite'));
+  let requests = 0;
+  (wx as any).cloud = { callFunction: async () => { requests++; throw new Error('must not call cloud'); } };
+  await callPage(page, 'createInvitation');
+  assert.match(String(page.data.errorMessage), /称呼/);
+  page.setData({ inviteeName: '虚构测试亲友', relation: '  ' });
+  await callPage(page, 'createInvitation');
+  assert.match(String(page.data.errorMessage), /关系/);
+  assert.equal(requests, 0);
+  assert.equal(page.data.creating, false);
+});
+
+test('opening an already listed memory needs no second room request, while save still detects changes', async context => {
+  const initial = createInitialRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('archive'));
+  await callPage(page, 'refresh');
+  const original = initial.contributions.find(item => item.id === 'demo-personal-rain')!;
+  let reads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { configurable: true, get() {
+    reads++;
+    throw new Error('offline after list loaded');
+  } });
+  await callPage(page, 'openMemory', { currentTarget: { dataset: { id: original.id } } });
+  assert.equal(page.data.editText, original.text);
+  assert.equal(reads, 0, 'opening the visible record must not reload the whole room');
+
+  delete (wx as any).cloud;
+  const changed = structuredClone(initial);
+  changed.contributions.find(item => item.id === original.id)!.text = '另一个页面刚刚保存的内容';
+  wx.setStorageSync(ROOM_KEY, changed);
+  callPage(page, 'onEditText', { detail: { value: '本页尚未保存的内容' } });
+  await callPage(page, 'saveEdit');
+  assert.match(String(last(storage.toasts)), /已有新修改/);
+  assert.equal((wx.getStorageSync(ROOM_KEY) as FamilyRoomState).contributions.find(item => item.id === original.id)!.text,
+    '另一个页面刚刚保存的内容');
+});
+
+test('confirming an organized chapter locks the preview before validation and ignores a second tap', async context => {
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('book'));
+  await callPage(page, 'refresh');
+  callPage(page, 'showOrganize');
+  await callPage(page, 'runOrganize');
+  const title = page.data.previewTitle;
+  const body = page.data.previewText;
+  let writes = 0;
+  const persist = page.persist as (...args: unknown[]) => Promise<boolean>;
+  page.persist = function (...args: unknown[]) { writes++; return persist.apply(page, args); };
+  const first = callPage(page, 'confirmOrganize');
+  const second = callPage(page, 'confirmOrganize');
+  callPage(page, 'closePanel');
+  assert.equal(page.data.panel, 'organize-preview', 'validation must lock cancellation immediately');
+  callPage(page, 'onPreviewTitle', { detail: { value: 'late native input' } });
+  callPage(page, 'onPreviewText', { detail: { value: 'late native input' } });
+  assert.equal(page.data.previewTitle, title);
+  assert.equal(page.data.previewText, body);
+  await Promise.all([first, second]);
+  assert.equal(writes, 1, 'a double tap must not start two persistence attempts');
+  assert.equal(page.data.confirmingOrganize, false);
+  assert.equal(page.data.panel, '');
+});
+
+
+test('loaded story choices and the new-story form reuse the visible snapshot, including an empty memory pool', async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('stories'));
+  await callPage(page, 'refresh');
+  let reads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { configurable: true, get() { reads++; return undefined; } });
+  await callPage(page, 'openCreate');
+  assert.equal(page.data.createOpen, true);
+  assert.ok((page.data.createMemories as unknown[]).length > 0);
+  callPage(page, 'closeCreate');
+  const story = (page.data.stories as Array<{ key: string }>).find(item => !item.key.startsWith('manuscript:'))!;
+  assert.ok(story);
+  await callPage(page, 'openStory', { currentTarget: { dataset: { key: story.key } } });
+  assert.equal(page.data.selectedKey, story.key);
+  assert.equal(reads, 0, 'opening existing views must not reload an already displayed room');
+
+  delete (wx as any).cloud;
+  const empty = createInitialRoomState();
+  empty.contributions = [];
+  wx.setStorageSync(ROOM_KEY, empty);
+  await callPage(page, 'refresh');
+  reads = 0;
+  Object.defineProperty((globalThis as any).wx, 'cloud', { get() { reads++; return undefined; } });
+  await callPage(page, 'openCreate');
+  assert.equal(page.data.createOpen, true);
+  assert.deepEqual(page.data.createMemories, [], 'a refreshed empty pool must not reuse stale choices');
+  assert.equal(reads, 0);
+});
+
+test('new-story form reports a failed initial read and can be retried', async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('stories'));
+  Object.defineProperty((globalThis as any).wx, 'cloud', { configurable: true, get() { throw new Error('initial read unavailable'); } });
+  await callPage(page, 'openCreate');
+  assert.equal(page.data.createOpen, false);
+  assert.match(String(last(storage.toasts)), /initial read unavailable/);
+  delete (wx as any).cloud;
+  await callPage(page, 'openCreate');
+  assert.equal(page.data.createOpen, true);
+});
+
+test('daily question ignores late response after switching sources and carries the displayed question into chat',async context=>{
+ const initial=createInitialRoomState();const storage=installWxMock(initial);context.after(storage.restore);
+ const priorApp=Object.getOwnPropertyDescriptor(globalThis,'getApp');
+ Object.defineProperty(globalThis,'getApp',{configurable:true,value:()=>({globalData:{cloudReady:true,aiReady:true}})});
+ context.after(()=>{if(priorApp)Object.defineProperty(globalThis,'getApp',priorApp);else delete (globalThis as any).getApp});
+ const wxMock=(globalThis as any).wx;const get=wxMock.getStorageSync;
+ wxMock.getStorageSync=(key:string)=>key==='aiConsentDecision'?{granted:true,version:1}:get(key);
+ const resolvers=new Map<string,(value:unknown)=>void>();
+ wxMock.cloud={callFunction:({data}:any)=>new Promise(resolve=>resolvers.set(data.memoryId,resolve))};
+ const home=instantiate(await pageDefinition('index'));home.roomSnapshot=initial;
+ home.setData({hasProfile:true,recommendedSourceId:'daily-race-a',currentStoryTitle:'测试'});
+ const first=callPage(home,'updateDailyQuestion') as Promise<void>;
+ home.setData({recommendedSourceId:'daily-race-b'});
+ const second=callPage(home,'updateDailyQuestion') as Promise<void>;
+ await new Promise(resolve=>setImmediate(resolve));
+ const result=(sourceId:string,text:string)=>({result:{generationMode:'cloud-ai',dimension:'feeling',text,sourceId,anchor:'蓝色旧书'}});
+ resolvers.get('daily-race-b')!(result('daily-race-b','蓝色旧书对你意味着什么？'));await second;
+ resolvers.get('daily-race-a')!(result('daily-race-a','旧问题为什么还在这里？'));await first;
+ assert.equal(home.data.recommendedQuestion,'蓝色旧书对你意味着什么？');assert.equal(home.data.dailyLoading,false);
+ callPage(home,'continueRecommendedQuestion');assert.match(last(storage.navigations)!,/sourceId=daily-race-b/);
+ const query=new URLSearchParams(last(storage.navigations)!.split('?')[1]);assert.equal(query.get('question'),home.data.recommendedQuestion);
+});
+
+test('home shows loading and recoverable errors instead of first-profile setup during a slow cloud read', async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const previousApp=(globalThis as any).getApp;
+  context.after(()=>{(globalThis as any).getApp=previousApp;});
+  (globalThis as any).getApp=()=>({globalData:{cloudReady:true}});
+  let fail:(error:Error)=>void=()=>{};
+  (globalThis as any).wx.cloud={callFunction:({name}:any)=>name==='getOpenId' ? Promise.resolve({result:{openid:'fixture-user'}})
+    :new Promise((_resolve,reject)=>{fail=reject})};
+  const home=instantiate(await pageDefinition('index'));
+  const pending=callPage(home,'refresh') as Promise<void>;
+  const rejected=assert.rejects(pending,/offline/);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(home.data.homeLoading,true);
+  assert.equal(home.data.homeLoadError,false);
+  fail(new Error('offline'));await rejected;
+  assert.equal(home.data.homeLoading,false);
+  assert.equal(home.data.homeLoadError,true);
+  await callPage(home,'refresh',createInitialRoomState());
+  assert.equal(home.data.homeLoadError,false);
+  assert.equal(home.data.homeLoading,false);
+  assert.ok((home.data.bookSlides as unknown[]).length);
+});
+
+
+test('shelf spine colour follows the selected cover after reordering and skips books without covers', async (context) => {
+  const state = createInitialRoomState();
+  state.stories = ['a', 'b', 'c'].map((id, index) => ({
+    id, familyId: 'local', title: id, writingMode: 'objective' as const,
+    memoryIds: [], protagonistMemberIds: [], createdAt: '2026-10-04T00:00:00Z',
+    updatedAt: `2026-10-04T0${index}:00:00Z`, version: 0,
+    coverImageId: id === 'c' ? '' : `cover-${id}`,
+  }));
+  state.storyMigration = { version: 1, status: 'active', pending: [] };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const original = storyCoverApi.resolveUrl;
+  context.after(() => { storyCoverApi.resolveUrl = original; });
+  const requests: string[] = [];
+  storyCoverApi.resolveUrl = async (id, cover) => { requests.push(`${id}:${cover}`); return ''; };
+  const page = instantiate(await pageDefinition('stories'));
+  await callPage(page, 'refresh', state);
+  await callPage(page, 'loadSpineArt', page.spineRefreshId);
+  assert.deepEqual(requests, ['b:cover-b', 'a:cover-a']);
+  state.stories[0].updatedAt = '2026-10-05T00:00:00Z';
+  state.stories[0].coverImageId = 'cover-a-new';
+  requests.length = 0;
+  await callPage(page, 'refresh', state);
+  await callPage(page, 'loadSpineArt', page.spineRefreshId);
+  assert.deepEqual(requests, ['a:cover-a-new', 'b:cover-b']);
+});
+
+test('leaving the shelf cancels pending spine rendering before it touches a destroyed canvas', async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const original = storyCoverApi.resolveUrl;
+  context.after(() => { storyCoverApi.resolveUrl = original; });
+  let complete!: (url: string) => void;
+  storyCoverApi.resolveUrl = () => new Promise(resolve => { complete = resolve; });
+  const page = instantiate(await pageDefinition('stories'));
+  page.setData({ stories: [{ key: 'a', storyId: 'a', coverImageId: 'cover-a', spineArtUrl: '' }] });
+  let canvasTouched = false;
+  page.createSelectorQuery = () => { canvasTouched = true; throw new Error('destroyed page'); };
+  const pending = callPage(page, 'loadSpineArt', page.spineRefreshId);
+  callPage(page, 'onUnload');
+  complete('https://img.example/cover-a.png');
+  await pending;
+  assert.equal(canvasTouched, false);
+  assert.equal((page.data.stories as Array<{ spineArtUrl: string }>)[0].spineArtUrl, '');
 });

@@ -25,14 +25,18 @@
         <view class="action-icon icon-photo" aria-hidden="true"></view>{{submitting === group.id + ':backdrop' ? '提交中' : '配一张底图'}}
       </button>
     </view>
-    <view class="notice" wx:if="{{notice && noticeChapterId === group.id}}">{{notice}}</view>
+    <generation-status wx:if="{{submitting && noticeChapterId === group.id}}" kind="image" text="{{notice}}" />
+    <view class="notice" wx:elif="{{notice && noticeChapterId === group.id}}">{{notice}}</view>
     <view class="backdrop-state" wx:if="{{group.backdropMissing}}">
       <text>这一章选的底图已经不在了。</text>
       <button class="tool-button" data-chapter="{{group.id}}" data-image="" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
         <view class="action-icon icon-remove" aria-hidden="true"></view>不用了
       </button>
     </view>
-    <view class="job-row {{job.active ? 'is-active' : ''}}" wx:for="{{group.pending}}" wx:key="jobId" wx:for-item="job">{{job.purposeLabel}} · {{job.message}}</view>
+    <view class="job-row {{job.active ? 'is-active' : ''}}" wx:for="{{group.pending}}" wx:key="jobId" wx:for-item="job">
+      <generation-status wx:if="{{job.active}}" kind="image" text="{{job.purposeLabel + ' · ' + job.message}}" />
+      <text wx:else>{{job.purposeLabel}} · {{job.message}}</text>
+    </view>
     <view class="image-grid" wx:if="{{group.images.length}}">
       <view class="image-card" wx:for="{{group.images}}" wx:key="imageId" wx:for-item="image">
         <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />

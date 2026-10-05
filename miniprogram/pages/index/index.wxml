@@ -15,12 +15,7 @@
         aria-label="打开我的"
       >
         <view class="member-avatar serif">
-          <image
-            class="member-avatar-backdrop"
-            src="/assets/illustrations/book-wash.png"
-            mode="aspectFill"
-            aria-hidden="true"
-          ></image>
+          <image class="member-avatar-backdrop" src="/assets/illustrations/avatar-watercolor.png" mode="aspectFill" aria-hidden="true"></image>
           <text class="member-avatar-letter">{{ownerAvatarText || '我'}}</text>
         </view>
       </button>
@@ -41,7 +36,15 @@
       </button>
     </view>
 
-    <view class="book-stage {{bookSlides.length > 1 ? 'book-stage-scrollable' : ''}}">
+    <view class="home-load-state" wx:if="{{homeLoading || homeLoadError}}">
+      <generation-status wx:if="{{homeLoading}}" text="正在翻开你的故事书…" />
+      <block wx:else>
+        <text>故事书暂时没能加载出来</text>
+        <button bindtap="retryHomeLoad" class="home-retry" hover-class="none">重新加载</button>
+      </block>
+    </view>
+
+    <view wx:if="{{bookSlides.length}}" class="book-stage {{bookSlides.length > 1 ? 'book-stage-scrollable' : ''}}">
       <swiper
         class="book-swiper"
         circular="{{bookSlides.length > 1}}"
@@ -61,21 +64,21 @@
             >
               <view class="book-pages-under"></view>
               <view class="book-cover-leaf">
-                <view class="book-cover-picture" wx:if="{{item.coverUrl}}" aria-hidden="true">
+                <view class="book-cover-picture" wx:if="{{item.bookArtUrl}}" aria-hidden="true">
                   <image
                     class="book-cover-picture-art"
-                    src="{{item.coverUrl}}"
-                    mode="aspectFill"
+                    src="{{item.bookArtUrl}}"
+                    mode="scaleToFill"
                   ></image>
-                  <view class="book-cover-picture-wash"></view>
                 </view>
                 <image
-                  class="ancient-book-art {{item.coverUrl ? 'ancient-book-art-overlay' : ''}}"
+                  wx:else
+                  class="ancient-book-art"
                   src="/assets/illustrations/story-book-cover.png"
                   mode="aspectFill"
                   aria-hidden="true"
                 ></image>
-                <view class="book-cover-copy">
+                <view class="book-cover-copy {{item.bookArtUrl ? 'book-cover-copy-printed' : ''}}">
                   <text class="book-kicker typewriter">拾 光 录</text>
                   <view class="book-copy">
                     <view class="book-slip">
@@ -128,7 +131,7 @@
       <view class="book-open-label typewriter">{{bookSlides.length > 1 ? '左右滑动换一本书 · 轻触打开' : '轻触打开这个故事'}}</view>
     </view>
 
-    <view class="home-setup" wx:if="{{!hasProfile}}">
+    <view class="home-setup" wx:if="{{!homeLoading && !homeLoadError && !hasProfile}}">
       <view class="home-setup-title serif">先写下你的名字</view>
       <view class="home-setup-note">从你自己开始，把经历慢慢留下来。</view>
       <button
@@ -146,10 +149,13 @@
         <button
           class="recommended-refresh"
           bindtap="changeRecommendedQuestion"
+          disabled="{{dailyLoading}}"
           hover-class="none"
           aria-label="换一个推荐问题"
-        >换一个问题</button>
+        >{{dailyLoading ? '正在更新…' : '换一个问题'}}</button>
       </view>
+      <generation-status wx:if="{{dailyLoading}}" text="正在读你的故事，想一个新问题…" />
+      <view wx:elif="{{dailyStatus}}" class="daily-status">{{dailyStatus}}</view>
       <view
         wx:if="{{hasRecommendedQuestion}}"
         class="recommended-card"
@@ -260,3 +266,4 @@
 </scroll-view>
 
 <story-switcher current="home"></story-switcher>
+<canvas type="2d" id="book-frame-canvas" class="book-frame-canvas" aria-hidden="true"></canvas>

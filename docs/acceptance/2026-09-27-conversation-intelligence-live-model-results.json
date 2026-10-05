@@ -1,0 +1,519 @@
+{
+  "title": "对话智能真实模型验收记录",
+  "date": "2026-09-27",
+  "sourceCommit": "8f6fb7cbad4d35cf1ea32bf0dd7dab3fb288778d",
+  "environment": "cloud1-d5ghzk30ve609f544",
+  "model": "deepseek/deepseek-flash",
+  "provider": "TokenHub",
+  "execution": "微信开发者工具真实登录账号，wx.cloud.callFunction 串行调用已部署 chatInterview；sourceOnly=true；虚构测试材料。",
+  "summary": {
+    "successfulModelResponses": 20,
+    "total": 20,
+    "codexSemanticRelevant": 20,
+    "firstFiveUnrelatedFactQuestions": 0,
+    "recordOnlyAndPauseRespected": true,
+    "humanReview": "pending",
+    "latencyMedianMs": 7075.5,
+    "latencyMaxMs": 12518,
+    "tokenUsage": "响应 computeUsage 全为 null，不能推算实际 token 或费用。"
+  },
+  "cases": [
+    {
+      "id": "01",
+      "type": "箴言",
+      "answer": "越是迷茫的时候，越是要往远处看。",
+      "anchor": "迷茫／往远处看对自己的意义",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 12518,
+      "requestId": "f3f5d255-eb79-4410-8bbb-54d545047097",
+      "result": {
+        "dimension": "feeling",
+        "text": "“往远处看”这句挺有画面。我有个不一定对的理解：你说的“远”，也许不是某个具体地方，而是不让眼前这点占据全部视线。对你来说，往远处看更像是去看长远想做的事，还是把眼下的事放小一点看？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "02",
+      "type": "箴言",
+      "answer": "慢一点，也未必会错过什么。",
+      "anchor": "慢一点／害怕错过",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 8334,
+      "requestId": "6e91e457-526f-4f90-83d0-ba286500a036",
+      "result": {
+        "dimension": "feeling",
+        "text": "这句话像是在把“慢”和“错过”放在一起掂量。对你来说，“慢一点”最想留住的是什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "03",
+      "type": "感想",
+      "answer": "比起热闹，我越来越珍惜能安静待着的时刻。",
+      "anchor": "热闹与安静的变化",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 7693,
+      "requestId": "cee1cdb2-c627-40db-86d5-c5b499361d44",
+      "result": {
+        "dimension": "feeling",
+        "text": "比起热闹，安静待着的时刻好像更让你想留住。你说“越来越珍惜”，这样的时刻里，最让你看重的是什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "04",
+      "type": "感想",
+      "answer": "真正让我安心的，是不用急着证明自己。",
+      "anchor": "安心／证明自己",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 5479,
+      "requestId": "ef811ccf-8650-4a5c-b6a8-7537701060b5",
+      "result": {
+        "dimension": "feeling",
+        "text": "听着像是：让你松下来的，不是被谁认可，而是不必赶着证明自己。这份「不用急」的安心，对你来说最实在的是哪一点？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "05",
+      "type": "感想",
+      "answer": "有些遗憾不用补回来，承认它在那里就够了。",
+      "anchor": "遗憾／承认它存在",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 7456,
+      "requestId": "254a7d91-afe9-4ba4-9584-4519ef05f5e1",
+      "result": {
+        "dimension": "feeling",
+        "text": "“承认它在那里就够了”——听起来不是要把它抹掉，而是允许它留在原处。这个“够了”，对你是够在不再跟它拉扯，还是够在能带着它继续过日子？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "06",
+      "type": "感受延续",
+      "answer": "没新事情，就想聊聊这种踏实的感觉。",
+      "anchor": "踏实；不得强索取新事件或告别",
+      "noFactQuestions": true,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 10302,
+      "requestId": "d528e1eb-8926-42c7-835a-97bad656beef",
+      "result": {
+        "dimension": "feeling",
+        "text": "没新事情也可以，就聊这份踏实。你说“这种踏实”，它在你那儿是什么样子的——身体上先松下来，还是心里某件事终于不用悬着了？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "07",
+      "type": "气味与场景",
+      "answer": "下班路上闻到桂花香，我一下想起老家的院子。",
+      "anchor": "桂花香／老家院子",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 7634,
+      "requestId": "ce7d2892-e117-4c76-8241-73908df4b026",
+      "result": {
+        "dimension": "place",
+        "text": "下班路上的桂花香，一下把你带回老家的院子。那会儿先冒出来的是院子的哪个角落，或者什么画面？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "08",
+      "type": "关系",
+      "answer": "父亲把旧收音机修好了，第一件事是调到我小时候爱听的节目。",
+      "anchor": "修收音机／儿时节目；不猜父亲动机",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 9600,
+      "requestId": "0efea384-4743-4be7-80ef-6a86ff0de0e0",
+      "result": {
+        "dimension": "person",
+        "text": "修好后的第一件事，是调到小时候那个节目。他调台那会儿，你是在旁边吗？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "09",
+      "type": "物件",
+      "answer": "搬家时发现一个掉了漆的铁盒，我舍不得扔。",
+      "anchor": "铁盒／舍不得",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 7683,
+      "requestId": "201daafe-e129-4729-bcc5-50f2ce4a5fc4",
+      "result": {
+        "dimension": "event",
+        "text": "掉了漆的铁盒，搬家收拾时翻出来，你说舍不得扔——看来它不只是个盒子。它里面现在还有东西吗？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "10",
+      "type": "经历与感受",
+      "answer": "今天同事走前给我留了一杯热茶，我原本很烦的心情缓过来了。",
+      "anchor": "热茶／心情缓过来",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 4948,
+      "requestId": "ba04cd31-123f-41fd-b08c-d03b9136291b",
+      "result": {
+        "dimension": "feeling",
+        "text": "人已经走了，那杯热茶却像还替他说了句话，你原本绷着的烦也跟着松了一点。当时那阵烦，是手头正卡着的事，还是从别处带过来的？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "11",
+      "type": "经历与沉默",
+      "answer": "我辞职那天没有哭，回家在楼下坐了很久。",
+      "anchor": "没有哭／楼下坐很久；不代判创伤",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 6568,
+      "requestId": "1ba3abfc-ccbc-4a85-9613-212ef32d0b79",
+      "result": {
+        "dimension": "feeling",
+        "text": "辞职那天没哭，却在楼下坐了很久——这两件事放在一起，像是身体替你停了一会儿。那段时间里，你注意到的是什么？比如楼下的灯、路过的人，还是手边某样东西。",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "12",
+      "type": "感官细节",
+      "answer": "第一次学会骑车，我最记得的是把手上的那层橡胶味。",
+      "anchor": "把手橡胶味／记得的细节",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 4830,
+      "requestId": "1f8daad6-2d7c-42eb-81d6-bdc418dad0c4",
+      "result": {
+        "dimension": "feeling",
+        "text": "把手上的橡胶味被你记到了现在，闻着它的时候，你是正扶着车准备骑，还是已经骑起来、手攥得紧紧的呢？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "13",
+      "type": "拒绝单一话题",
+      "answer": "我不想聊那个人，想说说我后来怎样决定离开的。",
+      "anchor": "离开的决定；停止那个人的话题并继续",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 6938,
+      "requestId": "ed6d4523-00da-4d32-b785-7fed8b702bae",
+      "result": {
+        "dimension": "event",
+        "text": "那就不聊那个人，只说你后来怎样决定离开。你记得这个决定是一点点成形的，还是某一天突然定下来的？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "14",
+      "type": "记不清",
+      "answer": "具体哪一年我忘了，但记得那天屋里很冷。",
+      "anchor": "屋里很冷；不重复追问年份",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 5720,
+      "requestId": "818d8feb-e05f-4419-a8a6-d665257d858d",
+      "result": {
+        "dimension": "feeling",
+        "text": "年份记不得了，那天的冷倒是留了下来。那种冷是什么样——裹着被子也暖不过来，还是整个屋子透着一股阴冷？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "15",
+      "type": "家人不同版本",
+      "answer": "我和姐姐记得不一样，她说是在冬天，我只记得窗外有蝉声。",
+      "anchor": "两个来源／蝉声；不裁决谁对",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 6012,
+      "requestId": "1b88322c-89ab-42ae-a19a-46ede60291e8",
+      "result": {
+        "dimension": "time",
+        "text": "同一次经历，你留下的是窗外的蝉声，姐姐记得的却是冬天，这两份记忆先各自放着，不用这会儿分出谁对。蝉声常和夏天连在一起——那时你还在窗边注意到别的什么吗？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "16",
+      "type": "每日一问",
+      "answer": "我每天起床先给阳台上的花浇水，今天又冒出了一个小芽。",
+      "anchor": "浇水／新芽；接住后继续",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [
+        {
+          "role": "assistant",
+          "text": "今天有什么你想留下的小事？"
+        }
+      ],
+      "latencyMs": 5222,
+      "requestId": "444c3fda-c45c-44e8-ab00-ea14338035d7",
+      "result": {
+        "dimension": "event",
+        "text": "每天起床先浇水，今天多冒出一个小芽，算是浇花时撞见的小变化。你是怎么注意到它的——浇水时一眼就看见，还是后来才发现的？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "17",
+      "type": "短回答",
+      "answer": "嗯，就是那种终于不用赶着去哪里的感觉。",
+      "anchor": "不用赶路的感觉；短回答不自动结束",
+      "noFactQuestions": true,
+      "askedDimensions": [
+        "feeling"
+      ],
+      "conversation": [
+        {
+          "role": "assistant",
+          "text": "刚才说的踏实，对你更像是什么感觉？"
+        }
+      ],
+      "latencyMs": 6472,
+      "requestId": "d4c3e739-e09b-40b6-8430-e0fbd4597688",
+      "result": {
+        "dimension": "feeling",
+        "text": "“不用赶着去哪里”，那种踏实听起来像是不必再被下一个目的地推着走。现在没有要赶去的地方时，你一般会待在哪儿、做点什么？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。仍追问地点和活动，超出本条 noFactQuestions 的偏好；保持相关，列为待改进。"
+      }
+    },
+    {
+      "id": "18",
+      "type": "只记录",
+      "answer": "不太想解释原因，只想把这句话留下。",
+      "anchor": "尊重只记录，不追问原因",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 7442,
+      "requestId": "a48b20cf-5f96-41c6-9d53-24af58604421",
+      "result": {
+        "dimension": "feeling",
+        "text": "那就只把这句话留下，原因不必解释。我在这儿替你记着。",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "19",
+      "type": "明确暂停",
+      "answer": "今天先到这里吧，我想歇一会儿。",
+      "anchor": "暂停，不追加问题",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 4306,
+      "requestId": "7d71e217-188a-4b5f-b5f3-133923d62a0f",
+      "result": {
+        "dimension": "feeling",
+        "text": "那就先歇一会儿，今天到这里。",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    },
+    {
+      "id": "20",
+      "type": "纠正归属",
+      "answer": "我说的是我自己喜欢一个人走走，不是说我妈妈。",
+      "anchor": "讲述者本人／一个人走走；接受归属纠正",
+      "noFactQuestions": false,
+      "askedDimensions": [],
+      "conversation": [],
+      "latencyMs": 7213,
+      "requestId": "639ded8c-db7c-4f48-912d-fd4644f5061d",
+      "result": {
+        "dimension": "event",
+        "text": "记下了，是你自己喜欢一个人走走，不是在说你妈妈。那这种一个人走走，一般是什么时候出门——比如下班后、还是想静一静的时候？",
+        "generationMode": "cloud-ai",
+        "aiDisclosure": "文字 AI 生成",
+        "computeUsage": null
+      },
+      "review": {
+        "reviewer": "Codex",
+        "relevantToInput": true,
+        "humanReviewed": false,
+        "note": "回应所列 anchor。"
+      }
+    }
+  ],
+  "limitations": [
+    "一次固定样例运行，不代表重复运行稳定率。",
+    "第 17 条有地点／活动追问，语义相关但不符合该条 noFactQuestions 偏好。",
+    "此批为真实云端模型调用，不能代替完整界面、跨账号或真机验收。"
+  ]
+}

@@ -12,12 +12,7 @@
 
   <view class="me-profile">
     <view class="me-avatar serif">
-      <image
-        class="me-avatar-backdrop"
-        src="/assets/illustrations/book-wash.png"
-        mode="aspectFill"
-        aria-hidden="true"
-      ></image>
+      <image class="me-avatar-backdrop" src="/assets/illustrations/avatar-watercolor.png" mode="aspectFill" aria-hidden="true"></image>
       <text class="me-avatar-letter">{{accountAvatarText}}</text>
     </view>
     <view class="me-profile-copy">
@@ -175,7 +170,7 @@
   <view class="account-edit-mask" wx:if="{{editingAccount}}">
     <view class="account-edit-card">
       <view class="account-edit-avatar serif">
-        <image src="/assets/illustrations/book-wash.png" mode="aspectFill"></image>
+        <image src="/assets/illustrations/avatar-watercolor.png" mode="aspectFill" aria-hidden="true"></image>
         <text>{{accountAvatarPreview}}</text>
       </view>
       <view class="account-edit-title serif">希望我们怎么叫你？</view>

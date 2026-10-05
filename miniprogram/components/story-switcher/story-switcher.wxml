@@ -5,12 +5,6 @@
     mode="aspectFit"
     aria-hidden="true"
   ></image>
-  <image
-    class="switcher-book-edges"
-    src="/assets/illustrations/story-switcher-book-edges.png"
-    mode="aspectFit"
-    aria-hidden="true"
-  ></image>
 
   <button
     class="story-tab story-tab-personal {{current === 'personal' ? 'story-tab-current' : ''}}"

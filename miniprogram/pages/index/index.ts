@@ -1,4 +1,8 @@
+import {dailyQuestionAvailable, dailyQuestionCache, generateDailyQuestion} from "../../services/dailyQuestion";
+import {hasAiConsent} from "../../services/aiConsent";
 import { storyCoverApi } from "../../services/storyCoverService";
+import { renderBookCover } from "../../services/bookFrameColor";
+import { bookCoverExists, cachedBookCover } from "../../services/bookCoverCache";
 import {
   accountOwner,
   contributionRelatedMemberIds,
@@ -53,6 +57,7 @@ interface BookSlideView {
   manuscriptMemberId: string;
   coverImageId: string;
   coverUrl: string;
+  bookArtUrl?: string;
   memoryCount: number;
   chapterCount: number;
   peopleCount: number;
@@ -291,9 +296,14 @@ function interviewUrl(
  */
 Page({
   recommendationOffset: 0,
+  dailyRequestId: 0,
   coverRefreshId: 0,
+  roomSnapshot: undefined as FamilyRoomState | undefined,
+  coverRequests: {} as Record<string, boolean>,
 
   data: {
+    homeLoading: true,
+    homeLoadError: false,
     hasProfile: false,
     ownerAvatarText: "",
     // 书封就是正在聊的那个故事；所有故事的目录在底部的「人生之书」。
@@ -315,6 +325,9 @@ Page({
     currentStoryTitle: "",
     currentStoryLabel: "",
     dailyQuestion: "",
+    dailyLoading: false,
+    dailyAi: false,
+    dailyStatus: "",
     recommendedQuestionLabel: "",
     recommendedQuestionContext: "",
     recommendedQuestion: "",
@@ -328,12 +341,23 @@ Page({
 
   onShow() {
     this.setData({ bookOpening: false });
-    void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
+    void this.refresh().catch(() => undefined);
   },
 
+  onHide() { this.dailyRequestId += 1; },
+
   async refresh(state?: FamilyRoomState) {
+    this.dailyRequestId += 1;
     const coverRefreshId = ++this.coverRefreshId;
-    const currentState = state ?? await loadRoomStateRemoteFirst();
+    this.setData({homeLoading:true, homeLoadError:false});
+    let currentState: FamilyRoomState;
+    try {
+      currentState = state ?? await loadRoomStateRemoteFirst({view:"home"});
+    } catch (error) {
+      if (coverRefreshId === this.coverRefreshId) this.setData({homeLoading:false,homeLoadError:true});
+      logLoadError("index", error);
+      throw error;
+    }
     const current = await loadCurrentMemberRemoteFirst(currentState);
     const owner = accountOwner(currentState.members) ?? (current.id ? current : undefined);
     const pool = memoryPool(currentState.contributions);
@@ -377,9 +401,23 @@ Page({
     const activeBook = bookSlides[activeBookIndex] ?? bookSlides[0];
 
     if (coverRefreshId !== this.coverRefreshId) return;
+    this.roomSnapshot = currentState;
+    this.coverRequests = {};
+    const previousSlides = new Map((this.data.bookSlides as BookSlideView[]).map(slide => [slide.key, slide]));
+    bookSlides.forEach(slide => {
+      const previous = previousSlides.get(slide.key);
+      if (slide.coverImageId && previous?.coverImageId === slide.coverImageId) {
+        slide.coverUrl = previous.coverUrl;
+        slide.bookArtUrl = previous.bookArtUrl;
+      }
+      const cached = slide.storyId && slide.coverImageId
+        ? cachedBookCover(`${slide.storyId}:${slide.coverImageId}`) : '';
+      if (cached) { slide.bookArtUrl = cached; slide.coverUrl = cached; }
+    });
     const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
     this.setData({
-      coverUrl: "", coverImageId: coverStory?.coverImageId || "",
+      homeLoading:false, homeLoadError:false,
+      coverUrl: activeBook?.coverUrl || "", coverImageId: coverStory?.coverImageId || "",
       hasProfile: Boolean(owner),
       ownerAvatarText: owner?.avatarText ?? "",
       coverTitle: activeBook?.title || "先随便聊聊",
@@ -404,27 +442,90 @@ Page({
       recommendedStoryTitle: recommendedQuestion?.storyTitle ?? "",
       recommendedDimension: recommendedQuestion?.dimension ?? "",
       hasRecommendedQuestion: Boolean(recommendedQuestion),
+      dailyAi: false, dailyLoading: false, dailyStatus: "",
       recentStories,
       hasRecentStories: recentStories.length > 0,
     });
 
-    if (coverStory?.coverImageId) {
-      void storyCoverApi.resolveUrl(coverStory.id, coverStory.coverImageId).then(url => {
-        if (coverRefreshId !== this.coverRefreshId || this.data.storyId !== coverStory.id) return;
-        const nextSlides = (this.data.bookSlides as BookSlideView[]).map((slide) => slide.storyId === coverStory.id ? { ...slide, coverUrl: url } : slide);
-        this.setData({ coverUrl: url, bookSlides: nextSlides });
-      }).catch(() => undefined);
-    }
+    this.preloadBookCovers(activeBookIndex);
+    void this.updateDailyQuestion();
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
   },
 
-  async onBookSlideChange(event: { detail: { current: number } }) {
+  retryHomeLoad() {
+    if (!this.data.homeLoading) void this.refresh().catch(() => undefined);
+  },
+
+  preloadBookCovers(index: number) {
+    const slides = this.data.bookSlides as BookSlideView[];
+    if (!slides.length) return;
+    for (const offset of [0, -1, 1]) {
+      const slideIndex = (index + offset + slides.length) % slides.length;
+      const slide = slides[slideIndex];
+      if (!slide?.storyId || !slide.coverImageId) continue;
+      if (slide.bookArtUrl && bookCoverExists(slide.bookArtUrl)) continue;
+      const key = `${slide.storyId}:${slide.coverImageId}`;
+      if (slide.bookArtUrl) {
+        // A bounded cache or the OS may evict a previously displayed derivative.
+        delete this.coverRequests[key];
+        this.setData({ [`bookSlides[${slideIndex}].bookArtUrl`]: '',
+          ...(slide.coverUrl === slide.bookArtUrl ? { [`bookSlides[${slideIndex}].coverUrl`]: '' } : {}) });
+      }
+      if (this.coverRequests[key]) continue;
+      this.coverRequests[key] = true;
+      this.resolveActiveBookCover(this.coverRefreshId, slide.storyId, slide.coverImageId);
+    }
+  },
+
+  resolveActiveBookCover(coverRefreshId: number, storyId: string, coverImageId: string, attempt = 0) {
+    if (coverRefreshId !== this.coverRefreshId) return;
+    const cachedCover = (this.data.bookSlides as BookSlideView[]).find(slide =>
+      slide.storyId === storyId && slide.coverImageId === coverImageId)?.coverUrl;
+    void (cachedCover ? Promise.resolve(cachedCover) : storyCoverApi.resolveUrl(storyId, coverImageId)).then(url => {
+      if (coverRefreshId !== this.coverRefreshId) return;
+      if (!url && attempt < 2) {
+        setTimeout(() => this.resolveActiveBookCover(coverRefreshId, storyId, coverImageId, attempt + 1), 700 * (attempt + 1));
+        return;
+      }
+      if (!url) { delete this.coverRequests[`${storyId}:${coverImageId}`]; return; }
+      const index = (this.data.bookSlides as BookSlideView[]).findIndex(slide =>
+        slide.storyId === storyId && slide.coverImageId === coverImageId);
+      if (index < 0) return;
+      this.setData({
+        [`bookSlides[${index}].coverUrl`]: url,
+        ...(this.data.storyId === storyId ? { coverUrl: url } : {}),
+      });
+      void renderBookCover(this, url, `${storyId}:${coverImageId}`).then(bookArtUrl => {
+        if (coverRefreshId !== this.coverRefreshId) return;
+        this.setData({ [`bookSlides[${index}].bookArtUrl`]: bookArtUrl });
+      }).catch(error => {
+        if (coverRefreshId === this.coverRefreshId) delete this.coverRequests[`${storyId}:${coverImageId}`];
+        logLoadError("index-book-frame", error);
+      });
+    }).catch(() => {
+      if (coverRefreshId !== this.coverRefreshId) return;
+      if (attempt >= 2) { delete this.coverRequests[`${storyId}:${coverImageId}`]; return; }
+      setTimeout(() => this.resolveActiveBookCover(coverRefreshId, storyId, coverImageId, attempt + 1), 700 * (attempt + 1));
+    });
+  },
+
+  async onBookSlideChange(event: { detail: { current: number; source?: string } }) {
+    // Controlled-current updates are not another user swipe.
+    if (event.detail.source === "") return;
     const index = event.detail.current;
     const slide = (this.data.bookSlides as BookSlideView[])[index];
     if (!slide || index === this.data.activeBookIndex) return;
+    this.dailyRequestId += 1;
     saveCurrentStoryTitle(slide.storyTitle);
     saveCurrentStoryId(slide.storyId || "");
     this.recommendationOffset = 0;
+    const state = this.roomSnapshot;
+    const pool = state ? memoryPool(state.contributions) : [];
+    const selectedStory = state?.storyMigration?.status === "active"
+      ? storyShelf(state).find(story => story.key === slide.key) : undefined;
+    const memories = selectedStory ? pool.filter(memory => selectedStory.memoryIds.includes(memory.id))
+      : pool.filter(memory => contributionStoryTitle(memory) === slide.storyTitle);
+    const recommended = recommendedQuestionFor(latestContribution(memories), this.recommendationOffset);
     this.setData({
       activeBookIndex: index,
       storyChooserOpen: false,
@@ -440,8 +541,19 @@ Page({
       storyManuscriptMemberId: slide.manuscriptMemberId,
       currentStoryTitle: slide.storyTitle,
       currentStoryLabel: slide.storyTitle || "先随便聊聊",
+      storyOptions: this.data.storyOptions.map(option => ({ ...option, selected: option.key === slide.key })),
+      dailyQuestion: dailyQuestionFor(this.recommendationOffset),
+      recommendedQuestionLabel: recommended?.label ?? "",
+      recommendedQuestionContext: recommended?.context ?? "",
+      recommendedQuestion: recommended?.text ?? "",
+      recommendedSourceId: recommended?.sourceId ?? "",
+      recommendedStoryTitle: recommended?.storyTitle ?? "",
+      recommendedDimension: recommended?.dimension ?? "",
+      hasRecommendedQuestion: Boolean(recommended),
+      dailyAi: false, dailyLoading: false, dailyStatus: "",
     });
-    await this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
+    this.preloadBookCovers(index);
+    void this.updateDailyQuestion();
   },
 
   startInterview() {
@@ -468,7 +580,7 @@ Page({
     if (event.currentTarget.dataset.key?.startsWith("story-")) saveCurrentStoryId(event.currentTarget.dataset.key);
     this.recommendationOffset = 0;
     this.setData({ storyChooserOpen: false });
-    await this.refresh();
+    await this.refresh(this.roomSnapshot);
   },
 
   async chooseNoStory() {
@@ -476,7 +588,7 @@ Page({
     saveCurrentStoryId("");
     this.recommendationOffset = 0;
     this.setData({ storyChooserOpen: false });
-    await this.refresh();
+    await this.refresh(this.roomSnapshot);
   },
 
   startNewStory() {
@@ -545,19 +657,60 @@ Page({
     wx.navigateTo({ url: "/pages/room/room" });
   },
 
+  async updateDailyQuestion(manual = false) {
+    const state = this.roomSnapshot;
+    if (!state || !this.data.hasProfile || !dailyQuestionAvailable()) return;
+    if (!manual && !hasAiConsent()) {
+      this.setData({dailyStatus: "点换一个问题，让小忆结合这本故事来问"});
+      return;
+    }
+    const story = state.stories?.find(story => story.id === this.data.storyId && !story.deletedAt);
+    if (story?.sourcePolicyRequired) return;
+    const memoryId = this.data.recommendedSourceId;
+    if (!story && !memoryId) {
+      this.setData({dailyStatus: "留下一段记忆后，小忆会顺着你的故事来问"});
+      return;
+    }
+    const memories = memoryPool(state.contributions).filter(memory => story ? story.memoryIds.includes(memory.id) : memory.id === memoryId);
+    const version = JSON.stringify([story?.currentRevisionId, story?.version, story?.updatedAt, memories.map(memory => [memory.id,memory.text]), state.manuscriptRevisions?.find(revision => revision.id === story?.currentRevisionId)?.draft]);
+    const scope = story ? `${story.familyId}:${story.id}` : `memory:${memoryId}`;
+    const requestId = ++this.dailyRequestId;
+    this.setData({dailyLoading:true, dailyStatus:""});
+    try {
+      const question = await dailyQuestionCache.get(scope, version, sharedQuestionSeed(), manual, previous =>
+        generateDailyQuestion(story ? {storyId:story.id} : {memoryId}, previous, manual));
+      if (requestId !== this.dailyRequestId) return;
+      this.setData({dailyAi:true, hasRecommendedQuestion:true, recommendedQuestion:question.text,
+        recommendedSourceId:question.sourceId, recommendedDimension:question.dimension,
+        recommendedStoryTitle:this.data.currentStoryTitle, recommendedQuestionContext:`从你写的「${question.anchor}」接着聊`,
+        dailyStatus:"已结合保存的故事更新"});
+    } catch (error) {
+      if (requestId !== this.dailyRequestId) return;
+      this.setData({dailyStatus:"这次没能生成新问题，点换一个问题重试"});
+      logLoadError("daily-question", error);
+    } finally {
+      if (requestId === this.dailyRequestId) this.setData({dailyLoading:false});
+    }
+  },
+
   changeRecommendedQuestion() {
+    if (this.data.dailyLoading) return;
+    if (dailyQuestionAvailable() && (this.data.storyId || this.data.recommendedSourceId)) {
+      void this.updateDailyQuestion(true);
+      return;
+    }
     const previous = this.data.dailyQuestion;
     this.recommendationOffset += 1;
     // 题库不大，换种子可能又挑到同一题；这个故事还没有记忆可追问时，多换几次直到换出新题。
     for (let tries = 0; !this.data.hasRecommendedQuestion && tries < 12 && dailyQuestionFor(this.recommendationOffset) === previous; tries += 1) {
       this.recommendationOffset += 1;
     }
-    void this.refresh().catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
+    void this.refresh(this.roomSnapshot).catch((error) => { logLoadError("index", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
 
   continueRecommendedQuestion() {
     const sourceId = this.data.recommendedSourceId || "";
-    if (!sourceId) {
+    if (!sourceId && !this.data.dailyAi) {
       wx.showToast({ title: "还没有可追问的记忆", icon: "none" });
       return;
     }
@@ -567,7 +720,7 @@ Page({
       url: interviewUrl(sourceId, this.data.recommendedStoryTitle || "", {
         text: this.data.recommendedQuestion || "",
         dimension: this.data.recommendedDimension || "",
-      }),
+      }) + (this.data.dailyAi && this.data.storyId ? `&storyId=${encodeURIComponent(this.data.storyId)}` : ""),
     });
   },
 

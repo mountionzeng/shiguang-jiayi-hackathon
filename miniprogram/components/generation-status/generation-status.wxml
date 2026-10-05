@@ -1,0 +1,9 @@
+<view class="generation-status" aria-label="{{text}}">
+  <view wx:if="{{kind === 'image'}}" class="image-frame" aria-hidden="true">
+    <view class="image-sun"></view><view class="image-hill"></view>
+  </view>
+  <view wx:else class="writing-dots" aria-hidden="true">
+    <view class="writing-dot"></view><view class="writing-dot"></view><view class="writing-dot"></view>
+  </view>
+  <text class="generation-label">{{text}}</text>
+</view>

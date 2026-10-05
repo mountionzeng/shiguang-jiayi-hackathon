@@ -26,19 +26,6 @@
   pointer-events: none;
 }
 
-.switcher-book-edges {
-  position: absolute;
-  bottom: -12rpx;
-  left: -14%;
-  z-index: 0;
-  width: 128%;
-  height: 320rpx;
-  opacity: 0.24;
-  pointer-events: none;
-  transform: scale(2);
-  transform-origin: 50% 100%;
-}
-
 .story-tab {
   position: relative;
   z-index: 1;

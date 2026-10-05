@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "回忆采访"
+  "navigationBarTitleText": "回忆采访",
+  "usingComponents": {
+    "generation-status": "/components/generation-status/generation-status"
+  }
 }

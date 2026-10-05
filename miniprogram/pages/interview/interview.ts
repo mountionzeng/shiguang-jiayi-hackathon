@@ -21,15 +21,21 @@ import {
   detectCoveredDimensions,
   DIMENSION_CHIPS,
   draftTitleFromAnswers,
+  CLOUD_FOLLOW_UP_LABEL,
   FOLLOW_UP_LABEL,
   INTERVIEW_DIMENSIONS,
   InterviewDimension,
   InterviewTurn,
+  QUOTA_EXHAUSTED_FOLLOW_UP_LABEL,
   pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
+import {
+  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer,
+  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
+} from "../../services/xiaoyiCompanion";
 import {
   appendContributionRemoteFirst,
   loadCurrentMemberRemoteFirst,
@@ -199,6 +205,7 @@ Page({
     saved: false,
     saveMessage: "",
     saveError: "",
+    ...initialXiaoyiPanelData(),
     storageLabel: "",
 
     keyboardHeight: 0,
@@ -216,6 +223,8 @@ Page({
 
   messageSeq: 0,
   pendingContribution: undefined as MemoryContribution | undefined,
+  xiaoyiAskedDimensions: [] as InterviewDimension[],
+  xiaoyiConversation: [] as InterviewTurn[],
 
   async onLoad(options: InterviewLoadOptions = {}) {
     try {
@@ -429,7 +438,9 @@ Page({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
-      this.pushMessage("followup", prompt.text, prompt.generationMode === "cloud-ai" ? "文字 AI 生成" : FOLLOW_UP_LABEL);
+      const label = prompt.generationMode === "cloud-ai" ? CLOUD_FOLLOW_UP_LABEL
+        : prompt.fallbackReason === "moderation-quota-exhausted" ? QUOTA_EXHAUSTED_FOLLOW_UP_LABEL : FOLLOW_UP_LABEL;
+      this.pushMessage("followup", prompt.text, label);
     } catch (error) {
       console.warn("追问生成失败", error);
       this.setData({ asking: false });
@@ -527,6 +538,45 @@ Page({
 
   backToChat() {
     this.setData({ stage: "chat" });
+  },
+
+  openXiaoyi() {
+    if (this.data.stage !== "save" || this.data.saving || this.data.saved) return;
+    const text = this.data.draftText.trim();
+    this.setData({
+      xiaoyiOpen: true,
+      xiaoyiStatus: "",
+      xiaoyiContextPreview: text ? (text.length > 100 ? text.slice(0, 100) + "…" : text) : "这段记忆还没写正文，小忆会从你接下来要说的话问起。",
+    });
+  },
+  closeXiaoyi: resetXiaoyiPanel,
+  /** 就地小忆共享机制要读的场景参数。 */
+  xiaoyiConfig(): XiaoyiConfig {
+    return {
+      memoryType: this.data.memoryType,
+      memberName: this.data.memberName,
+      storyTitle: this.data.storyTitle,
+      storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
+      mode: this.data.sharedFamilyId ? "family" : "personal",
+    };
+  },
+  /** 就地小忆共享机制要读的当前文本：这段记忆正在写的草稿。 */
+  xiaoyiContextText() {
+    return this.data.draftText.trim();
+  },
+  xiaoyiMessagesAppend,
+  askXiaoyiQuestion,
+  onXiaoyiAnswerInput,
+  onXiaoyiDraftInput,
+  useXiaoyiOriginal,
+  organizeXiaoyiAnswer,
+  useXiaoyiDraft,
+  /** 就地小忆共享机制的落回目标：接到这段记忆的草稿末尾，保存时才真正持久化。 */
+  xiaoyiLand(text: string): Promise<boolean> {
+    const next = normalizeMemoryText([this.data.draftText.trim(), text.trim()].filter(Boolean).join("\n\n"));
+    const previewLabel = this.pendingContribution ? memoryAiLabel({ ...this.pendingContribution, text: next }) : this.data.draftAiLabel;
+    this.setData({ draftText: next, draftLength: next.length, tooLong: next.length > MAX_MEMORY_LENGTH, draftAiLabel: previewLabel, xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiStatus: "已接到草稿后面，你还可以继续改。" });
+    return Promise.resolve(true);
   },
 
   onTitleInput(event: { detail: { value: string } }) {

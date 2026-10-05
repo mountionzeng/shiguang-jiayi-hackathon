@@ -457,3 +457,18 @@ test("cloud initialization failure blocks saving instead of silently switching d
     assert.equal(f.records("memories").size, 0);
   } finally { f.restore(); }
 });
+
+test('only explicit home loads request a projection; editors still request complete history', async () => {
+  const f=fixture();
+  try {
+    const calls:any[]=[];
+    const complete={...createEmptyRoomState(),roomStateVersion:1,manuscriptRevisions:[],stories:[],deletedStories:[],personalDraftSourceFingerprints:{}};
+    (globalThis as any).wx.cloud.callFunction=async ({name,data}:any)=>{
+      if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+      calls.push(data);return {result:complete};
+    };
+    await localRepository.loadRoomStateRemoteFirst({view:'home'});
+    await localRepository.loadRoomStateRemoteFirst();
+    assert.deepEqual(calls,[{action:'state',view:'home'},{action:'state'}]);
+  } finally {f.restore();}
+});

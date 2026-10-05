@@ -624,13 +624,14 @@ test("同一本书的来源记忆参与美术提炼，但不改写当前画面�
     scene: "窗边桌上的搪瓷杯与远处灯光", setting: "窗边", objects: ["搪瓷杯"], light: "", mood: "", eraHint: "", figures: [],
   }, "cover", undefined, cover);
   assert.deepEqual([coverPrompt.width, coverPrompt.height], [832, 1248]);
-  assert.match(coverPrompt.prompt, /竖版古籍封面内的贴图画面/);
+  assert.match(coverPrompt.prompt, /竖版古籍书封正面插画底稿/);
   assert.match(coverPrompt.prompt, /上方三分之一也铺有连续的纸本纹理、淡彩背景和环境延展/);
   assert.match(coverPrompt.prompt, /不能留下纯空白或没有画面的标题带/);
   assert.match(coverPrompt.prompt, /画面从上缘延续到下缘/);
   assert.match(coverPrompt.prompt, /顶部也要有淡彩、枝叶、光影或纸纹等可见内容/);
-  assert.match(coverPrompt.prompt, /贴在古籍封面里的纸本画/);
-  assert.match(coverPrompt.prompt, /文字由界面另行排版/);
+  assert.match(coverPrompt.prompt, /直接铺满封面正面/);
+  assert.match(coverPrompt.prompt, /书脊、绑线、纸页边缘和外框交给界面层处理/);
+  assert.match(coverPrompt.prompt, /书名、章节数和统计文字由界面另行排版/);
   assert.doesNotMatch(coverPrompt.prompt, /年代质地/);
   assert.match(coverPrompt.prompt, /符合客观物理规律/);
 });
@@ -1287,7 +1288,7 @@ test("查询别人家的任务一律说找不到", async () => {
     error => error.code === "JOB_NOT_FOUND");
 });
 
-test("转存后用云存储链接做质检，发现乱码字就标出来给用户看", async () => {
+test("出图返回不等待美观质检，后台检查后仍能显示乱码提示", async () => {
   const checked = [];
   const { handlers, repo } = harness({
     deps: {
@@ -1298,6 +1299,12 @@ test("转存后用云存储链接做质检，发现乱码字就标出来给用�
     },
   });
   const { job } = await handlers.submit(ctx, submitEvent());
+  const initial = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
+  assert.equal(initial.job.status, "stored");
+  assert.ok(initial.image.url);
+  assert.equal(initial.image.quality, "pending");
+  assert.equal(checked.length, 0, "可选美观检查不能卡住已生成图片的返回");
+  await handlers.sweep();
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(checked.length, 1);
   assert.match(checked[0], /^https:\/\/tmp\.example\//);

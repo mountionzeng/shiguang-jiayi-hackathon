@@ -260,3 +260,5 @@
 .text-compute-title { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; font-size: 27rpx; }
 .text-compute-time { font-size: 22rpx; color: var(--ink-soft); }
 .text-compute-detail { margin-top: 6rpx; font-size: 25rpx; line-height: 1.6; font-variant-numeric: tabular-nums; }
+
+.joined-room-wash { position: absolute; inset: -34rpx; border-radius: 50%; background: radial-gradient(circle at 42% 40%, rgba(255,254,251,.82), rgba(203,219,232,.62) 46%, rgba(74,110,136,.22) 76%, transparent 80%); pointer-events: none; }

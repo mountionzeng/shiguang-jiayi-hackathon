@@ -20,7 +20,11 @@
     <view class="cover-description">例如：淡墨与暖黄的纸本插画。封面的内容仍以整本书为准。</view>
     <button class="cover-generate" bindtap="generate" loading="{{submitting}}" disabled="{{submitting || selecting || activeJob}}">{{submitting ? '正在构思封面' : '生成一张封面'}}</button>
     <view class="cover-hint">生成成功会产生供应商用量和费用。只在你点「设为封面」后替换。</view>
-    <view class="cover-job" wx:for="{{jobs}}" wx:key="jobId">{{item.message}}</view>
+    <generation-status wx:if="{{submitting}}" kind="image" text="正在阅读整本书，构思封面…" />
+    <view class="cover-job" wx:for="{{jobs}}" wx:key="jobId">
+      <generation-status wx:if="{{item.status === 'submitted' || item.status === 'queued' || item.status === 'generating' || item.status === 'generated' || item.status === 'storing'}}" kind="image" text="{{item.message}}" />
+      <text wx:else>{{item.message}}</text>
+    </view>
     <view class="cover-section" wx:if="{{covers.length}}"><text class="serif">画好的封面</text></view>
     <view class="cover-results">
       <view class="cover-result" wx:for="{{covers}}" wx:key="imageId">

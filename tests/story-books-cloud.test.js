@@ -86,6 +86,18 @@ test('production-shaped memory records keep their frontend contribution ids',asy
   assert.deepEqual((await h.state(ctx)).stories[0].memoryIds,['memory-a']);
 });
 
+test('owner room state preserves original speech and AI revision history',async()=>{
+  const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
+  const aiRevisions=[
+    {id:'spoken-a',kind:'spoken',text:'这是我的原话。',createdAt:'2026-09-28'},
+    {id:'ai-a',kind:'ai',text:'整理后的文字。',createdAt:'2026-09-28',organizationMode:'cloud-ai'},
+  ];
+  tables.set('memories:family_test_memory-a',{familyId:'family_test',frontendContributionId:'memory-a',scope:'personal',text:'整理后的文字。',aiRevisions});
+  const memory=(await h.state(ctx)).contributions[0];
+  assert.deepEqual(memory.aiRevisions,aiRevisions);
+  assert.equal(memory.text,'整理后的文字。');
+});
+
 test('authenticated state returns the complete owner room without database metadata',async()=>{
   const {handlers:h,tables}=fixture(),ctx={familyId:'family_test'};
   tables.set('families:family_test',{roomName:'服务端房间',protagonistName:'测试者',deletedStories:[],storyBooks:{status:'active',version:1}});
