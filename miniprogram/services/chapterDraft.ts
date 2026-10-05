@@ -14,13 +14,21 @@ export interface ChapterDraft {
   savedAt: string;
 }
 
-// Resolve the signed-in identity before reading a draft, never a global last-draft key.
+let pendingScope: Promise<string> | undefined;
+
+// Resolve the signed-in identity before reading a draft. Deduplicate only concurrent
+// lookups; never reuse a completed identity across accounts or local/cloud modes.
 export async function chapterDraftScope(): Promise<string> {
   if (!usesCloudStorage()) return 'local';
-  const response = await wx.cloud.callFunction({name:'getOpenId'});
-  const result = response.result as {openid?: string; account?: {primaryFamilyId?: string}};
-  if (!result?.openid) throw new Error('无法确认草稿所属账号，请重新打开');
-  return JSON.stringify([result.openid, result.account?.primaryFamilyId || '']);
+  if (pendingScope) return pendingScope;
+  const request = wx.cloud.callFunction({name:'getOpenId'}).then(response => {
+    const result = response.result as {openid?: string; account?: {primaryFamilyId?: string}};
+    if (!result?.openid) throw new Error('无法确认草稿所属账号，请重新打开');
+    return JSON.stringify([result.openid, result.account?.primaryFamilyId || '']);
+  });
+  pendingScope = request;
+  try { return await request; }
+  finally { if (pendingScope === request) pendingScope = undefined; }
 }
 export function chapterDraftKey(scope: string, bookId: string): string {
   if (!scope || !bookId) throw new Error('草稿所属故事尚未确认');

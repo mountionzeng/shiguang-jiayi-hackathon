@@ -38,6 +38,8 @@ export function formatComputeBalance(computeMicros: number): string {
   return `${(Math.floor(safe / 10_000) / 100).toFixed(2)} 算力`;
 }
 
+let pendingAccount: Promise<ShiguangAccount> | undefined;
+
 async function callAccount(action: "get" | "updateProfile", displayName = ""): Promise<ShiguangAccount> {
   if (!wx.cloud) throw new Error("当前微信版本暂不支持账号关联");
   const response = await wx.cloud.callFunction({
@@ -47,8 +49,13 @@ async function callAccount(action: "get" | "updateProfile", displayName = ""): P
   return parseAccount(response.result);
 }
 
+// Share simultaneous reads, but revalidate identity/profile on the next visit.
 export function loadCurrentAccount(): Promise<ShiguangAccount> {
-  return callAccount("get");
+  if (pendingAccount) return pendingAccount;
+  const request = callAccount("get");
+  pendingAccount = request;
+  void request.finally(() => { if (pendingAccount === request) pendingAccount = undefined; }).catch(() => undefined);
+  return request;
 }
 
 export async function loadSharedComputeBalance(): Promise<number> {
@@ -64,6 +71,7 @@ export async function loadSharedComputeBalance(): Promise<number> {
 }
 
 export function saveCurrentAccountName(displayName: string): Promise<ShiguangAccount> {
+  pendingAccount = undefined;
   return callAccount("updateProfile", displayName);
 }
 
