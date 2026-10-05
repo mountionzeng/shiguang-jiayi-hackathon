@@ -1,3 +1,4 @@
+@import "../../styles/image-preview.wxss";
 @import "../book/action-icons.wxss";
 /* 配图管理：纸面底色、按章节分组的卡片，操作区保持高对比与大触控。 */
 .images-page { min-height: 100vh; padding: 28rpx 32rpx calc(48rpx + env(safe-area-inset-bottom)); background: var(--paper); }

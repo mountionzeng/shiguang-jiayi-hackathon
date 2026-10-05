@@ -196,6 +196,22 @@ function createStoryImageHandlers(deps) {
       referenceUrl = (await storage.tempUrls([referenceImage.fileID], 5 * 60))[referenceImage.fileID] || "";
       if (!referenceUrl) throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "暂时读不到这张参考图，请稍后再试");
     }
+    // Reuse only the selected cover's art language. Its subjects never become chapter facts.
+    let coverStyle, coverStyleUrl = "";
+    const selectedCoverId = input.purpose !== "cover" && storyContext?.story.coverImageId;
+    if (selectedCoverId && !input.referenceImageId) {
+      const cover = await repo.getImage(selectedCoverId);
+      if (cover && cover.familyId === input.familyId && cover.storyId === input.storyId && cover.purpose === "cover" &&
+          cover.deletedAtMs === undefined && cover.moderation === "pass" && cover.fileID) {
+        const recipe = core.normalizeArtRecipe(cover.art);
+        if (recipe) {
+          source.referenceArt = { medium: recipe.medium, marks: recipe.marks, palette: recipe.palette };
+          coverStyle = { style: [recipe.medium, recipe.marks].filter(Boolean).join("，"), palette: recipe.palette, figures: [], objects: [], styleOnly: true };
+        } else if (!chapterReferenceUrls.length && referenceAnalyzer?.configured && referenceAnalyzer.analyzeStyle) {
+          coverStyleUrl = (await storage.tempUrls([cover.fileID], 5 * 60))[cover.fileID] || "";
+        }
+      }
+    }
     const nowMs = now();
     const dayKey = core.chinaDayKey(nowMs);
 
@@ -248,15 +264,16 @@ function createStoryImageHandlers(deps) {
     let scene;
     try {
       const [extracted, extractedReference] = await Promise.all([
-        extractScene(source),
+        extractScene({ ...source, purpose: input.purpose, artDirection: input.artDirection }),
         coverReferenceUrls.length ? referenceAnalyzer.analyzeCover(coverReferenceUrls)
           : chapterReferenceUrls.length ? (referenceAnalyzer.analyzeChapterPhotos || referenceAnalyzer.analyzeCover)(chapterReferenceUrls)
-          : referenceUrl ? referenceAnalyzer.analyze(referenceUrl) : Promise.resolve(undefined),
+          : referenceUrl ? referenceAnalyzer.analyze(referenceUrl)
+          : coverStyleUrl ? referenceAnalyzer.analyzeStyle(coverStyleUrl) : Promise.resolve(coverStyle),
       ]);
       scene = extracted;
-      scene = core.alignSceneFigures(scene, source);
+      scene = core.alignSceneFigures(scene, source, input.artDirection);
       const visualReference = core.alignVisualReference(extractedReference, source, scene, {
-        photoReference: chapterReferenceUrls.length > 0, trustedChapterPhoto: chapterReferenceUrls.length > 0,
+        photoReference: chapterReferenceUrls.length > 0, trustedChapterPhoto: chapterReferenceUrls.length > 0, artDirection: input.artDirection,
       });
       const { prompt, width, height } = core.buildImagePrompt(scene, input.purpose, visualReference, source, input.artDirection);
       const patch = {
@@ -409,6 +426,7 @@ function createStoryImageHandlers(deps) {
       qualityIssues: [],
       aiGenerated: true,
       jobId: job._id,
+      ...(core.normalizeArtRecipe(job.scene?.art) ? { art: core.normalizeArtRecipe(job.scene.art) } : {}),
       createdAtMs: nowMs,
     };
     await repo.createImage(imageId, imageDoc);

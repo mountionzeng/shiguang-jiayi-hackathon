@@ -29,7 +29,7 @@
     <view class="notice" wx:elif="{{notice && noticeChapterId === group.id}}">{{notice}}</view>
     <view class="backdrop-state" wx:if="{{group.backdropMissing}}">
       <text>这一章选的底图已经不在了。</text>
-      <button class="tool-button" data-chapter="{{group.id}}" data-image="" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
+      <button class="tool-button" data-chapter="{{group.id}}" data-image="" bindtap="setBackdrop" disabled="{{savingBackdrop || savingPlacement || removingId || submitting}}">
         <view class="action-icon icon-remove" aria-hidden="true"></view>不用了
       </button>
     </view>
@@ -46,23 +46,6 @@
           <text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
           <text wx:if="{{image.qualityLabel}}" class="{{image.qualityFlawed ? 'quality-flawed' : ''}}">{{image.qualityLabel}}</text>
           <text wx:if="{{image.inText}}">正文中使用</text>
-        </view>
-        <view class="card-actions">
-          <button wx:if="{{image.referenceReady}}" class="tool-button" data-id="{{group.id}}" data-purpose="illustration" data-reference="{{image.imageId}}" bindtap="generate" loading="{{submitting === group.id + ':illustration:' + image.imageId}}" disabled="{{submitting || savingBackdrop ? true : false}}">
-            <view class="action-icon icon-ai" aria-hidden="true"></view>{{submitting === group.id + ':illustration:' + image.imageId ? '提交中' : '参考这张再画'}}
-          </button>
-          <button wx:if="{{!image.isBackdrop && group.id === focusChapterId}}" class="tool-button" data-id="{{image.imageId}}" data-chapter="{{group.id}}" data-url="{{image.url}}" bindtap="insertIntoBook" disabled="{{image.inText}}">
-            <view class="action-icon icon-restore" aria-hidden="true"></view>{{image.inText ? '已在正文中' : '选用这张插图'}}
-          </button>
-          <button wx:if="{{image.isBackdrop && !image.inUse}}" class="tool-button" data-chapter="{{group.id}}" data-image="{{image.imageId}}" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
-            <view class="action-icon icon-restore" aria-hidden="true"></view>设为本章底图
-          </button>
-          <button wx:if="{{image.inUse}}" class="tool-button" data-chapter="{{group.id}}" data-image="" bindtap="setBackdrop" disabled="{{savingBackdrop}}">
-            <view class="action-icon icon-remove" aria-hidden="true"></view>不用了
-          </button>
-          <button class="tool-button" data-id="{{image.imageId}}" bindtap="remove" disabled="{{removingId === image.imageId || savingBackdrop}}">
-            <view class="action-icon icon-delete" aria-hidden="true"></view>删除
-          </button>
         </view>
       </view>
     </view>
@@ -86,5 +69,28 @@
         </view>
       </view>
     </view>
+  </view>
+</view>
+
+<view class="image-preview-mask" wx:if="{{preview}}" bindtap="closePreview">
+  <view class="image-preview-sheet" catchtap="keepPreviewOpen" role="dialog" aria-label="配图预览与位置">
+    <view class="image-preview-head"><text class="serif">{{preview.purposeLabel}}</text><button bindtap="closePreview" disabled="{{savingPlacement || savingBackdrop || removingId || submitting}}" aria-label="关闭大图">关闭</button></view>
+    <image class="image-preview-art" src="{{preview.url}}" mode="aspectFit" />
+    <scroll-view class="image-preview-controls" scroll-y>
+      <text class="image-preview-note" wx:if="{{preview.qualityLabel}}">{{preview.qualityLabel}}</text>
+      <block wx:if="{{!preview.isBackdrop}}">
+        <picker range="{{placementOptions}}" range-key="label" value="{{placementIndex}}" bindchange="onPlacementChange" disabled="{{savingPlacement || savingBackdrop || removingId || submitting}}">
+          <view class="image-preview-position">{{placementIndex >= 0 ? placementOptions[placementIndex].label : '请选择插图位置'}}<text>⌄</text></view>
+        </picker>
+        <button class="image-preview-primary" bindtap="savePlacement" loading="{{savingPlacement}}" disabled="{{savingPlacement || savingBackdrop || removingId || submitting || placementIndex < 0 || !preview.referenceReady}}">{{preview.inText ? '保存位置' : '放进正文'}}</button>
+        <button class="image-preview-secondary" wx:if="{{preview.inText}}" data-remove="true" bindtap="savePlacement" disabled="{{savingPlacement || savingBackdrop || removingId || submitting}}">从正文移除</button>
+      </block>
+      <button class="image-preview-primary" wx:else bindtap="usePreviewBackdrop" loading="{{savingBackdrop}}" disabled="{{savingBackdrop || savingPlacement || removingId || submitting}}">{{preview.inUse ? '不用这张底图' : '设为本章底图'}}</button>
+      <view class="image-preview-note" wx:if="{{previewNotice}}">{{previewNotice}}</view>
+      <view class="image-preview-actions">
+        <button wx:if="{{preview.referenceReady}}" bindtap="redrawPreview" loading="{{submitting ? true : false}}" disabled="{{submitting || savingPlacement || savingBackdrop || removingId}}">{{submitting ? '提交中' : '参考这张再画'}}</button>
+        <button bindtap="deletePreview" disabled="{{removingId || savingPlacement || savingBackdrop || submitting}}">删除原图</button>
+      </view>
+    </scroll-view>
   </view>
 </view>

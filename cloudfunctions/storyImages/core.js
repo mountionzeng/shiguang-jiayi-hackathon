@@ -394,9 +394,10 @@ function genderEvidence(text) {
 }
 
 /** Current-chapter facts win; absent reliable evidence, keep figures gender-neutral. */
-function alignSceneFigures(scene, source) {
+function alignSceneFigures(scene, source, artDirection = "") {
   const current = genderEvidence(source && source.text);
-  const context = genderEvidence(source && source.characterContext);
+  const requested = genderEvidence(artDirection);
+  const context = requested !== "unknown" ? requested : genderEvidence(source && source.characterContext);
   const evidence = current === "unknown" ? (context === "mixed" ? "unknown" : context) : current;
   const figures = (scene.figures || []).map(figure => {
     if (evidence === "female") return figure.replace(/男孩/g, "女孩").replace(/男人|男子/g, "女人").replace(/男性/g, "女性").replace(/少年/g, "少女").replace(/先生/g, "女士").replace(/儿子|丈夫|父亲|爸爸|爷爷|外公|哥哥|弟弟|叔叔/g, "人物");
@@ -410,7 +411,7 @@ function alignSceneFigures(scene, source) {
 /** The chosen picture may itself be wrong; current text still controls people and props. */
 function alignVisualReference(reference, source, scene, options = {}) {
   if (!reference) return undefined;
-  let figures = alignSceneFigures({ figures: reference.figures || [] }, source).figures;
+  let figures = alignSceneFigures({ figures: reference.figures || [] }, source, options.artDirection).figures;
   if (genderEvidence(source && source.text) === "mixed") {
     figures = figures.map(figure => figure.replace(FEMALE_WORDS, "人物").replace(MALE_WORDS, "人物"));
   }
@@ -481,6 +482,16 @@ function cleanList(value, maxItems, maxLength) {
     .slice(0, maxItems);
 }
 
+function normalizeArtRecipe(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const recipe = {
+    medium: cleanText(value.medium, 80), marks: cleanText(value.marks, 80),
+    palette: cleanList(value.palette, 4, 20), composition: cleanText(value.composition, 100),
+    light: cleanText(value.light, 80),
+  };
+  return recipe.medium || recipe.marks || recipe.palette.length || recipe.composition || recipe.light ? recipe : undefined;
+}
+
 function parseSceneJson(content) {
   const raw = String(content || "");
   const start = raw.indexOf("{");
@@ -502,17 +513,20 @@ function parseSceneJson(content) {
     eraHint: cleanText(parsed.eraHint, 20),
     figures: cleanList(parsed.figures, 3, 30),
   };
+  const art = normalizeArtRecipe(parsed.art);
+  if (art) scene.art = art;
+  if (parsed.backdropTrace) scene.backdropTrace = cleanText(parsed.backdropTrace, 120);
   if (!scene.scene) throw unreadable;
   return scene;
 }
 
 const STYLES = {
   cover: {
-    lead: "竖版古籍书封正面插画底稿，适配细长书封比例。围绕整本书共同的主题组织一个简洁意象；上方三分之一也铺有连续的纸本纹理、淡彩背景和环境延展，不能留下纯空白或没有画面的标题带；书名区落在较浅、可读的纹理之上，画面由纯粹的图像元素组成。",
+    lead: "一幅2:3竖向独立画作。围绕全文贯穿的主题选择一个具体场景或意象，色面、光影与环境从顶端连续铺到四边。",
     width: 832, height: 1248, maxObjects: 4, withScene: true, withFigures: true,
   },
   illustration: {
-    lead: "纸本手绘插画。形体经过概括取舍，画面保留手工笔触和纸面呼吸。",
+    lead: "一幅4:3横向叙事插画。用经过取舍的形体、可读的空间层次和有辨识度的材料笔触表现当前章节。",
     width: 1024,
     height: 768,
     maxObjects: 6,
@@ -521,7 +535,7 @@ const STYLES = {
   },
   // A backdrop sits under the chapter text: scenery-led, pale, with an empty top half.
   backdrop: {
-    lead: "安静的纸本淡彩底图。上方大面积是接近纯白的宣纸留白，景物只占画面下方三分之一和两侧边角。画面由景物、器物和正文事件留下的生活痕迹构成。",
+    lead: "一幅3:2横向浅色景物底图。上方与中央约七成区域保持浅净、低对比；本章景物、器物和事件留下的生活痕迹安排在下方与两侧边角，材质连续延伸到四边。",
     width: 1248,
     height: 832,
     maxObjects: 3,
@@ -593,7 +607,9 @@ function promptFigures(scene) {
 }
 
 function backdropSceneTrace(scene) {
-  const raw = cleanText(scene?.scene, 80);
+  const extractedTrace = cleanText(scene?.backdropTrace, 120);
+  if (extractedTrace) return extractedTrace;
+  const raw = cleanText(scene?.scene, 120);
   if (!raw) return "";
   const trace = raw
     .replace(HUMAN_SUBJECT_PATTERN, "")
@@ -625,28 +641,36 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
   const text = String(source?.artText || source?.text || "");
   const category = purpose === "cover" ? source?.bookLifeCategory || lifeCategory(text) : lifeCategory(text) || source?.bookLifeCategory;
   const selectedPaint = LIFE_PAINT[category];
-  if (selectedPaint) parts.push(purpose === "backdrop" ? `媒介细节：${selectedPaint.medium}` : `媒介与材料：${selectedPaint.medium}`);
-  if (purpose !== "backdrop") {
+  const art = normalizeArtRecipe(scene.art);
+  if (art?.medium) parts.push(`美术媒介：${art.medium}。`);
+  if (art?.marks) parts.push(`材料笔触：${art.marks}。`);
+  if (art?.palette.length) parts.push(`色彩关系：${art.palette.join("、")}。`);
+  if (art?.composition) parts.push(`空间构图：${art.composition}。`);
+  if (art?.light) parts.push(`光线与色面：${art.light}。`);
+  if (!art && selectedPaint) parts.push(purpose === "backdrop" ? `媒介细节：${selectedPaint.medium}` : `媒介与材料：${selectedPaint.medium}`);
+  if (purpose !== "backdrop" && !art) {
     const paint = emotionPaint(scene.mood, text);
     if (paint) parts.push(`情绪的画法：${paint}`);
     parts.push(selectedPaint?.texture || "让纸面材料与物件之间的空间关系承担叙事。");
     if (/(?:^|[^你他她它])我(?:们|自己)?/.test(text)) parts.push("视点贴近讲述者的主观经验，以亲近的物件尺度安排空间。");
     else parts.push("视点从动作与关系观察，人物与环境保留自然的距离。");
   }
-  const eraHint = explicitEraHint(text);
+  const eraHint = explicitEraHint(String(source?.text || ""));
   if (eraHint) parts.push(`${purpose === "backdrop" ? "景物与器物" : "服装与器物"}的年代质地依据正文明确写出的${eraHint}。`);
-  if (purpose === "illustration") parts.push("主体略偏于画面一侧，光线来自场景内可辨认的方向。");
-  if (purpose === "cover") parts.push("主体、背景纹理与上方延展共同构成可读的竖版封面骨架；画面从上缘延续到下缘，顶部也要有淡彩、枝叶、光影或纸纹等可见内容，直接铺满封面正面。书脊、绑线、纸页边缘和外框交给界面层处理；书名、章节数和统计文字由界面另行排版，生成图只画背景、主体、纹理和物件。");
+  if (purpose === "illustration" && !art?.composition) parts.push("根据当前章节安排横向构图，光线来自场景内可辨认的方向。");
+  if (purpose === "cover") parts.push("图像满幅延展，顶部保留可见的环境、光影或材料层次。画面是完整的独立图像，所有标题、书脊、纸边和外框由界面另行排版。");
   if (purpose === "backdrop") parts.push("正文所在留白保持清朗，景物附近保留少量纸纤维和淡彩渗色。");
   parts.push(PHYSICAL_REALISM_REQUIREMENT);
-  if (artDirection) parts.push(`用户的美术偏好：${artDirection}。优先体现在色彩、材料与笔触中，画面事实仍以正文为准。`);
+  if (artDirection) parts.push(`用户明确的美术要求：${artDirection}。保留其中指定的外观、媒介、配色与构图；正文未限定的外观由用户要求决定，已明确的故事事实仍以正文为准。`);
   if (visualReference) {
-    if (visualReference.photoReference) parts.push(purpose === "backdrop" ? "本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是底图下方和两侧边角的视觉依据；正文留白仍保持清朗，但主体轮廓、配色或关键物件需要能看出来自原图。" : "本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是本章视觉依据，转换为纸本手绘插画。");
+    if (visualReference.photoReference) parts.push(purpose === "backdrop" ? "本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是底图下方和两侧边角的视觉依据；正文留白仍保持清朗，但主体轮廓、配色或关键物件需要能看出来自原图。" : "本章照片参考：参考照片里的主体外观、毛色、花纹、姿态、配色和可见物件是本章视觉依据，使用本次选定的美术媒介表现。");
     const continuity = [];
     if (visualReference.style) continuity.push(`画风与材质延续${visualReference.style}`);
     if (visualReference.palette.length) continuity.push(`主要配色延续${visualReference.palette.join("、")}`);
-    if ((style.withFigures || purpose === "backdrop") && visualReference.figures.length) continuity.push(`主体可见外观延续${visualReference.figures.join("、")}`);
-    if (visualReference.objects.length) continuity.push(`相符的辨识物件延续${visualReference.objects.join("、")}`);
+    const referenceFigures = promptFigures(visualReference);
+    if (!visualReference.styleOnly && (style.withFigures || purpose === "backdrop") && referenceFigures.length) continuity.push(`主体可见外观延续${referenceFigures.join("、")}`);
+    if (!visualReference.styleOnly && visualReference.objects.length) continuity.push(`相符的辨识物件延续${promptObjects(visualReference, style).join("、")}`);
+    if (visualReference.styleOnly) parts.push("所选封面仅提供配色、笔触和材质，当前章重新选择主体与横向构图；主体、物件和空间关系以当前正文为依据。");
     if (continuity.length) parts.push(`参考图的视觉连续性：${continuity.join("；")}。`);
   }
   return { prompt: parts.join(""), width: style.width, height: style.height };
@@ -751,6 +775,7 @@ module.exports = {
   normalizeStoryInput,
   normalizeSubmitInput,
   parseSceneJson,
+  normalizeArtRecipe,
   publicImage,
   publicJob,
   quotaDecision,

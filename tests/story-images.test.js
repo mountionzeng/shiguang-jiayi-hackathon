@@ -571,8 +571,8 @@ test("插图提示词只用肯定式描述，不列禁止画的东西", () => {
     "illustration",
   );
   assert.deepEqual([width, height], [1024, 768]);
-  assert.match(prompt, /纸本手绘插画/);
-  assert.match(prompt, /手工笔触和纸面呼吸/);
+  assert.match(prompt, /4:3横向叙事插画/);
+  assert.match(prompt, /可读的空间层次和有辨识度的材料笔触/);
   assert.match(prompt, /画中有竹竿、棉被。/);
   assert.match(prompt, /人物以远景完整背影、侧影或可读身体结构呈现：远景中的背影。/);
   assert.match(prompt, /符合客观物理规律/);
@@ -617,7 +617,7 @@ test("同一本书的来源记忆参与美术提炼，但不改写当前画面�
   }, "illustration", undefined, source).prompt;
   assert.match(prompt, /粗纸上的干笔墨线/);
   assert.match(prompt, /细线和浅色面保持停顿/);
-  assert.match(prompt, /正文明确写出的1983年/);
+  assert.doesNotMatch(prompt, /年代质地|1983年/);
   assert.doesNotMatch(prompt, /晒被子|公交站|1998/);
 
   const cover = core.bookSource(draft, memories);
@@ -625,14 +625,10 @@ test("同一本书的来源记忆参与美术提炼，但不改写当前画面�
     scene: "窗边桌上的搪瓷杯与远处灯光", setting: "窗边", objects: ["搪瓷杯"], light: "", mood: "", eraHint: "", figures: [],
   }, "cover", undefined, cover);
   assert.deepEqual([coverPrompt.width, coverPrompt.height], [832, 1248]);
-  assert.match(coverPrompt.prompt, /竖版古籍书封正面插画底稿/);
-  assert.match(coverPrompt.prompt, /上方三分之一也铺有连续的纸本纹理、淡彩背景和环境延展/);
-  assert.match(coverPrompt.prompt, /不能留下纯空白或没有画面的标题带/);
-  assert.match(coverPrompt.prompt, /画面从上缘延续到下缘/);
-  assert.match(coverPrompt.prompt, /顶部也要有淡彩、枝叶、光影或纸纹等可见内容/);
-  assert.match(coverPrompt.prompt, /直接铺满封面正面/);
-  assert.match(coverPrompt.prompt, /书脊、绑线、纸页边缘和外框交给界面层处理/);
-  assert.match(coverPrompt.prompt, /书名、章节数和统计文字由界面另行排版/);
+  assert.match(coverPrompt.prompt, /2:3竖向独立画作/);
+  assert.match(coverPrompt.prompt, /从顶端连续铺到四边/);
+  assert.match(coverPrompt.prompt, /图像满幅延展，顶部保留可见的环境、光影或材料层次/);
+  assert.match(coverPrompt.prompt, /所有标题、书脊、纸边和外框由界面另行排版/);
   assert.doesNotMatch(coverPrompt.prompt, /年代质地/);
   assert.match(coverPrompt.prompt, /符合客观物理规律/);
 });
@@ -698,7 +694,7 @@ test("长章节后半段的明确年代仍进入美术提示词，且完整正�
   assert.equal(source.fullTextHash, core.textHash(body));
   const scene = { scene: "院子", setting: "院子", objects: [], light: "", mood: "安静", eraHint: "", figures: [] };
   const prompt = core.buildImagePrompt(scene, "illustration", undefined, source).prompt;
-  assert.match(prompt, /正文明确写出的1983年/);
+  assert.doesNotMatch(prompt, /年代质地|1983年/);
   const changed = core.chapterSource({ chapters: [{ id: "long", content: [{ text: body.replace("1983", "1984") }] }] }, "long");
   assert.notEqual(changed.fullTextHash, source.fullTextHash);
 });
@@ -748,7 +744,7 @@ test("本章照片经授权后参与章节插图和底图提示词，并在付�
     assert.match(storedJob.prompt, /蓝眼睛白灰长毛猫/);
     assert.equal(storedJob.source.photoHash, core.textHash("photo-abc"));
     if (purpose === "backdrop") assert.match(storedJob.prompt, /底图下方/);
-    else assert.match(storedJob.prompt, /纸本手绘插画/);
+    else assert.match(storedJob.prompt, /4:3横向叙事插画/);
 
     await h.handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: submitted.job.jobId });
     assert.deepEqual(h.calls.readPhotos[1], h.calls.readPhotos[0]);
@@ -787,7 +783,7 @@ test("美术想法在排队前必须审核，重复请求不能改写原想法",
   const submitted = await h.handlers.submit(ctx, event);
   assert.equal(submitted.job.ideaApplied, true);
   assert.deepEqual(checks, [{ text: event.artDirection, openid: OWNER_OPENID }]);
-  assert.match(h.repo.jobs.get(`${FAMILY}_${event.requestId}`).prompt, /用户的美术偏好：暖黄彩铅和粗纸/);
+  assert.match(h.repo.jobs.get(`${FAMILY}_${event.requestId}`).prompt, /用户明确的美术要求：暖黄彩铅和粗纸/);
   await assert.rejects(h.handlers.submit(ctx, { ...event, artDirection: "青色水墨" }), error => error.code === "REQUEST_CONFLICT");
   assert.equal(checks.length, 1);
   assert.throws(() => core.normalizeSubmitInput({ ...event, artDirection: "不要油画" }), error => error.code === "INVALID_ART_DIRECTION");
@@ -830,7 +826,7 @@ test("底图保留章节情景的景物痕迹：上方留白、最多三个物�
     light: "冬日午后", mood: "安静", eraHint: "", figures: ["远景中的背影"],
   }, "backdrop");
   assert.deepEqual([width, height], [1248, 832]);
-  assert.match(prompt, /上方大面积是接近纯白的宣纸留白/);
+  assert.match(prompt, /上方与中央约七成区域保持浅净、低对比/);
   assert.match(prompt, /景物：冬天的小院。/);
   assert.match(prompt, /章节情景的景物痕迹：冬天的院子里晒被子。/);
   assert.match(prompt, /画中有竹竿、棉被、木凳。/);
@@ -1974,4 +1970,111 @@ test("全书封面复用出图状态机，带末章上下文且同请求重试�
   assert.equal(h.calls.aigc.length,1);
   await h.handlers.status(ctx,{familyId:FAMILY,storyId,jobId:first.job.jobId});
   assert.equal(h.calls.generate.length,1);
+});
+
+test('同一次提炼接收全文美术素材、当前用途及用户要求，配方字段有界且兼容旧模型响应', async () => {
+  const art = { medium: '木刻版画', marks: '粗细刀痕', palette: ['靛蓝', '米白'], composition: '俯视桌面，主体在下部', light: '窗边侧光' };
+  let calls = 0, sent;
+  const extract = scene.createSceneExtractor({ apiKey: 'test', model: 'existing-text-model', baseUrl: 'https://existing.example/v1', fetchImpl: async (url, init) => {
+    calls++; sent = JSON.parse(init.body);
+    assert.equal(url, 'https://existing.example/v1/chat/completions');
+    return jsonResponse(200, { choices: [{ message: { content: JSON.stringify({ scene: '桌上的书', art, backdropTrace: '旧书平放在木桌上' }) } }] });
+  } });
+  const result = await extract({ title: '读书', text: '书平放在桌上。', artText: '已保存的全书素材', artDirection: '木刻版画', purpose: 'backdrop', referenceArt: { medium: '木刻', palette: ['靛蓝'] } });
+  assert.equal(calls, 1);
+  assert.equal(sent.model, 'existing-text-model');
+  assert.match(sent.messages[1].content, /本次用途：backdrop/);
+  assert.match(sent.messages[1].content, /已保存的全书素材/);
+  assert.match(sent.messages[1].content, /用户美术要求："木刻版画"/);
+  assert.deepEqual(result.art, art);
+  const prompt = core.buildImagePrompt(result, 'backdrop', undefined, { text: '书平放在桌上。' }).prompt;
+  assert.match(prompt, /章节情景的景物痕迹：旧书平放在木桌上/);
+  assert.match(prompt, /美术媒介：木刻版画/);
+  assert.match(prompt, /材料笔触：粗细刀痕/);
+  assert.match(prompt, /色彩关系：靛蓝、米白/);
+  assert.doesNotMatch(prompt, /情绪的画法/);
+  const limited = core.normalizeArtRecipe({ medium: '墨'.repeat(200), palette: ['一','二','三','四','五'], marks: '\u0001刀痕', unknown: 'ignored' });
+  assert.equal(limited.medium.length, 80); assert.equal(limited.palette.length, 4);
+  assert.doesNotMatch(limited.marks, /\u0001/); assert.equal(limited.unknown, undefined);
+});
+
+test('用户指定外观补足正文空白，但不能改写正文明确的人物性别', () => {
+  const sample = { scene: '在看书', figures: ['男孩的完整背影'], objects: [] };
+  const filled = core.alignSceneFigures(sample, { text: '有人坐在窗边读书。', characterContext: '隔壁章里是男孩。' }, '女孩穿红衣');
+  assert.match(filled.figures[0], /女孩/);
+  const factual = core.alignSceneFigures(sample, { text: '男孩坐在窗边读书。' }, '女孩穿红衣');
+  assert.match(factual.figures[0], /男孩/);
+});
+
+async function coverStyleHarness(deps = {}, coverPatch = {}) {
+  const h = harness({ deps });
+  const storyId = 'story-art-book', coverId = `${FAMILY}_img_req-artcover1`;
+  h.repo.setDrafts([{ familyId: FAMILY, storyId, draftType: 'story-revision', revision: {
+    id: 'revision-art-book', storyId, savedAt: '2026-10-05', draft: { title: '全书', chapters: [CHAPTER] },
+  } }]);
+  h.repo.setStory(storyId, { coverImageId: coverId });
+  await h.repo.createImage(coverId, { familyId: FAMILY, storyId, purpose: 'cover', moderation: 'pass', fileID: 'cloud://cover-art',
+    art: { medium: '木刻版画', marks: '刻线', palette: ['墨黑', '米白'], composition: '竖向封面主体', light: '旧封面的光' }, ...coverPatch });
+  return { ...h, storyId, coverId, event: { familyId: FAMILY, storyId, chapterId: 'chapter-1', purpose: 'illustration', requestId: 'req-art-style0001' } };
+}
+
+test('当前书已选封面仅继承媒介配色，不复制主体构图或增加模型调用，重试不重付', async () => {
+  const h = await coverStyleHarness();
+  const { job } = await h.handlers.submit(ctx, h.event);
+  assert.equal(job.status, 'queued');
+  assert.deepEqual(h.calls.scene[0].referenceArt, { medium: '木刻版画', marks: '刻线', palette: ['墨黑', '米白'] });
+  assert.equal(h.calls.scene[0].purpose, 'illustration');
+  const prompt = h.repo.jobs.get(job.jobId).prompt;
+  assert.match(prompt, /木刻版画/);
+  assert.doesNotMatch(prompt, /竖向封面主体|旧封面的光/);
+  assert.equal(h.calls.reference.length, 0);
+  await h.handlers.submit(ctx, h.event);
+  await h.handlers.status(ctx, { familyId: FAMILY, storyId: h.storyId, jobId: job.jobId });
+  await h.handlers.status(ctx, { familyId: FAMILY, storyId: h.storyId, jobId: job.jobId });
+  assert.equal(h.calls.scene.length, 1); assert.equal(h.calls.generate.length, 1);
+  assert.equal(h.calls.generate[0].referenceImages, undefined, '封面不作为当前章主体参考图');
+  assert.equal(h.repo.jobs.get(job.jobId).model, 'hy-image-v3');
+});
+
+test('跨书、跨家、已删或待审核封面不参与风格提炼', async () => {
+  for (const patch of [{ storyId: 'story-other' }, { familyId: 'family_other' }, { deletedAtMs: 1 }, { moderation: 'pending' }, { purpose: 'illustration' }]) {
+    const h = await coverStyleHarness({}, patch);
+    const { job } = await h.handlers.submit(ctx, h.event);
+    assert.equal(job.status, 'queued');
+    assert.equal(h.calls.scene[0].referenceArt, undefined);
+    assert.doesNotMatch(h.repo.jobs.get(job.jobId).prompt, /木刻版画/);
+    assert.equal(h.calls.reference.length, 0);
+  }
+});
+
+test('旧封面最多一次风格分析，章照片优先且不会叠加额外视觉调用', async () => {
+  let analyzed = 0;
+  const analyzer = { configured: true, analyzeStyle: async () => { analyzed++; return { style: '油画厚涂', palette: ['赭石'], figures: [], objects: [], styleOnly: true }; },
+    analyzeChapterPhotos: async () => { analyzed++; return { style: '自然光', palette: ['白灰'], figures: ['白灰长毛猫'], objects: ['猫'], photoReference: true }; } };
+  const h = await coverStyleHarness({ referenceAnalyzer: analyzer }, { art: undefined });
+  const { job } = await h.handlers.submit(ctx, h.event);
+  assert.equal(analyzed, 1); assert.match(h.repo.jobs.get(job.jobId).prompt, /油画厚涂/);
+  await h.handlers.submit(ctx, h.event); assert.equal(analyzed, 1);
+  const withPhoto = await coverStyleHarness({ referenceAnalyzer: analyzer }, { art: undefined });
+  const result = await withPhoto.handlers.submit(ctx, { ...withPhoto.event, referencePhotoIds: ['photo-abc'], photoReferenceConsent: true });
+  assert.equal(result.job.status, 'queued'); assert.equal(analyzed, 2);
+  assert.match(withPhoto.repo.jobs.get(result.job.jobId).prompt, /白灰长毛猫/);
+  assert.doesNotMatch(withPhoto.repo.jobs.get(result.job.jobId).prompt, /油画厚涂/);
+});
+
+test('style-only 解析丢弃视觉模型返回的人物物件，新图片保存有界美术配方', async () => {
+  const analyzer = reference.createReferenceAnalyzer({ apiKey: 'test', fetchImpl: async () => jsonResponse(200, { choices: [{ message: { content: '{"style":"木刻版画","palette":["墨黑"],"figures":["外来人物"],"objects":["外来物件"]}' } }] }) });
+  const result = await analyzer.analyzeStyle('https://example.test/cover');
+  assert.deepEqual(result, { style: '木刻版画', palette: ['墨黑'], figures: [], objects: [], styleOnly: true });
+  const art = { medium: '木刻版画', marks: '粗刀痕', palette: ['墨黑'], composition: '低视点', light: '侧光' };
+  const h = harness({ deps: { extractScene: async () => ({ scene: '院里的被子', objects: [], figures: [], art }) } });
+  const { job } = await h.handlers.submit(ctx, submitEvent('req-art-store0001'));
+  const stored = await h.handlers.status(ctx, { familyId: FAMILY, memberId: 'owner', jobId: job.jobId });
+  assert.equal(stored.job.status, 'stored');
+  assert.deepEqual(h.repo.images.get(stored.job.imageId).art, art);
+});
+
+test('新底图景物提炼不会把码头、石头中的头字当人体删除', () => {
+  const prompt = core.buildImagePrompt({ scene: '海边', backdropTrace: '码头边平放的石头与绳索', objects: [], figures: [] }, 'backdrop').prompt;
+  assert.match(prompt, /章节情景的景物痕迹：码头边平放的石头与绳索/);
 });

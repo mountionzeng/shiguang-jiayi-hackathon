@@ -1,3 +1,4 @@
+import { illustrationAnchor, illustrationPoints, IllustrationPoint, saveChapterIllustration } from "../../services/chapterIllustrations";
 import { saveChapterBackdrop } from "../../services/chapterBackdrop";
 import { chapterLabel, chaptersOf } from "../../services/chapters";
 import { FamilyRoomState, isRecordingProfile, ManuscriptChapter } from "../../domain/biography";
@@ -58,6 +59,8 @@ Page({
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
     artDirections: {} as Record<string, string>,
+    preview: null as (ImageCard & { chapterId: string }) | null,
+    placementOptions: [] as IllustrationPoint[], placementIndex: 0, savingPlacement: false, previewNotice: "",
   },
   unloaded: false,
   hidden: false,
@@ -100,6 +103,7 @@ Page({
     this.clearPoll();
   },
   async refresh(imagesOnly = false) {
+    if (imagesOnly && (this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId)) return;
     const refreshId = ++this.refreshId;
     const state = imagesOnly && this.roomState ? this.roomState : await loadRoomStateRemoteFirst();
     const story = this.requestedStoryId ? activeStory(state, this.requestedStoryId) : undefined;
@@ -142,6 +146,11 @@ Page({
       loading: false,
       loadError: "",
     });
+    const selected = this.data.preview;
+    if (selected) {
+      const latest = this.data.groups.find(group => group.id === selected.chapterId)?.images.find(image => image.imageId === selected.imageId);
+      this.setData({ preview: latest ? { ...latest, chapterId: selected.chapterId } : null });
+    }
     this.schedulePoll();
   },
   clearPoll() {
@@ -199,7 +208,7 @@ Page({
     const referenceImageId = event.currentTarget.dataset.reference;
     const purpose: StoryImagePurpose = event.currentTarget.dataset.purpose === "backdrop" ? "backdrop" : "illustration";
     const group = this.data.groups.find(item => item.id === chapterId);
-    if (this.data.submitting || this.data.savingBackdrop || !chapterId) return;
+    if (this.data.submitting || this.data.removingId || this.data.savingBackdrop || this.data.savingPlacement || !chapterId) return;
     this.setData({
       submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"),
       notice: "正在读取这一章，准备配图…", noticeChapterId: chapterId,
@@ -237,7 +246,8 @@ Page({
   async setBackdrop(event: { currentTarget: { dataset: { chapter: string; image?: string } } }) {
     const chapterId = event.currentTarget.dataset.chapter;
     const imageId = event.currentTarget.dataset.image ?? "";
-    if (this.data.savingBackdrop || !chapterId) return;
+    if (this.data.savingBackdrop || this.data.savingPlacement || this.data.removingId || this.data.submitting || !chapterId) return;
+    ++this.refreshId;
     this.setData({ savingBackdrop: true, notice: "", noticeChapterId: chapterId });
     try {
       await saveChapterBackdrop({ ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, imageId });
@@ -252,9 +262,77 @@ Page({
   },
   previewImage(event: { currentTarget: { dataset: { url: string } } }) {
     const url = event.currentTarget.dataset.url;
-    if (!url) return;
-    const urls = this.data.groups.flatMap(group => group.images).concat(this.data.otherImages).map(image => image.url).filter(Boolean);
-    wx.previewImage({ current: url, urls });
+    if (!url || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
+    const group = this.data.groups.find(item => item.images.some(image => image.url === url));
+    const image = group?.images.find(item => item.url === url);
+    if (!image || !group || !this.roomState) {
+      wx.previewImage({ current: url, urls: [url] }); return;
+    }
+    this.updatePreviewImage(image, group.id);
+    this.setData({ previewNotice: "" });
+  },
+  closePreview() {
+    if (!this.data.savingPlacement && !this.data.savingBackdrop && !this.data.removingId && !this.data.submitting) this.setData({ preview: null, previewNotice: "" });
+  },
+  keepPreviewOpen() {},
+  onPlacementChange(event: { detail: { value: string } }) {
+    if (this.data.savingPlacement || this.data.removingId || this.data.submitting) return;
+    const index = Number(event.detail.value);
+    if (Number.isInteger(index) && this.data.placementOptions[index]) this.setData({ placementIndex: index });
+  },
+  async savePlacement(event: { currentTarget?: { dataset?: { remove?: boolean | string } } } = {}) {
+    const image = this.data.preview, point = this.data.placementOptions[this.data.placementIndex];
+    const remove = event.currentTarget?.dataset?.remove === true || event.currentTarget?.dataset?.remove === 'true';
+    if (!image || image.isBackdrop || (!remove && (!point || !image.referenceReady)) || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
+    ++this.refreshId;
+    this.setData({ savingPlacement: true, previewNotice: '' });
+    try {
+      await saveChapterIllustration({ ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }),
+        chapterId: image.chapterId, imageId: image.imageId, after: point?.after || null, remove });
+      if (this.unloaded) return;
+      await this.refresh();
+      const latest = this.data.groups.find(group => group.id === image.chapterId)?.images.find(item => item.imageId === image.imageId);
+      if (latest) this.updatePreviewImage(latest, image.chapterId);
+      this.setData({ previewNotice: remove ? '已从正文移除，原图仍保留' : '位置已保存，回到书稿就能看到' });
+    } catch (error) {
+      // Refresh the paragraph choices after a stale anchor/version, without silently choosing a different position.
+      await this.refresh().catch(() => undefined);
+      if (!this.unloaded) {
+        const latest = this.data.groups.find(group => group.id === image.chapterId)?.images.find(item => item.imageId === image.imageId);
+        if (latest) this.updatePreviewImage(latest, image.chapterId);
+        this.setData({ placementIndex: -1, previewNotice: messageOf(error, '没有保存，请重试') });
+      }
+    } finally { if (!this.unloaded) this.setData({ savingPlacement: false }); }
+  },
+  updatePreviewImage(image: ImageCard, chapterId: string) {
+    if (!this.roomState) return;
+    const current = currentManuscript(this.roomState, this.data.storyId || this.data.memberId);
+    const content = current.draft && chaptersOf(current.draft, current.sourceFingerprint).find(item => item.id === chapterId)?.content || [];
+    const options = illustrationPoints(content, image.imageId);
+    const anchor = image.inText ? illustrationAnchor(content, image.imageId) : null;
+    this.setData({ preview: { ...image, chapterId }, placementOptions: options,
+      placementIndex: options.findIndex(item => JSON.stringify(item.after) === JSON.stringify(anchor)) });
+  },
+  async usePreviewBackdrop() {
+    const image = this.data.preview;
+    if (!image || !image.isBackdrop) return;
+    await this.setBackdrop({ currentTarget: { dataset: { chapter: image.chapterId, image: image.inUse ? '' : image.imageId } } });
+    const latest = this.data.groups.find(group => group.id === image.chapterId)?.images.find(item => item.imageId === image.imageId);
+    if (!this.unloaded && latest) this.setData({ preview: { ...latest, chapterId: image.chapterId }, previewNotice: this.data.notice });
+  },
+  async redrawPreview() {
+    const image = this.data.preview;
+    if (image?.referenceReady) await this.generate({ currentTarget: { dataset: { id: image.chapterId, purpose: 'illustration', reference: image.imageId } } });
+    if (!this.unloaded) this.setData({ previewNotice: this.data.notice });
+  },
+  async deletePreview() {
+    const image = this.data.preview;
+    if (!image || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
+    await this.remove({ currentTarget: { dataset: { id: image.imageId } } });
+    if (!this.unloaded) {
+      const retained = this.data.groups.some(group => group.images.some(item => item.imageId === image.imageId));
+      this.setData({ ...(retained ? {} : { preview: null }), previewNotice: this.data.notice });
+    }
   },
   insertIntoBook(event: { currentTarget: { dataset: { id: string; chapter: string; url: string } } }) {
     const { id: imageId, chapter: chapterId, url } = event.currentTarget.dataset;
@@ -270,15 +348,16 @@ Page({
   },
   remove(event: { currentTarget: { dataset: { id: string } } }) {
     const imageId = event.currentTarget.dataset.id;
-    if (!imageId || this.data.removingId) return Promise.resolve();
+    if (!imageId || this.data.removingId || this.data.savingPlacement || this.data.savingBackdrop || this.data.submitting) return Promise.resolve();
     const usedBy = this.data.groups.find(group => group.backdropImageId === imageId);
     const usedInText = this.data.groups.find(group => group.images.some(image => image.imageId === imageId && image.inText));
     if (usedInText) return new Promise<void>(resolve => wx.showModal({
       title: "先从正文移除",
-      content: `这张插图正在${usedInText.label}的正文里使用。请回到书稿删除图片并保存后，再来删除原图。`,
+      content: `这张插图正在${usedInText.label}的正文里使用。请先在大图下点「从正文移除」，再删除原图。`,
       showCancel: false,
       success: () => resolve(), fail: () => resolve(),
     }));
+    this.setData({ removingId: imageId });
     return new Promise<void>(resolve => wx.showModal({
       title: "删掉这张图？",
       content: (usedBy ? "它正在用作" + usedBy.label + "的底图，删掉后这一章就没有底图了。" : "") + "删掉后找不回来；已经产生的供应商用量和费用不会撤回。",
@@ -300,9 +379,10 @@ Page({
             if (!this.unloaded) this.setData({ removingId: "" });
           }
         }
+        if (!this.unloaded) this.setData({ removingId: "" });
         resolve();
       },
-      fail: () => resolve(),
+      fail: () => { if (!this.unloaded) this.setData({ removingId: "" }); resolve(); },
     }));
   },
   retryLoad() {

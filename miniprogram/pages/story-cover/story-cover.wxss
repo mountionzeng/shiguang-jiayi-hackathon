@@ -1,3 +1,4 @@
+@import "../../styles/image-preview.wxss";
 page { background: #fbf8f1; color: #303b34; }
 .cover-page { padding: 36rpx 36rpx 80rpx; }
 .cover-eyebrow { color: #788074; font-size: 24rpx; margin-bottom: 18rpx; }

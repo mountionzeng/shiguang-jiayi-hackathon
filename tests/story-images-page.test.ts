@@ -820,7 +820,11 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   assert.equal(page.data.notice, "已删除");
 
   call(page, "previewImage", { currentTarget: { dataset: { url: "https://tmp.example/a.png" } } });
-  assert.deepEqual(env.previews, [{ current: "https://tmp.example/a.png", urls: ["https://tmp.example/a.png", "https://tmp.example/b.png"] }]);
+  assert.deepEqual(env.previews, []);
+  assert.equal((page.data.preview as any).imageId, "family_o-owner_img_req-aaaaaaaa");
+  assert.equal((page.data.placementOptions as any[])[1].after.text, "院子里晒着被子。");
+  call(page, "closePreview");
+  assert.equal(page.data.preview, null, "setData uses explicit null to close the native sheet");
 });
 
 test("本章正文里的照片会随直接配图请求发送，AI 插图引用不算本机照片", async context => {
@@ -1619,4 +1623,105 @@ test('declining cover consent stops busy feedback without refreshing; uncertain 
   await call(page, 'generate');
   assert.equal(refreshes, 1, 'a lost acknowledgement may hide a queued paid task');
   assert.equal(page.data.submitting, false);
+});
+
+test('大图下选择段落、保存、重新打开和移除都保留历史与其他章节', async context => {
+  const state = stateWithBook(BACKDROP_ID);
+  state.manuscriptRevisions![0].draft.chapters![0].content = [{ text: '第一段。\n第二段。\n' }, { photoId: 'photo-original' }];
+  const env = installWx({}, state); env.setApp(false);
+  const images = listWith({ pending: [] }).images.map(image => ({ ...image, moderation: 'pass' as const, quality: 'pass' as const }));
+  context.after(() => env.restore());
+  context.after(withApi({ listStoryImages: async () => listWith({ images, pending: [] }) }));
+  const page = instantiate(await pageDefinition('story-images'));
+  await call(page, 'refresh');
+  call(page, 'previewImage', { currentTarget: { dataset: { url: images[0].url } } });
+  call(page, 'onPlacementChange', { detail: { value: '1' } });
+  await call(page, 'savePlacement');
+  assert.match(String(page.data.previewNotice), /位置已保存/);
+  const saved = await loadRoomStateRemoteFirst();
+  const chapters = currentManuscript(saved, 'owner').draft!.chapters!;
+  assert.deepEqual(chapters[0].content, [{ text: '第一段。\n' }, { photoId: 'photo-ai-req-aaaaaaaa' }, { text: '第二段。\n' }, { photoId: 'photo-original' }]);
+  assert.equal(chapters[0].backdropImageId, BACKDROP_ID);
+  assert.equal(chapters[1].content[0].text, '第二章的文字。\n');
+  assert.equal(saved.manuscriptRevisions!.length, 2);
+  await call(page, 'savePlacement');
+  assert.equal((await loadRoomStateRemoteFirst()).manuscriptRevisions!.length, 2, '同位置保存幂等');
+  call(page, 'closePreview');
+  call(page, 'previewImage', { currentTarget: { dataset: { url: images[0].url } } });
+  assert.equal(page.data.placementIndex, 1);
+  assert.equal((page.data.preview as any).inText, true);
+  await call(page, 'savePlacement', { currentTarget: { dataset: { remove: true } } });
+  const after = await loadRoomStateRemoteFirst();
+  assert.deepEqual(currentManuscript(after, 'owner').draft!.chapters![0].content, state.manuscriptRevisions![0].draft.chapters![0].content);
+  assert.equal(after.manuscriptRevisions!.length, 3);
+  assert.equal((page.data.preview as any).inText, false);
+  assert.equal((page.data.groups as any[])[0].images.length, 2, '从正文移除仍保留原图');
+});
+
+test('段落在其他页面更新后不按旧序号插入，刷新选项等待重选', async context => {
+  const env = installWx({}, stateWithBook()); env.setApp(false);
+  context.after(() => env.restore());
+  const images = listWith({ pending: [] }).images.map(image => ({ ...image, moderation: 'pass' as const, quality: 'pass' as const }));
+  context.after(withApi({ listStoryImages: async () => listWith({ images, pending: [] }) }));
+  const page = instantiate(await pageDefinition('story-images'));
+  await call(page, 'refresh');
+  call(page, 'previewImage', { currentTarget: { dataset: { url: images[0].url } } });
+  call(page, 'onPlacementChange', { detail: { value: '1' } });
+  const updated = stateWithBook();
+  updated.manuscriptRevisions![0].draft.chapters![0].content = [{ text: '已经改成新段落。\n' }];
+  wx.setStorageSync(ROOM_KEY, updated);
+  await call(page, 'savePlacement');
+  assert.match(String(page.data.previewNotice), /目标段落已修改/);
+  assert.equal(page.data.placementIndex, -1);
+  assert.equal((page.data.placementOptions as any[])[1].after.text, '已经改成新段落。');
+  assert.equal((await loadRoomStateRemoteFirst()).manuscriptRevisions!.length, 1);
+  call(page, 'onPlacementChange', { detail: { value: '1' } });
+  await call(page, 'savePlacement');
+  assert.match(String(page.data.previewNotice), /位置已保存/);
+});
+
+test('插图保存中不能删图、换图、改位置或重画，轮询只更新状态', async context => {
+  const env = installWx({}, stateWithBook()); env.setApp(false);
+  context.after(() => env.restore());
+  let unlock!: () => void;
+  let checking = false;
+  const images = listWith({ pending: [] }).images.map(image => ({ ...image, moderation: 'pass' as const, quality: 'pass' as const }));
+  context.after(withApi({ listStoryImages: async () => {
+    if (checking) await new Promise<void>(resolve => { unlock = resolve; });
+    return listWith({ images, pending: [] });
+  }, removeStoryImage: async () => { assert.fail('保存时不能删除'); }, submitChapterImage: async () => { throw new Error('保存时不能重新出图'); } }));
+  const page = instantiate(await pageDefinition('story-images'));
+  await call(page, 'refresh');
+  call(page, 'previewImage', { currentTarget: { dataset: { url: images[0].url } } });
+  checking = true;
+  const saving = call(page, 'savePlacement');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(page.data.savingPlacement, true);
+  await call(page, 'refresh', true); // A poll cannot supersede the full refresh after saving.
+  call(page, 'closePreview');
+  call(page, 'previewImage', { currentTarget: { dataset: { url: images[1].url } } });
+  call(page, 'onPlacementChange', { detail: { value: '1' } });
+  await call(page, 'deletePreview');
+  await call(page, 'redrawPreview');
+  assert.equal((page.data.preview as any).imageId, images[0].imageId);
+  assert.equal(page.data.placementIndex, 0);
+  checking = false; unlock(); await saving;
+  assert.equal(page.data.savingPlacement, false);
+  assert.match(String(page.data.previewNotice), /位置已保存/);
+});
+
+test('封面大图跟随选用结果更新，关闭发送 null 且选用期间不能换图', async context => {
+  const env = installWx(); context.after(() => env.restore());
+  const page = instantiate(await pageDefinition('story-cover'));
+  const first = { ...listWith().images[0], purpose: 'cover', ready: true, selected: false };
+  page.setData({ covers: [first] });
+  call(page, 'preview', { currentTarget: { dataset: { url: first.url } } });
+  assert.equal((page.data.previewCover as any).imageId, first.imageId);
+  page.setData({ selecting: true });
+  call(page, 'preview', { currentTarget: { dataset: { url: 'missing' } } });
+  call(page, 'closePreview');
+  assert.equal((page.data.previewCover as any).imageId, first.imageId);
+  page.setData({ selecting: false });
+  call(page, 'closePreview');
+  assert.equal(page.data.previewCover, null);
 });

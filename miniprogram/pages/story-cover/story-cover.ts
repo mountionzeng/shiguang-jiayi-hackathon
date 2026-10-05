@@ -9,6 +9,7 @@ Page({
   data: {
     storyId: '', title: '', coverImageId: '', version: 0, chapterCount: 0, textLength: 0,
     references: [] as ReferenceCard[], selectedCount: 0, covers: [] as CoverCard[], jobs: [] as StoryImageJob[],
+    previewCover: null as CoverCard | null,
     loading: true, submitting: false, selecting: false, activeJob: false, notice: '', loadError: '', artDirection: '',
   },
   hidden: false, unloaded: false, refreshId: 0, polling: false, startQueued: false, pendingImageRefresh: false,
@@ -21,6 +22,7 @@ Page({
   onUnload() { this.unloaded = true; this.stopPoll(); },
   stopPoll() { if (this.timer !== undefined) clearTimeout(this.timer); this.timer = undefined; },
   async refresh(imagesOnly = false) {
+    if (imagesOnly && this.data.selecting) return;
     const id = ++this.refreshId;
     const [source, list] = await Promise.all([
       imagesOnly ? undefined : storyCoverApi.sources(this.data.storyId),
@@ -33,13 +35,15 @@ Page({
         : this.data.references.filter(item => item.kind === 'photo').map(item => ({...item, selected:chosen.has(item.id)}))),
       ...list.images.filter(image => image.moderation === 'pass' && image.url).map(image => ({id:image.imageId,kind:'image' as const,url:image.url,selected:chosen.has(image.imageId)})),
     ];
+    const covers = list.images.filter(image => image.purpose === 'cover').map(image => ({...image,
+      selected:image.imageId === (source?.coverImageId ?? this.data.coverImageId), qualityLabel:qualityLabel(image),
+      moderationLabel:moderationLabel(image.moderation), ready:image.moderation === 'pass'}));
     this.setData({
       ...(source ? {title:source.title, version:source.version, coverImageId:source.coverImageId,
         chapterCount:source.chapterCount, textLength:source.textLength} : {}),
       references, selectedCount:references.filter(item => item.selected).length,
-      covers:list.images.filter(image => image.purpose === 'cover').map(image => ({...image,
-        selected:image.imageId === (source?.coverImageId ?? this.data.coverImageId), qualityLabel:qualityLabel(image),
-        moderationLabel:moderationLabel(image.moderation), ready:image.moderation === 'pass'})),
+      covers,
+      previewCover: this.data.previewCover ? covers.find(image => image.imageId === this.data.previewCover?.imageId) || null : null,
       jobs:list.pending.filter(job => job.purpose === 'cover'),
       activeJob:list.pending.some(job => job.purpose === 'cover' && isActiveJob(job)), loading:false, loadError:'',
     });
@@ -126,6 +130,7 @@ Page({
     const imageId = event.currentTarget.dataset.id;
     const cover = this.data.covers.find(item => item.imageId === imageId);
     if (imageId && (!cover?.ready || cover.selected)) return;
+    ++this.refreshId;
     this.setData({selecting:true, notice:''});
     try {
       await storyCoverApi.select(this.data.storyId, imageId, this.data.version);
@@ -135,7 +140,12 @@ Page({
     } catch (error) { if (!this.unloaded) this.setData({notice:message(error)}); }
     finally { if (!this.unloaded) this.setData({selecting:false}); }
   },
-  preview(event: {currentTarget:{dataset:{url:string}}}) { wx.previewImage({current:event.currentTarget.dataset.url, urls:this.data.covers.map(image => image.url).filter(Boolean)}); },
+  preview(event: {currentTarget:{dataset:{url:string}}}) {
+    if (this.data.selecting || this.data.submitting) return;
+    this.setData({ previewCover: this.data.covers.find(image => image.url === event.currentTarget.dataset.url) || null, notice: '' });
+  },
+  closePreview() { if (!this.data.selecting) this.setData({ previewCover: null }); },
+  keepPreviewOpen() {},
   onShareAppMessage() { return {title:"拾光家忆｜把重要的故事慢慢写下来", path:"/pages/index/index"}; },
   onShareTimeline() { return {title:"拾光家忆｜把重要的故事慢慢写下来"}; },
   retry() { void this.refresh().catch(error => this.setData({loadError:message(error),loading:false})); },
