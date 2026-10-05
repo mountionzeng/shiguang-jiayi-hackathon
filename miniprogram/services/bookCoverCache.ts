@@ -2,8 +2,8 @@ import { startPerformanceMeasure } from './performanceLog';
 
 // Disposable display derivatives only. Callers must first load the current story
 // and its selected cover ID; this cache is never a source of story permissions.
-const STORAGE_KEY = 'shiguang-book-preview-v1';
-const PREFIX = 'book-preview-v1-';
+const STORAGE_KEY = 'shiguang-book-preview-v2';
+const PREFIX = 'book-preview-v2-';
 interface Entry { key: string; path: string }
 
 export function bookCoverExists(path: string): boolean {

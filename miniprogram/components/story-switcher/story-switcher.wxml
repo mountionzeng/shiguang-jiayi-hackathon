@@ -154,7 +154,12 @@
       hover-class="none"
       aria-label="回忆录，挑一段接着聊"
     >
-      <view class="capture-art capture-art-memoir" aria-hidden="true"></view>
+      <image
+        class="capture-art capture-art-memoir"
+        src="/assets/illustrations/capture-memoir-book.png"
+        mode="aspectFit"
+        aria-hidden="true"
+      ></image>
       <view class="capture-copy capture-copy-memoir">
         <view class="capture-choice-title typewriter">回忆录</view>
       </view>

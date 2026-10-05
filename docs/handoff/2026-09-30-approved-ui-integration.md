@@ -4,6 +4,18 @@
 
 当前继续工作见 `2026-10-03-button-acceptance.md` 和 `2026-10-03-generation-performance.md`。当前客户端已交付过 `6ff7936` 二维码；此后新增书脊恢复及每日一问修复。四个性能云函数现已部署，详见 `2026-10-03-daily-question-deployment.md`。尚未合 main、未 push。下方9月30日二维码与测试结论仅属于旧交付，不代表本批修复已上线。
 
+2026-10-04 追加视觉修复：当前预览分支必须包含 `miniprogram/assets/illustrations/capture-memoir-book.png`，并由 `story-switcher` 的回忆录入口用 `<image>` 加载。缺少该资产时，回忆录入口会退化成 CSS 白卡片，看起来像“回忆录插图没了”。已增加 `tests/ui-contract.test.ts` 断言，要求随手记与回忆录入口都使用真实插图资产；同批还把首页自定义书本封面外框调成低饱和水彩色，并升级 `bookCoverCache` 到 v2 以刷新旧高饱和缓存。
+
+## 2026-10-04 书架书脊配色纠正（18:42）
+
+用户明确指的是“人生之书”列表的书脊：米黄书名纸保持原图，外围书皮随每本书当前封面取色。上一批首页外框降饱和未解决此处问题。根因是 stories.wxml 按 index 套 spine-tone，WXSS 的整图 hue-rotate 连米黄纸面一起染色，且与封面没有数据关联。
+
+已移除列表顺序色相滤镜；stories 根据 storyId + coverImageId 读取封面，在隐藏画布上仅改原图绿色书皮像素，暖色纸面、绑线、纸边和透明度保留。复用已有小图缓存，使用 spine-v1 的独立逻辑键，先展示原图再异步填充；无封面或加载失败保留原图；刷新/退出后不回填过期结果。不重新生成插图、不写用户正文、不部署云函数。
+
+验证：npm run check 1088 项通过；其后新增书架换序/更换封面与退出页面两项回归，局部测试通过。微信开发者工具使用同步后的 /private/tmp/shiguang-visual-fix-preview-20261004-1831 实际从首页打开人生之书，看到三本书名框均米黄、外围为封面取色；点开“岱”再返回列表，配色保留。截图在材料目录 artifacts/button-acceptance-20261003/spine-cover-colors-20261004.png。未改用户数据，无需清理测试文字。
+
+本次尚未生成包含书脊修复的新二维码；18:36 的 preview-visual-fix-20261004-183650.png 不包含本次修复。源工作树仍未提交，预览副本沿用已授权的文字 AI 开关。
+
 ## 9月30日交付状态（历史记录）
 
 - 最终二维码：`/Users/yuandai/Desktop/拾光-确认界面与小忆验收版-f59db92-20260930.png`。在上述完整流程及清理核对后生成，CLI preview 成功；总包 2,131,563 字节，主包 2,029,259 字节。出码后再次比对 manifest，186 个文件全部一致。打包信息：材料目录 `artifacts/restore-approved-ui-20260930/preview-info-f59db92.json`。较早 `拾光-界面恢复与小忆联合版-20260930.png` 不含此次验收修复，不应继续交付。

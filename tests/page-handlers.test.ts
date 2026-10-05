@@ -3144,3 +3144,50 @@ test('home shows loading and recoverable errors instead of first-profile setup d
   assert.equal(home.data.homeLoading,false);
   assert.ok((home.data.bookSlides as unknown[]).length);
 });
+
+
+test('shelf spine colour follows the selected cover after reordering and skips books without covers', async (context) => {
+  const state = createInitialRoomState();
+  state.stories = ['a', 'b', 'c'].map((id, index) => ({
+    id, familyId: 'local', title: id, writingMode: 'objective' as const,
+    memoryIds: [], protagonistMemberIds: [], createdAt: '2026-10-04T00:00:00Z',
+    updatedAt: `2026-10-04T0${index}:00:00Z`, version: 0,
+    coverImageId: id === 'c' ? '' : `cover-${id}`,
+  }));
+  state.storyMigration = { version: 1, status: 'active', pending: [] };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const original = storyCoverApi.resolveUrl;
+  context.after(() => { storyCoverApi.resolveUrl = original; });
+  const requests: string[] = [];
+  storyCoverApi.resolveUrl = async (id, cover) => { requests.push(`${id}:${cover}`); return ''; };
+  const page = instantiate(await pageDefinition('stories'));
+  await callPage(page, 'refresh', state);
+  await callPage(page, 'loadSpineArt', page.spineRefreshId);
+  assert.deepEqual(requests, ['b:cover-b', 'a:cover-a']);
+  state.stories[0].updatedAt = '2026-10-05T00:00:00Z';
+  state.stories[0].coverImageId = 'cover-a-new';
+  requests.length = 0;
+  await callPage(page, 'refresh', state);
+  await callPage(page, 'loadSpineArt', page.spineRefreshId);
+  assert.deepEqual(requests, ['a:cover-a-new', 'b:cover-b']);
+});
+
+test('leaving the shelf cancels pending spine rendering before it touches a destroyed canvas', async (context) => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const original = storyCoverApi.resolveUrl;
+  context.after(() => { storyCoverApi.resolveUrl = original; });
+  let complete!: (url: string) => void;
+  storyCoverApi.resolveUrl = () => new Promise(resolve => { complete = resolve; });
+  const page = instantiate(await pageDefinition('stories'));
+  page.setData({ stories: [{ key: 'a', storyId: 'a', coverImageId: 'cover-a', spineArtUrl: '' }] });
+  let canvasTouched = false;
+  page.createSelectorQuery = () => { canvasTouched = true; throw new Error('destroyed page'); };
+  const pending = callPage(page, 'loadSpineArt', page.spineRefreshId);
+  callPage(page, 'onUnload');
+  complete('https://img.example/cover-a.png');
+  await pending;
+  assert.equal(canvasTouched, false);
+  assert.equal((page.data.stories as Array<{ spineArtUrl: string }>)[0].spineArtUrl, '');
+});

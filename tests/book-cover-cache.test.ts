@@ -51,7 +51,7 @@ test('evicted files and full storage degrade to a cache miss or current temporar
 test('preview retention is bounded and never deletes original photos', async context => {
   const mock = installCacheMock(context);
   mock.files.add('/user/photo-original.png');
-  mock.stored.set('shiguang-book-preview-v1', [{ key: 'untrusted', path: '/user/photo-original.png' }]);
+  mock.stored.set('shiguang-book-preview-v2', [{ key: 'untrusted', path: '/user/photo-original.png' }]);
   for (let i = 0; i < 14; i++) await cacheBookCover(`story:${i}`, `/temp/${i}.png`);
   assert.equal(cachedBookCover('story:0'), '');
   assert.ok(cachedBookCover('story:13'));

@@ -29,6 +29,10 @@ const homeStyles = readFileSync(
   resolve(process.cwd(), "miniprogram/pages/index/index.wxss"),
   "utf8",
 );
+const switcherStyles = readFileSync(
+  resolve(process.cwd(), "miniprogram/components/story-switcher/story-switcher.wxss"),
+  "utf8",
+);
 
 test("transparent story tabs never use WeChat's native pressed or disabled paint", () => {
   const entrances = switcherMarkup.match(
@@ -42,7 +46,20 @@ test("transparent story tabs never use WeChat's native pressed or disabled paint
   });
 });
 
-test("custom book covers are locked to the green book frame with a seam mask", () => {
+test("capture options keep both note and memoir illustrations as real assets", () => {
+  assert.match(
+    switcherMarkup,
+    /class="capture-art capture-art-note"[\s\S]*src="\/assets\/illustrations\/capture-note-paper\.png"[\s\S]*mode="aspectFit"/,
+  );
+  assert.match(
+    switcherMarkup,
+    /class="capture-art capture-art-memoir"[\s\S]*src="\/assets\/illustrations\/capture-memoir-book\.png"[\s\S]*mode="aspectFit"/,
+  );
+  const memoirStyle = switcherStyles.match(/\.capture-art-memoir\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.doesNotMatch(memoirStyle, /background:/);
+});
+
+test("custom book covers use a generated book image while keeping the printed text layer separate", () => {
   assert.match(homeMarkup, /class="book-cover-picture" wx:if="\{\{item.bookArtUrl\}\}"/);
   assert.match(homeMarkup, /class="book-cover-picture-art"[\s\S]*src="\{\{item.bookArtUrl\}\}"[\s\S]*mode="scaleToFill"/);
   assert.doesNotMatch(homeMarkup, /class="book-cover-frame/);

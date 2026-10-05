@@ -40,10 +40,15 @@ export function coverColor(pixels: Uint8ClampedArray): Hsl {
 
 /** Replace the frame's colour, preserving its original alpha and luminance detail. */
 export function recolorFrame(pixels: Uint8ClampedArray, color: Hsl): void {
+  const watercolour: Hsl = [
+    color[0],
+    color[1] < .08 ? 0 : Math.min(.22, Math.max(.07, color[1] * .34)),
+    color[2],
+  ];
   for (let i = 0; i < pixels.length; i += 4) {
     if (!pixels[i + 3]) continue;
     const [, , light] = hsl(pixels[i], pixels[i + 1], pixels[i + 2]);
-    const values = rgb([color[0], color[1], light]);
+    const values = rgb([watercolour[0], watercolour[1], light]);
     pixels[i] = values[0]; pixels[i + 1] = values[1]; pixels[i + 2] = values[2];
   }
 }
@@ -129,6 +134,59 @@ export function renderBookCover(page: WechatMiniprogram.Page.TrivialInstance, ur
       outcome = 'ok';
       return saved;
     } finally { finish(outcome); }
+  };
+  const result = rendering.then(render, render);
+  rendering = result.catch(() => undefined);
+  pending.set(key, result);
+  void result.finally(() => pending.delete(key)).catch(() => undefined);
+  return result;
+}
+
+
+/** The source has sage cloth and warm paper. Recolour cloth only, never the label or cord. */
+export function recolorSpine(pixels: Uint8ClampedArray, color: Hsl): void {
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (!pixels[i + 3] || pixels[i + 1] <= pixels[i] || pixels[i + 1] <= pixels[i + 2]) continue;
+    recolorFrame(pixels.subarray(i, i + 4), color);
+  }
+}
+
+export function bookSpineKey(storyId: string, coverImageId: string): string {
+  return `spine-v1:${storyId}:${coverImageId}`;
+}
+
+/** Reuse the small derivative cache and serial canvas queue; never generate new artwork. */
+export function renderBookSpine(page: WechatMiniprogram.Page.TrivialInstance, url: string, key: string): Promise<string> {
+  const cached = cachedBookCover(key);
+  if (cached) return Promise.resolve(cached);
+  const existing = pending.get(key);
+  if (existing) return existing;
+  const render = async () => {
+    const canvas = await new Promise<WechatMiniprogram.Canvas>((resolve, reject) => {
+      page.createSelectorQuery().select('#book-spine-canvas').fields({ node: true }).exec(results => {
+        if (results[0]?.node) resolve(results[0].node);
+        else reject(new Error('书脊画布未准备好'));
+      });
+    });
+    const info = await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve, reject) =>
+      wx.getImageInfo({ src: url, success: resolve, fail: reject }));
+    const cover = await loadImage(canvas, info.path);
+    canvas.width = 48; canvas.height = 48;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(cover, 0, 0, 48, 48);
+    const color = coverColor(ctx.getImageData(0, 0, 48, 48).data);
+    const spine = await loadImage(canvas, '/assets/illustrations/story-book-spine.png');
+    canvas.width = spine.width; canvas.height = spine.height;
+    ctx.drawImage(spine, 0, 0);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    recolorSpine(pixels.data, color);
+    ctx.putImageData(pixels, 0, 0);
+    const path = await new Promise<string>((resolve, reject) => wx.canvasToTempFilePath({
+      canvas, fileType: 'png', width: canvas.width, height: canvas.height,
+      destWidth: canvas.width, destHeight: canvas.height,
+      success: result => resolve(result.tempFilePath), fail: reject,
+    }, page));
+    return cacheBookCover(key, path);
   };
   const result = rendering.then(render, render);
   rendering = result.catch(() => undefined);

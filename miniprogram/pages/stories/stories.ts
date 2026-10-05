@@ -15,7 +15,14 @@ import { loadCurrentStoryId, loadCurrentStoryTitle, saveCurrentStoryId, saveCurr
 import { logLoadError } from "../../services/loadErrorLog";
 import { createStoryBook, ensureStoryBooks } from "../../services/storyBooks";
 
+import { storyCoverApi } from "../../services/storyCoverService";
+import { bookSpineKey, renderBookSpine } from "../../services/bookFrameColor";
+import { cachedBookCover } from "../../services/bookCoverCache";
+
 interface StoryRow {
+  storyId: string;
+  coverImageId: string;
+  spineArtUrl: string;
   key: string;
   title: string;
   label: string;
@@ -40,6 +47,8 @@ function deletedLabel(iso: string): string {
  * 书稿也是一个故事。点开一个故事看它的记忆，接着讲，或者打开整理好的章节。
  */
 Page({
+  spineRefreshId: 0,
+  onUnload() { this.spineRefreshId++; },
   roomSnapshot: undefined as Awaited<ReturnType<typeof loadRoomStateRemoteFirst>> | undefined,
   data: {
     stories: [] as StoryRow[],
@@ -61,14 +70,21 @@ Page({
 
   onShow() { this.roomSnapshot = undefined; void this.refresh().then(() => { if (this.openCreateOnShow) { this.openCreateOnShow = false; this.openCreate(); } }).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
   async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+    const refreshId = ++this.spineRefreshId;
     const state = nextState ?? (usesCloudStorage() ? await ensureStoryBooks() : await loadRoomStateRemoteFirst());
+    if (refreshId !== this.spineRefreshId) return;
     this.roomSnapshot = state;
     const pool = memoryPool(state.contributions);
     const byId = new Map(pool.map(memory => [memory.id, memory]));
     const shelf = storyShelf(state);
+    const covers = new Map((state.stories ?? []).map(story => [story.id, story.coverImageId || ""]));
     const selected = shelf.find(story => story.key === this.data.selectedKey);
     this.setData({
       stories: shelf.map(story => ({
+        storyId: story.storyId || "",
+        coverImageId: covers.get(story.storyId || "") || "",
+        spineArtUrl: story.storyId && covers.get(story.storyId)
+          ? cachedBookCover(bookSpineKey(story.storyId, covers.get(story.storyId)!)) : "",
         key: story.key, title: story.title, label: shelfStoryLabel(story), excerpt: story.excerpt,
         memoryCount: story.memoryIds.length, bookTitle: story.bookTitle || story.title,
         writingMode: story.writingMode || "objective", chapterCount: story.chapterCount,
@@ -94,7 +110,23 @@ Page({
       ungroupedCount: pool.filter(memory => !contributionStoryTitle(memory)).length,
       pendingMigrationCount: (state.storyMigration?.pending ?? []).filter(item => !item.resolvedStoryId).length,
       loadError: "",
-    });
+    }, () => { void this.loadSpineArt(refreshId); });
+  },
+  async loadSpineArt(refreshId: number) {
+    // Paint the shelf immediately; fill derivatives in the background, with bounded I/O.
+    for (const row of this.data.stories) {
+      if (refreshId !== this.spineRefreshId) return;
+      if (!row.storyId || !row.coverImageId || row.spineArtUrl) continue;
+      try {
+        const url = await storyCoverApi.resolveUrl(row.storyId, row.coverImageId);
+        if (refreshId !== this.spineRefreshId) return;
+        if (!url) continue;
+        const spineArtUrl = await renderBookSpine(this, url, bookSpineKey(row.storyId, row.coverImageId));
+        if (refreshId !== this.spineRefreshId) return;
+        const index = this.data.stories.findIndex(item => item.key === row.key && item.coverImageId === row.coverImageId);
+        if (index >= 0) this.setData({ [`stories[${index}].spineArtUrl`]: spineArtUrl });
+      } catch (error) { logLoadError("stories-spine", error); }
+    }
   },
   async openStory(event: { currentTarget: { dataset: { key: string } } }) {
     const row = this.data.stories.find(story => story.key === event.currentTarget.dataset.key);
