@@ -12,7 +12,21 @@
     <view class="memory-empty" wx:if="{{!insights.length}}">这里还没有理解。不是每段讲述都需要被提炼，原话和故事始终留在你的记忆里。</view>
     <view class="memory-item" wx:for="{{insights}}" wx:key="lineageKey">
       <view class="memory-text">{{item.text}}</view>
-      <view class="memory-item-bottom"><view class="memory-note">{{item.originLabel}}{{item.allowProactiveMention ? '' : ' · 不主动提及'}}</view><button class="memory-action" data-key="{{item.lineageKey}}" bindtap="forget" disabled="{{busy}}" aria-label="忘记：{{item.text}}">忘记</button></view>
+      <view class="memory-evidence" wx:if="{{item.evidence.length}}">
+        <view class="memory-note">依据你的讲述</view>
+        <view class="memory-evidence-source" wx:for="{{item.evidence}}" wx:for-item="source" wx:key="occurredOn">
+          <text>{{source.label || source.occurredOn || '日期未记录'}}</text>
+          <text>{{source.excerpt}}</text>
+        </view>
+      </view>
+      <view class="memory-item-bottom">
+        <view class="memory-note">{{item.originLabel}}{{item.allowProactiveMention ? '' : ' · 不主动提及'}}</view>
+        <view class="memory-actions">
+          <button class="memory-action" data-key="{{item.lineageKey}}" bindtap="confirmInsight" disabled="{{busy}}">说得对</button>
+          <button class="memory-action" data-key="{{item.lineageKey}}" bindtap="correct" disabled="{{busy}}">不对</button>
+          <button class="memory-action" data-key="{{item.lineageKey}}" bindtap="forget" disabled="{{busy}}">忘掉</button>
+        </view>
+      </view>
     </view>
   </block>
 </view>

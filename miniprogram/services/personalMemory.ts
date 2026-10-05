@@ -8,6 +8,7 @@ export interface PersonalInsight {
   text: string;
   origin: 'user_stated' | 'user_corrected' | 'inferred';
   allowProactiveMention: boolean;
+  evidence?: Array<{occurredOn: string | null; excerpt: string}>;
 }
 export interface PersonalMemoryState { enabled: boolean; insights: PersonalInsight[]; }
 async function call(data: Record<string, unknown>): Promise<Record<string, unknown>> {

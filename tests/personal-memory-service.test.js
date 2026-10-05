@@ -27,7 +27,9 @@ test('explicit consent is required and saved evidence is extracted once; user id
   await f.service(identity,{action:'extract',memoryId:'m1',userId:'bob'});
   await f.service(identity,{action:'extract',memoryId:'m1'});
   assert.equal(f.calls(),1);
-  assert.equal((await f.service(identity,{action:'list'})).insights.length,1);
+  const listed=await f.service(identity,{action:'list'});
+  assert.equal(listed.insights.length,1);
+  assert.deepEqual(listed.insights[0].evidence,[{occurredOn:'2026-09-01',excerpt:'我喜欢安静地读书。'}]);
   assert.equal((await f.service({accountId:'bob'},{action:'list'})).insights.length,0);
 });
 test('private insights are filtered before candidate assembly, even when highly confident',async()=>{

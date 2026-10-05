@@ -43,6 +43,28 @@ Page({
     catch { wx.showToast({title:'尚未忘记，请重试',icon:'none'}); }
     finally { this.setData({busy:false}); }
   },
+  async confirmInsight(event: {currentTarget:{dataset:{key:string}}}) {
+    const lineageKey=event.currentTarget.dataset.key;
+    if (this.data.busy || !this.data.insights.some(value=>value.lineageKey===lineageKey)) return;
+    this.setData({busy:true});
+    try { await personalMemory.confirm(lineageKey); await this.refresh(); }
+    catch { wx.showToast({title:'确认未保存，请重试',icon:'none'}); }
+    finally { this.setData({busy:false}); }
+  },
+  correct(event: {currentTarget:{dataset:{key:string}}}) {
+    const lineageKey=event.currentTarget.dataset.key;
+    const item=this.data.insights.find(value=>value.lineageKey===lineageKey);
+    if (this.data.busy || !item) return;
+    wx.showModal({title:'改正这条理解',content:'可以补一句你更认可的说法。留空会停用这条理解，小忆不会猜相反答案。',editable:true,
+      placeholderText:'写下更准确的说法（可留空）',confirmText:'保存纠正',success:result=>{if(result.confirm)void this.confirmCorrection(lineageKey,result.content || '');}});
+  },
+  async confirmCorrection(lineageKey:string,text:string) {
+    if (this.data.busy) return;
+    this.setData({busy:true});
+    try { await personalMemory.correct(lineageKey,text); await this.refresh(); }
+    catch { wx.showToast({title:'纠正未保存，请重试',icon:'none'}); }
+    finally { this.setData({busy:false}); }
+  },
   onShareAppMessage() { return {title:'拾光家忆｜把重要的故事慢慢写下来',path:'/pages/index/index'}; },
   onShareTimeline() { return {title:'拾光家忆｜把重要的故事慢慢写下来'}; },
 });
