@@ -519,9 +519,9 @@ const STYLES = {
     withScene: true,
     withFigures: true,
   },
-  // A backdrop sits under the chapter text: scenery only, pale, with an empty top half.
+  // A backdrop sits under the chapter text: scenery-led, pale, with an empty top half.
   backdrop: {
-    lead: "安静的纸本淡彩底图。上方大面积是接近纯白的宣纸留白，景物只占画面下方三分之一和两侧边角。画面由景物与器物构成。",
+    lead: "安静的纸本淡彩底图。上方大面积是接近纯白的宣纸留白，景物只占画面下方三分之一和两侧边角。画面由景物、器物和正文事件留下的生活痕迹构成。",
     width: 1248,
     height: 832,
     maxObjects: 3,
@@ -564,7 +564,7 @@ function emotionPaint(mood, sourceText) {
   return inferred ? inferred.paint : DEFAULT_EMOTION_PAINT;
 }
 
-const PHYSICAL_REALISM_REQUIREMENT = "硬性要求：画面符合客观物理规律；出现的主体、书本、树木和其他物件的前后遮挡按真实三维空间排序，接触点、握持、翻阅、坐姿、重心和投影相互自洽，主体与书本等物件的接触和受力关系清楚可读。";
+const PHYSICAL_REALISM_REQUIREMENT = "硬性要求：画面符合客观物理规律；出现的主体、书本、树木和其他物件的前后遮挡按真实三维空间排序，接触点、握持、翻阅、坐姿、重心和投影相互自洽，主体与书本等物件的接触和受力关系清楚可读。手、脚、脸等身体部位只作为完整人物或动物身体结构的一部分出现，连接、遮挡和受力关系连续可读。";
 
 const LIFE_PAINT = {
   family: { medium: "柔软彩铅颗粒与薄水彩在纸上相叠，保留铅笔底稿的细线。", texture: "家庭内部的生活质地由物件之间的距离和细微叠色承载。" },
@@ -573,6 +573,39 @@ const LIFE_PAINT = {
   nature: { medium: "留白水墨与局部重墨并置，远处以淡染退开，近处枝叶用湿墨压出浓淡。", texture: "自然景物以浓淡层次、枝叶疏密和空气深度组织空间。" },
 };
 
+const HUMAN_SUBJECT_PATTERN = /(?:我|我们|他|她|他们|她们|老人|孩子|小孩|儿童|男孩|女孩|男人|女人|男子|女子|人物|人影|身影|背影|奶奶|爷爷|外婆|外公|妈妈|爸爸|母亲|父亲|姐姐|哥哥|妹妹|弟弟|阿姨|叔叔|女士|先生)(?:正在|在|把|给|和|与|跟|同)?/g;
+const BODY_PART_WORDS_PATTERN = /(?:手掌|手指|手臂|手腕|胳膊|脚掌|脚趾|膝盖|面孔|眼睛|肩膀|耳朵|鼻子|身体|半身|背影|人影|身影|手|脚|腿|脸|嘴|头)/g;
+const ISOLATED_BODY_PART_PATTERN = /^(?:(?:一双|两只|一只|几只|伸出的|翻书的|写字的|粗糙的|苍老的|小小的|人的|老人|孩子|小孩|男孩|女孩|男人|女人|奶奶|爷爷|妈妈|爸爸|母亲|父亲)?(?:的)?(?:手掌|手指|手臂|手腕|胳膊|脚掌|脚趾|膝盖|面孔|眼睛|肩膀|耳朵|鼻子|身体|半身|背影|人影|身影|手|脚|腿|脸|嘴|头)|(?:双手|两手|一只手|一双手).*)$/;
+
+function isIsolatedBodyPart(value) {
+  return ISOLATED_BODY_PART_PATTERN.test(cleanText(value, 30));
+}
+
+function promptObjects(scene, style) {
+  return (Array.isArray(scene?.objects) ? scene.objects : [])
+    .filter(item => !isIsolatedBodyPart(item))
+    .slice(0, style.maxObjects);
+}
+
+function promptFigures(scene) {
+  return (Array.isArray(scene?.figures) ? scene.figures : [])
+    .filter(item => !isIsolatedBodyPart(item));
+}
+
+function backdropSceneTrace(scene) {
+  const raw = cleanText(scene?.scene, 80);
+  if (!raw) return "";
+  const trace = raw
+    .replace(HUMAN_SUBJECT_PATTERN, "")
+    .replace(BODY_PART_WORDS_PATTERN, "")
+    .replace(/[，,、；;：:]+/g, "，")
+    .replace(/^[在把给和与跟同的，。]+/, "")
+    .replace(/\s+/g, "")
+    .trim()
+    .replace(TRAILING_PUNCTUATION, "");
+  return trace.length >= 2 ? trace.slice(0, 60) : "";
+}
+
 /** Affirmative wording only: image models have no notion of "don't draw". */
 function buildImagePrompt(scene, purpose, visualReference, source, artDirection = "") {
   const style = STYLES[purpose];
@@ -580,10 +613,15 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
   const parts = [style.lead];
   if (style.withScene) parts.push(`画面：${scene.scene}。`);
   else if (scene.setting) parts.push(`景物：${scene.setting}。`);
-  const objects = scene.objects.slice(0, style.maxObjects);
+  if (purpose === "backdrop") {
+    const trace = backdropSceneTrace(scene);
+    if (trace) parts.push(`章节情景的景物痕迹：${trace}。`);
+  }
+  const objects = promptObjects(scene, style);
   if (objects.length) parts.push(`画中有${objects.join("、")}。`);
   if (scene.light) parts.push(`时节与光线：${scene.light}。`);
-  if (style.withFigures && scene.figures.length) parts.push(`人物以远景或局部呈现：${scene.figures.join("、")}。`);
+  const figures = promptFigures(scene);
+  if (style.withFigures && figures.length) parts.push(`人物以远景完整背影、侧影或可读身体结构呈现：${figures.join("、")}。`);
   const text = String(source?.artText || source?.text || "");
   const category = purpose === "cover" ? source?.bookLifeCategory || lifeCategory(text) : lifeCategory(text) || source?.bookLifeCategory;
   const selectedPaint = LIFE_PAINT[category];

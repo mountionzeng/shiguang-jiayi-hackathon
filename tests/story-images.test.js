@@ -574,11 +574,12 @@ test("插图提示词只用肯定式描述，不列禁止画的东西", () => {
   assert.match(prompt, /纸本手绘插画/);
   assert.match(prompt, /手工笔触和纸面呼吸/);
   assert.match(prompt, /画中有竹竿、棉被。/);
-  assert.match(prompt, /人物以远景或局部呈现：远景中的背影。/);
+  assert.match(prompt, /人物以远景完整背影、侧影或可读身体结构呈现：远景中的背影。/);
   assert.match(prompt, /符合客观物理规律/);
   assert.match(prompt, /前后遮挡/);
   assert.match(prompt, /接触点、握持、翻阅、坐姿、重心和投影/);
   assert.match(prompt, /接触和受力关系/);
+  assert.match(prompt, /身体部位只作为完整人物或动物身体结构的一部分出现/);
   assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
   assert.doesNotMatch(prompt, /时代感/);
 });
@@ -823,7 +824,7 @@ test("参考图只提取有限的视觉连续性信息，并写进新图提示�
   await assert.rejects(reference.createReferenceAnalyzer({ apiKey: "" }).analyze("https://x/1.png"), error => error.code === "REFERENCE_ANALYSIS_FAILED");
 });
 
-test("底图只画景物：上方留白、最多三个物件、没有人物，也不用描述情景的那句话", () => {
+test("底图保留章节情景的景物痕迹：上方留白、最多三个物件、不过度突出人物", () => {
   const { prompt, width, height } = core.buildImagePrompt({
     scene: "奶奶在冬天的院子里晒被子", setting: "冬天的小院", objects: ["竹竿", "棉被", "木凳", "瓦罐"],
     light: "冬日午后", mood: "安静", eraHint: "", figures: ["远景中的背影"],
@@ -831,11 +832,23 @@ test("底图只画景物：上方留白、最多三个物件、没有人物，�
   assert.deepEqual([width, height], [1248, 832]);
   assert.match(prompt, /上方大面积是接近纯白的宣纸留白/);
   assert.match(prompt, /景物：冬天的小院。/);
+  assert.match(prompt, /章节情景的景物痕迹：冬天的院子里晒被子。/);
   assert.match(prompt, /画中有竹竿、棉被、木凳。/);
   assert.match(prompt, /符合客观物理规律/);
   assert.match(prompt, /前后遮挡/);
-  assert.doesNotMatch(prompt, /瓦罐|奶奶|背影|人物/);
+  assert.match(prompt, /身体部位只作为完整人物或动物身体结构的一部分出现/);
+  assert.doesNotMatch(prompt, /瓦罐|奶奶|背影/);
   assert.doesNotMatch(prompt, /不要|禁止|避免|不得|没有/);
+});
+
+test("底图物件过滤孤立身体部位，保留可解释的文章物件", () => {
+  const { prompt } = core.buildImagePrompt({
+    scene: "老人的手翻开旧书", setting: "窗前书桌", objects: ["手", "手指", "旧书", "木桌"],
+    light: "傍晚", mood: "怀旧", eraHint: "", figures: ["一双手"],
+  }, "backdrop");
+  assert.match(prompt, /章节情景的景物痕迹：翻开旧书。/);
+  assert.match(prompt, /画中有旧书、木桌。/);
+  assert.doesNotMatch(prompt, /画中有手|画中有手指|一双手/);
 });
 
 test("读章节超时明确告知尚未开始画图，未知错误不暴露内部信息", async () => {
@@ -854,6 +867,10 @@ test("读章节画面的系统提示把正文当资料、禁止补造事实，�
   assert.match(scene.SYSTEM_PROMPT, /setting：只写地点和环境本身，不写人物/);
   assert.match(scene.SYSTEM_PROMPT, /冲突时以当前正文为准/);
   assert.match(scene.SYSTEM_PROMPT, /性别没有可靠依据时.*不显露性别/);
+  assert.match(scene.SYSTEM_PROMPT, /身体局部不列为物件/);
+  assert.match(scene.SYSTEM_PROMPT, /身体结构完整/);
+  assert.match(scene.SYSTEM_PROMPT, /身体部位必须依附完整人物或动物结构/);
+  assert.doesNotMatch(scene.SYSTEM_PROMPT, /一双手/);
   const notConfigured = scene.createSceneExtractor({ apiKey: "", model: "" });
   await assert.rejects(notConfigured({ title: "", text: "x" }), error => error.code === "AI_NOT_CONFIGURED");
   let body;
@@ -1541,7 +1558,7 @@ test("提交底图：按底图尺寸排队，出图时用 1248x832，入库记�
   assert.equal(job.purpose, "backdrop");
   const queued = repo.jobs.get(job.jobId);
   assert.deepEqual([queued.width, queued.height], [1248, 832]);
-  assert.doesNotMatch(queued.prompt, /晒着被子/, "底图不用描述情景的那句话");
+  assert.match(queued.prompt, /晒着被子/, "底图需要保留章节情景的景物痕迹");
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(result.job.status, "stored");
   assert.deepEqual([calls.generate[0].width, calls.generate[0].height], [1248, 832]);
