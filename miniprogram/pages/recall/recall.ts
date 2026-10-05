@@ -45,7 +45,7 @@ function recallRows(contributions: MemoryContribution[], stories: Array<{ id: st
     });
 }
 
-/** 全部回忆：从讲过的任何一段接着聊。挑完就进聊天，不改动原来的记忆。 */
+/** 全部回忆：先打开已保存正文，在同一页面继续阅读、修改或展开对话。 */
 Page({
   data: {
     items: [] as RecallRow[],
@@ -68,23 +68,8 @@ Page({
   },
 
   continueMemory(event: { currentTarget: { dataset: { id: string; title: string; story: string; choice: boolean } } }) {
-    const { id, title, story, choice } = event.currentTarget.dataset;
-    if (choice) {
-      const item = this.data.items.find(row => row.id === id);
-      if (!item?.storyChoices.length) return;
-      wx.showActionSheet({
-        itemList: item.storyChoices.map(candidate => `《${candidate.title}》`),
-        success: result => {
-          const selected = item.storyChoices[result.tapIndex];
-          if (selected) wx.navigateTo({ url: `/pages/interview/interview?memoryType=memoir&sourceId=${encodeURIComponent(id)}&storyId=${encodeURIComponent(selected.id)}` });
-        },
-      });
-      return;
-    }
-    const storyQuery = story ? `&storyId=${encodeURIComponent(story)}` : `&storyTitle=${encodeURIComponent(title || "")}`;
-    wx.navigateTo({
-      url: `/pages/interview/interview?memoryType=memoir&sourceId=${encodeURIComponent(id)}${storyQuery}`,
-    });
+    const { id } = event.currentTarget.dataset;
+    wx.navigateTo({ url: "/pages/archive/archive?id=" + encodeURIComponent(id) });
   },
 
   startQuickNote() {

@@ -75,6 +75,31 @@ test("organizeMemory uses the cloud function when available", async (context) =>
   });
 });
 
+test("coediting organizer sends the selected memory draft and source guard, not only the old saved text", async (context) => {
+  let requestData: any;
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: true } }));
+  const restoreWx = installGlobal("wx", {
+    cloud: { callFunction: async (request: { name: string; data: any }) => {
+      if (request.name === "recordAiConsent") return { result: { success: true } };
+      requestData = request.data;
+      return { result: { title: "院子听雨", summary: "雨落院子", body: "我和外婆在院子里听雨。", memoryType: "note", generationMode: "cloud-ai" } };
+    } },
+  });
+  context.after(() => { restoreWx(); restoreGetApp(); });
+
+  const draft = await organizeMemory({
+    transcript: ["我和外婆在院子里听雨。", "还记得雨点落在瓦片上。"],
+    memoryType: "note", memoryId: "memory-coedit", expectedSavedText: "原来保存的院子里听雨。",
+    expectedSourceRevisionId: "revision-saved-current",
+  });
+
+  assert.equal(draft.generationMode, "cloud-ai");
+  assert.deepEqual(requestData.transcript, ["我和外婆在院子里听雨。", "还记得雨点落在瓦片上。"]);
+  assert.equal(requestData.expectedText, "原来保存的院子里听雨。");
+  assert.equal(requestData.sourceRevisionId, "revision-saved-current");
+  assert.equal(requestData.sourceOnly, true);
+});
+
 test("organizeMemory falls back to editable original text", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({

@@ -6,47 +6,59 @@
   <block wx:if="{{title}}">
     <view class="cover-summary">
       <image class="cover" src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}" mode="{{coverUrl ? 'aspectFill' : 'aspectFit'}}" />
-      <view><view class="serif">{{title}}</view><view class="caption">{{coverUrl ? '使用这本书已有的封面' : coverNotice || '封面示意'}}</view></view>
+      <view><view class="serif">{{title}}</view><view class="caption">{{sourceKind === 'memory' ? '发送这段已保存的记忆' : coverUrl ? '使用这本书已有的封面' : coverNotice || '封面示意'}}</view></view>
     </view>
     <view hidden="{{preview}}">
-      <view class="section-title serif">分享哪些内容</view>
-      <view class="scope-options">
+      <view class="section-title serif">{{sourceKind === 'memory' ? '分享这段记忆' : '分享哪些内容'}}</view>
+      <view class="caption" wx:if="{{sourceKind === 'memory'}}">正文来自云端已保存版本；生成图片和保存相册前都会重新核对。</view>
+      <view class="reading-chapter" wx:if="{{sourceKind === 'memory'}}" wx:for="{{chapters}}" wx:key="id"><view class="section-title serif">{{item.title}}</view><text class="paragraph" selectable>{{item.text}}</text></view>
+      <view class="scope-options" wx:if="{{sourceKind === 'story'}}">
         <button class="scope {{scope === 'book' ? 'selected' : ''}}" data-scope="book" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">整本书</button>
         <button class="scope {{scope === 'chapters' ? 'selected' : ''}}" data-scope="chapters" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">选择章节</button>
         <button class="scope {{scope === 'text' ? 'selected' : ''}}" data-scope="text" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">选择文字</button>
       </view>
-      <view class="caption" wx:if="{{scope === 'book'}}">包含这本书全部 {{chapters.length}} 章的文字。封面之外的照片不自动加入。</view>
-      <checkbox-group wx:if="{{scope === 'chapters'}}" bindchange="chooseChapters">
+      <view class="caption" wx:if="{{sourceKind === 'story' && scope === 'book'}}">包含这本书全部 {{chapters.length}} 章的文字。封面之外的照片不自动加入。</view>
+      <checkbox-group wx:if="{{sourceKind === 'story' && scope === 'chapters'}}" bindchange="chooseChapters">
         <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{checking || exportBusy || albumSaving}}" color="#4f7f6b" /><view><view>{{item.title}}</view><view class="caption">{{item.characterCount}} 字</view></view></label>
       </checkbox-group>
-      <view hidden="{{scope !== 'text'}}">
+      <view hidden="{{sourceKind !== 'story' || scope !== 'text'}}">
         <picker range="{{chapters}}" range-key="title" value="{{textChapterIndex}}" bindchange="chooseTextChapter" disabled="{{checking || exportBusy || albumSaving}}"><view class="chapter-picker">{{chapters[textChapterIndex].title || '暂无章节'}}　⌄</view></picker>
         <view class="caption">长按下方原文选择文字，再点“使用选中文字”。</view>
         <editor id="send-text-source" class="text-source" read-only bindready="onEditorReady" />
         <button class="secondary" catchtouchstart="captureSelection" disabled="{{!editorReady || checking}}">使用选中文字</button>
         <view class="selected-excerpt" wx:if="{{selectedText}}"><view class="caption">已选文字</view><text selectable>{{selectedText}}</text></view>
       </view>
-      <view class="caption selection-count">已选 {{selectedCount}} {{scope === 'text' ? '段' : '章'}} · {{characterCount}} 字</view>
-      <button class="primary" bindtap="previewSelection" disabled="{{checking || !characterCount}}" loading="{{checking}}">{{checking ? '正在核对书稿' : '预览所选内容'}}</button>
+      <view class="caption selection-count">已选 {{selectedCount}} {{sourceKind === 'memory' ? '段记忆' : scope === 'text' ? '段' : '章'}} · {{characterCount}} 字</view>
+      <button class="primary" bindtap="previewSelection" disabled="{{checking || !characterCount}}" loading="{{checking}}">{{checking ? '正在核对内容' : '预览所选内容'}}</button>
     </view>
     <view wx:if="{{preview}}">
-      <view class="preview-controls"><view class="caption">{{selectedCount}} {{scope === 'text' ? '段' : '章'}} · {{characterCount}} 字</view><button class="reselect" bindtap="backToSelection">重新选择</button></view>
-      <view class="cover-model" wx:if="{{!coverUrl}}">
+      <view class="preview-controls"><view class="caption">{{selectedCount}} {{sourceKind === 'memory' ? '段记忆' : scope === 'text' ? '段' : '章'}} · {{characterCount}} 字</view><button class="reselect" bindtap="backToSelection">重新选择</button></view>
+      <view class="cover-model" wx:if="{{sourceKind === 'story' && !coverUrl}}">
         <view class="cover-model-title serif">想给这次分享配一张专属封面？</view>
         <view class="caption">可以先让 AI 根据已保存的整本书制作封面；生成前会说明将发送哪些内容，你确认后才会开始。</view>
         <button class="cover-model-action" bindtap="makeCover" disabled="{{exportBusy || albumSaving}}">先制作 AI 封面</button>
       </view>
       <view class="section-title serif">图片排版</view>
+      <view wx:if="{{sourceKind === 'story' && coverCandidates.length}}">
+        <view class="caption">选择本次分享使用的封面；不会修改书封面。</view>
+        <checkbox-group class="cover-choice-list" bindchange="chooseShareCovers">
+          <label class="cover-choice" wx:for="{{coverCandidates}}" wx:key="imageId">
+            <checkbox value="{{item.imageId}}" checked="{{selectedCoverImageIds.indexOf(item.imageId) >= 0}}" disabled="{{exportBusy || albumSaving}}" color="#4f7f6b" />
+            <image src="{{item.url}}" mode="aspectFill" />
+          </label>
+        </checkbox-group>
+      </view>
       <view class="scope-options"><button class="scope {{layout === 'pages' ? 'selected' : ''}}" data-layout="pages" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}">分页图片</button><button class="scope {{layout === 'long' ? 'selected' : ''}}" data-layout="long" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}">一张长图</button></view>
       <picker range="{{['紧凑','标准','大字']}}" value="{{fontSize === 28 ? 0 : fontSize === 32 ? 1 : 2}}" bindchange="chooseFont" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}"><view class="chapter-picker">字号：{{fontSize === 28 ? '紧凑' : fontSize === 32 ? '标准' : '大字'}}　⌄</view></picker>
-      <view class="caption">封面单独一张；正文会沿用每章已经选好的底图，没有底图时使用纸张背景。正文不会截断。</view>
+      <picker range="{{textImageCountOptions}}" value="{{targetTextImageCount - 1}}" bindchange="chooseTextImageCount" disabled="{{exportBusy || albumSaving || layout === 'long'}}"><view class="chapter-picker">正文图片：{{layout === 'long' ? '长图自动决定' : targetTextImageCount + ' 张'}}　⌄</view></picker>
+      <view class="caption">封面单独成图，正文按所选张数排版；正文会沿用每章已经选好的底图，没有底图时使用纸张背景。正文不会截断。</view>
       <view class="notice" wx:if="{{capabilityKnown && !exportAvailable}}">图片导出服务暂时没有打开，请稍后重新进入。</view>
       <button class="primary" bindtap="generateImages" loading="{{exportBusy}}" disabled="{{!exportAvailable || exportBusy || albumSaving || sharingIndex >= 0}}">{{exportBusy ? renderProgress : imagePaths.length ? '重新生成图片' : '生成图片预览'}}</button>
       <generation-status wx:if="{{exportBusy}}" kind="image" text="{{renderProgress || '正在排版图片…'}}" />
       <block wx:if="{{imagePaths.length}}">
         <view class="section-title serif">共 {{imagePaths.length}} 张图片</view>
         <view class="export-image" wx:for="{{imagePaths}}" wx:key="*this">
-          <view class="caption">{{index === 0 ? '封面' : '文字图 ' + index}}</view>
+          <view class="caption">{{index < coverImageCount ? (coverImageCount > 1 ? '封面 ' + (index + 1) : '封面') : '文字图 ' + (index - coverImageCount + 1)}}</view>
           <image src="{{item}}" mode="widthFix" />
           <button class="share-image-action" data-index="{{index}}" bindtap="shareImage" loading="{{sharingIndex === index}}" disabled="{{sharingIndex >= 0 || albumSaving || exportBusy}}">发这张图片</button>
         </view>

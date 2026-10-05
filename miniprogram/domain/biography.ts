@@ -41,6 +41,9 @@ export interface MemoryAiRevision {
   kind: MemoryAiRevisionKind;
   text: string;
   title?: string;
+  /** An explicitly saved dated version remains discoverable in the existing history. */
+  saveKind?: "update-current" | "dated-version";
+  versionLabel?: string;
   createdAt: string;
   organizationMode?: OrganizationMode;
 }
