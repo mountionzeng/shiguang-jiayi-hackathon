@@ -147,7 +147,10 @@ async function read(event, context) {
   }
   const results = records.map((photo, index) => {
     const hidden = input.purpose === "view" && photo && photo._openid !== requester && !access;
-    return publicPhoto(hidden ? undefined : photo, { ...input, photoId: input.photoIds[index] }, requester, visibleMemories);
+    const result = publicPhoto(hidden ? undefined : photo, { ...input, photoId: input.photoIds[index] }, requester, visibleMemories);
+    // Only the trusted storyImages function needs provenance to validate a direct phone import.
+    return result.status === "ok" && input.purpose === "ai-reference" && isInternalContext(context)
+      ? { ...result, source: photo.source } : result;
   });
   const urls = await tempUrls(results.filter(result => result.status === "ok").map(result => result.fileID));
   return {

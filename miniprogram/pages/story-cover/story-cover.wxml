@@ -7,12 +7,13 @@
   <view class="cover-description" wx:if="{{loading}}">正在读取这本书…</view>
   <block wx:if="{{!loading && !loadError}}">
     <view class="cover-section"><text class="serif">参考哪些图片</text><text class="cover-count">已选 {{selectedCount}} / 3</text></view>
-    <view class="cover-description">可选 3 张，也可以只用全文来画。</view>
+    <view class="cover-description">可从本书或手机选最多 3 张，也可以只用全文来画。</view>
+    <button class="phone-reference-button" bindtap="addPhoneReference" disabled="{{submitting || selecting || pickingReference}}">{{pickingReference ? '正在选择…' : '＋ 从手机选参考图'}}</button>
     <view class="reference-grid" wx:if="{{references.length}}">
-      <button class="reference-choice {{item.selected ? 'is-selected' : ''}}" wx:for="{{references}}" wx:key="id" data-id="{{item.id}}" bindtap="toggleReference" disabled="{{submitting || selecting}}" aria-label="{{item.selected ? '取消选择' : '选择'}}{{item.kind === 'photo' ? '照片' : '插图'}}作为封面参考">
+      <button class="reference-choice {{item.selected ? 'is-selected' : ''}}" wx:for="{{references}}" wx:key="id" data-id="{{item.id}}" bindtap="toggleReference" disabled="{{submitting || selecting || pickingReference}}" aria-label="{{item.selected ? '取消选择' : '选择'}}{{item.kind === 'image' ? '插图' : '照片'}}作为封面参考">
         <image src="{{item.url}}" mode="aspectFill" />
         <view class="reference-check">{{item.selected ? '✓' : '+'}}</view>
-        <text class="reference-kind">{{item.kind === 'photo' ? '照片' : 'AI 图片'}}</text>
+        <text class="reference-kind">{{item.kind === 'phone' ? '手机照片' : (item.kind === 'photo' ? '书中照片' : 'AI 图片')}}</text>
       </button>
     </view>
     <view class="cover-empty" wx:else>本书还没有可参考的图片，可以先用文字生成。</view>

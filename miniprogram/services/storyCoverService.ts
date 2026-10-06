@@ -6,7 +6,7 @@ export interface CoverSources {
   storyId: string; title: string; revisionId: string; version: number; coverImageId: string;
   chapterCount: number; textLength: number; photos: Array<{photoId: string; url: string}>;
 }
-export interface CoverInput { storyId: string; referenceImageIds: string[]; referencePhotoIds: string[]; artDirection?: string; requestId?: string }
+export interface CoverInput { storyId: string; referenceImageIds: string[]; referencePhotoIds: string[]; phoneReferencePhotoIds?: string[]; artDirection?: string; requestId?: string }
 export interface ShareCoverCandidate { imageId: string; url: string; createdAtMs: number }
 export interface ShareCoverCandidates { candidates: ShareCoverCandidate[]; pendingJobs: StoryImageJob[] }
 

@@ -1,7 +1,8 @@
 import { storyCoverApi } from '../../services/storyCoverService';
 import { isActiveJob, qualityLabel, moderationLabel, storyImageApi, StoryImage, StoryImageJob, StoryImageServiceError } from '../../services/storyImageService';
+import { choosePhoneReferencePhotos, isPhotoPickerCancel } from '../../services/phoneReferencePhotos';
 
-interface ReferenceCard { id: string; kind: 'photo' | 'image'; url: string; selected: boolean }
+interface ReferenceCard { id: string; kind: 'photo' | 'image' | 'phone'; url: string; selected: boolean }
 interface CoverCard extends StoryImage { selected: boolean; qualityLabel: string; moderationLabel: string; ready: boolean }
 const message = (error: unknown) => error instanceof Error ? error.message : '暂时没完成，请稍后再试';
 
@@ -10,7 +11,7 @@ Page({
     storyId: '', title: '', coverImageId: '', version: 0, chapterCount: 0, textLength: 0,
     references: [] as ReferenceCard[], selectedCount: 0, covers: [] as CoverCard[], jobs: [] as StoryImageJob[],
     previewCover: null as CoverCard | null,
-    loading: true, submitting: false, selecting: false, activeJob: false, notice: '', loadError: '', artDirection: '',
+    loading: true, submitting: false, selecting: false, pickingReference: false, activeJob: false, notice: '', loadError: '', artDirection: '',
   },
   hidden: false, unloaded: false, refreshId: 0, polling: false, startQueued: false, pendingImageRefresh: false,
   timer: undefined as ReturnType<typeof setTimeout> | undefined,
@@ -31,6 +32,7 @@ Page({
     if (this.unloaded || id !== this.refreshId) return;
     const chosen = new Set(this.data.references.filter(item => item.selected).map(item => item.id));
     const references: ReferenceCard[] = [
+      ...this.data.references.filter(item => item.kind === 'phone'),
       ...(source ? source.photos.map(photo => ({id:photo.photoId, kind:'photo' as const, url:photo.url, selected:chosen.has(photo.photoId)}))
         : this.data.references.filter(item => item.kind === 'photo').map(item => ({...item, selected:chosen.has(item.id)}))),
       ...list.images.filter(image => image.moderation === 'pass' && image.url).map(image => ({id:image.imageId,kind:'image' as const,url:image.url,selected:chosen.has(image.imageId)})),
@@ -94,22 +96,38 @@ Page({
     }
   },
   toggleReference(event: {currentTarget:{dataset:{id:string}}}) {
-    if (this.data.submitting || this.data.selecting) return;
+    if (this.data.submitting || this.data.selecting || this.data.pickingReference) return;
     const target = this.data.references.find(item => item.id === event.currentTarget.dataset.id);
     if (!target) return;
     if (!target.selected && this.data.selectedCount >= 3) { this.setData({notice:'最多选 3 张参考图'}); return; }
     const references = this.data.references.map(item => item.id === target.id ? {...item,selected:!item.selected} : item);
     this.setData({references, selectedCount:references.filter(item => item.selected).length, notice:''});
   },
+  async addPhoneReference() {
+    if (this.data.submitting || this.data.selecting || this.data.pickingReference) return;
+    const remaining = 3 - this.data.selectedCount;
+    if (remaining < 1) { this.setData({ notice: '最多选 3 张参考图；请先取消一张' }); return; }
+    this.setData({ pickingReference: true, notice: '' });
+    try {
+      const photos = await choosePhoneReferencePhotos(remaining);
+      if (this.unloaded) return;
+      const references: ReferenceCard[] = [...this.data.references, ...photos.map(photo => ({ id: photo.id, kind: 'phone' as const, url: photo.path, selected: true }))];
+      this.setData({ references, selectedCount: references.filter(item => item.selected).length,
+        notice: photos.length ? '已选手机照片；生成封面时会参考，不会放进正文' : '' });
+    } catch (error) {
+      if (!this.unloaded && !isPhotoPickerCancel(error)) this.setData({ notice: message(error) });
+    } finally { if (!this.unloaded) this.setData({ pickingReference: false }); }
+  },
   onArtDirectionInput(event: {detail:{value:string}}) { this.setData({artDirection:event.detail.value}); },
   async generate() {
-    if (this.data.submitting || this.data.selecting || this.data.loading || this.data.jobs.some(isActiveJob)) return;
+    if (this.data.submitting || this.data.selecting || this.data.pickingReference || this.data.loading || this.data.jobs.some(isActiveJob)) return;
     this.setData({submitting:true, notice:'正在阅读整本书，构思封面…'});
     const selected = this.data.references.filter(item => item.selected);
     try {
       const job = await storyCoverApi.submit({storyId:this.data.storyId,
         referenceImageIds:selected.filter(item => item.kind === 'image').map(item => item.id),
-        referencePhotoIds:selected.filter(item => item.kind === 'photo').map(item => item.id),
+        referencePhotoIds:selected.filter(item => item.kind === 'photo' || item.kind === 'phone').map(item => item.id),
+        phoneReferencePhotoIds:selected.filter(item => item.kind === 'phone').map(item => item.id),
         ...(this.data.artDirection.trim() ? {artDirection:this.data.artDirection.trim()} : {})});
       if (this.unloaded) return;
       ++this.refreshId;

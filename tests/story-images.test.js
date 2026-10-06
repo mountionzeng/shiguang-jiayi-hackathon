@@ -776,6 +776,32 @@ test("章节照片参考必须来自本章正文，且必须先有照片 AI 同�
   }), error => error.code === "CONSENT_REQUIRED");
 });
 
+test("手机导入的本人照片可独立参考，但伪造来源或越权照片不能绕过章节范围", async () => {
+  for (const purpose of ["illustration", "backdrop"]) {
+    const h = harness({ deps: { readPhotos: async input => input.photoIds.map(photoId =>
+      ({ photoId, status: "ok", source: "import", url: `https://tmp.example/${photoId}.jpg` })) } });
+    const event = { ...submitEvent(`req-phone-${purpose}-0001`), purpose,
+      referencePhotoIds: ["photo-phone"], phoneReferencePhotoIds: ["photo-phone"], photoReferenceConsent: true };
+    const result = await h.handlers.submit(ctx, event);
+    assert.deepEqual(result.job.referencePhotoIds, ["photo-phone"]);
+    assert.deepEqual(h.repo.jobs.get(`${FAMILY}_${event.requestId}`).phoneReferencePhotoIds, ["photo-phone"]);
+    await h.handlers.status(ctx, { familyId: FAMILY, memberId: "owner", jobId: result.job.jobId });
+    assert.deepEqual(h.calls.generate[0].referenceImages, ["https://tmp.example/photo-phone.jpg"]);
+  }
+  const wrongSource = harness({ deps: { readPhotos: async input => input.photoIds.map(photoId =>
+    ({ photoId, status: "ok", source: "book", url: "https://tmp.example/photo.jpg" })) } });
+  await assert.rejects(wrongSource.handlers.submit(ctx, { ...submitEvent("req-phone-wrong-source"),
+    referencePhotoIds: ["photo-phone"], phoneReferencePhotoIds: ["photo-phone"], photoReferenceConsent: true }),
+    { code: "REFERENCE_IMAGE_NOT_FOUND" });
+  const wrongOwner = harness({ deps: { readPhotos: async input => input.photoIds.map(photoId =>
+    ({ photoId, status: "not_found" })) } });
+  await assert.rejects(wrongOwner.handlers.submit(ctx, { ...submitEvent("req-phone-wrong-owner"),
+    referencePhotoIds: ["photo-phone"], phoneReferencePhotoIds: ["photo-phone"], photoReferenceConsent: true }),
+    { code: "REFERENCE_IMAGE_NOT_READY" });
+  assert.throws(() => core.normalizeSubmitInput({ ...submitEvent("req-phone-invalid-ids"),
+    phoneReferencePhotoIds: ["photo-phone"] }), { code: "INVALID_REFERENCE_IMAGE" });
+});
+
 test("美术想法在排队前必须审核，重复请求不能改写原想法", async () => {
   const checks = [];
   const h = harness({ deps: { textChecker: { async check(input) { checks.push(input); return { ok: true }; } } } });

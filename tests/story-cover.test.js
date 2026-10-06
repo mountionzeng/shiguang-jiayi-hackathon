@@ -56,6 +56,17 @@ test('参考图只能来自当前书且通过审核，照片经photoAccess权限
   await assert.rejects(h.svc.sources({openid:'intruder'},{familyId,storyId}),{code:'NOT_FAMILY_OWNER'});
 });
 
+test('封面接受本人从手机导入的照片，不接受伪造来源', async()=>{
+  const h=services();
+  const imported={...input,referenceImageIds:[],referencePhotoIds:['photo-phone'],phoneReferencePhotoIds:['photo-phone']};
+  const good=createCoverServices({repo:{listStoryPhotoIds:async()=>[],getImage:async()=>undefined},storage:{},
+    readPhotos:async()=>[{photoId:'photo-phone',status:'ok',source:'import',url:'https://valid/phone'}]});
+  assert.deepEqual(await good.prepare({openid:'owner'},imported,h.current),['https://valid/phone']);
+  const wrong=createCoverServices({repo:{listStoryPhotoIds:async()=>[],getImage:async()=>undefined},storage:{},
+    readPhotos:async()=>[{photoId:'photo-phone',status:'ok',source:'book',url:'https://valid/phone'}]});
+  await assert.rejects(wrong.prepare({openid:'owner'},imported,h.current),{code:'REFERENCE_IMAGE_NOT_FOUND'});
+});
+
 test('设为封面只更新该书引用，保护并发改稿与审核，支持恢复默认及幂等重试',()=>{
   const story={familyId,id:storyId,version:3,currentRevisionId:'revision-current',imageIds:['old'],coverImageId:'old'};
   const image={familyId,storyId,purpose:'cover',moderation:'pass'};

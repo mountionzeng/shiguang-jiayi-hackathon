@@ -4,7 +4,7 @@
     <view class="images-title serif">这本书的图</view>
     <view class="images-usage" wx:if="{{usageLabel}}">{{usageLabel}}</view>
     <view class="images-note" wx:if="{{limitsLabel}}">{{limitsLabel}}</view>
-    <view class="images-note">画面以本章已经保存的文字为准；默认根据本章文字构思画面，无需选择图片。如果想参考本章照片，可开启下方选项；确认后会把最多 3 张照片作为视觉参考，让主体外观、毛色、花纹、配色和关键物件更贴近原图。已有插图可点「参考这张再画」，延续画风、配色和关键物件。底图会铺在正文纸面，插图可放进正文光标处。每张图右下角都保留 AI 生成标识。</view>
+    <view class="images-note">画面以本章已保存的文字为准。可直接从手机选参考照片，无需先放进正文；也可以不选图，只根据文字生成。参考照片会帮助画面贴近原图中的主体、颜色和关键物件。底图铺在正文纸面，插图可放进正文，每张图保留 AI 生成标识。</view>
   </view>
   <view class="notice" wx:if="{{loadError || (notice && !noticeChapterId)}}">{{loadError || notice}}</view>
   <button wx:if="{{loadError}}" class="tool-button" bindtap="retryLoad">重新加载</button>
@@ -20,6 +20,14 @@
     <view class="reference-choice" wx:if="{{group.referencePhotoIds.length}}">
       <text>{{useChapterPhotos[group.id] ? '参考本章照片' : '只根据文字生成'}}</text>
       <switch checked="{{useChapterPhotos[group.id] || false}}" data-id="{{group.id}}" bindchange="onReferenceModeChange" color="#637d70" aria-label="参考本章照片（可不选）" disabled="{{submitting || savingBackdrop || savingPlacement || removingId ? true : false}}" />
+    </view>
+    <button class="phone-reference-button" data-id="{{group.id}}" bindtap="addPhoneReference" disabled="{{submitting || pickingReference || savingBackdrop || savingPlacement || removingId}}">{{pickingReference === group.id ? '正在选择…' : '＋ 从手机选参考图'}}</button>
+    <view class="phone-reference-hint">最多 3 张；手机照片优先于本章照片，也可以不选。插图和底图都使用本章所选参考图。</view>
+    <view class="phone-reference-list" wx:if="{{phoneReferences[group.id].length}}">
+      <view class="phone-reference-item" wx:for="{{phoneReferences[group.id]}}" wx:for-item="photo" wx:key="id">
+        <image src="{{photo.path}}" mode="aspectFill" aria-label="手机参考照片" />
+        <button data-chapter="{{group.id}}" data-id="{{photo.id}}" bindtap="removePhoneReference" disabled="{{submitting || pickingReference}}" aria-label="移除这张参考照片">移除</button>
+      </view>
     </view>
     <view class="group-actions">
       <button class="tool-button {{group.id === focusChapterId && focusPurpose === 'illustration' ? 'is-route-focus' : ''}}" data-id="{{group.id}}" data-purpose="illustration" bindtap="generate" loading="{{submitting === group.id + ':illustration'}}" disabled="{{submitting || savingBackdrop ? true : false}}">

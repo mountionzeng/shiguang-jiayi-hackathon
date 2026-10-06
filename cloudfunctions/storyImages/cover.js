@@ -43,11 +43,15 @@ function createCoverServices({ repo, storage, readPhotos }) {
     }
     if (photoIds.length) {
       const allowed = new Set(await allowedPhotos(input.familyId, input.storyId, current));
-      if (photoIds.some(id => !allowed.has(id))) throw new core.StoryImageError('REFERENCE_IMAGE_NOT_FOUND', '只能参考这本书里的照片');
+      const imported = new Set(input.phoneReferencePhotoIds || []);
+      if (photoIds.some(id => !allowed.has(id) && !imported.has(id))) throw new core.StoryImageError('REFERENCE_IMAGE_NOT_FOUND', '只能参考这本书里的照片或本人从手机导入的照片');
       const photos = await readPhotos({ familyId: input.familyId, photoIds, variant: 'small',
         purpose: 'ai-reference', onBehalfOfOpenid: ctx.openid });
       if (photos.length !== photoIds.length || photos.some(photo => photo.status !== 'ok' || !photo.url)) {
         throw new core.StoryImageError('REFERENCE_IMAGE_NOT_READY', '所选照片尚未上传或暂时无法用于 AI，请重新选择');
+      }
+      if (photos.some(photo => imported.has(photo.photoId) && photo.source !== 'import')) {
+        throw new core.StoryImageError('REFERENCE_IMAGE_NOT_FOUND', '手机参考照片必须由本人从手机导入');
       }
       urls.push(...photos.map(photo => photo.url));
     }

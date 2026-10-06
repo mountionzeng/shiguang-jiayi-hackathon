@@ -119,6 +119,7 @@ function normalizeSubmitInput(event) {
   const purpose = String(input.purpose || "illustration");
   const referenceImageId = String(input.referenceImageId || "").trim();
   const referencePhotoIds = normalizeReferencePhotoIds(input.referencePhotoIds);
+  const phoneReferencePhotoIds = normalizeReferencePhotoIds(input.phoneReferencePhotoIds);
   const artDirection = normalizeArtDirection(input.artDirection);
   if (!ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
   if (!ID_PATTERN.test(chapterId)) throw new StoryImageError("INVALID_CHAPTER", "章节信息不完整");
@@ -133,6 +134,9 @@ function normalizeSubmitInput(event) {
   }
   if (referencePhotoIds.length && !["illustration", "backdrop", "cover"].includes(purpose)) {
     throw new StoryImageError("INVALID_REFERENCE_PURPOSE", "只有章节插图、底图和封面可以参考照片");
+  }
+  if (phoneReferencePhotoIds.some(id => !referencePhotoIds.includes(id))) {
+    throw new StoryImageError("INVALID_REFERENCE_IMAGE", "手机参考照片必须包含在所选参考图中");
   }
   if (referencePhotoIds.length && purpose === "illustration" && referenceImageId) {
     throw new StoryImageError("INVALID_REFERENCE_IMAGE", "本章照片和旧插图一次只能选一种参考");
@@ -150,9 +154,9 @@ function normalizeSubmitInput(event) {
       !referencePhotoIds.every(id => typeof id === "string" && /^photo-[0-9a-z-]{1,80}$/.test(id))) {
       throw new StoryImageError("INVALID_REFERENCE_IMAGE", "最多选 3 张本书的图片作为参考");
     }
-    return { familyId, memberId: "", storyId, chapterId, requestId, purpose, referenceImageId: "", referenceImageIds, referencePhotoIds, artDirection };
+    return { familyId, memberId: "", storyId, chapterId, requestId, purpose, referenceImageId: "", referenceImageIds, referencePhotoIds, phoneReferencePhotoIds, artDirection };
   }
-  return { familyId, memberId, storyId, chapterId, requestId, purpose, referenceImageId, referencePhotoIds, artDirection };
+  return { familyId, memberId, storyId, chapterId, requestId, purpose, referenceImageId, referencePhotoIds, phoneReferencePhotoIds, artDirection };
 }
 
 function normalizeMemberInput(event) {

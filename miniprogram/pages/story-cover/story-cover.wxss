@@ -6,6 +6,7 @@ page { background: #fbf8f1; color: #303b34; }
 .cover-description { color: #727669; font-size: 27rpx; line-height: 1.8; margin: 18rpx 0 24rpx; }
 .cover-section { display: flex; align-items: center; justify-content: space-between; margin-top: 42rpx; font-size: 32rpx; }
 .cover-count { color: #64816d; font-size: 24rpx; }
+.phone-reference-button { margin: 0 0 10rpx; padding: 0 18rpx; width: fit-content; color: #426a50; background: #edf1e8; border-radius: 10rpx; font-size: 26rpx; }
 .reference-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14rpx; margin: 24rpx 0; }
 .reference-choice { position: relative; padding: 0; margin: 0; line-height: 1; border: 3rpx solid transparent; border-radius: 10rpx; background: #eeeadd; overflow: hidden; }
 .reference-choice::after { border: none; }

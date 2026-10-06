@@ -869,6 +869,25 @@ test("本章照片可选，默认只按文字生成，选择和取消参考都�
   assert.deepEqual(submitted[submitted.length - 1], { memberId: "owner", chapterId: "chapter-a", purpose: "illustration" });
 });
 
+test("手机参考图优先传给插图和底图，移除后仍可只根据文字生成", async context => {
+  const env = installWx({}, stateWithBook()); env.setApp(false);
+  const submitted: unknown[] = [];
+  const restoreApi = withApi({listStoryImages: async () => listWith({images:[],pending:[]}),
+    submitChapterImage: async input => { submitted.push(input); return {...listWith().pending[0],chapterId:input.chapterId,purpose:input.purpose}; }});
+  context.after(() => {restoreApi();env.restore();});
+  const page = instantiate(await pageDefinition("story-images"));
+  context.after(() => call(page,"onUnload"));
+  await call(page,"refresh");
+  page.setData({phoneReferences:{"chapter-a":[{id:"photo-phone",path:"/local/phone.jpg"}]}});
+  await call(page,"generate",{currentTarget:{dataset:{id:"chapter-a",purpose:"illustration"}}});
+  await call(page,"generate",{currentTarget:{dataset:{id:"chapter-a",purpose:"backdrop"}}});
+  assert.deepEqual(submitted.map((item:any)=>[item.referencePhotoIds,item.phoneReferencePhotoIds]),
+    [[['photo-phone'],['photo-phone']],[['photo-phone'],['photo-phone']]]);
+  call(page,"removePhoneReference",{currentTarget:{dataset:{chapter:"chapter-a",id:"photo-phone"}}});
+  await call(page,"generate",{currentTarget:{dataset:{id:"chapter-a",purpose:"illustration"}}});
+  assert.equal((submitted[2] as any).referencePhotoIds,undefined);
+});
+
 test("插图可以回到来源章节的光标处，正文正在使用的原图不能直接删除", async context => {
   const state = stateWithBook();
   const env = installWx({ navigateBack: () => undefined }, state);

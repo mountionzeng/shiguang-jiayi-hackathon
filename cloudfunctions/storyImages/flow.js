@@ -45,7 +45,8 @@ function createStoryImageHandlers(deps) {
       existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId ||
       String(existing.artDirectionHash || "") !== (input.artDirection ? core.textHash(input.artDirection) : "") ||
       JSON.stringify(existing.referenceImageIds || []) !== JSON.stringify(input.referenceImageIds || []) ||
-      JSON.stringify(existing.referencePhotoIds || []) !== JSON.stringify(input.referencePhotoIds || [])) {
+      JSON.stringify(existing.referencePhotoIds || []) !== JSON.stringify(input.referencePhotoIds || []) ||
+      JSON.stringify(existing.phoneReferencePhotoIds || []) !== JSON.stringify(input.phoneReferencePhotoIds || [])) {
       throw new core.StoryImageError("REQUEST_CONFLICT", "这次请求的章节或参考图已经变化，请重新操作");
     }
   };
@@ -65,9 +66,9 @@ function createStoryImageHandlers(deps) {
     return await repo.listStoryMemories(familyId, storyContext.story);
   }
 
-  function assertReferencePhotosInChapter(source, photoIds) {
+  function assertReferencePhotosInChapter(source, photoIds, phonePhotoIds = []) {
     if (!photoIds?.length) return;
-    const allowed = new Set(source.photoIds || []);
+    const allowed = new Set([...(source.photoIds || []), ...phonePhotoIds]);
     if (photoIds.some(id => !allowed.has(id))) {
       throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "只能参考本章正文里的照片");
     }
@@ -81,6 +82,10 @@ function createStoryImageHandlers(deps) {
     });
     if (photos.length !== photoIds.length || photos.some(photo => photo.status !== "ok" || !photo.url)) {
       throw new core.StoryImageError("REFERENCE_IMAGE_NOT_READY", "本章照片尚未上传或暂时无法用于 AI，请稍后再试");
+    }
+    const imported = new Set(input.phoneReferencePhotoIds || []);
+    if (photos.some(photo => imported.has(photo.photoId) && photo.source !== "import")) {
+      throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "手机参考照片必须由本人从手机导入");
     }
     return photos.map(photo => photo.url);
   }
@@ -163,7 +168,7 @@ function createStoryImageHandlers(deps) {
     const chapterImageReferenceIds = input.purpose === "cover" ? [] : (source.storyImageReferenceIds || [])
       .map(referenceId => core.storyImageIdFromReference(input.familyId, referenceId))
       .filter(Boolean);
-    assertReferencePhotosInChapter(source, input.purpose === "cover" ? [] : input.referencePhotoIds);
+    assertReferencePhotosInChapter(source, input.purpose === "cover" ? [] : input.referencePhotoIds, input.phoneReferencePhotoIds);
     let chapterReferenceUrls = [];
     if (["illustration", "backdrop"].includes(input.purpose) && input.referencePhotoIds.length) {
       if (!referenceAnalyzer?.configured) throw new core.StoryImageError("REFERENCE_NOT_CONFIGURED", "参考图服务还没配置好");
@@ -243,6 +248,7 @@ function createStoryImageHandlers(deps) {
       referenceImageCount: (input.referenceImageIds?.length || 0) + (input.referenceImageId ? 1 : 0) + chapterImageReferenceIds.length,
       ...(input.artDirection ? { artDirectionHash: core.textHash(input.artDirection) } : {}),
       ...(input.referencePhotoIds?.length ? { referencePhotoIds: input.referencePhotoIds } : {}),
+      ...(input.phoneReferencePhotoIds?.length ? { phoneReferencePhotoIds: input.phoneReferencePhotoIds } : {}),
       ...(input.purpose === "cover" ? { referenceImageIds: input.referenceImageIds, referencePhotoIds: input.referencePhotoIds } : {}),
       ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
       ...(chapterImageReferenceIds.length ? { chapterImageReferenceIds } : {}),

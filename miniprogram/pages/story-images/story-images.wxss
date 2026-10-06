@@ -33,3 +33,9 @@
 .quality-flawed { color: var(--coral); }
 
 .reference-choice { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin: 16rpx 0; color: var(--ink); font-size: 26rpx; }
+.phone-reference-button { margin: 16rpx 0 6rpx; padding: 0 18rpx; width: fit-content; color: var(--jade); background: var(--paper-sunk); border-radius: 10rpx; font-size: 26rpx; }
+.phone-reference-hint { color: var(--ink-soft); font-size: 22rpx; line-height: 1.5; }
+.phone-reference-list { display: flex; flex-wrap: wrap; gap: 12rpx; margin: 12rpx 0; }
+.phone-reference-item { position: relative; width: 120rpx; height: 120rpx; }
+.phone-reference-item image { width: 100%; height: 100%; border-radius: 8rpx; }
+.phone-reference-item button { position: absolute; right: 0; bottom: 0; margin: 0; padding: 0 6rpx; line-height: 36rpx; font-size: 20rpx; color: #fff; background: rgba(40, 50, 40, .78); }
