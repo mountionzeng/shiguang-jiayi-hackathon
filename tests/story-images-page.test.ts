@@ -888,6 +888,29 @@ test("手机参考图优先传给插图和底图，移除后仍可只根据文�
   assert.equal((submitted[2] as any).referencePhotoIds,undefined);
 });
 
+test("配图页可从手机相册导入参考照片，不占用章节正文", async context => {
+  const state = stateWithBook();
+  const env = installWx({
+    env: { USER_DATA_PATH: "/user" },
+    chooseMedia: ({ success }: {success: (value: unknown) => void}) => success({tempFiles:[{tempFilePath:"/temp/cat.jpg",size:1024}]}),
+    getFileSystemManager: () => ({
+      saveFile: ({filePath,success}:{filePath:string;success:(value:unknown)=>void}) => success({savedFilePath:filePath}),
+      accessSync: () => undefined,
+    }),
+  }, state);
+  env.setApp(false);
+  const restoreApi = withApi({listStoryImages: async () => listWith({images:[],pending:[]})});
+  context.after(() => {restoreApi();env.restore();});
+  const page = instantiate(await pageDefinition("story-images"));
+  context.after(() => call(page,"onUnload"));
+  await call(page,"refresh");
+  await call(page,"addPhoneReference",{currentTarget:{dataset:{id:"chapter-a"}}});
+  const imported = (page.data.phoneReferences as Record<string,Array<{id:string;path:string}>>)["chapter-a"];
+  assert.equal(imported.length,1);
+  assert.match(imported[0].path,/^\/user\/photo-/);
+  assert.deepEqual(state.manuscriptRevisions![0].draft.chapters![0].content,[{text:"院子里晒着被子。\n"}]);
+});
+
 test("插图可以回到来源章节的光标处，正文正在使用的原图不能直接删除", async context => {
   const state = stateWithBook();
   const env = installWx({ navigateBack: () => undefined }, state);
