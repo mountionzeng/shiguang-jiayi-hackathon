@@ -14,6 +14,10 @@ export const CLOUD_AI_ENABLED = true;
 // functions, credentials, entitlements, quotas, billing, and safety routes
 // have all been verified. This is a release gate, not an account identifier.
 export const CLOUD_AI_RELEASE_READY = false;
+// Keep approved preview text AI in source rather than patched temporary copies.
+export function textAiReadyForVersion(envVersion?: string): boolean {
+  return CLOUD_AI_ENABLED && (CLOUD_AI_RELEASE_READY || envVersion === "develop" || envVersion === "trial");
+}
 // Image generation has its own release gate so it can be enabled after its
 // provider, billing, moderation, and metadata path have been verified without
 // also exposing text or audio AI.

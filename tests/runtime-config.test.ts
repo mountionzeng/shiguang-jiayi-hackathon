@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CLOUD_AI_RELEASE_READY, CLOUD_IMAGE_AI_RELEASE_READY, cloudEnvForAppId } from "../miniprogram/config/runtime";
+import { CLOUD_AI_RELEASE_READY, CLOUD_IMAGE_AI_RELEASE_READY, cloudEnvForAppId, textAiReadyForVersion } from "../miniprogram/config/runtime";
 
 test("云环境只按已登记的 AppID 解析", () => {
   assert.equal(cloudEnvForAppId("wx6be512f0fe129b62"), "cloud1-d0g8c8yg0513a6068");
@@ -9,9 +9,12 @@ test("云环境只按已登记的 AppID 解析", () => {
   assert.equal(cloudEnvForAppId(""), undefined);
 });
 
-test("企业预览版只开放已验收的图片 AI", () => {
+test("开发和体验版恢复文字 AI，正式版和未知版本保持发布门禁", () => {
   assert.equal(CLOUD_AI_RELEASE_READY, false);
   assert.equal(CLOUD_IMAGE_AI_RELEASE_READY, true);
+  assert.equal(textAiReadyForVersion("develop"), true);
+  assert.equal(textAiReadyForVersion("trial"), true);
+  for (const version of ["release", "unknown", undefined]) assert.equal(textAiReadyForVersion(version), false);
 });
 
 test("小程序启动时未知 AppID 不初始化云环境，已登记 AppID 才初始化", async () => {
@@ -21,13 +24,14 @@ test("小程序启动时未知 AppID 不初始化云环境，已登记 AppID 才
   };
   let definition: AppDefinition | undefined;
   let appId = "wx0000000000000000";
+  let envVersion = "develop";
   const cloudInitCalls: Array<{ env: string; traceUser: boolean }> = [];
   const priorApp = (globalThis as typeof globalThis & { App?: unknown }).App;
   const priorWx = (globalThis as typeof globalThis & { wx?: unknown }).wx;
   (globalThis as typeof globalThis & { App: (value: AppDefinition) => void }).App = value => { definition = value; };
   (globalThis as typeof globalThis & { wx: unknown }).wx = {
     cloud: { init: (options: { env: string; traceUser: boolean }) => { cloudInitCalls.push(options); } },
-    getAccountInfoSync: () => ({ miniProgram: { appId } }),
+    getAccountInfoSync: () => ({ miniProgram: { appId, envVersion } }),
     getStorageSync: () => [],
     setStorageSync: () => undefined,
     onNetworkStatusChange: () => undefined,
@@ -40,14 +44,19 @@ test("小程序启动时未知 AppID 不初始化云环境，已登记 AppID 才
     definition.onLaunch.call(pendingApp);
     assert.deepEqual(cloudInitCalls, []);
     assert.equal(pendingApp.globalData.cloudReady, false);
+    assert.equal(pendingApp.globalData.aiReady, false);
 
     appId = "wx86ae3e9d507ce52d";
     const configuredApp = { globalData: { cloudReady: false, aiReady: false, imageAiReady: false } };
     definition.onLaunch.call(configuredApp);
     assert.deepEqual(cloudInitCalls, [{ env: "cloud1-d5ghzk30ve609f544", traceUser: false }]);
     assert.equal(configuredApp.globalData.cloudReady, true);
-    assert.equal(configuredApp.globalData.aiReady, false);
+    assert.equal(configuredApp.globalData.aiReady, true);
     assert.equal(configuredApp.globalData.imageAiReady, true);
+    envVersion = "release";
+    definition.onLaunch.call(configuredApp);
+    assert.equal(configuredApp.globalData.aiReady, false);
+    await new Promise(resolve => setImmediate(resolve));
   } finally {
     (globalThis as typeof globalThis & { App?: unknown }).App = priorApp;
     (globalThis as typeof globalThis & { wx?: unknown }).wx = priorWx;
