@@ -79,5 +79,7 @@ test('设为封面只更新该书引用，保护并发改稿与审核，支持�
   for(const candidate of [{...image,storyId:'story-other'},{...image,moderation:'risky'},{...image,deletedAtMs:1},{...image,purpose:'illustration'}]) {
     assert.throws(()=>coverSelectionPatch(story,candidate,selection),{code:'IMAGE_NOT_READY'});
   }
+  assert.throws(()=>coverSelectionPatch(story,{...image,quality:'flawed'},selection),{code:'IMAGE_NOT_READY'});
+  assert.throws(()=>coverSelectionPatch(story,{...image,quality:'pending'},selection),{code:'IMAGE_NOT_READY'});
   assert.equal(coverSelectionPatch(story,undefined,{...selection,imageId:''}).coverImageId,'');
 });

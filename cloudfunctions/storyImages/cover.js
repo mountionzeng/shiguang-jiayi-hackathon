@@ -77,6 +77,10 @@ function coverSelectionPatch(story, image, {familyId, storyId, imageId, expected
       image.deletedAtMs !== undefined || image.moderation !== 'pass')) {
     throw new core.StoryImageError('IMAGE_NOT_READY', '这张封面尚未通过审核或已不可用，请稍后再试');
   }
+  if (imageId && (image.quality === 'flawed' || image.quality === 'pending')) {
+    throw new core.StoryImageError('IMAGE_NOT_READY', image.quality === 'flawed'
+      ? '这张封面有文字或画面瑕疵，请重新生成一张' : '这张封面还在检查画面质量，请稍后再选用');
+  }
   return {coverImageId:imageId, imageIds:[...new Set([...(story.imageIds || []), ...(imageId ? [imageId] : [])])],
     version:story.version + 1, updatedAt:now};
 }

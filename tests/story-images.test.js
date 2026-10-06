@@ -628,9 +628,25 @@ test("同一本书的来源记忆参与美术提炼，但不改写当前画面�
   assert.match(coverPrompt.prompt, /2:3竖向独立画作/);
   assert.match(coverPrompt.prompt, /从顶端连续铺到四边/);
   assert.match(coverPrompt.prompt, /图像满幅延展，顶部保留可见的环境、光影或材料层次/);
-  assert.match(coverPrompt.prompt, /所有标题、书脊、纸边和外框由界面另行排版/);
+  assert.match(coverPrompt.prompt, /纯图像独立画作/);
+  assert.doesNotMatch(coverPrompt.prompt, /标题|书名|字体/);
   assert.doesNotMatch(coverPrompt.prompt, /年代质地/);
   assert.match(coverPrompt.prompt, /符合客观物理规律/);
+});
+
+test("封面即使有模型美术配方也保留全书温馨情绪，不把参考图暗部当作气质", () => {
+  const source = { text: "小猫每天在窗边陪着家人，大家一起吃饭，互相照顾。", artText: "小猫每天在窗边陪着家人，大家一起吃饭，互相照顾。", bookLifeCategory: "family" };
+  const scene = { scene: "小猫在窗边陪伴家人", objects: ["小猫", "窗台"], light: "午后", mood: "温馨", figures: [],
+    art: { medium: "黑白木刻", marks: "硬边刻线", palette: ["黑", "白"], composition: "猫在前景", light: "高反差逆光" } };
+  const prompt = core.buildImagePrompt(scene, "cover", undefined, source).prompt;
+  assert.match(prompt, /全书主导氛围：温馨/);
+  assert.match(prompt, /低饱和暖色压在物件受光处/);
+  assert.match(prompt, /媒介、配色、光线与构图都要与这个氛围一致/);
+  assert.doesNotMatch(prompt, /黑白木刻|高反差逆光/);
+  assert.match(prompt, /柔软彩铅颗粒与薄水彩/);
+  const messages = require('../cloudfunctions/storyImages/scene').buildSceneMessages({ ...source, scope: "book" });
+  assert.match(messages[0].content, /不能把一个短暂的冲突、悲伤或黑暗场景误当作整本书的气质/);
+  assert.match(messages[0].content, /不设计标题、汉字、拉丁字母或仿字形装饰/);
 });
 
 test("情绪画法常开，常见氛围词各有材料行为，且否定情绪只走中性兜底", () => {

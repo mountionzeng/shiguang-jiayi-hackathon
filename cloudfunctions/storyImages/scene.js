@@ -25,7 +25,7 @@ const SYSTEM_PROMPT = [
   "不得补造正文没有的人名、地点、年份、事件或物件。只输出 JSON，不要输出说明。",
 ].join("\n");
 
-const COVER_SYSTEM_PROMPT = SYSTEM_PROMPT + "\n本次任务是整本书的封面，不是某一章插图。用户提供了按顺序排列的全部已保存正文。通读全部章节，概括贯穿全书的情绪、主题与代表意象，形成一个适合竖版书封的画面；不要只取第一章，不要把每章拼成连环画。书名由页面另外排版，画面只描绘图像。参考图只用于视觉风格，正文事实以全书为准。";
+const COVER_SYSTEM_PROMPT = SYSTEM_PROMPT + "\n本次任务是整本书的封面，不是某一章插图。用户提供了按顺序排列的全部已保存正文。通读全部章节，不要只取第一章；辨认全书占主导的情绪和人物、动物或物件之间的关系，不能把一个短暂的冲突、悲伤或黑暗场景误当作整本书的气质。封面 art.medium、palette、composition 和 light 必须共同服务于这个主导情绪：温馨陪伴的故事用亲近的尺度、可见的柔和光线与舒适色面表达，不能用威胁性剪影或惊悚式高反差取代。参考照片用于主体外观，参考 AI 图片的画风只在符合正文情绪时沿用。书名由页面另外排版，画面只描绘完整图像，不设计标题、汉字、拉丁字母或仿字形装饰。";
 
 function buildSceneMessages({ title, text, artText = "", artDirection = "", referenceArt, purpose = "illustration", characterContext = "", scope }) {
   const continuity = characterContext

@@ -30,7 +30,7 @@
       <view class="cover-result" wx:for="{{covers}}" wx:key="imageId">
         <image class="cover-art" src="{{item.url}}" mode="aspectFill" data-url="{{item.url}}" bindtap="preview" aria-label="查看封面大图" />
         <view class="cover-result-label">{{item.selected ? '正在使用' : '封面'}}<text wx:if="{{item.moderationLabel}}"> · {{item.moderationLabel}}</text></view>
-        <view class="cover-quality" wx:if="{{item.qualityLabel}}">{{item.qualityLabel}}</view>
+        <view class="cover-quality" wx:if="{{item.qualityLabel}}">{{item.qualityLabel}}{{item.quality === 'flawed' ? ' · 请重新生成，不能设为封面' : ''}}</view>
       </view>
     </view>
     <button class="cover-reset tool-button" wx:if="{{coverImageId}}" data-id="" bindtap="choose" disabled="{{selecting || submitting}}">恢复纸本封面</button>
@@ -43,7 +43,7 @@
     <image class="image-preview-art" src="{{previewCover.url}}" mode="aspectFit" />
     <scroll-view class="image-preview-controls" scroll-y>
       <view class="image-preview-note" wx:if="{{previewCover.qualityLabel}}">{{previewCover.qualityLabel}}</view>
-      <button class="image-preview-primary" data-id="{{previewCover.imageId}}" bindtap="choose" loading="{{selecting}}" disabled="{{selecting || submitting || !previewCover.ready || previewCover.selected}}">{{previewCover.selected ? '已是封面' : (!previewCover.ready ? '等待审核' : '设为封面')}}</button>
+      <button class="image-preview-primary" data-id="{{previewCover.imageId}}" bindtap="choose" loading="{{selecting}}" disabled="{{selecting || submitting || !previewCover.ready || previewCover.selected}}">{{previewCover.selected ? '已是封面' : (previewCover.quality === 'flawed' ? '画面有瑕疵' : (!previewCover.ready ? '等待检查' : '设为封面'))}}</button>
       <view class="image-preview-note" wx:if="{{notice}}">{{notice}}</view>
     </scroll-view>
   </view>

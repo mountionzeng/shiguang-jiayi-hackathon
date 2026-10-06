@@ -39,7 +39,7 @@ Page({
     ];
     const covers = list.images.filter(image => image.purpose === 'cover').map(image => ({...image,
       selected:image.imageId === (source?.coverImageId ?? this.data.coverImageId), qualityLabel:qualityLabel(image),
-      moderationLabel:moderationLabel(image.moderation), ready:image.moderation === 'pass'}));
+      moderationLabel:moderationLabel(image.moderation), ready:image.moderation === 'pass' && image.quality !== 'flawed' && image.quality !== 'pending'}));
     this.setData({
       ...(source ? {title:source.title, version:source.version, coverImageId:source.coverImageId,
         chapterCount:source.chapterCount, textLength:source.textLength} : {}),

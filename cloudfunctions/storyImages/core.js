@@ -645,24 +645,31 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
   const text = String(source?.artText || source?.text || "");
   const category = purpose === "cover" ? source?.bookLifeCategory || lifeCategory(text) : lifeCategory(text) || source?.bookLifeCategory;
   const selectedPaint = LIFE_PAINT[category];
-  const art = normalizeArtRecipe(scene.art);
+  const proposedArt = normalizeArtRecipe(scene.art);
+  const warmCover = purpose === "cover" && /温馨|温暖|陪伴|亲切|安心|欢喜|快乐/.test(String(scene.mood || ""));
+  const ominousArt = proposedArt && /惊悚|恐怖|威胁|阴森|阴暗|黑白木刻|高反差|剪影|黑暗/.test(
+    [proposedArt.medium, proposedArt.marks, proposedArt.palette.join("、"), proposedArt.composition, proposedArt.light].join(" "));
+  const art = warmCover && ominousArt && !artDirection ? undefined : proposedArt;
   if (art?.medium) parts.push(`美术媒介：${art.medium}。`);
   if (art?.marks) parts.push(`材料笔触：${art.marks}。`);
   if (art?.palette.length) parts.push(`色彩关系：${art.palette.join("、")}。`);
   if (art?.composition) parts.push(`空间构图：${art.composition}。`);
   if (art?.light) parts.push(`光线与色面：${art.light}。`);
   if (!art && selectedPaint) parts.push(purpose === "backdrop" ? `媒介细节：${selectedPaint.medium}` : `媒介与材料：${selectedPaint.medium}`);
-  if (purpose !== "backdrop" && !art) {
+  if (purpose !== "backdrop" && (!art || purpose === "cover")) {
     const paint = emotionPaint(scene.mood, text);
+    if (purpose === "cover") parts.push(`全书主导氛围：${cleanText(scene.mood, 12) || "以全文为准"}。媒介、配色、光线与构图都要与这个氛围一致，参考图的暗部或局部情节不能盖过全文的情绪。`);
     if (paint) parts.push(`情绪的画法：${paint}`);
-    parts.push(selectedPaint?.texture || "让纸面材料与物件之间的空间关系承担叙事。");
-    if (/(?:^|[^你他她它])我(?:们|自己)?/.test(text)) parts.push("视点贴近讲述者的主观经验，以亲近的物件尺度安排空间。");
-    else parts.push("视点从动作与关系观察，人物与环境保留自然的距离。");
+    if (!art) {
+      parts.push(selectedPaint?.texture || "让纸面材料与物件之间的空间关系承担叙事。");
+      if (/(?:^|[^你他她它])我(?:们|自己)?/.test(text)) parts.push("视点贴近讲述者的主观经验，以亲近的物件尺度安排空间。");
+      else parts.push("视点从动作与关系观察，人物与环境保留自然的距离。");
+    }
   }
   const eraHint = explicitEraHint(String(source?.text || ""));
   if (eraHint) parts.push(`${purpose === "backdrop" ? "景物与器物" : "服装与器物"}的年代质地依据正文明确写出的${eraHint}。`);
   if (purpose === "illustration" && !art?.composition) parts.push("根据当前章节安排横向构图，光线来自场景内可辨认的方向。");
-  if (purpose === "cover") parts.push("图像满幅延展，顶部保留可见的环境、光影或材料层次。画面是完整的独立图像，所有标题、书脊、纸边和外框由界面另行排版。");
+  if (purpose === "cover") parts.push("图像满幅延展，顶部保留可见的环境、光影或材料层次。画面是一幅纯图像独立画作，从顶端到四边都由真实景物、光影和材料纹理连续构成。");
   if (purpose === "backdrop") parts.push("正文所在留白保持清朗，景物附近保留少量纸纤维和淡彩渗色。");
   parts.push(PHYSICAL_REALISM_REQUIREMENT);
   if (artDirection) parts.push(`用户明确的美术要求：${artDirection}。保留其中指定的外观、媒介、配色与构图；正文未限定的外观由用户要求决定，已明确的故事事实仍以正文为准。`);
@@ -677,6 +684,7 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
     if (visualReference.styleOnly) parts.push("所选封面仅提供配色、笔触和材质，当前章重新选择主体与横向构图；主体、物件和空间关系以当前正文为依据。");
     if (continuity.length) parts.push(`参考图的视觉连续性：${continuity.join("；")}。`);
   }
+  if (purpose === "cover" && !artDirection) parts.push("最终画面以全书的主导氛围和亲近关系为准，参考图帮助辨认主体外观和适合的材料；画面由真实景物与可见光线构成。");
   return { prompt: parts.join(""), width: style.width, height: style.height };
 }
 
