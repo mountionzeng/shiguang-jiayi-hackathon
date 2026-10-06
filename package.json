@@ -7,6 +7,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts tests/*.test.js",
     "test:files": "tsx --test",
+    "test:regressions": "node scripts/check-regressions.mjs",
+    "preview:wechat": "node scripts/wechat-preview.mjs",
     "workspace:check": "node scripts/workspace-status.mjs",
     "test:kimi": "node scripts/test-kimi-connection.mjs",
     "check": "npm run typecheck && npm test",
