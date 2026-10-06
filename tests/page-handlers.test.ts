@@ -1757,6 +1757,16 @@ test("AI organizing starts a book; edits, saved versions and source changes pres
   await callPage(page, "refresh");
   assert.ok(page.data.draft);
   assert.equal(page.data.stale, true);
+  const refresh = page.refresh;
+  page.refresh = async () => { throw new Error('页面绘制失败'); };
+  const beforeFailure = storage.roomState().manuscriptRevisions!.length;
+  assert.equal(await callPage(page, 'persist', revision.draft, revision.sourceFingerprint, 'version', '刷新故障验收'), false);
+  assert.match(String(page.data.saveNotice), /已保存.*暂未刷新/);
+  assert.equal(storage.roomState().manuscriptRevisions!.length, beforeFailure + 1);
+  assert.ok(page.pendingSave, 'retain the acknowledged request ID until read-back succeeds');
+  page.refresh = refresh;
+  assert.equal(await callPage(page, 'persist', revision.draft, revision.sourceFingerprint, 'version', '刷新故障验收'), true);
+  assert.equal(storage.roomState().manuscriptRevisions!.length, beforeFailure + 1, 'retry never creates a second version');
 });
 
 test("book candidates hide memories from deleted stories and include a newly saved fragment", async context => {

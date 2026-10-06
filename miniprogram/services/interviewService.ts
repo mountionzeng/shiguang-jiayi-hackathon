@@ -1,4 +1,5 @@
 import type { ShiguangAppOptions } from "../app";
+import { logServiceFailure } from './serviceFailure';
 import {
   MemoryType,
 } from "../domain/biography";
@@ -115,6 +116,7 @@ export async function generateInterviewPrompt(
     console.warn("AI 追问返回格式不完整，将使用本地追问规则");
     return localFallbackPrompt(input, "invalid-result");
   } catch (error) {
+    logServiceFailure('chatInterview', 'ai', error);
     console.warn("AI 追问不可用，将使用本地追问规则");
     const failure = error as { code?: unknown; errMsg?: unknown; message?: unknown } | undefined;
     if (failure?.code === "AI_CONTENT_CHECK_QUOTA_EXHAUSTED" || /AI_CONTENT_CHECK_QUOTA_EXHAUSTED|内容安全检查额度已用完/.test(String(failure?.errMsg || failure?.message || ""))) {

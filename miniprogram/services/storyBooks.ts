@@ -3,18 +3,19 @@ import * as core from '../domain/storyBookCore';
 import { loadRoomStateRemoteFirst, usesCloudStorage } from './roomRepository';
 import { saveRoomState } from './roomStorage';
 import { newStoryId } from './storyRecords';
+import { classifyServiceFailure, logServiceFailure, SavedRefreshError } from './serviceFailure';
 
 export { activeStory, current as currentStoryManuscript, history as storyManuscriptHistory, fingerprint as storySourceFingerprint } from '../domain/storyBookCore';
 export const operationId = () => 'op-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);
 function canReadLegacyStories(error: unknown): boolean {
   const detail = error as { code?: unknown; errCode?: unknown; errMsg?: unknown; message?: unknown } | undefined;
   const text = [detail?.code, detail?.errCode, detail?.errMsg, detail?.message, error].map(String).join(' ');
-  return /MIGRATION_NOT_READY|故事库.*(?:准备|迁移测试范围)|新版故事库正在准备|FUNCTION_NOT_FOUND|-501000|FunctionName parameter could not be found|unexpected cloud function:\s*storyBooks/i.test(text);
+  return classifyServiceFailure(error) === 'missing' || /MIGRATION_NOT_READY|故事库.*(?:准备|迁移测试范围)|新版故事库正在准备/i.test(text);
 }
 async function call(action: string, data: Record<string,unknown> = {}): Promise<Record<string,unknown>> {
   const response = await wx.cloud.callFunction({name:'storyBooks',data:{...data,action}});
   const result = response.result as {error?:string;code?:string;message?:string;[key:string]:unknown};
-  if (!result || result.error) {
+  if (!result || typeof result !== 'object' || Array.isArray(result) || result.error) {
     const error = new Error(result?.message || '故事服务暂不可用，请重试') as Error & { code?: string };
     if (result?.code) error.code = result.code;
     throw error;
@@ -43,7 +44,23 @@ export async function ensureStoryBooks(): Promise<FamilyRoomState> {
   state = core.migrate(state,'local'); saveRoomState(state); return state;
 }
 export async function storyCommand(command: Record<string,unknown>): Promise<FamilyRoomState> {
-  if (usesCloudStorage()) { await call(String(command.action),command); return loadRoomStateRemoteFirst(); }
+  if (usesCloudStorage()) {
+    let receipt: Record<string, unknown>;
+    try {
+      receipt = await call(String(command.action), command);
+      if (receipt.ok !== true || typeof receipt.storyId !== 'string' || !receipt.storyId || receipt.storyId !== command.storyId) {
+        throw Object.assign(new Error('暂未确认保存结果，请重新打开书籍核对；当前草稿仍保留'), { code: 'WRITE_UNCONFIRMED' });
+      }
+    } catch (error) {
+      logServiceFailure('storyBooks', 'write', error);
+      throw error;
+    }
+    try { return await loadRoomStateRemoteFirst(); }
+    catch (error) {
+      logServiceFailure('storyBooks', 'refresh', error);
+      throw new SavedRefreshError(String(command.requestId || ''));
+    }
+  }
   const state = await loadRoomStateRemoteFirst();
   const next = core.apply(state,command); saveRoomState(next); return next;
 }

@@ -1,5 +1,6 @@
 import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft } from "../../services/chapterDraft";
 import { storyCoverApi } from "../../services/storyCoverService";
+import { logServiceFailure, SavedRefreshError } from '../../services/serviceFailure';
 import {
   accountOwner, BiographyDraft, buildLocalChapterDraft, contributionStoryTitle, createContribution, isActiveMember, isRecordingProfile, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution, Story,
   memoryAiLabel, memorySegmentCount, memoryPool, personalBookSourceFingerprint,
@@ -1079,9 +1080,13 @@ Page({
         this.pendingSave = revision;
       }
       const state = await saveManuscriptRevision(this.pendingSave, this.revisionId);
-      this.pendingSave = undefined;
       this.setData({ editing: false });
-      await this.refresh(state);
+      try { await this.refresh(state); }
+      catch (error) {
+        logServiceFailure('storyBooks', 'refresh', error);
+        throw new SavedRefreshError(this.pendingSave.id);
+      }
+      this.pendingSave = undefined;
       this.setData({ editing: false, canUndo: false, saveNotice: kind === "draft" ? "修改已保存" : "版本已保存，旧版仍然保留" });
       wx.disableAlertBeforeUnload();
       return true;
@@ -1178,7 +1183,9 @@ Page({
       return unchanged;
     } catch (error) {
       const retained = this.backupEdits();
-      this.setData({saveNotice:(error instanceof Error ? error.message : "暂未确认保存") + (retained ? "；草稿已保留在本机，请重试。" : "；本机备份也失败，请勿退出，先复制正文。")});
+      this.setData({saveNotice:(error instanceof Error ? error.message : "暂未确认保存") + (retained
+        ? (error instanceof SavedRefreshError ? "本机草稿也已保留。" : "；草稿已保留在本机，请重试。")
+        : "；本机备份也失败，请勿退出，先复制正文。")});
       return false;
     } finally { this.setData({saving:false}); }
   },

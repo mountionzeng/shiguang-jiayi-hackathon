@@ -7,6 +7,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts tests/*.test.js",
     "test:files": "tsx --test",
+    "test:regressions": "node scripts/check-regressions.mjs",
+    "preview:wechat": "node scripts/wechat-preview.mjs",
     "workspace:check": "node scripts/workspace-status.mjs",
     "test:kimi": "node scripts/test-kimi-connection.mjs",
     "check": "npm run typecheck && npm test",
@@ -16,6 +18,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "jpeg-js": "0.4.4",
     "miniprogram-api-typings": "^4.0.8",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"

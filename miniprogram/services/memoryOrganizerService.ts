@@ -1,4 +1,5 @@
 import { measurePerformance } from "./performanceLog";
+import { logServiceFailure } from './serviceFailure';
 import type { ShiguangAppOptions } from "../app";
 import {
   MemoryType,
@@ -146,6 +147,7 @@ export async function organizeMemory(
     if (cloudDraft) return cloudDraft;
     console.warn("AI 整理返回格式不完整，将保留原话草稿");
   } catch (error) {
+    logServiceFailure('organizeMemory', 'ai', error);
     console.warn("AI 整理不可用，将保留原话草稿");
     return { ...fallback, fallbackReason: "request-failed" };
   }
@@ -176,6 +178,7 @@ export async function organizeInlineAnswer(
     const cloudDraft = parseCloudDraft(response.result, fallback);
     return cloudDraft?.generationMode === "cloud-ai" ? cloudDraft : undefined;
   } catch (error) {
+    logServiceFailure('organizeMemory', 'ai', error);
     console.warn("就地小忆整理不可用，将保留原话");
     return undefined;
   }

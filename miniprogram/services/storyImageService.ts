@@ -1,4 +1,5 @@
 import { prepareReferencePhotos } from "./referencePhotos";
+import { classifyServiceFailure, logServiceFailure } from './serviceFailure';
 import { measurePerformance } from "./performanceLog";
 import type { ShiguangAppOptions } from "../app";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
@@ -113,11 +114,11 @@ function imageAiReady(): boolean {
 }
 
 function callFailure(error: unknown): StoryImageServiceError {
-  const text = String((error as { errMsg?: unknown })?.errMsg ?? (error as Error)?.message ?? error);
-  if (/FUNCTION_NOT_FOUND|-501000|could not be found/i.test(text)) {
+  const kind = classifyServiceFailure(error);
+  if (kind === 'missing') {
     return new StoryImageServiceError("FUNCTION_MISSING", "配图云函数还没部署");
   }
-  if (/timed? ?out|timeout|-504003/i.test(text)) {
+  if (kind === 'timeout') {
     return new StoryImageServiceError("TIMEOUT", "连接配图服务超时，不确定是否已经开始画，稍后刷新看看");
   }
   return new StoryImageServiceError("CLOUD_FAILED", "配图服务暂时出错，请稍后再试");
@@ -134,6 +135,7 @@ export async function callStoryImages<T>(action: string, data: Record<string, un
     const response = await measurePerformance(operation, () => wx.cloud.callFunction({ name: "storyImages", data: { ...data, action, familyId } }));
     raw = response.result;
   } catch (error) {
+    logServiceFailure('storyImages', ['selectCover', 'remove'].includes(action) ? 'write' : ['submit', 'caption'].includes(action) ? 'ai' : 'read', error);
     throw callFailure(error);
   }
   const result = raw as ({ error?: { code?: unknown; message?: unknown } } & Record<string, unknown>) | undefined;

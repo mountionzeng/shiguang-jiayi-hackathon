@@ -1,4 +1,5 @@
 import {readStoryState} from './storyStateTransport';
+import { classifyServiceFailure } from './serviceFailure';
 import {
   biographySourceFingerprint,
   BiographyDraft,
@@ -390,10 +391,7 @@ function storyServiceError(result: StoryServiceRoomState): Error & { code?: stri
 }
 
 function missingStoryService(error: unknown): boolean {
-  return /FUNCTION_NOT_FOUND|could not be found|unexpected cloud function:\s*storyBooks/i.test(
-    String((error as { message?: unknown; errMsg?: unknown } | undefined)?.message ??
-      (error as { errMsg?: unknown } | undefined)?.errMsg ?? error),
-  );
+  return classifyServiceFailure(error) === 'missing';
 }
 
 async function loadStoryServiceRoomState(view?: "home"): Promise<StoryServiceRoomState> {

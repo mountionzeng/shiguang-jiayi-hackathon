@@ -689,6 +689,9 @@ test("云函数的明确错误、没部署和超时分别给出能看懂的提�
 
   wxMock.cloud = { callFunction: async ({ name }) => { if (name === "getOpenId") return { result: { openid: "o-owner" } }; throw { errMsg: "cloud.callFunction:fail -504003 Invoking task timed out after 3 seconds" }; } };
   await assert.rejects(storyImageApi.checkImageJob("x"), (error: unknown) => error instanceof StoryImageServiceError && error.code === "TIMEOUT");
+
+  wxMock.cloud = { callFunction: async () => { throw { errCode: -501000, errMsg: 'response size exceeded 1048576 bytes' }; } };
+  await assert.rejects(storyImageApi.listStoryImages('owner'), (error: unknown) => error instanceof StoryImageServiceError && error.code === 'CLOUD_FAILED');
 });
 
 test("云开发没连上时直接说明，不去调用云函数", async context => {
