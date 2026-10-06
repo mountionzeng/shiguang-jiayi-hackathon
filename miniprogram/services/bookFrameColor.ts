@@ -102,29 +102,34 @@ export function renderBookCover(page: WechatMiniprogram.Page.TrivialInstance, ur
         wx.getImageInfo({ src: url, success: resolve, fail: reject }));
       const cover = await loadImage(canvas, info.path);
       const silhouette = await loadImage(canvas, '/assets/illustrations/story-book-cover.png');
-      canvas.width = 48; canvas.height = 48;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(cover, 0, 0, 48, 48);
-      const color = coverColor(ctx.getImageData(0, 0, 48, 48).data);
-      const frame = await loadImage(canvas, '/assets/illustrations/story-book-cover-frame.png');
-      // Two source pixels per display pixel keep generated artwork crisp on phones.
-      canvas.width = frame.width * 2; canvas.height = frame.height * 2;
-      ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
-      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      recolorFrame(pixels.data, color);
-      softenLeftSeam(pixels.data, canvas.width, canvas.height);
-      ctx.putImageData(pixels, 0, 0);
-      // Keep the established cover crop. Only its outer outline changes: artwork
-      // cannot show through the transparent corners and paper fibres of the book.
-      ctx.globalCompositeOperation = 'destination-over';
-      const targetWidth = canvas.width * 1.1, targetHeight = canvas.height * 1.16;
+      // The book's own 480px paper-and-cloth edge matches the shelf spines.
+      // Keep it at native resolution; stretching the 270px cut-out made the rim
+      // soft and recolouring every pixel turned its warm paper grey.
+      canvas.width = silhouette.width; canvas.height = silhouette.height;
+      ctx.drawImage(silhouette, 0, 0);
+      const left = canvas.width * .145, top = canvas.height * .025;
+      const right = canvas.width * .95, bottom = canvas.height * .975;
+      const radius = canvas.width * .018;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(left + radius, top);
+      ctx.lineTo(right - radius, top);
+      ctx.quadraticCurveTo(right, top, right, top + radius);
+      ctx.lineTo(right, bottom - radius);
+      ctx.quadraticCurveTo(right, bottom, right - radius, bottom);
+      ctx.lineTo(left + radius, bottom);
+      ctx.quadraticCurveTo(left, bottom, left, bottom - radius);
+      ctx.lineTo(left, top + radius);
+      ctx.quadraticCurveTo(left, top, left + radius, top);
+      ctx.closePath();
+      ctx.clip();
+      const targetWidth = right - left, targetHeight = bottom - top;
       const scale = Math.max(targetWidth / cover.width, targetHeight / cover.height);
       const sourceWidth = targetWidth / scale, sourceHeight = targetHeight / scale;
       ctx.drawImage(cover, (cover.width - sourceWidth) / 2, (cover.height - sourceHeight) / 2,
-        sourceWidth, sourceHeight, -canvas.width * .05, -canvas.height * .08, targetWidth, targetHeight);
-      ctx.globalCompositeOperation = 'destination-in';
-      ctx.drawImage(silhouette, 0, 0, canvas.width, canvas.height);
-      ctx.globalCompositeOperation = 'source-over';
+        sourceWidth, sourceHeight, left, top, targetWidth, targetHeight);
+      ctx.restore();
       const path = await new Promise<string>((resolve, reject) => wx.canvasToTempFilePath({
         canvas, fileType: 'png', width: canvas.width, height: canvas.height,
         destWidth: canvas.width, destHeight: canvas.height,
