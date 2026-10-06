@@ -20,35 +20,38 @@ function rgb([h, s, l]: Hsl): number[] {
   });
 }
 
-/** Dominant colour excludes white margins and dark lettering. */
+/** Use the dominant hue, but measure brightness and saturation across the whole cover. */
 export function coverColor(pixels: Uint8ClampedArray): Hsl {
   const bins = Array.from({ length: 24 }, () => ({ weight: 0, r: 0, g: 0, b: 0 }));
-  let grey = 0, count = 0;
+  let lightness = 0, saturation = 0, count = 0;
   for (let i = 0; i < pixels.length; i += 4) {
     if (pixels[i + 3] < 128) continue;
     const [h, s, l] = hsl(pixels[i], pixels[i + 1], pixels[i + 2]);
-    grey += l; count++;
-    if (l < .12 || l > .94 || s < .08) continue;
+    lightness += l; saturation += s; count++;
+    if (l < .02 || l > .98 || s < .02) continue;
     const bin = bins[Math.floor(h * 24) % 24], weight = .2 + s;
     bin.weight += weight;
     bin.r += pixels[i] * weight; bin.g += pixels[i + 1] * weight; bin.b += pixels[i + 2] * weight;
   }
   const best = bins.reduce((a, b) => b.weight > a.weight ? b : a);
-  return best.weight ? hsl(best.r / best.weight, best.g / best.weight, best.b / best.weight)
-    : [0, 0, count ? grey / count : .7];
+  if (!count) return [0, 0, .7];
+  const hue = best.weight ? hsl(best.r / best.weight, best.g / best.weight, best.b / best.weight)[0] : 0;
+  return [hue, best.weight ? saturation / count : 0, lightness / count];
 }
 
-/** Replace the frame's colour, preserving its original alpha and luminance detail. */
+/** Follow the cover's tone while retaining cloth shading and the original alpha. */
 export function recolorFrame(pixels: Uint8ClampedArray, color: Hsl): void {
-  const watercolour: Hsl = [
-    color[0],
-    color[1] < .08 ? 0 : Math.min(.22, Math.max(.07, color[1] * .34)),
-    color[2],
-  ];
+  // Leave room for highlights/shadows even on near-white or near-black covers.
+  const targetLight = .06 + .88 * color[2];
+  const targetSaturation = color[1] * .85;
+  // The original sage cloth's base is RGB(151,168,155), HSL lightness ~.625.
+  // Compress its shading near the extremes instead of clipping folds to black/white.
+  const baseLight = .625;
+  const contrast = Math.min(targetLight / baseLight, (1 - targetLight) / (1 - baseLight));
   for (let i = 0; i < pixels.length; i += 4) {
     if (!pixels[i + 3]) continue;
     const [, , light] = hsl(pixels[i], pixels[i + 1], pixels[i + 2]);
-    const values = rgb([watercolour[0], watercolour[1], light]);
+    const values = rgb([color[0], targetSaturation, targetLight + (light - baseLight) * contrast]);
     pixels[i] = values[0]; pixels[i + 1] = values[1]; pixels[i + 2] = values[2];
   }
 }
@@ -179,7 +182,11 @@ export function recolorSpine(pixels: Uint8ClampedArray, color: Hsl): void {
 }
 
 export function bookSpineKey(storyId: string, coverImageId: string): string {
-  return `spine-v1:${storyId}:${coverImageId}`;
+  return `spine-v2:${storyId}:${coverImageId}`;
+}
+
+export function bookCoverKey(storyId: string, coverImageId: string): string {
+  return `cover-v6:${storyId}:${coverImageId}`;
 }
 
 /** Reuse the small derivative cache and serial canvas queue; never generate new artwork. */

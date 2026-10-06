@@ -1,7 +1,7 @@
 import {dailyQuestionAvailable, dailyQuestionCache, generateDailyQuestion} from "../../services/dailyQuestion";
 import {hasAiConsent} from "../../services/aiConsent";
 import { storyCoverApi } from "../../services/storyCoverService";
-import { renderBookCover } from "../../services/bookFrameColor";
+import { bookCoverKey, renderBookCover } from "../../services/bookFrameColor";
 import { bookCoverExists, cachedBookCover } from "../../services/bookCoverCache";
 import {
   accountOwner,
@@ -411,7 +411,7 @@ Page({
         slide.bookArtUrl = previous.bookArtUrl;
       }
       const cached = slide.storyId && slide.coverImageId
-        ? cachedBookCover(`cover-v5:${slide.storyId}:${slide.coverImageId}`) : '';
+        ? cachedBookCover(bookCoverKey(slide.storyId, slide.coverImageId)) : '';
       if (cached) slide.bookArtUrl = cached;
     });
     const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
@@ -495,7 +495,7 @@ Page({
         [`bookSlides[${index}].coverUrl`]: url,
         ...(this.data.storyId === storyId ? { coverUrl: url } : {}),
       });
-      void renderBookCover(this, url, `cover-v5:${storyId}:${coverImageId}`).then(bookArtUrl => {
+      void renderBookCover(this, url, bookCoverKey(storyId, coverImageId)).then(bookArtUrl => {
         if (coverRefreshId !== this.coverRefreshId) return;
         this.setData({ [`bookSlides[${index}].bookArtUrl`]: bookArtUrl });
       }).catch(error => {

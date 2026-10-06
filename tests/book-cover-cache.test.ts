@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cacheBookCover, cachedBookCover } from '../miniprogram/services/bookCoverCache';
-import { renderBookCover } from '../miniprogram/services/bookFrameColor';
+import { bookCoverKey, bookSpineKey, renderBookCover } from '../miniprogram/services/bookFrameColor';
 
 function installCacheMock(context: test.TestContext) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'wx');
@@ -46,6 +46,16 @@ test('evicted files and full storage degrade to a cache miss or current temporar
   assert.equal(cachedBookCover('story-a:cover-a'), '');
   mock.failSave();
   assert.equal(await cacheBookCover('story-a:cover-a', '/temp/retry.png'), '/temp/retry.png');
+});
+
+test('updated cloth tone bypasses both old cover and spine derivatives', async context => {
+  installCacheMock(context);
+  await cacheBookCover('cover-v5:story-a:cover-a', '/temp/old-cover.png');
+  await cacheBookCover('spine-v1:story-a:cover-a', '/temp/old-spine.png');
+  assert.equal(cachedBookCover(bookCoverKey('story-a', 'cover-a')), '');
+  assert.equal(cachedBookCover(bookSpineKey('story-a', 'cover-a')), '');
+  const path = await cacheBookCover(bookCoverKey('story-a', 'cover-a'), '/temp/new-cover.png');
+  assert.equal(cachedBookCover(bookCoverKey('story-a', 'cover-a')), path);
 });
 
 test('preview retention is bounded and never deletes original photos', async context => {
