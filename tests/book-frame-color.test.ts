@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coverColor, recolorFrame, recolorSpine, softenLeftSeam } from '../miniprogram/services/bookFrameColor';
+import { blendCoverSeam, coverColor, recolorFrame, recolorSpine } from '../miniprogram/services/bookFrameColor';
 
 test('yellow cover softly tints the frame without changing silhouette or texture contrast', () => {
   const cover = new Uint8ClampedArray([210, 165, 72, 255, 215, 172, 80, 255, 255, 255, 255, 255]);
@@ -29,18 +29,26 @@ test('blue and neutral covers stay calm and do not inherit any green frame hue',
   assert.equal(grey[1], grey[2]);
 });
 
-test('left seam fades smoothly without changing colour, binding cord, outer rim or cover centre', () => {
+test('cover seam blends into book texture without softening the cord, outer rim or cover centre', () => {
   const width = 480, height = 745;
-  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
-  softenLeftSeam(pixels, width, height);
-  const alpha = (x: number, y = 300) => pixels[(y * width + x) * 4 + 3];
-  assert.equal(alpha(45), 255, 'binding cord stays opaque');
-  assert.equal(alpha(60, 0), 255, 'top rim stays intact');
-  assert.equal(alpha(60, 744), 255, 'bottom rim stays intact');
-  assert.equal(alpha(240), 255, 'cover centre is untouched');
-  assert.ok(alpha(55) > alpha(60) && alpha(60) > alpha(65) && alpha(65) > alpha(70));
-  assert.ok(alpha(74) < 3, 'no hard inner edge');
-  assert.equal(pixels[(300 * width + 65) * 4], 255, 'seam does not recolour the image');
+  const frame = new Uint8ClampedArray(width * height * 4);
+  const composed = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < frame.length; i += 4) {
+    frame.set([100, 110, 90, 255], i);
+    composed.set([200, 150, 120, 255], i);
+  }
+  const left = width * .145, top = height * .025, right = width * .95, bottom = height * .975;
+  blendCoverSeam(composed, frame, width, height, left, top, right, bottom);
+  const red = (x: number, y = 300) => composed[(y * width + x) * 4];
+  assert.equal(red(45), 200, 'pixels outside the artwork are untouched');
+  assert.equal(red(70), 100, 'the inner left boundary starts with book texture');
+  assert.ok(red(75) < red(82) && red(82) < red(90), 'the transition is gradual');
+  assert.equal(red(110), 200, 'the artwork is clear past the narrow seam');
+  assert.equal(red(240), 200, 'cover centre is untouched');
+  assert.equal(red(70, 19), 200, 'top rim does not gain a dark band');
+  assert.equal(red(70, 40), 100, 'left seam is blended below the top edge');
+  assert.equal(red(455), 200, 'right paper edge stays sharp');
+  assert.equal(red(250, 0), 200, 'outer rim is untouched');
 });
 
 

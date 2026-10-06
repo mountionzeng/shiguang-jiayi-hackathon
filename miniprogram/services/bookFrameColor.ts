@@ -53,18 +53,32 @@ export function recolorFrame(pixels: Uint8ClampedArray, color: Hsl): void {
   }
 }
 
-/** Feather only the inner left seam, after the binding cord; leave the outer rim intact. */
-export function softenLeftSeam(pixels: Uint8ClampedArray, width: number, height: number): void {
-  const start = width * .1125, end = width * .15625;
-  const smooth = (value: number) => {
-    const t = Math.max(0, Math.min(1, value));
+/** Blend the cover into the original book texture at its inner edge. */
+export function blendCoverSeam(
+  composed: Uint8ClampedArray,
+  frame: Uint8ClampedArray,
+  width: number,
+  height: number,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+): void {
+  const smooth = (distance: number, feather: number) => {
+    const t = Math.max(0, Math.min(1, distance / feather));
     return t * t * (3 - 2 * t);
   };
-  for (let y = 0; y < height; y++) {
-    const inside = smooth((Math.min(y, height - 1 - y) / height - .015) / .025);
-    for (let x = Math.ceil(start); x < Math.ceil(end); x++) {
-      const alpha = (y * width + x) * 4 + 3;
-      pixels[alpha] = Math.round(pixels[alpha] * (1 - inside * smooth((x - start) / (end - start))));
+  const leftFeather = width * .045;
+  const verticalInset = height * .025;
+  for (let y = Math.max(0, Math.floor(top)); y < Math.min(height, Math.ceil(bottom)); y++) {
+    const inside = smooth(Math.min(y - top, bottom - y), verticalInset);
+    for (let x = Math.max(0, Math.floor(left)); x < Math.min(width, Math.ceil(left + leftFeather), Math.ceil(right)); x++) {
+      const cover = 1 - inside * (1 - smooth(x - left, leftFeather));
+      if (cover >= 1) continue;
+      const pixel = (y * width + x) * 4;
+      for (let channel = 0; channel < 4; channel++) {
+        composed[pixel + channel] = Math.round(frame[pixel + channel] * (1 - cover) + composed[pixel + channel] * cover);
+      }
     }
   }
 }
@@ -135,6 +149,9 @@ export function renderBookCover(page: WechatMiniprogram.Page.TrivialInstance, ur
       ctx.drawImage(cover, (cover.width - sourceWidth) / 2, (cover.height - sourceHeight) / 2,
         sourceWidth, sourceHeight, left, top, targetWidth, targetHeight);
       ctx.restore();
+      const composed = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      blendCoverSeam(composed.data, frame.data, canvas.width, canvas.height, left, top, right, bottom);
+      ctx.putImageData(composed, 0, 0);
       const path = await new Promise<string>((resolve, reject) => wx.canvasToTempFilePath({
         canvas, fileType: 'png', width: canvas.width, height: canvas.height,
         destWidth: canvas.width, destHeight: canvas.height,

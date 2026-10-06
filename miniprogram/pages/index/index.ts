@@ -411,7 +411,7 @@ Page({
         slide.bookArtUrl = previous.bookArtUrl;
       }
       const cached = slide.storyId && slide.coverImageId
-        ? cachedBookCover(`cover-v3:${slide.storyId}:${slide.coverImageId}`) : '';
+        ? cachedBookCover(`cover-v5:${slide.storyId}:${slide.coverImageId}`) : '';
       if (cached) slide.bookArtUrl = cached;
     });
     const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
@@ -495,7 +495,7 @@ Page({
         [`bookSlides[${index}].coverUrl`]: url,
         ...(this.data.storyId === storyId ? { coverUrl: url } : {}),
       });
-      void renderBookCover(this, url, `cover-v3:${storyId}:${coverImageId}`).then(bookArtUrl => {
+      void renderBookCover(this, url, `cover-v5:${storyId}:${coverImageId}`).then(bookArtUrl => {
         if (coverRefreshId !== this.coverRefreshId) return;
         this.setData({ [`bookSlides[${index}].bookArtUrl`]: bookArtUrl });
       }).catch(error => {
