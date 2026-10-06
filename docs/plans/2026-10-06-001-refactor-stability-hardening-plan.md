@@ -1,7 +1,7 @@
 ---
 title: refactor: 加固服务边界与交付验证
 type: refactor
-status: active
+status: completed
 date: 2026-10-06
 ---
 

@@ -22,7 +22,7 @@
 
 按用户 AGENTS 约定在主线程顺序完成正确性、测试、维护性、项目规范、权限/隐私和交付失败情形审查。已修复验收与本机配置未绑定、云快照额外业务文件未拒绝的问题，并新增对应行为测试。复用了 `docs/solutions/integration-issues/wechat-media-cross-layer-debugging-2026-09-19.md` 的跨层核验原则。
 
-首次真实 GitHub 检查发现全新环境缺少 jpeg-js：本机此前从云函数安装目录解析到了该包。已把根测试依赖固定为 0.4.4 并纳入锁文件，保留全部图片测试。最终 CI 与合并结果以 PR #7 的检查记录为准。
+首次真实 GitHub 检查发现全新环境缺少 jpeg-js：本机此前从云函数安装目录解析到了该包。已把根测试依赖固定为 0.4.4 并纳入锁文件，保留全部图片测试。修复提交 7583963 在全新 GitHub runner 的 1171 项测试和类型检查已通过，运行记录：https://github.com/mountionzeng/shiguang-jiayi-hackathon/actions/runs/37464854242 。后续文档提交仍需在 PR #7 上通过同一检查后合并。
 
 主线保护已通过 GitHub API 回读确认：严格要求 GitHub Actions 的 Typecheck and regression tests（App 15368），管理员同样受约束，禁止强推和删除主线。
 
