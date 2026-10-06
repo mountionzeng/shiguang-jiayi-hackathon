@@ -45,6 +45,7 @@ test("native editor photo stays between text blocks and never serializes a devic
   const content = contentFromDelta({ ops: [{ insert: "前文\n" }, { insert: { image: "wxfile://saved/p.jpg" } }, { insert: "\n后文\n" }] }, { "wxfile://saved/p.jpg": "photo-123-a" });
   assert.deepEqual(content, [{ text: "前文\n" }, { photoId: "photo-123-a" }, { text: "\n后文\n" }]);
   assert.ok(!JSON.stringify(content).includes("wxfile"));
+  assert.deepEqual(contentToDelta(content, { "photo-123-a": "wxfile://saved/p.jpg" }).ops[1].attributes, { width: "100%" });
   assert.deepEqual(contentToDelta(content, { "photo-123-a": "wxfile://saved/p.jpg" }).ops[1].insert, { image: "wxfile://saved/p.jpg" });
 });
 
@@ -63,6 +64,7 @@ test("AI illustrations round-trip as opaque ids while temporary URLs stay out of
   assert.deepEqual(content, [{ text: "前文\n" }, { photoId: referenceId }, { text: "\n后文" }]);
   assert.ok(!JSON.stringify(content).includes("https://"));
   assert.deepEqual(contentToDelta(content, { [referenceId]: url }).ops[1].insert, { image: url });
+  assert.deepEqual(contentToDelta(content, { [referenceId]: url }).ops[1].attributes, { width: "60%" });
   const markerDelta = contentToDelta([{ photoId: referenceId }], {});
   assert.deepEqual(contentFromDelta(markerDelta, {}), [{ photoId: referenceId }, { text: "\n" }]);
   assert.doesNotThrow(() => validateContent(content));

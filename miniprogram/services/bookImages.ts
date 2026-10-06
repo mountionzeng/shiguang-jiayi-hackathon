@@ -8,6 +8,8 @@ const STORY_IMAGE_REFERENCE = /^photo-ai-(req-[0-9a-z-]{8,60})$/;
 const MARKER = /【本机照片：(photo-[a-z0-9-]{1,80})】/g;
 export interface EditorDelta { ops: Array<{ insert: string | { image: string }; attributes?: Record<string, unknown> }> }
 
+export const STORY_ILLUSTRATION_WIDTH = "60%";
+
 export const isStoryImageId = (value: string) => STORY_IMAGE_ID.test(value);
 export const isStoryImageReference = (value: string) => STORY_IMAGE_REFERENCE.test(value);
 export function storyImageReferenceId(imageId: string) {
@@ -49,7 +51,7 @@ export function contentToDelta(content: ManuscriptContent[], paths: Record<strin
     if (typeof item.text === "string") return { insert: item.text };
     const id = item.photoId;
     if (!id) throw new Error("图片引用无效");
-    if (paths[id]) return { insert: { image: paths[id] }, attributes: { width: "100%" } };
+    if (paths[id]) return { insert: { image: paths[id] }, attributes: { width: isStoryImageReference(id) ? STORY_ILLUSTRATION_WIDTH : "100%" } };
     return { insert: `【本机照片：${item.photoId}】` };
   });
   const last = ops[ops.length - 1]?.insert;

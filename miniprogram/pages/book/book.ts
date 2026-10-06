@@ -13,7 +13,7 @@ import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomSt
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import {
   contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, readLocalPhotos, saveLocalPhoto,
-  storyImageReferenceId, validateContent,
+  STORY_ILLUSTRATION_WIDTH, storyImageReferenceId, validateContent,
 } from "../../services/bookImages";
 import { StoryImage, storyImageApi } from "../../services/storyImageService";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
@@ -640,7 +640,7 @@ Page({
       this.photoPaths[referenceId] = input.url;
       this.imageIds[input.url] = referenceId;
       await new Promise<void>((resolve, reject) => this.editorContext!.insertImage({
-        src: input.url, alt: "AI 插图", width: "100%", success: () => resolve(), fail: reject,
+        src: input.url, alt: "AI 插图", width: STORY_ILLUSTRATION_WIDTH, success: () => resolve(), fail: reject,
       }));
       await this.collectEditor();
       this.editManuscript();
