@@ -469,6 +469,17 @@ test('only explicit home loads request a projection; editors still request compl
     };
     await localRepository.loadRoomStateRemoteFirst({view:'home'});
     await localRepository.loadRoomStateRemoteFirst();
-    assert.deepEqual(calls,[{action:'state',view:'home'},{action:'state'}]);
+    assert.deepEqual(calls,[{action:'state',view:'home',stateTransport:1},{action:'state',stateTransport:1}]);
+  } finally {f.restore();}
+});
+
+test('response size errors never masquerade as missing story service or an empty room', async () => {
+  const f=fixture();
+  try {
+    (globalThis as any).wx.cloud.callFunction=async ({name}:any)=>{
+      if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+      throw new Error('errCode: -501000 | response size exceeded 1048576 bytes');
+    };
+    await assert.rejects(localRepository.loadRoomStateRemoteFirst(), /response size exceeded/);
   } finally {f.restore();}
 });

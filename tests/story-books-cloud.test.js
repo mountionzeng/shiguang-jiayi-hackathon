@@ -16,6 +16,18 @@ function fixture({ migrationStatus = 'active' } = {}) {
     transaction:fn=>{const result=chain.then(async()=>{const before=new Map(tables);try{return await fn(io);}catch(e){tables.clear();for(const [k,v] of before)tables.set(k,v);throw e;}});chain=result.catch(()=>{});return result;}};
   return {handlers:createHandlers(repo,{migrationReady:true}),tables,repo};
 }
+test('authenticated state dispatch transports large history without dropping revisions',async()=>{
+  const {repo,tables}=fixture();
+  const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+  const service=createStoryService(repo);
+  tables.set('biography_drafts:large',{familyId:'family_test',revision:{id:'large',draft:{text:'旧稿🐈'.repeat(160000)}}});
+  const first=await service({OPENID:'test'},{action:'state',stateTransport:1});
+  assert.equal(first.stateTransport,1);
+  assert.ok(Buffer.byteLength(JSON.stringify(first))<1048576);
+  await assert.rejects(service({}, {action:'state',stateTransport:1,stateOffset:first.nextOffset,stateDigest:first.digest}),{code:'AUTH_REQUIRED'});
+  const other=await service({OPENID:'other'},{action:'state',stateTransport:1}).catch(error=>error);
+  assert.ok(other instanceof Error,'a chunk token cannot grant another identity access');
+});
 test('cloud writes never send the database-owned _id field back to document.set',()=>{
   const source={_id:'family_test',roomName:'测试',storyBooks:{status:'preparing'}};
   assert.deepEqual(writableDocument(source),{roomName:'测试',storyBooks:{status:'preparing'}});

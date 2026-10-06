@@ -1,3 +1,4 @@
+import {readStoryState} from './storyStateTransport';
 import {
   biographySourceFingerprint,
   BiographyDraft,
@@ -389,17 +390,19 @@ function storyServiceError(result: StoryServiceRoomState): Error & { code?: stri
 }
 
 function missingStoryService(error: unknown): boolean {
-  return /FUNCTION_NOT_FOUND|-501000|could not be found|unexpected cloud function:\s*storyBooks/i.test(
+  return /FUNCTION_NOT_FOUND|could not be found|unexpected cloud function:\s*storyBooks/i.test(
     String((error as { message?: unknown; errMsg?: unknown } | undefined)?.message ??
       (error as { errMsg?: unknown } | undefined)?.errMsg ?? error),
   );
 }
 
 async function loadStoryServiceRoomState(view?: "home"): Promise<StoryServiceRoomState> {
-  const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state", ...(view ? {view} : {}) } });
-  const result = (response.result ?? {}) as StoryServiceRoomState;
-  if (result.error) throw storyServiceError(result);
-  return result;
+  return await readStoryState(async transport => {
+    const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state", ...(view ? {view} : {}), ...transport } });
+    const result = (response.result ?? {}) as StoryServiceRoomState;
+    if (result.error) throw storyServiceError(result);
+    return result;
+  }) as StoryServiceRoomState;
 }
 
 function unsupportedStoryMemberAction(error: unknown): boolean {

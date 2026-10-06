@@ -12,6 +12,7 @@ const { sendOwnReturn, listReturns, decideReturn } = require('./returns');
 const { listShareCardSource, previewShareCard, exportShareCard } = require('./exports');
 const { previewBookExport, exportBookImages } = require('./bookExports');
 const { memoryExportSource } = require('./memoryExports');
+const { encodeStateResponse } = require('./stateTransport');
 
 function accessError(code) {
   return Object.assign(new Error(code === 'STORY_ACCESS_NOT_READY' ? '故事权限服务尚未准备好' : '故事共享尚未开放'), { code });
@@ -169,7 +170,7 @@ function createStoryService(repo, options = {}) {
     // Reads and already-acknowledged operations can return without a write
     // transaction. Do not release data if identity was revoked during the read.
     if (accessEnabled) await measure('state.authorize.after',()=>assertSpaceOwner(repo, ctx));
-    return result;
+    return action === 'state' ? encodeStateResponse(result, event) : result;
   }
   return (context,event={}) => event?.action === 'state'
     ? measurePerformance('state.total',()=>dispatch(context,event))
