@@ -103,11 +103,16 @@ export function renderBookCover(page: WechatMiniprogram.Page.TrivialInstance, ur
       const cover = await loadImage(canvas, info.path);
       const silhouette = await loadImage(canvas, '/assets/illustrations/story-book-cover.png');
       const ctx = canvas.getContext('2d');
-      // The book's own 480px paper-and-cloth edge matches the shelf spines.
-      // Keep it at native resolution; stretching the 270px cut-out made the rim
-      // soft and recolouring every pixel turned its warm paper grey.
+      canvas.width = 48; canvas.height = 48;
+      ctx.drawImage(cover, 0, 0, 48, 48);
+      const color = coverColor(ctx.getImageData(0, 0, 48, 48).data);
+      // Keep the full-size edge crisp. Tint only its green cloth pigments to
+      // match the shelf spine; the warm paper, page edges and cord stay intact.
       canvas.width = silhouette.width; canvas.height = silhouette.height;
       ctx.drawImage(silhouette, 0, 0);
+      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      recolorSpine(frame.data, color);
+      ctx.putImageData(frame, 0, 0);
       const left = canvas.width * .145, top = canvas.height * .025;
       const right = canvas.width * .95, bottom = canvas.height * .975;
       const radius = canvas.width * .018;
