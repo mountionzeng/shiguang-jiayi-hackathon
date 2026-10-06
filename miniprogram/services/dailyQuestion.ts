@@ -1,4 +1,5 @@
 import {startPerformanceMeasure} from "./performanceLog";
+import { logServiceFailure } from './serviceFailure';
 import type {ShiguangAppOptions} from '../app';
 import type {InterviewDimension} from '../domain/interview';
 import {CLOUD_AI_ENABLED} from '../config/runtime';
@@ -69,5 +70,8 @@ export async function generateDailyQuestion(input:{storyId?:string;memoryId?:str
   if(result?.generationMode!=='cloud-ai' || typeof result.text!=='string' || !result.text.trim() || result.text.length>80 || typeof result.anchor!=='string' || typeof result.sourceId!=='string' || !['person','time','place','event','feeling'].includes(result.dimension || '')) throw new Error('DAILY_INVALID_RESULT');
   outcome='ok';
   return result as DailyQuestion;
+  } catch (error) {
+    logServiceFailure('chatInterview', 'ai', error);
+    throw error;
   } finally { finish(outcome); }
 }

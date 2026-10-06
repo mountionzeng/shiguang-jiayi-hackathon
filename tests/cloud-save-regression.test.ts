@@ -7,6 +7,7 @@ import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
 import { ensureStoryBooks, storyCommand } from "../miniprogram/services/storyBooks";
 import { jsonUtf8ByteLength } from "../miniprogram/services/performanceLog";
+import { SavedRefreshError } from '../miniprogram/services/serviceFailure';
 
 // Synthetic wx I/O only: repository, cloud storage and domain code all run unmocked.
 function fixture() {
@@ -81,9 +82,9 @@ test('cloud story commands perform one authoritative read after the write and pr
       calls.push(data.action);
       if (data.action === 'update' && failWrite) return { result: { error: 'denied', message: '写入失败' } };
       if (data.action === 'state' && failRead) throw new Error('读取失败');
-      return { result: data.action === 'state' ? complete : { ok: true } };
+      return { result: data.action === 'state' ? complete : { ok: true, storyId: 'story-fixture' } };
     };
-    assert.equal((await storyCommand({ action: 'update' })).roomName, '保存之后');
+    assert.equal((await storyCommand({ action: 'update', storyId: 'story-fixture' })).roomName, '保存之后');
     assert.deepEqual(calls, ['update', 'state']);
     calls.length = 0;
     failWrite = true;
@@ -92,7 +93,7 @@ test('cloud story commands perform one authoritative read after the write and pr
     calls.length = 0;
     failWrite = false;
     failRead = true;
-    await assert.rejects(storyCommand({ action: 'update' }), /读取失败/);
+    await assert.rejects(storyCommand({ action: 'update', storyId: 'story-fixture' }), error => error instanceof SavedRefreshError && error.saved);
     assert.deepEqual(calls, ['update', 'state']);
     calls.length = 0;
     (globalThis as any).getApp = () => ({ globalData: { cloudReady: false } });
