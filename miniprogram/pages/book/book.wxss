@@ -52,21 +52,13 @@ page { height: 100%; overflow: hidden; }
 .preview-editor { width: 100%; min-height: 360rpx; margin-top: 28rpx; line-height: 1.9; padding-bottom: 80rpx; }
 .share-excerpt { margin: 8rpx 0 28rpx; padding: 24rpx; border-left: 6rpx solid var(--jade); border-radius: 8rpx; background: var(--paper-card); font-size: 31rpx; line-height: 1.8; color: var(--ink); }
 
-/* 本章底图：主图完整放在纸面底部；边缘只用低透明度延展气氛，不裁切、不压字。 */
+/* 竖向底图覆盖正文纸面，保持原比例；不用缩小的主图或镜像副本。 */
 .body-field { position: relative; overflow: hidden; }
 .body-field-illustrated { background: linear-gradient(180deg, var(--paper-card) 0%, #fffdf8 48%, #fbf4e7 100%); }
-.chapter-backdrop { position: absolute; z-index: 0; left: 50%; bottom: 14rpx; width: 84%; height: 31%; opacity: .54; transform: translateX(-50%); pointer-events: none; }
-.chapter-backdrop-echo { position: absolute; z-index: 0; width: 34%; height: 42%; opacity: .16; pointer-events: none; }
-.chapter-backdrop-echo-left { left: -12rpx; top: 116rpx; transform: rotate(-7deg); transform-origin: 50% 50%; }
-.chapter-backdrop-echo-right { right: -12rpx; top: 196rpx; transform: rotate(7deg) scaleX(-1); transform-origin: 50% 50%; }
-.chapter-edge-ornament { position: absolute; z-index: 0; width: 210rpx; height: 82rpx; opacity: .18; pointer-events: none; }
-.chapter-edge-ornament-left { left: -96rpx; top: 146rpx; transform: rotate(78deg); transform-origin: 50% 50%; }
-.chapter-edge-ornament-right { right: -104rpx; top: 238rpx; transform: rotate(-102deg) scaleY(-1); transform-origin: 50% 50%; }
+.chapter-backdrop { position: absolute; z-index: 0; left: 0; top: 0; width: 100%; height: 100%; opacity: .38; pointer-events: none; }
 .body-field .field-label, .body-field .chapter-ai-label, .body-field .manuscript-body { position: relative; z-index: 1; }
 .chapter-ai-label { align-self: flex-start; position: relative; z-index: 1; margin: 0 0 12rpx; padding: 4rpx 12rpx; border-radius: 999rpx; background: rgba(128, 83, 38, .1); color: #805326; font-size: 22rpx; line-height: 1.5; }
-.keyboard-open .chapter-backdrop,
-.keyboard-open .chapter-backdrop-echo,
-.keyboard-open .chapter-edge-ornament { display: none; }
+.keyboard-open .chapter-backdrop { display: none; }
 
 /* ---- 目录页：书名、目录、还没写进书的记忆 ---- */
 /* 微信按钮默认宽 184px 且优先级高于单个类名，所以按钮一律用两层类名写宽度。 */

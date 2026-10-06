@@ -31,3 +31,5 @@
 .purpose-badge { padding: 0 8rpx; color: var(--apricot); background: var(--apricot-soft); border-radius: 6rpx; }
 .purpose-badge.is-in-use { color: var(--jade); background: var(--jade-soft); }
 .quality-flawed { color: var(--coral); }
+
+.reference-choice { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin: 16rpx 0; color: var(--ink); font-size: 26rpx; }

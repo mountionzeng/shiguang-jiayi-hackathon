@@ -825,7 +825,7 @@ test("底图保留章节情景的景物痕迹：上方留白、最多三个物�
     scene: "奶奶在冬天的院子里晒被子", setting: "冬天的小院", objects: ["竹竿", "棉被", "木凳", "瓦罐"],
     light: "冬日午后", mood: "安静", eraHint: "", figures: ["远景中的背影"],
   }, "backdrop");
-  assert.deepEqual([width, height], [1248, 832]);
+  assert.deepEqual([width, height], [832, 1248]);
   assert.match(prompt, /上方与中央约七成区域保持浅净、低对比/);
   assert.match(prompt, /景物：冬天的小院。/);
   assert.match(prompt, /章节情景的景物痕迹：冬天的院子里晒被子。/);
@@ -1548,16 +1548,16 @@ test("出图、读章节、质检、下载都不直接依赖全局 fetch", () =>
 
 // ---------- 补回改接 TokenHub 时变弱的流程覆盖 ----------
 
-test("提交底图：按底图尺寸排队，出图时用 1248x832，入库记为底图", async () => {
+test("提交底图：按底图尺寸排队，出图时用 832x1248，入库记为底图", async () => {
   const { handlers, calls, repo } = harness();
   const { job } = await handlers.submit(ctx, { ...submitEvent(), purpose: "backdrop" });
   assert.equal(job.purpose, "backdrop");
   const queued = repo.jobs.get(job.jobId);
-  assert.deepEqual([queued.width, queued.height], [1248, 832]);
+  assert.deepEqual([queued.width, queued.height], [832, 1248]);
   assert.match(queued.prompt, /晒着被子/, "底图需要保留章节情景的景物痕迹");
   const result = await handlers.status(ctx, { familyId: FAMILY, jobId: job.jobId });
   assert.equal(result.job.status, "stored");
-  assert.deepEqual([calls.generate[0].width, calls.generate[0].height], [1248, 832]);
+  assert.deepEqual([calls.generate[0].width, calls.generate[0].height], [832, 1248]);
   assert.equal(repo.images.get(`${FAMILY}_img_req-20260913-abcd1234`).purpose, "backdrop");
   assert.equal(result.image.purpose, "backdrop");
 });

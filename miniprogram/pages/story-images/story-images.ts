@@ -59,6 +59,7 @@ Page({
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
     artDirections: {} as Record<string, string>,
+    useChapterPhotos: {} as Record<string, boolean>,
     preview: null as (ImageCard & { chapterId: string }) | null,
     placementOptions: [] as IllustrationPoint[], placementIndex: 0, savingPlacement: false, previewNotice: "",
   },
@@ -132,7 +133,7 @@ Page({
         return {
           id: chapter.id, label: chapterLabel(index + 1), title: chapter.title, backdropImageId,
           referencePhotoIds,
-          referencePhotoLabel: referencePhotoIds.length ? `会先询问，再参考本章 ${referencePhotoIds.length} 张照片` : "没有本章照片参考",
+          referencePhotoLabel: referencePhotoIds.length ? `可选参考本章 ${referencePhotoIds.length} 张照片` : "没有参考图，将根据本章文字构思画面",
           // The chosen picture was deleted or failed the platform check.
           backdropMissing: !!backdropImageId && !listed.has(backdropImageId),
           images: list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
@@ -217,7 +218,7 @@ Page({
       const job = await storyImageApi.submitChapterImage({
         ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
         ...(referenceImageId ? { referenceImageId } : {}),
-        ...(!referenceImageId && group?.referencePhotoIds.length ? { referencePhotoIds: group.referencePhotoIds } : {}),
+        ...(!referenceImageId && this.data.useChapterPhotos[chapterId] && group?.referencePhotoIds.length ? { referencePhotoIds: group.referencePhotoIds } : {}),
         ...(this.data.artDirections[chapterId]?.trim() ? { artDirection: this.data.artDirections[chapterId].trim() } : {}),
       });
       if (this.unloaded) return;
@@ -236,6 +237,12 @@ Page({
     } finally {
       if (!this.unloaded) this.setData({ submitting: "" });
     }
+  },
+  onReferenceModeChange(event: { currentTarget: { dataset: { id: string } }; detail: { value: boolean } }) {
+    if (this.data.submitting || this.data.savingBackdrop || this.data.savingPlacement || this.data.removingId) return;
+    const chapterId = event.currentTarget.dataset.id;
+    if (!this.data.groups.some(group => group.id === chapterId)) return;
+    this.setData({ useChapterPhotos: { ...this.data.useChapterPhotos, [chapterId]: event.detail.value === true } });
   },
   onArtDirectionInput(event: { currentTarget: { dataset: { id: string } }; detail: { value: string } }) {
     const chapterId = event.currentTarget.dataset.id;

@@ -535,9 +535,9 @@ const STYLES = {
   },
   // A backdrop sits under the chapter text: scenery-led, pale, with an empty top half.
   backdrop: {
-    lead: "一幅3:2横向浅色景物底图。上方与中央约七成区域保持浅净、低对比；本章景物、器物和事件留下的生活痕迹安排在下方与两侧边角，材质连续延伸到四边。",
-    width: 1248,
-    height: 832,
+    lead: "一幅2:3竖向整页浅色景物底图。上方与中央约七成区域保持浅净、低对比；本章景物、器物和事件留下的生活痕迹安排在下方与两侧边角，材质连续延伸到四边。",
+    width: 832,
+    height: 1248,
     maxObjects: 3,
     withScene: false,
     withFigures: false,

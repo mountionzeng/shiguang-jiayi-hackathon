@@ -828,7 +828,7 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   assert.equal(page.data.preview, null, "setData uses explicit null to close the native sheet");
 });
 
-test("本章正文里的照片会随直接配图请求发送，AI 插图引用不算本机照片", async context => {
+test("本章照片可选，默认只按文字生成，选择和取消参考都生效", async context => {
   const state = stateWithBook();
   state.manuscriptRevisions![0].draft.chapters![0].content.push(
     { photoId: "photo-cat" },
@@ -849,6 +849,11 @@ test("本章正文里的照片会随直接配图请求发送，AI 插图引用�
   await call(page, "refresh");
   const groups = page.data.groups as Array<{ referencePhotoIds: string[] }>;
   assert.deepEqual(groups[0].referencePhotoIds, ["photo-cat"]);
+  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "backdrop" } } });
+  assert.deepEqual(submitted.pop(), { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop" });
+  call(page, "onReferenceModeChange", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: true } });
+  await call(page, "refresh"); // Polling/refresh must preserve the explicit choice.
+
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "backdrop" } } });
   await call(page, "generate", { currentTarget: { dataset: {
@@ -859,6 +864,9 @@ test("本章正文里的照片会随直接配图请求发送，AI 插图引用�
     { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop", referencePhotoIds: ["photo-cat"] },
     { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa" },
   ]);
+  call(page, "onReferenceModeChange", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: false } });
+  await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
+  assert.deepEqual(submitted[submitted.length - 1], { memberId: "owner", chapterId: "chapter-a", purpose: "illustration" });
 });
 
 test("插图可以回到来源章节的光标处，正文正在使用的原图不能直接删除", async context => {
@@ -1264,14 +1272,11 @@ test("书稿里带底图的章节在正文区下方显示底图，没有底图�
   assert.ok(listCalls >= 1);
 
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
-  assert.match(markup, /<block wx:if="\{\{backdropUrl\}\}">[\s\S]*class="chapter-edge-ornament chapter-edge-ornament-left"/);
-  assert.match(markup, /class="chapter-backdrop-echo chapter-backdrop-echo-left"[\s\S]*mode="aspectFit"/);
-  assert.match(markup, /class="chapter-backdrop"[\s\S]*mode="aspectFit"/);
+  assert.match(markup, /class="chapter-backdrop"[^>]*mode="aspectFill"/);
+  assert.doesNotMatch(markup, /chapter-backdrop-echo|chapter-edge-ornament/);
   const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");
-  assert.match(styles, /\.chapter-backdrop[^{]*{[^}]*height: 31%/);
-  assert.match(styles, /\.chapter-backdrop-echo[^{]*{[^}]*opacity: \.16/);
-  assert.doesNotMatch(styles, /\.chapter-backdrop[^{]*{[^}]*mask-image/);
-  assert.match(styles, /\.keyboard-open \.chapter-backdrop,\s*\.keyboard-open \.chapter-backdrop-echo,\s*\.keyboard-open \.chapter-edge-ornament \{ display: none; \}/);
+  assert.match(styles, /\.chapter-backdrop[^{]*{[^}]*width: 100%;[^}]*height: 100%/);
+  assert.match(styles, /\.keyboard-open \.chapter-backdrop \{ display: none; \}/);
 
   const plainEnv = installWx({}, stateWithBook());
   plainEnv.setApp(false);
