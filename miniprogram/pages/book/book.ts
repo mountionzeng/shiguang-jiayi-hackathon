@@ -748,8 +748,8 @@ Page({
   },
   closeSend() { this.setData({ sendOpen: false }); },
   async chooseSend(event: WechatMiniprogram.TouchEvent) {
-    const destination = event.currentTarget.dataset.destination;
-    if (destination !== 'family' && destination !== 'social') return;
+    const destination = event.currentTarget.dataset.destination as 'family' | 'social' | 'card';
+    if (destination !== 'family' && destination !== 'social' && destination !== 'card') return;
     if (this.data.protectedCopy || this.data.preparingSend || !this.data.draft || this.data.view !== 'contents' || this.data.panel) return;
     const epoch = ++this.sendEpoch;
     this.setData({ preparingSend: true, sendOpen: false });
@@ -759,7 +759,7 @@ Page({
       if (!story || story.sourcePolicyRequired || !this.data.savedRevisionId || !Number.isSafeInteger(story.version) || (story.version || 0) < 1) {
         this.setData({ saveNotice: '请从书架打开已保存的自有故事，再准备发送' }); return;
       }
-      const base = '/packages/story-sharing/pages/' + (destination === 'family' ? 'invite' : 'social') + '/index';
+      const base = '/packages/story-sharing/pages/' + ({ family: 'invite', social: 'social', card: 'card' } as const)[destination] + '/index';
       const url = base + '?storyId=' + encodeURIComponent(story.id) + (destination === 'social'
         ? '&revisionId=' + encodeURIComponent(this.data.savedRevisionId) + '&version=' + story.version : '');
       await new Promise<void>((resolve, reject) => wx.navigateTo({ url, success: () => resolve(), fail: reject }));

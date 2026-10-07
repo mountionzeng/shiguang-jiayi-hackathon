@@ -34,6 +34,7 @@
   <view wx:if="{{sendOpen}}" class="send-menu">
     <button class="send-option" data-destination="family" bindtap="chooseSend">发送给家人<text>›</text></button>
     <button class="send-option" data-destination="social" bindtap="chooseSend">发送到社交媒体<text>›</text></button>
+    <button class="send-option" data-destination="card" bindtap="chooseSend">把一段话做成卡片<text>›</text></button>
   </view>
   <view class="top-tools" wx:if="{{moreOpen}}">
     <button wx:if="{{storyId && savedRevisionId && !editing}}" class="tool-button" data-action="invite" bindtap="selectTool">亲友阅读与权限</button>

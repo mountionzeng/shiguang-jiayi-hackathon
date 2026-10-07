@@ -50,3 +50,16 @@ test('page previews the authorized descriptor and a denied album save is never r
     const sent=calls.find(call=>call.action==='shareCardPreview');assert.equal(JSON.stringify(sent).includes('井水'),false);
   }finally{(globalThis as any).wx=previous;}
 });
+
+test('sending a card re-verifies material and opens the WeChat image menu',async()=>{
+  const previous=(globalThis as any).wx,calls:string[]=[];let shared='';
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data.action);return {result:{descriptor:{id:'card-a'},media:[]}};}},
+    showShareImageMenu:({path,success}:any)=>{shared=path;success();}};
+  try{const p=instance(await page());p.selection={};p.descriptor={id:'card-a'};p.draw=async()=>'/tmp/card.jpg';
+    await p.share();assert.equal(shared,'/tmp/card.jpg');assert.ok(calls.length>=1);assert.match(p.data.notice,/分享菜单/);assert.equal(p.data.busy,false);}
+  finally{(globalThis as any).wx=previous;}
+});
+
+test('book send menu offers the paragraph card',()=>{
+  assert.match(readFileSync('miniprogram/pages/book/book.wxml','utf8'),/data-destination="card"/);
+});
