@@ -31,8 +31,9 @@ Page({
     notice: '', title: '', coverUrl: '', coverNotice: '',
     sourceKind: 'story' as 'story' | 'memory',
     coverCandidates: [] as ShareCoverCandidate[], selectedCoverImageIds: [] as string[],
-    textImageCountOptions: Array.from({ length: 12 }, (_, index) => String(index + 1)),
-    targetTextImageCount: 1,
+    // 0 = 自动：按字号自然分页。默认自动，避免整本书一进来就因张数不匹配而失败。
+    textImageCountOptions: ['自动', ...Array.from({ length: 12 }, (_, index) => String(index + 1))],
+    targetTextImageCount: 0,
     scope: 'chapters' as SendScope, chapters: [] as Array<SendChapter & { checked: boolean }>,
     textChapterIndex: 0, selectedText: '', editorReady: false,
     selectedCount: 0, characterCount: 0, preview: false, previewChapters: [] as SendChapter[],
@@ -296,8 +297,8 @@ Page({
   },
   chooseTextImageCount(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
     if (this.busy()) return;
-    const count = Number(event.detail.value) + 1;
-    if (!Number.isSafeInteger(count) || count < 1 || count > 12) return;
+    const count = Number(event.detail.value);
+    if (!Number.isSafeInteger(count) || count < 0 || count > 12) return;
     this.resetImages();
     this.setData({ targetTextImageCount: count, notice: '' });
   },

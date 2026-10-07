@@ -50,8 +50,8 @@
       </view>
       <view class="scope-options"><button class="scope {{layout === 'pages' ? 'selected' : ''}}" data-layout="pages" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}">分页图片</button><button class="scope {{layout === 'long' ? 'selected' : ''}}" data-layout="long" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}">一张长图</button></view>
       <picker range="{{['紧凑','标准','大字']}}" value="{{fontSize === 28 ? 0 : fontSize === 32 ? 1 : 2}}" bindchange="chooseFont" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}"><view class="chapter-picker">字号：{{fontSize === 28 ? '紧凑' : fontSize === 32 ? '标准' : '大字'}}　⌄</view></picker>
-      <picker range="{{textImageCountOptions}}" value="{{targetTextImageCount - 1}}" bindchange="chooseTextImageCount" disabled="{{exportBusy || albumSaving || layout === 'long'}}"><view class="chapter-picker">正文图片：{{layout === 'long' ? '长图自动决定' : targetTextImageCount + ' 张'}}　⌄</view></picker>
-      <view class="caption">封面单独成图，正文按所选张数排版；正文会沿用每章已经选好的底图，没有底图时使用纸张背景。正文不会截断。</view>
+      <picker range="{{textImageCountOptions}}" value="{{targetTextImageCount}}" bindchange="chooseTextImageCount" disabled="{{exportBusy || albumSaving || layout === 'long'}}"><view class="chapter-picker">正文图片：{{layout === 'long' ? '长图自动决定' : targetTextImageCount ? targetTextImageCount + ' 张' : '自动'}}　⌄</view></picker>
+      <view class="caption">封面单独成图，正文默认按字号自动分页，也可指定张数；正文会沿用每章已经选好的底图，没有底图时使用纸张背景。正文不会截断。</view>
       <view class="notice" wx:if="{{capabilityKnown && !exportAvailable}}">图片导出服务暂时没有打开，请稍后重新进入。</view>
       <button class="primary" bindtap="generateImages" loading="{{exportBusy}}" disabled="{{!exportAvailable || exportBusy || albumSaving || sharingIndex >= 0}}">{{exportBusy ? renderProgress : imagePaths.length ? '重新生成图片' : '生成图片预览'}}</button>
       <generation-status wx:if="{{exportBusy}}" kind="image" text="{{renderProgress || '正在排版图片…'}}" />
