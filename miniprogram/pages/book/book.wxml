@@ -155,7 +155,7 @@
       </view>
       <view class="xiaoyi-options">
         <button class="xiaoyi-option" data-mode="ask" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">问我一个问题</button>
-        <button class="xiaoyi-option" data-mode="write" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">帮我写一下</button>
+        <button class="xiaoyi-option" data-mode="compose" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">写成一段</button>
         <button class="xiaoyi-option" bindtap="openXiaoyiMemories" disabled="{{xiaoyiLoading}}">看看这一章的记忆</button>
       </view>
       <scroll-view class="xiaoyi-thread" scroll-y wx:if="{{xiaoyiMessages.length}}">
@@ -165,14 +165,16 @@
         </view>
       </scroll-view>
       <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+      <view class="xiaoyi-message-label">这次怎么写（可不填）</view>
+      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
       <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
       <view class="xiaoyi-status" wx:elif="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
       <view class="xiaoyi-actions">
         <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{xiaoyiLoading}}">就用我的原话</button>
-        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '请小忆整理'}}</button>
+        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '整理原话'}}</button>
       </view>
       <view wx:if="{{xiaoyiDraftText}}" class="xiaoyi-draft-box">
-        <view class="xiaoyi-message-label">整理稿，可以改</view>
+        <view class="xiaoyi-message-label">小忆草稿，可以改</view>
         <textarea class="xiaoyi-draft" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiDraftText}}" maxlength="800" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" bindinput="onXiaoyiDraftInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
         <button class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{xiaoyiLoading}}">把这段放进正文待确认</button>
       </view>
@@ -255,6 +257,10 @@
             <view class="insertion-picker">插入位置：{{insertionPoints[insertionIndex].label}}　⌄</view>
           </picker>
           <view wx:else class="panel-note">AI 会读取整章原文与所选记忆，生成新的章节正文。请在下一步检查事实、语气和照片位置。</view>
+        </block>
+        <block wx:if="{{writingMode === 'creative' && (organizeTarget === 'new' || organizeMethod === 'blend')}}">
+          <view class="field-label contents-label">这一章怎么写（可不填）</view>
+          <textarea class="xiaoyi-answer" value="{{organizeWritingInstruction}}" maxlength="300" auto-height placeholder="例如：保留原来的开头，写得更口语，不用总结道理" bindinput="onOrganizeWritingInstruction" disabled="{{generating || saving || switchingBook}}" />
         </block>
         <view class="panel-note">下一步会将所选记忆收进故事并生成预览；确认后才写入正文，旧版本和原始记忆保留。</view>
       </block>

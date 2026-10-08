@@ -30,7 +30,7 @@ import { audioCreatePath } from "../../services/storyAudioService";
 import { storySharing } from "../../services/storySharing";
 import { copyRequestId, storyCopies } from "../../services/storyCopies";
 import {
-  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer,
+  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
   resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
 } from "../../services/xiaoyiCompanion";
 
@@ -70,6 +70,7 @@ Page({
     organizeMethod: "insert" as "insert" | "blend", organizeOriginal: "", insertionPoint: "end",
     insertionPoints: [] as ChapterInsertionPoint[], insertionIndex: 0,
     previewInsertion: false, insertionText: "",
+    organizeWritingInstruction: "",
     organizeCount: 0, organizeBookTitle: "", switchingBook: false,
     organizeBooks: [] as Array<{ id: string; title: string; memberId: string; detail: string; memoryIds: string[] }>, organizeBookKey: "", previewText: "", previewTitle: "", previewAiLabel: "",
     protagonistName: "", memberId: "", storyId: "", savedRevisionId: "", writingMode: "objective" as "objective" | "creative", sources: [] as Array<{ id: string; text: string; byline: string }>,
@@ -309,6 +310,10 @@ Page({
     this.editorError = backup?.editorError || "";
     if (backup) {
       this.pendingSave = acknowledged ? undefined : backup.pendingSave;
+    }
+    if (this.activeChapterId !== activeChapterId || this.data.storyId !== (story?.id ?? "")) {
+      resetXiaoyiPanel.call(this);
+      this.xiaoyiContextCapturedText = "";
     }
     this.activeChapterId = activeChapterId;
     this.revisionId = current.revisionId;
@@ -723,6 +728,8 @@ Page({
           sequence !== this.editSequence || panel !== this.data.panel || !this.canLeaveEditor()) return;
     }
     this.activeChapterId = id;
+    resetXiaoyiPanel.call(this);
+    this.xiaoyiContextCapturedText = "";
     this.loadActiveChapter();
     this.setData({ view: "chapter", panel: "", moreOpen: false, editChapterTitle: this.chapterTitleBuffer, ...this.chapterData() });
     this.seedEditor();
@@ -860,10 +867,12 @@ Page({
   xiaoyiContextText() {
     return this.xiaoyiContextCapturedText || this.bodyBuffer || plainText(this.contentBuffer);
   },
+  xiaoyiContextKey() { return [this.data.storyId, this.data.memberId, this.activeChapterId].join(":"); },
   xiaoyiMessagesAppend,
   askXiaoyiQuestion,
   onXiaoyiAnswerInput,
   onXiaoyiDraftInput,
+  onXiaoyiWritingInstruction,
   useXiaoyiOriginal,
   organizeXiaoyiAnswer,
   useXiaoyiDraft,
@@ -1392,7 +1401,7 @@ Page({
   updateOrganizeTarget(id: string) {
     const target = this.chapters.find(chapter => chapter.id === id);
     const points = target ? chapterInsertionPoints(target.content) : [];
-    this.setData({ organizeTarget: id, organizeMethod: "insert", insertionPoint: "end",
+    this.setData({ organizeTarget: id, organizeMethod: "insert", insertionPoint: "end", organizeWritingInstruction: "",
       insertionPoints: points, insertionIndex: Math.max(0, points.length - 1),
       organizeOriginal: target ? target.content.map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join("") : "",
     });
@@ -1404,6 +1413,10 @@ Page({
   onOrganizeMethod(event: { detail: { value: string } }) {
     if (this.data.generating || this.data.saving || this.data.switchingBook) return;
     this.setData({ organizeMethod: event.detail.value === "blend" && this.data.writingMode === "creative" ? "blend" : "insert" });
+  },
+  onOrganizeWritingInstruction(event: WechatMiniprogram.Input) {
+    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    this.data.organizeWritingInstruction = event.detail.value;
   },
   onInsertionPoint(event: { detail: { value: string } }) {
     if (this.data.generating || this.data.saving || this.data.switchingBook) return;
@@ -1475,7 +1488,7 @@ Page({
         selectedMemories = context.memories;
         aiState = { ...state, contributions: context.memories };
       }
-      const request = { memoryIds, storyId: story?.id, chapterTitle: target?.title ?? "", existingText: target ? plainText(target.content).trim() : "" };
+      const request = { memoryIds, storyId: story?.id, chapterTitle: target?.title ?? "", existingText: target ? plainText(target.content).trim() : "", writingInstruction: this.data.organizeWritingInstruction.trim() };
       const result = !story || story.writingMode === "creative"
         ? await generateBiographyWithStatus(aiState, member, request)
         : { draft: buildLocalChapterDraft(selectedMemories, request.existingText, request.chapterTitle) };

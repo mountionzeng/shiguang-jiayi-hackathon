@@ -10,6 +10,12 @@ import { draftTitleFromAnswers } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { currentConsentVersion, requestAiConsent } from "./aiConsent";
 
+export interface WritingOptions {
+  writingMode?: "polish" | "compose";
+  writingInstruction?: string;
+  conversation?: Array<{ role: "user" | "assistant"; content: string }>;
+}
+
 export interface OrganizedMemoryDraft {
   title: string;
   summary: string;
@@ -79,7 +85,7 @@ function parseCloudDraft(
 ): OrganizedMemoryDraft | undefined {
   if (!result || typeof result !== "object") return undefined;
   const draft = result as CloudOrganizedMemoryResult;
-  if (typeof draft.body !== "string" || !draft.body.trim()) return undefined;
+  if (typeof draft.body !== "string" || !draft.body.trim() || draft.body.trim().length > 500) return undefined;
 
   return {
     title: typeof draft.title === "string" && draft.title.trim()
@@ -88,7 +94,7 @@ function parseCloudDraft(
     summary: typeof draft.summary === "string" && draft.summary.trim()
       ? draft.summary.trim().slice(0, 40)
       : fallback.summary,
-    body: draft.body.trim().slice(0, 500),
+    body: draft.body.trim(),
     emotions: normalizeTags(draft.emotions, fallback.memoryType === "note" ? 2 : 5),
     people: normalizeTags(draft.people, 8),
     places: normalizeTags(draft.places, 8),
@@ -97,7 +103,7 @@ function parseCloudDraft(
   };
 }
 
-export interface OrganizeMemoryInput {
+export interface OrganizeMemoryInput extends WritingOptions {
   transcript: string[];
   memoryType: MemoryType;
   memberName?: string;
@@ -109,8 +115,10 @@ export interface OrganizeMemoryInput {
   expectedSourceRevisionId?: string;
 }
 
-export interface OrganizeInlineAnswerInput {
+export interface OrganizeInlineAnswerInput extends WritingOptions {
   answer: string;
+  /** Current editor excerpt, for voice/continuity; never appended as new text. */
+  basisText?: string;
   memoryType?: MemoryType;
   memberName?: string;
   storyTitle?: string;
@@ -120,7 +128,8 @@ export async function organizeMemory(
   input: OrganizeMemoryInput,
 ): Promise<OrganizedMemoryDraft> {
   const transcript = input.transcript.map((item) => item.trim()).filter(Boolean);
-  const fallback = localOrganizedDraft(transcript, input.memoryType);
+  // A failed rewrite must preserve the complete editor draft, not merge and cut chat text.
+  const fallback = localOrganizedDraft(input.expectedSavedText !== undefined ? transcript.slice(0, 1) : transcript, input.memoryType);
   if (input.useAi === false) return fallback;
   if (!input.memoryId) return fallback;
   if (!canUseCloudAi()) return { ...fallback, fallbackReason: "cloud-not-ready" };
@@ -135,11 +144,14 @@ export async function organizeMemory(
         memberName: input.memberName,
         storyTitle: input.storyTitle,
         consentVersion: currentConsentVersion(),
+        ...(input.writingMode ? { writingMode: input.writingMode } : {}),
+        ...(input.writingInstruction !== undefined ? { writingInstruction: input.writingInstruction } : {}),
         ...(input.expectedSavedText !== undefined ? {
           sourceOnly: true,
           expectedText: input.expectedSavedText,
           sourceRevisionId: input.expectedSourceRevisionId,
           transcript,
+          ...(input.conversation ? { conversation: input.conversation } : {}),
         } : {}),
       },
     }));
@@ -159,6 +171,7 @@ export async function organizeInlineAnswer(
   input: OrganizeInlineAnswerInput,
 ): Promise<OrganizedMemoryDraft | undefined> {
   const answer = normalizeMemoryText(input.answer);
+  if (input.answer.trim().length > 500) return undefined;
   if (!answer || !canUseCloudAi()) return undefined;
   if (!await requestAiConsent()) return undefined;
   const fallback = localOrganizedDraft([answer], input.memoryType ?? "note");
@@ -173,6 +186,10 @@ export async function organizeInlineAnswer(
         memberName: input.memberName,
         storyTitle: input.storyTitle,
         consentVersion: currentConsentVersion(),
+        ...(input.writingMode ? { writingMode: input.writingMode } : {}),
+        ...(input.writingInstruction !== undefined ? { writingInstruction: input.writingInstruction } : {}),
+        ...(input.basisText !== undefined ? { basisText: input.basisText } : {}),
+        ...(input.conversation ? { conversation: input.conversation } : {}),
       },
     }));
     const cloudDraft = parseCloudDraft(response.result, fallback);

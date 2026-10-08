@@ -2837,7 +2837,8 @@ test("inline xiaoyi entry is embedded in chapter editor and hidden for protected
   assert.match(template, /class="xiaoyi-panel"/);
   assert.match(template, /看看这一章的记忆/);
   assert.match(template, /就用我的原话/);
-  assert.match(template, /请小忆整理/);
+  assert.match(template, /写成一段/);
+  assert.match(template, /整理原话/);
   assert.match(template, /class="pending-edits"/);
   assert.doesNotMatch(template, /xiaoyi-entry[\s\S]{0,240}navigateTo/, "inline xiaoyi must not jump to interview page");
 });
@@ -2876,8 +2877,8 @@ test("inline xiaoyi in a chapter reads selected text and creates a pending inser
   await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
   const nextQuestion = calls.filter(call => call.name === "chatInterview")[1];
   assert.equal(nextQuestion.data.answer, "她在烙饼，我想讲那口旧锅。", "继续追问必须读取当前回答");
-  assert.equal(nextQuestion.data.conversation[0].text, "我妈在灶台前忙着", "仍保留选区上下文");
-  assert.equal(nextQuestion.data.conversation[1].role, "assistant");
+  assert.equal(nextQuestion.data.sourceText, "我妈在灶台前忙着", "仍保留选区上下文");
+  assert.equal(nextQuestion.data.conversation[0].role, "assistant");
   assert.equal(page.data.xiaoyiAnswer, "她在烙饼，我想讲那口旧锅。", "追问后仍能整理或使用原话");
   assert.match(JSON.stringify(page.data.xiaoyiMessages), /那口旧锅/);
   assert.equal((page.data.draft as any).chapters[0].pendingRevision, undefined, "只聊天不会写正文");
@@ -2902,7 +2903,7 @@ test("inline xiaoyi in a chapter reads selected text and creates a pending inser
   assert.equal(chapter.pendingRevision, undefined);
 });
 
-test("inline xiaoyi write mode asks first, organizes only the answer, then creates a pending insert", async context => {
+test("inline xiaoyi compose mode organizes only the answer, then creates a pending insert", async context => {
   const state = createInitialRoomState();
   state.personalDrafts = { owner: { title: "灶台", paragraphs: ["那天屋里很冷，我妈在灶台前忙着。"], sourceCount: 0, generatedAt: "", generationMode: "local-demo", chapters: [
     { id: "chapter-1", title: "灶台", memoryIds: [], content: [{ text: "那天屋里很冷，我妈在灶台前忙着。" }] },
@@ -2929,17 +2930,15 @@ test("inline xiaoyi write mode asks first, organizes only the answer, then creat
   page.setData({ editorReady: true, view: "chapter" });
 
   callPage(page, "openXiaoyi");
-  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "write" } } });
-  assert.match(String(page.data.xiaoyiStatus), /先回答这个问题/);
-  assert.equal(calls.filter(call => call.name === "organizeMemory").length, 0, "帮我写不会跳过提问直接整理");
-
   callPage(page, "onXiaoyiAnswerInput", { detail: { value: "我妈那天在灶台前烙饼，我在旁边烧火。" } });
-  await callPage(page, "organizeXiaoyiAnswer");
+  await callPage(page, "organizeXiaoyiAnswer", { currentTarget: { dataset: { mode: "compose" } } });
   const organizeCall = calls.find(call => call.name === "organizeMemory");
   assert.equal(organizeCall?.data.inlineAnswer, true);
   assert.deepEqual(organizeCall?.data.transcript, ["我妈那天在灶台前烙饼，我在旁边烧火。"]);
+  assert.equal(organizeCall?.data.writingMode, "compose");
+  assert.match(String(organizeCall?.data.basisText), /灶台前忙着/);
   assert.equal(page.data.xiaoyiDraftText, "我妈那天在灶台前烙饼，我在旁边烧火。");
-  assert.match(JSON.stringify(page.data.xiaoyiMessages), /小忆只整理了你的回答/);
+  assert.match(JSON.stringify(page.data.xiaoyiMessages), /小忆成文 · 文字 AI 生成/);
   (wx as any).cloud = undefined;
 
   await callPage(page, "useXiaoyiDraft");
@@ -3015,7 +3014,8 @@ test("inline xiaoyi entry is embedded in the archive memory editor", () => {
   assert.match(template, /class="xiaoyi-entry"[^>]*bindtap="openXiaoyi"/);
   assert.match(template, /class="xiaoyi-panel"/);
   assert.match(template, /就用我的原话/);
-  assert.match(template, /请小忆整理/);
+  assert.match(template, /写成一段/);
+  assert.match(template, /整理原话/);
   assert.doesNotMatch(template, /xiaoyi-entry[\s\S]{0,240}navigateTo/, "inline xiaoyi must not jump to interview page");
 });
 
@@ -3065,13 +3065,24 @@ test("inline xiaoyi in archive lands the user's original answer into editText, s
 
 test("inline xiaoyi organized draft saved from archive keeps AI provenance even for a raw memory", async context => {
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
   const page = instantiate(await pageDefinition("archive"));
   await callPage(page, "refresh");
   await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  (wx as any).cloud = { callFunction: async ({ name }: any) => {
+    if (name === "organizeMemory") return { result: { title: "巷口的伞", summary: "深绿色的伞", body: "外公的伞是深绿色的，边上有点掉漆。", memoryType: "note", generationMode: "cloud-ai" } };
+    return { result: { status: "ok" } };
+  } };
 
   callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "organizeXiaoyiAnswer");
   callPage(page, "onXiaoyiDraftInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
   await callPage(page, "useXiaoyiDraft");
+  (wx as any).cloud = undefined;
   await callPage(page, "saveEdit");
 
   const saved = storage.roomState().contributions.find(item => item.id === "demo-personal-rain")!;
@@ -3083,13 +3094,24 @@ test("inline xiaoyi organized draft saved from archive keeps AI provenance even 
 
 test("inline xiaoyi organized draft followed by user edits records AI then manual history", async context => {
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  context.after(() => { if (previousApp) Object.defineProperty(globalThis, "getApp", previousApp); else delete (globalThis as any).getApp; });
   const page = instantiate(await pageDefinition("archive"));
   await callPage(page, "refresh");
   await callPage(page, "openMemory", { currentTarget: { dataset: { id: "demo-personal-rain" } } });
+  (wx as any).cloud = { callFunction: async ({ name }: any) => {
+    if (name === "organizeMemory") return { result: { title: "巷口的伞", summary: "深绿色的伞", body: "外公的伞是深绿色的，边上有点掉漆。", memoryType: "note", generationMode: "cloud-ai" } };
+    return { result: { status: "ok" } };
+  } };
 
   callPage(page, "openXiaoyi");
+  callPage(page, "onXiaoyiAnswerInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
+  await callPage(page, "organizeXiaoyiAnswer");
   callPage(page, "onXiaoyiDraftInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
   await callPage(page, "useXiaoyiDraft");
+  (wx as any).cloud = undefined;
   callPage(page, "onEditText", { detail: { value: `${page.data.editText} 我又补了一句自己的话。` } });
   await callPage(page, "saveEdit");
 
@@ -3099,7 +3121,7 @@ test("inline xiaoyi organized draft followed by user edits records AI then manua
   assert.match(memoryAiRevisions(saved)[2].text, /我又补了一句自己的话/);
 });
 
-test("inline xiaoyi in archive write mode asks first, organizes only the answer, then can be landed", async context => {
+test("inline xiaoyi in archive compose mode organizes only the answer, then can be landed", async context => {
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
   wx.setStorageSync("aiConsentDecision", { granted: true, version: 1, decidedAt: "2026-09-28T00:00:00.000Z" });
   const previousApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
@@ -3118,15 +3140,13 @@ test("inline xiaoyi in archive write mode asks first, organizes only the answer,
   } };
 
   callPage(page, "openXiaoyi");
-  await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "write" } } });
-  assert.match(String(page.data.xiaoyiStatus), /先回答这个问题/);
-  assert.equal(calls.filter(call => call.name === "organizeMemory").length, 0, "帮我写不会跳过提问直接整理");
-
   callPage(page, "onXiaoyiAnswerInput", { detail: { value: "外公的伞是深绿色的，边上有点掉漆。" } });
-  await callPage(page, "organizeXiaoyiAnswer");
+  await callPage(page, "organizeXiaoyiAnswer", { currentTarget: { dataset: { mode: "compose" } } });
   const organizeCall = calls.find(call => call.name === "organizeMemory");
   assert.equal(organizeCall?.data.inlineAnswer, true);
   assert.deepEqual(organizeCall?.data.transcript, ["外公的伞是深绿色的，边上有点掉漆。"]);
+  assert.equal(organizeCall?.data.writingMode, "compose");
+  assert.match(String(organizeCall?.data.basisText), /下雨天/);
   assert.equal(page.data.editText, originalText, "organizing does not touch editText before landing");
 
   await callPage(page, "useXiaoyiDraft");

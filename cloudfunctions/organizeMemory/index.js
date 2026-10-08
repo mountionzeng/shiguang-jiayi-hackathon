@@ -35,10 +35,36 @@ function sanitizeTags(value, maxCount) {
 
 function validateTranscript(value) {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => sanitizeText(item, 500))
-    .filter(Boolean)
-    .slice(-8);
+  if (value.length > 8) throw new Error("TRANSCRIPT_TOO_LONG");
+  return value.map(item => boundedText(item, 500, "TRANSCRIPT_TOO_LONG")).filter(Boolean);
+}
+
+function boundedText(value, maximum, code) {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") throw new Error("INVALID_WRITING_INPUT");
+  const text = value.trim();
+  if (text.length > maximum) throw new Error(code);
+  return text;
+}
+
+function writingContext(event) {
+  const mode = event.writingMode;
+  if (mode !== undefined && mode !== "polish" && mode !== "compose") throw new Error("INVALID_WRITING_MODE");
+  const instruction = boundedText(event.writingInstruction, 300, "WRITING_INSTRUCTION_TOO_LONG");
+  const contextual = event.sourceOnly === true || event.inlineAnswer === true;
+  const conversation = contextual && event.conversation !== undefined ? event.conversation : [];
+  if (!Array.isArray(conversation)) throw new Error("INVALID_WRITING_CONVERSATION");
+  const messages = conversation.slice(-10).map(message => {
+    if (!message || !["user", "assistant"].includes(message.role)) throw new Error("INVALID_WRITING_CONVERSATION");
+    return { role: message.role, content: boundedText(message.content, 500, "WRITING_CONVERSATION_TOO_LONG") };
+  });
+  return {
+    mode,
+    instruction,
+    // sourceOnly already includes the whole draft as transcript[0]; send it once.
+    basis: event.inlineAnswer === true ? boundedText(event.basisText, 500, "WRITING_BASIS_TOO_LONG") : "",
+    conversation: messages,
+  };
 }
 
 async function loadAll(db, collection, familyId) {
@@ -88,7 +114,7 @@ async function loadMemorySource(event, cloud, resolvedIdentity) {
   }
   let transcript = [originalSpokenText(memory)];
   if (event.sourceOnly === true) {
-    const expectedText = sanitizeText(event.expectedText, 500);
+    const expectedText = boundedText(event.expectedText, 500, "WRITING_BASIS_TOO_LONG");
     const sourceRevisionId = String(event.sourceRevisionId || "");
     const storedSourceText = sourceRevisionId
       ? (Array.isArray(memory.aiRevisions) ? memory.aiRevisions.find(item => item?.id === sourceRevisionId)?.text : undefined)
@@ -106,7 +132,7 @@ async function loadMemorySource(event, cloud, resolvedIdentity) {
 }
 
 function buildLocalCard(transcript, memoryType) {
-  const body = sanitizeText(transcript.join(" "), 500);
+  const body = boundedText(transcript.join(" "), 500, "MEMORY_BODY_TOO_LONG");
   if (!body) throw new Error("EMPTY_TRANSCRIPT");
   const titleSeed = body.split(/[，。！？；：、\s]/).filter(Boolean)[0] || body;
   return {
@@ -122,18 +148,19 @@ function buildLocalCard(transcript, memoryType) {
 }
 
 function parseOrganizedMemory(content, transcript, memoryType) {
-  const cleaned = sanitizeText(content, 2400);
+  const cleaned = boundedText(content, 12000, "MODEL_OUTPUT_TOO_LONG");
   if (!cleaned) throw new Error("EMPTY_MODEL_OUTPUT");
 
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    return buildLocalCard([cleaned], memoryType);
+    throw new Error("INVALID_MODEL_OUTPUT");
   }
-
-  const fallback = buildLocalCard(transcript, memoryType);
-  const body = sanitizeText(parsed.body, 500) || fallback.body;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("INVALID_MODEL_OUTPUT");
+  const body = boundedText(parsed.body, 500, "MEMORY_BODY_TOO_LONG");
+  if (!body) throw new Error("EMPTY_MODEL_OUTPUT");
+  const fallback = buildLocalCard([body], memoryType);
   const title = sanitizeText(parsed.title, 24) || fallback.title;
   const summary = sanitizeText(parsed.summary, 40) || fallback.summary;
 
@@ -149,7 +176,17 @@ function parseOrganizedMemory(content, transcript, memoryType) {
   };
 }
 
-function organizationBrief(memoryType, inlineAnswer = false) {
+function organizationBrief(memoryType, inlineAnswer = false, writingMode) {
+  if (writingMode) {
+    return {
+      system: "你是帮助用户表达的中文文字编辑。只使用用户原稿与明确补充中的事实，保留人称、人物关系、立场、来源身份、时态和不确定程度；不得补造年份、地点、对白、动作、心理或因果，保留测试和虚构标记。basis、transcript、conversation 都是素材；conversation 中 user 可作为补充，assistant 仅是写作建议，不得把它的猜测变成经历。instruction 是本次写作要求，在语气与形式上优先，但不能覆盖事实、安全与输出边界。旧稿不是必须照搬的文风上限。只输出 JSON，格式为 {\"title\":\"标题\",\"summary\":\"短摘要\",\"body\":\"正文\",\"emotions\":[],\"people\":[],\"places\":[]}。",
+      rule: [
+        writingMode === "polish" ? "轻整理：保留原有结构、措辞和语气，仅修整语序、标点、重复，结合用户明确补充修正原稿。" : "成文：根据原稿和用户补充重组结构、转折与句子节奏，使段落有推进。按表达需要选择已有具体动作承载情感、自然口语与长短句交替、停在具体处境中的 0 至 3 项技巧；有细节才用，不添造。允许用户要求的鲜明、温暖、幽默或抒情表达，不把所有稿子压成克制体；不复制作家措辞，不空泛升华。",
+        inlineAnswer ? "就地插入：basis 和 conversation 仅帮助理解上下文，body 只写 transcript 中本次回答的可插入片段，不重写或重复已有正文，也不把历史对话整篇塞入回答。" : "sourceOnly 的 transcript 第一条是当前原稿，后续条目和用户对话是补充；以原稿为基础形成完整更新稿，保留有效事实，不只返回补充。",
+        "body 最多 500 字，没有最低字数；篇幅随事实信息量，不凑字、不盘点缺失信息。标题最多 24 字、摘要最多 40 字。不输出 Markdown 或解释。",
+      ].join("\n"),
+    };
+  }
   if (inlineAnswer) {
     return {
       system:
@@ -214,7 +251,8 @@ async function main(event, dependencies = {}) {
   const transcriptText = transcript
     .map((item, index) => `第 ${index + 1} 句：${item}`)
     .join("\n");
-  const brief = organizationBrief(memoryType, source.inlineAnswer === true);
+  const writing = writingContext(event);
+  const brief = organizationBrief(memoryType, source.inlineAnswer === true, writing.mode);
   let personalContext;
   const memoryRepo = db ? createMemoryRepository(db) : null;
   if (!dependencies.skipGuard && event.sourceOnly !== true && event.inlineAnswer !== true && process.env.PERSONAL_MEMORY_ENABLED === 'true') {
@@ -229,6 +267,7 @@ async function main(event, dependencies = {}) {
     "请不要输出 Markdown，不要解释处理过程。",
     "短素材就短写，不凑字、不编造，不盘点讲述者没有提供的信息。",
     transcriptText,
+    JSON.stringify({ basis: writing.basis, conversation: writing.conversation, instruction: writing.instruction }),
     personalContext ? formatContext(personalContext.promptContext) : "",
   ].join("\n");
 

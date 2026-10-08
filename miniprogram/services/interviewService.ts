@@ -11,6 +11,7 @@ import {
 } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
+import { measurePerformance } from "./performanceLog";
 
 interface CloudInterviewResult {
   dimension?: unknown;
@@ -79,6 +80,8 @@ export interface GenerateInterviewPromptInput {
   /** 仅当前被编辑的这段记忆；共创对话时不读取其他记忆上下文。 */
   sourceText?: string;
   sourceOnly?: boolean;
+  /** Explicit question button; ordinary conversation may simply respond. */
+  replyIntent?: "question";
 }
 
 export async function generateInterviewPrompt(
@@ -88,7 +91,7 @@ export async function generateInterviewPrompt(
   if (!await requestAiConsent()) return localFallbackPrompt(input, "cloud-not-ready");
 
   try {
-    const response = await wx.cloud.callFunction({
+    const response = await measurePerformance("ai.interview", () => wx.cloud.callFunction({
       name: "chatInterview",
       data: {
         answer: input.answer,
@@ -100,10 +103,11 @@ export async function generateInterviewPrompt(
         storyId: input.storyId,
         previousAnswers: input.previousAnswers ?? [],
         conversation: input.conversation ?? [],
+        ...(input.replyIntent ? { replyIntent: input.replyIntent } : {}),
         ...(input.sourceText !== undefined ? { sourceText: input.sourceText } : {}),
         ...(input.sourceOnly === true ? { sourceOnly: true } : {}),
       },
-    });
+    }));
 
     if (isCloudInterviewResult(response.result)) {
       return {

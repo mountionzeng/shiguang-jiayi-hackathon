@@ -33,7 +33,7 @@ import {
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
 import {
-  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer,
+  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
   resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
 } from "../../services/xiaoyiCompanion";
 import {
@@ -499,12 +499,19 @@ Page({
     try {
       const spoken = await this.persistSpokenAnswers(answers);
       const draft = await organizeMemory({
-        transcript: answers,
+        transcript: [spoken.text],
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
-        useAi: this.data.writingMode === "creative",
+        // The organizer authorizes personal memories; shared-family records stay as spoken text.
+        useAi: this.data.writingMode === "creative" && !this.data.sharedFamilyId,
         memoryId: spoken.id,
+        expectedSavedText: spoken.text,
+        writingMode: "compose",
+        conversation: this.data.messages.slice(-10).map(message => ({
+          role: message.kind === "answer" ? "user" as const : "assistant" as const,
+          content: message.text,
+        })),
       });
       const covered = detectCoveredDimensions(draft.body);
 
@@ -564,10 +571,12 @@ Page({
   xiaoyiContextText() {
     return this.data.draftText.trim();
   },
+  xiaoyiContextKey() { return [this.data.storyId, this.data.sharedFamilyId, this.pendingContribution?.id ?? "new"].join(":"); },
   xiaoyiMessagesAppend,
   askXiaoyiQuestion,
   onXiaoyiAnswerInput,
   onXiaoyiDraftInput,
+  onXiaoyiWritingInstruction,
   useXiaoyiOriginal,
   organizeXiaoyiAnswer,
   useXiaoyiDraft,
