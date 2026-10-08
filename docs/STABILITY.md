@@ -66,9 +66,9 @@
 
 验收开始前用 `configHashes` 导出配置摘要并填入 `configs`（包括存在的 private 配置）；验收后改变本机编译配置也必须重验，不能只匹配 Git 提交。可运行 `node --input-type=module -e 'import {configHashes} from "./scripts/release-evidence.mjs"; console.log(JSON.stringify(configHashes(process.cwd()),null,2))'`。
 
-把当前六个核心函数 getOpenId、recordAiConsent、storyBooks、chatInterview、organizeMemory、storyImages 从指定云环境下载到外部目录（每个函数一个子目录），再运行 `node scripts/release-evidence.mjs SNAPSHOT_DIR ENV OUTPUT_JSON`。它核对本地已跟踪 JS/JSON 业务文件及下载文件集合（排除 node_modules），拒绝额外业务文件与符号链接，记录每个函数摘要和时间，不把 Active 当源码一致。package-lock.json 是远端安装产物，不作业务源码比较；package.json 参与比较。快照必须真实下载，不能拿本地副本伪造。新增影响核心流程的函数须扩充 requiredFunctions。
+把当前七个核心函数 getOpenId、recordAiConsent、storyBooks、chatInterview、organizeMemory、generateBiography、storyImages 从指定云环境下载到外部目录（每个函数一个子目录），再运行 `node scripts/release-evidence.mjs SNAPSHOT_DIR ENV OUTPUT_JSON`。它核对本地已跟踪 JS/JSON 业务文件及下载文件集合（排除 node_modules），拒绝额外业务文件与符号链接，记录每个函数摘要和时间，不把 Active 当源码一致。package-lock.json 是远端安装产物，不作业务源码比较；package.json 参与比较。快照必须真实下载，不能拿本地副本伪造。新增影响核心流程的函数须扩充 requiredFunctions。
 
-验收/云源码证据有效期 24 小时。云配置和供应商状态不在源码摘要里，仍需实际验收。正式发布、语音、分享等不在这六个核心函数的源码核验范围，涉及它们时须另外核验对应函数；不能把本工具描述成全应用上线许可。
+验收/云源码证据有效期 24 小时。云配置和供应商状态不在源码摘要里，仍需实际验收。正式发布、语音、分享等不在这七个核心函数的源码核验范围，涉及它们时须另外核验对应函数；不能把本工具描述成全应用上线许可。
 
 输出目录每次新建，内含二维码和 manifest.json，记录提交、AppID、环境、配置文件摘要、云核验、验收、检查结果及二维码摘要。源代码/配置中途改变、测试失败、证据不匹配、没有明确预览成功标记或没有新图片时拒绝出码。输出放源码仓库之外，不提交私人截图或验收文字。
 

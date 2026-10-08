@@ -48,6 +48,7 @@ test('preview records exact code/config/cloud/acceptance and a unique QR artifac
   assert.notEqual(first.directory,second.directory);
   assert.equal(first.source.commit,f.source.commit);
   assert.equal(first.cloud.functions.storyBooks.digest,f.functions.storyBooks.digest);
+  assert.equal(first.cloud.functions.generateBiography.digest,f.functions.generateBiography.digest);
   assert.equal(first.qr.sha256.length,64);
   assert.ok(fs.existsSync(path.join(first.directory,'manifest.json')));
   assert.equal(first.checks.passed,true);
