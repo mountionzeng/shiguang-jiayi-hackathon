@@ -921,6 +921,58 @@ test("inline answers use a short-edit brief for both memory types without biogra
   }
 });
 
+
+test("inline writing keeps the current answer separate from old draft and assistant context", async context => {
+  const keys = ["ORGANIZE_AI_API_KEY", "ORGANIZE_AI_MODEL", "ORGANIZE_AI_BASE_URL"];
+  const previous = keys.map(key => process.env[key]);
+  const previousFetch = global.fetch;
+  context.after(() => {
+    global.fetch = previousFetch;
+    keys.forEach((key, index) => {
+      if (previous[index] === undefined) delete process.env[key];
+      else process.env[key] = previous[index];
+    });
+  });
+  process.env.ORGANIZE_AI_API_KEY = "test-organize-key";
+  process.env.ORGANIZE_AI_MODEL = "memory-card-model";
+  process.env.ORGANIZE_AI_BASE_URL = "https://organize-model.invalid/v1";
+  const answer = "两种声音我都记得。那只盆平时就放在花坛旁边。";
+  const basis = "【虚构旧稿】我和外婆在院子听雨，我一直记得瓦片上的声音。";
+  const assistant = "【助手上下文】雨停后你把水倒进了花坛吗？";
+  const conversation = [{role: "assistant", content: assistant}, {role: "user", content: "【历史回答】那天我穿着蓝衣服。"}];
+  let request;
+  global.fetch = async (_url, options) => {
+    request = JSON.parse(options.body);
+    return {ok: true, json: async () => ({choices: [{message: {content: JSON.stringify({title: "雨声", summary: "回答", body: answer})}}]})};
+  };
+  for (const writingMode of [undefined, "polish", "compose"]) {
+    const result = await organizeMemoryMain({inlineAnswer: true, writingMode, transcript: [answer], basisText: basis, conversation});
+    const system = request.messages[0].content;
+    const prompt = request.messages[1].content;
+    assert.equal(result.body, answer);
+    assert.match(system, /只有本次回答中的事实可成为 body/);
+    assert.ok(prompt.endsWith(JSON.stringify({transcript: [answer]})));
+    if (writingMode === "compose") {
+      assert.ok(prompt.includes(basis));
+      assert.ok(prompt.includes(assistant));
+      assert.match(system, /不是正文素材/);
+      assert.match(system, /不能重复旧稿、加入旧事件/);
+    } else {
+      assert.ok(!prompt.includes(basis));
+      assert.ok(!prompt.includes(assistant));
+      assert.ok(!prompt.includes("历史回答"));
+      assert.match(system, /不补全指代/);
+      assert.doesNotMatch(system, /basis、transcript、conversation 都是素材|结合用户明确补充修正原稿/);
+    }
+  }
+  await organizeMemoryMain({sourceOnly: true, writingMode: "polish", transcript: [basis, answer], conversation});
+  assert.ok(request.messages[1].content.includes(basis));
+  assert.ok(request.messages[1].content.includes(assistant));
+  assert.ok(request.messages[1].content.endsWith(JSON.stringify({transcript: [basis, answer]})));
+  assert.match(request.messages[1].content, /完整更新稿/);
+  await assert.rejects(organizeMemoryMain({inlineAnswer: true, writingMode: "polish", transcript: [answer], basisText: "长".repeat(501)}), /WRITING_BASIS_TOO_LONG/);
+});
+
 test("the organize cloud function falls back when the provider times out", async () => {
   const previousFetch = global.fetch;
   const previousKey = process.env.ORGANIZE_AI_API_KEY;
