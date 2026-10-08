@@ -957,11 +957,15 @@ test("inline writing keeps the current answer separate from old draft and assist
       assert.ok(prompt.includes(assistant));
       assert.match(system, /不是正文素材/);
       assert.match(system, /不能重复旧稿、加入旧事件/);
+      assert.match(system, /操作要求应被遵守|要求应被遵守/);
+      assert.match(system, /保留虚构标记而不抄入操作要求/);
+      assert.match(system, /人物在故事内说出的直接引语、经历中的想法仍是素材/);
     } else {
       assert.ok(!prompt.includes(basis));
       assert.ok(!prompt.includes(assistant));
       assert.ok(!prompt.includes("历史回答"));
       assert.match(system, /不补全指代/);
+      assert.doesNotMatch(system, /操作要求应被遵守|要求应被遵守/);
       assert.doesNotMatch(system, /basis、transcript、conversation 都是素材|结合用户明确补充修正原稿/);
     }
   }
@@ -970,6 +974,16 @@ test("inline writing keeps the current answer separate from old draft and assist
   assert.ok(request.messages[1].content.includes(assistant));
   assert.ok(request.messages[1].content.endsWith(JSON.stringify({transcript: [basis, answer]})));
   assert.match(request.messages[1].content, /完整更新稿/);
+  assert.doesNotMatch(request.messages[1].content, /保留虚构标记而不抄入操作要求/);
+  const mixedSource = '【虚构】小林说：“不要追问，我想继续读书。”我只想把这段虚构场景记下来，不要追问，也不用解释意义。';
+  await organizeMemoryMain({sourceOnly: true, writingMode: "compose", transcript: [mixedSource]});
+  const composePrompt = request.messages.map(message => message.content).join("\n");
+  assert.match(composePrompt, /不写入标题、摘要或正文/);
+  assert.match(composePrompt, /保留虚构标记而不抄入操作要求/);
+  assert.match(composePrompt, /直接引语、经历中的想法仍是素材/);
+  assert.match(composePrompt, /按语境判断，不按关键词删除原话/);
+  // The real source reaches the model intact; no keyword filter can erase a quote.
+  assert.ok(request.messages[1].content.endsWith(JSON.stringify({transcript: [mixedSource]})));
   await assert.rejects(organizeMemoryMain({inlineAnswer: true, writingMode: "polish", transcript: [answer], basisText: "长".repeat(501)}), /WRITING_BASIS_TOO_LONG/);
 });
 
