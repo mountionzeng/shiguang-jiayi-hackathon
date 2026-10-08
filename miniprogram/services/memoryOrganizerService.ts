@@ -128,8 +128,9 @@ export async function organizeMemory(
   input: OrganizeMemoryInput,
 ): Promise<OrganizedMemoryDraft> {
   const transcript = input.transcript.map((item) => item.trim()).filter(Boolean);
-  // A failed rewrite must preserve the complete editor draft, not merge and cut chat text.
-  const fallback = localOrganizedDraft(input.expectedSavedText !== undefined ? transcript.slice(0, 1) : transcript, input.memoryType);
+  // A failed rewrite must preserve the complete editor draft and explicit user supplements;
+  // assistant conversation is kept out of transcript by callers and only sent as model context.
+  const fallback = localOrganizedDraft(transcript, input.memoryType);
   if (input.useAi === false) return fallback;
   if (!input.memoryId) return fallback;
   if (!canUseCloudAi()) return { ...fallback, fallbackReason: "cloud-not-ready" };

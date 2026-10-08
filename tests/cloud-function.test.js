@@ -557,7 +557,7 @@ test("the interview cloud function returns one safe follow-up", async () => {
     // 模型要看到自己问过什么，才不会把用户答过的事再问一遍。
     assert.match(prompt, /小忆：那时候谁和你在一起？/);
     assert.match(prompt, /用户：那时候天很冷。/);
-    assert.match(requests[0].messages[0].content, /已经回答过的事，不要再问/);
+    assert.match(requests[0].messages[0].content, /已回答的事不换词重问/);
     assert.match(prompt, /可以继续同一方向/);
     assert.doesNotMatch(prompt, /必须是/);
     assert.doesNotMatch(JSON.stringify(requests), /test-chat-key/);
@@ -641,18 +641,21 @@ test("interview allows a slow model reply but still aborts at forty seconds", as
   process.env.CHAT_AI_API_KEY = "test-chat-key";
   process.env.CHAT_AI_MODEL = "smart-chat-model";
   let requestSignal;
+  let signalRequestStarted;
+  const requestStarted = new Promise(resolve => { signalRequestStarted = resolve; });
   global.fetch = async (_url, options) => {
     requestSignal = options.signal;
     return new Promise((_resolve, reject) => {
       options.signal.addEventListener("abort", () => reject(Object.assign(new Error("timed out"), { name: "AbortError" })), { once: true });
+      signalRequestStarted();
     });
   };
   t.mock.timers.enable({ apis: ["setTimeout"] });
   try {
     const pending = chatInterviewMain({ answer: "这是虚构的慢请求验收。" });
     const rejected = assert.rejects(pending, { name: "AbortError" });
-    // main awaits story-context resolution before requesting the model.
-    await Promise.resolve();
+    // Wait for the actual request, independently of context-read microtasks.
+    await requestStarted;
     assert.ok(requestSignal);
     t.mock.timers.tick(20_001);
     assert.equal(requestSignal.aborted, false);

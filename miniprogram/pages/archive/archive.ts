@@ -527,13 +527,17 @@ Page({
     const draftTitle = this.data.editTitle;
     const draftStory = this.data.editStory;
     const writingInstruction = this.data.documentWritingInstruction.trim();
+    const userAdditions = this.data.chatMessages
+      .filter(message => message.role === "user" && !message.id.startsWith("welcome-"))
+      .map(message => message.text.trim())
+      .filter(Boolean);
     // Preserve the draft separately: a long conversation must never push it out of context.
     const conversation = this.data.chatMessages.filter(message => !message.id.startsWith("welcome-")).slice(-10)
       .map(message => ({ role: message.role, content: message.text }));
     this.setData({ organizingPreview: true, previewNotice: "正在结合原稿和对话成文，原记忆不会因此改变。" });
     try {
       const draft = await organizeMemory({
-        transcript: [draftText],
+        transcript: [draftText, ...userAdditions],
         writingMode: "compose",
         writingInstruction,
         conversation,
