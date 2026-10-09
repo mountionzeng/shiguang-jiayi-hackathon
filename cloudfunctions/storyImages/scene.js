@@ -37,7 +37,7 @@ function buildSceneMessages({ title, text, artText = "", artDirection = "", refe
     ? `\n\n仅用于美术质地的已保存素材：\n${artText.slice(0, 20000)}` : "";
   return [
     { role: "system", content: scope === "book" ? COVER_SYSTEM_PROMPT : SYSTEM_PROMPT },
-    { role: "user", content: scope === "book" ? `书名：${title || "（未命名）"}\n\n整本书的全部正文：\n${text}${direction}${material}${continuityArt}` : `章名：${title || "（无章名）"}\n\n当前章节正文：\n${text}${continuity}${direction}${material}${continuityArt}` },
+    { role: "user", content: scope === "book" ? `书名：${title || "（未命名）"}\n\n整本书的全部正文：\n${text}${direction}${material}${continuityArt}` : `${scope === "memory" ? "回忆标题" : "章名"}：${title || "（无标题）"}\n\n${scope === "memory" ? "这段回忆的已保存原文" : "当前章节正文"}：\n${text}${continuity}${direction}${material}${continuityArt}` },
   ];
 }
 

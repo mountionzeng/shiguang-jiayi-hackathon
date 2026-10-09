@@ -17,11 +17,12 @@
         <view class="memory-photo" wx:for="{{memoryPhotos}}" wx:key="id">
           <image wx:if="{{item.path}}" src="{{item.path}}" mode="aspectFill" data-id="{{item.id}}" bindtap="previewMemoryPhoto" aria-label="查看记忆配图" />
           <view wx:else class="photo-placeholder">配图暂未读到</view>
+          <view wx:if="{{item.aiGenerated}}" class="ai-label">AI 生成图片</view>
           <button data-id="{{item.id}}" bindtap="removeMemoryPhoto" disabled="{{savingPhotos || savingEdit || organizingPreview}}" aria-label="从记忆移除这张配图">移出记忆</button>
         </view>
       </view>
       <button class="btn btn-ghost" bindtap="addMemoryPhotos" loading="{{savingPhotos}}" disabled="{{savingPhotos || savingEdit || organizingPreview || memoryPhotos.length >= 9}}">{{memoryPhotos.length ? '再添配图' : '给这段记忆配图'}}</button>
-      <view class="photo-notice">{{photoNotice || '从相册选择照片或插图，添加后保存到这段记忆。最多 9 张。'}}</view>
+      <view class="photo-notice">{{photoNotice || '可以选照片，也可以请 AI 根据这段回忆生成配图。最多 9 张。'}}</view>
       <view class="memory-document-meta">{{selectedVersionLabel}} · {{storageLabel}} · 修改与预览不会自动保存</view>
       <button class="btn btn-ghost" bindtap="startDocumentEdit" wx:if="{{!isEditingDocument}}" disabled="{{savingPhotos || savingEdit || organizingPreview}}">修改这段记忆</button>
       <block wx:if="{{isEditingDocument}}">

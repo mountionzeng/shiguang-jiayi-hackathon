@@ -126,7 +126,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
       }
       ctx.fillStyle = '#d7d6ca'; ctx.fillRect(60, height - 78, TEXT_WIDTH, 1);
       ctx.fillStyle = '#6a6e68'; ctx.font = 20 + 'px sans-serif';
-      ctx.fillText(coverIndex >= 0 ? '拾光家忆' + (memoryExport ? ' · 记忆配图' : descriptor.coverImageId ? ' · AI 生成封面' : '')
+      ctx.fillText(coverIndex >= 0 ? '拾光家忆' + (memoryExport ? (descriptor.photoIds?.[coverIndex]?.startsWith('photo-ai-') ? ' · AI 生成配图' : ' · 记忆配图') : descriptor.coverImageId ? ' · AI 生成封面' : '')
         : '拾光家忆' + (backdrop ? ' · AI 章节底图' : '') + (descriptor.containsAiText ? ' · 含 AI 生成文字' : ''), 60, height - 52);
       ctx.textAlign = 'right'; ctx.fillText(coverIndex >= 0 ? (memoryExport ? '配图 ' + (coverIndex + 1) + ' / ' + covers.length : covers.length > 1 ? '封面 ' + (coverIndex + 1) + ' / ' + covers.length : '封面') : (textIndex + 1) + ' / ' + pages.length, 690, height - 52);
       assertActive();

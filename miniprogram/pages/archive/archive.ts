@@ -30,7 +30,7 @@ import {
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
 
-import { readLocalPhotos, saveLocalPhoto } from "../../services/bookImages";
+import { readLocalPhotos, saveLocalPhoto, isStoryImageReference } from "../../services/bookImages";
 import { ensurePhotoUploads } from "../../services/photoCloud";
 
 type ArchiveTab = "note" | "memoir";
@@ -139,7 +139,7 @@ function waitForSaveConfirmation() {
 Page({
   roomSnapshot: undefined as Awaited<ReturnType<typeof loadRoomStateRemoteFirst>> | undefined,
   data: {
-    memoryPhotos: [] as Array<{ id: string; path: string }>,
+    memoryPhotos: [] as Array<{ id: string; path: string; aiGenerated: boolean }>,
     photoNotice: "",
     savingPhotos: false,
     placements: [] as Array<{ storyId?: string; memberId: string; bookName: string; bookTitle: string; chapter: string; chapterId: string }>,
@@ -330,10 +330,10 @@ Page({
   async loadMemoryPhotos(memory: MemoryContribution, savedNotice = "") {
     const requestId = ++this.photoRequestId;
     const ids = memory.photoIds || [];
-    this.setData({ memoryPhotos: ids.map(id => ({ id, path: "" })), photoNotice: ids.length ? "正在读取配图…" : "" });
+    this.setData({ memoryPhotos: ids.map(id => ({ id, path: "", aiGenerated:isStoryImageReference(id) })), photoNotice: ids.length ? "正在读取配图…" : "" });
     const { photoPaths } = await readLocalPhotos(ids).catch(() => ({ photoPaths: {} as Record<string, string> }));
     if (this.archiveUnloaded || requestId !== this.photoRequestId || this.data.editingId !== memory.id) return;
-    this.setData({ memoryPhotos: ids.map(id => ({ id, path: photoPaths[id] || "" })),
+    this.setData({ memoryPhotos: ids.map(id => ({ id, path: photoPaths[id] || "", aiGenerated:isStoryImageReference(id) })),
       photoNotice: ids.some(id => !photoPaths[id]) ? savedNotice + "部分配图暂未读到，原图引用仍保留。" : savedNotice });
   },
   previewMemoryPhoto(event: { currentTarget: { dataset: { id: string } } }) {
@@ -377,7 +377,21 @@ Page({
       if (!this.archiveUnloaded && this.editingOriginal?.id === original.id && !/cancel/i.test(message)) this.setData({ photoNotice: message });
     } finally { if (!this.archiveUnloaded) this.setData({ savingPhotos: false }); }
   },
-  addMemoryPhotos() { void this.changeMemoryPhotos(); },
+  addMemoryPhotos() {
+    if (this.data.savingPhotos || this.data.savingEdit) return;
+    wx.showActionSheet({itemList:['从相册或拍照选照片', 'AI生成配图'], success: result => {
+      if (result.tapIndex === 0) void this.changeMemoryPhotos();
+      if (result.tapIndex === 1) this.generateMemoryPhotos();
+    }});
+  },
+  generateMemoryPhotos() {
+    if (!this.editingOriginal || this.data.savingPhotos || this.data.savingEdit || this.data.organizingPreview || this.data.xiaoyiLoading || this.data.chatAsking) return;
+    if (this.hasUnsavedEditorWork()) {this.setData({photoNotice:'请先保存文字修改，再生成配图。'}); return;}
+    const id = this.editingOriginal.id;
+    // Reopen from server when returning, so the newly selected images are not overwritten by an old editor snapshot.
+    wx.navigateTo({url:`/pages/story-images/story-images?memoryId=${encodeURIComponent(id)}`,
+      success:() => {this.editingOriginal = undefined;}});
+  },
   removeMemoryPhoto(event: { currentTarget: { dataset: { id: string } } }) {
     void this.changeMemoryPhotos(event.currentTarget.dataset.id);
   },

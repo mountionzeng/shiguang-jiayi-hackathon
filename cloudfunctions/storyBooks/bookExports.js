@@ -121,6 +121,18 @@ async function buildMemory(repo, ctx, input) {
   const photoIDs = input.includePhotos === true ? source.photoIds || [] : [];
   const photoFileIDs = [];
   for (const photoId of photoIDs) {
+    if (photoId.startsWith('photo-ai-')) {
+      const image = await repo.get('story_images', `${ctx.familyId}_img_${photoId.slice(9)}`);
+      if (!ctx.verifiedOpenid || !image || image.familyId !== ctx.familyId || image.memoryId !== source.memoryId || image.storyId ||
+          image.deletedAtMs !== undefined || image.moderation !== 'pass' || image.purpose !== 'illustration' ||
+          image.sourcePolicyRequired || image.sourceIds !== undefined || typeof image.fileID !== 'string' ||
+          !image.fileID.startsWith('cloud://') || image.requestId !== photoId.slice(9) ||
+          !['png','jpg','jpeg','webp'].some(ext => image.fileID.endsWith(`/story-images/${ctx.familyId}/memory-${source.memoryId}/${image.requestId}.${ext}`))) {
+        fail('PHOTO_NOT_READY', 'AI配图尚未通过审核或已不可用，请重新核对');
+      }
+      photoFileIDs.push(image.fileID);
+      continue;
+    }
     const photo = await repo.get('photos', `${ctx.familyId}__${photoId}`);
     if (!photo || photo.familyId !== ctx.familyId || photo.photoId !== photoId || !ctx.verifiedOpenid || photo._openid !== ctx.verifiedOpenid ||
         photo.deletedAt || photo.sourcePolicyRequired || photo.sourceIds !== undefined ||
