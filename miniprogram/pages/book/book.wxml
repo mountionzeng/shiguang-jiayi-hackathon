@@ -221,27 +221,45 @@
       </block>
       <block wx:if="{{panel === 'organize'}}">
         <view class="panel-title serif">把记忆写进故事</view>
-        <view class="panel-note">选好记忆和章节，再点底部“下一步”。</view>
+        <view class="panel-note">记忆各自保留。挑选、看看联系，再预览它们组成的故事。</view>
         <view class="field-label">写进哪个故事</view>
-        <radio-group bindchange="onOrganizeBook"><label class="memory-row" wx:for="{{organizeBooks}}" wx:key="id"><radio value="{{item.id}}" checked="{{organizeBookKey === item.id}}" disabled="{{generating || switchingBook}}" /><text class="memory-text">{{item.title}}</text><text class="version-date">{{item.detail}}</text></label></radio-group>
+        <radio-group bindchange="onOrganizeBook"><label class="memory-row" wx:for="{{organizeBooks}}" wx:key="id"><radio value="{{item.id}}" checked="{{organizeBookKey === item.id}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text class="memory-text">{{item.title}}</text><text class="version-date">{{item.detail}}</text></label></radio-group>
         <view class="panel-note">切换故事会保留你勾选的记忆。没有章节也可以新开一章。</view>
         <view class="field-label">1. 勾选要整理的记忆</view>
         <checkbox-group bindchange="onOrganizeMemories">
           <label class="memory-row" wx:for="{{organizeRows}}" wx:key="id">
-            <checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{generating || switchingBook}}" />
+            <checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{connectionSaving || generating || switchingBook}}" />
             <text class="memory-text">{{item.text}}</text>
             <text class="version-date">{{item.where}}</text>
           </label>
         </checkbox-group>
         <view wx:if="{{!organizeRows.length}}" class="panel-note">还没有可整理的记忆，请先记录一段经历。</view>
+        <view class="connection-panel" wx:if="{{organizeCount >= 2 || connectionReflection || connectionNotice}}">
+          <view class="field-label">放在一起，你想到了什么？</view>
+          <view class="panel-note">可以看一条线索，自己说说，也可以跳过。</view>
+          <button wx:if="{{writingMode === 'creative'}}" class="btn btn-ghost" bindtap="exploreConnections" loading="{{connectionBusy}}" disabled="{{connectionBusy || connectionSaving || generating || switchingBook || organizeCount < 2 || organizeCount > 8}}">让小忆一起看看</button>
+          <view wx:if="{{organizeCount > 8 && writingMode === 'creative'}}" class="panel-note">一次选 2—8 段来看联系；更多记忆仍可直接组合。</view>
+          <block wx:if="{{connection}}">
+            <view class="chapter-ai-label">小忆提供的线索 · 文字 AI 生成</view>
+            <view class="panel-note" wx:if="{{connection.observation}}">{{connection.observation}}</view>
+            <view class="connection-evidence" wx:for="{{connection.evidence}}" wx:key="memoryId">
+              <view class="field-label">{{item.title}}</view><text selectable>“{{item.quote}}”</text>
+            </view>
+            <view class="field-label">{{connection.question}}</view>
+            <button class="btn btn-ghost" bindtap="dismissConnection">我不觉得有关，先跳过</button>
+          </block>
+          <view class="panel-note">{{connectionNotice}}</view>
+          <textarea class="xiaoyi-answer" value="{{connectionReflection}}" maxlength="500" auto-height placeholder="只写你自己想到的，不必接受小忆的说法" bindinput="onConnectionReflection" disabled="{{connectionSaving}}" />
+          <button class="btn btn-ghost" bindtap="saveConnectionReflection" loading="{{connectionSaving}}" disabled="{{!connectionReflection || connectionSaving || generating || switchingBook}}">把我的想法存成一段记忆</button>
+        </view>
         <view class="field-label contents-label">2. 放进哪一章</view>
         <radio-group bindchange="onOrganizeTarget">
           <label class="memory-row" wx:for="{{chapterRows}}" wx:key="id">
-            <radio value="{{item.id}}" checked="{{organizeTarget === item.id}}" disabled="{{generating || switchingBook}}" />
+            <radio value="{{item.id}}" checked="{{organizeTarget === item.id}}" disabled="{{connectionSaving || generating || switchingBook}}" />
             <text class="memory-text">{{item.label}}{{item.title ? '　' + item.title : ''}}</text>
           </label>
           <label class="memory-row">
-            <radio value="new" checked="{{organizeTarget === 'new'}}" disabled="{{generating || switchingBook}}" />
+            <radio value="new" checked="{{organizeTarget === 'new'}}" disabled="{{connectionSaving || generating || switchingBook}}" />
             <text class="memory-text">新开一章</text>
           </label>
         </radio-group>
@@ -250,10 +268,10 @@
           <scroll-view class="chapter-original" scroll-y><text selectable>{{organizeOriginal || '这一章还没有正文'}}</text></scroll-view>
           <view class="field-label contents-label">3. 怎样放进去</view>
           <radio-group bindchange="onOrganizeMethod">
-            <label class="memory-row"><radio value="insert" checked="{{organizeMethod === 'insert'}}" disabled="{{generating || switchingBook}}" /><text>保留原文，插入这段记忆</text></label>
-            <label wx:if="{{writingMode === 'creative'}}" class="memory-row"><radio value="blend" checked="{{organizeMethod === 'blend'}}" disabled="{{generating || switchingBook}}" /><text>让 AI 结合本章重新衔接</text></label>
+            <label class="memory-row"><radio value="insert" checked="{{organizeMethod === 'insert'}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text>保留原文，插入这段记忆</text></label>
+            <label wx:if="{{writingMode === 'creative'}}" class="memory-row"><radio value="blend" checked="{{organizeMethod === 'blend'}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text>让 AI 结合本章重新衔接</text></label>
           </radio-group>
-          <picker wx:if="{{organizeMethod === 'insert'}}" range="{{insertionPoints}}" range-key="label" value="{{insertionIndex}}" bindchange="onInsertionPoint" disabled="{{generating || switchingBook}}">
+          <picker wx:if="{{organizeMethod === 'insert'}}" range="{{insertionPoints}}" range-key="label" value="{{insertionIndex}}" bindchange="onInsertionPoint" disabled="{{connectionSaving || generating || switchingBook}}">
             <view class="insertion-picker">插入位置：{{insertionPoints[insertionIndex].label}}　⌄</view>
           </picker>
           <view wx:else class="panel-note">AI 会读取整章原文与所选记忆，生成新的章节正文。请在下一步检查事实、语气和照片位置。</view>

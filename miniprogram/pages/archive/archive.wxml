@@ -3,7 +3,7 @@
   <view class="archive-heading">
     <view class="archive-eyebrow typewriter">记忆库</view>
     <view class="archive-title serif">{{editingId ? '阅读记忆' : '记忆'}}</view>
-    <view class="archive-intro">还没写进书的在上面，已经写进书的在下面。一段记忆可以写进好几本书。</view>
+    <view class="archive-intro">每段记忆都独立保留，可以配图、发送，也可以组合成不同的故事。</view>
     <view class="archive-intro">{{storageLabel}}</view>
   </view>
   <view class="archive-empty" wx:if="{{loadError}}">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
@@ -13,15 +13,24 @@
       <view class="memory-document-title serif">{{editTitle || '一段记忆'}}</view>
       <view class="ai-label" wx:if="{{editAiLabel}}">{{editAiLabel}}</view>
       <view class="memory-document-text serif">{{editText}}</view>
+      <view class="memory-photo-grid" wx:if="{{memoryPhotos.length}}">
+        <view class="memory-photo" wx:for="{{memoryPhotos}}" wx:key="id">
+          <image wx:if="{{item.path}}" src="{{item.path}}" mode="aspectFill" data-id="{{item.id}}" bindtap="previewMemoryPhoto" aria-label="查看记忆配图" />
+          <view wx:else class="photo-placeholder">配图暂未读到</view>
+          <button data-id="{{item.id}}" bindtap="removeMemoryPhoto" disabled="{{savingPhotos || savingEdit || organizingPreview}}" aria-label="从记忆移除这张配图">移出记忆</button>
+        </view>
+      </view>
+      <button class="btn btn-ghost" bindtap="addMemoryPhotos" loading="{{savingPhotos}}" disabled="{{savingPhotos || savingEdit || organizingPreview || memoryPhotos.length >= 9}}">{{memoryPhotos.length ? '再添配图' : '给这段记忆配图'}}</button>
+      <view class="photo-notice">{{photoNotice || '从相册选择照片或插图，添加后保存到这段记忆。最多 9 张。'}}</view>
       <view class="memory-document-meta">{{selectedVersionLabel}} · {{storageLabel}} · 修改与预览不会自动保存</view>
-      <button class="btn btn-ghost" bindtap="startDocumentEdit" wx:if="{{!isEditingDocument}}" disabled="{{savingEdit || organizingPreview}}">修改这段记忆</button>
+      <button class="btn btn-ghost" bindtap="startDocumentEdit" wx:if="{{!isEditingDocument}}" disabled="{{savingPhotos || savingEdit || organizingPreview}}">修改这段记忆</button>
       <block wx:if="{{isEditingDocument}}">
         <view class="editor-label">标题</view>
-        <input class="memory-input" value="{{editTitle}}" maxlength="40" bindinput="onEditTitle" disabled="{{savingEdit}}" />
+        <input class="memory-input" value="{{editTitle}}" maxlength="40" bindinput="onEditTitle" disabled="{{savingPhotos || savingEdit}}" />
         <view class="editor-label">正文</view>
     <view class="memory-text-wrap">
-      <textarea class="memory-text serif" value="{{editText}}" maxlength="500" auto-height bindinput="onEditText" disabled="{{savingEdit}}" cursor-spacing="48" bindkeyboardheightchange="onKeyboardHeight" />
-      <button class="xiaoyi-entry" bindtap="openXiaoyi" disabled="{{savingEdit}}" aria-label="小忆">
+      <textarea class="memory-text serif" value="{{editText}}" maxlength="500" auto-height bindinput="onEditText" disabled="{{savingPhotos || savingEdit}}" cursor-spacing="48" bindkeyboardheightchange="onKeyboardHeight" />
+      <button class="xiaoyi-entry" bindtap="openXiaoyi" disabled="{{savingPhotos || savingEdit}}" aria-label="小忆">
         <image class="xiaoyi-entry-avatar" src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFill" aria-hidden="true" />
       </button>
     </view>
@@ -31,11 +40,11 @@
           <view class="xiaoyi-title">小忆在这里</view>
           <view class="xiaoyi-context">正在看：{{xiaoyiContextPreview}}</view>
         </view>
-        <button class="xiaoyi-close" bindtap="closeXiaoyi" disabled="{{xiaoyiLoading}}">关掉</button>
+        <button class="xiaoyi-close" bindtap="closeXiaoyi" disabled="{{savingPhotos || xiaoyiLoading}}">关掉</button>
       </view>
       <view class="xiaoyi-options">
-        <button class="xiaoyi-option" data-mode="ask" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">问我一个问题</button>
-        <button class="xiaoyi-option" data-mode="compose" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">写成一段</button>
+        <button class="xiaoyi-option" data-mode="ask" bindtap="askXiaoyiQuestion" disabled="{{savingPhotos || xiaoyiLoading}}">问我一个问题</button>
+        <button class="xiaoyi-option" data-mode="compose" bindtap="organizeXiaoyiAnswer" disabled="{{savingPhotos || xiaoyiLoading}}">写成一段</button>
       </view>
       <scroll-view class="xiaoyi-thread" scroll-y wx:if="{{xiaoyiMessages.length}}">
         <view class="xiaoyi-message xiaoyi-message-{{item.kind}}" wx:for="{{xiaoyiMessages}}" wx:key="id" selectable>
@@ -43,25 +52,25 @@
           <view>{{item.text}}</view>
         </view>
       </scroll-view>
-      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{savingPhotos || xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
       <view class="xiaoyi-message-label">这次怎么写（可不填）</view>
-      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{savingPhotos || xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
       <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
       <view class="xiaoyi-status" wx:elif="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
       <view class="xiaoyi-actions">
-        <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{xiaoyiLoading}}">就用我的原话</button>
-        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '整理原话'}}</button>
+        <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{savingPhotos || xiaoyiLoading}}">就用我的原话</button>
+        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{savingPhotos || xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '整理原话'}}</button>
       </view>
       <view wx:if="{{xiaoyiDraftText}}" class="xiaoyi-draft-box">
         <view class="xiaoyi-message-label">小忆草稿，可以改</view>
-        <textarea class="xiaoyi-draft" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiDraftText}}" maxlength="800" auto-height show-confirm-bar="{{false}}" bindinput="onXiaoyiDraftInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
-        <button class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{xiaoyiLoading}}">接到记忆后面</button>
+        <textarea class="xiaoyi-draft" hold-keyboard="{{true}}" disabled="{{savingPhotos || xiaoyiLoading}}" value="{{xiaoyiDraftText}}" maxlength="800" auto-height show-confirm-bar="{{false}}" bindinput="onXiaoyiDraftInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+        <button class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{savingPhotos || xiaoyiLoading}}">接到记忆后面</button>
       </view>
     </view>
         <view class="editor-actions">
-          <button class="btn btn-jade editor-action" bindtap="saveEdit" disabled="{{savingEdit || organizingPreview}}">保存修改</button>
-          <button class="btn btn-ghost editor-action" bindtap="cancelDocumentEdit" disabled="{{savingEdit || organizingPreview}}">撤销未保存改动</button>
-          <button class="btn btn-jade editor-action" bindtap="createDocumentPreview" loading="{{organizingPreview}}" disabled="{{savingEdit || organizingPreview || chatAsking}}">{{organizingPreview ? '正在成文' : '生成成文预览'}}</button>
+          <button class="btn btn-jade editor-action" bindtap="saveEdit" disabled="{{savingPhotos || savingEdit || organizingPreview}}">保存修改</button>
+          <button class="btn btn-ghost editor-action" bindtap="cancelDocumentEdit" disabled="{{savingPhotos || savingEdit || organizingPreview}}">撤销未保存改动</button>
+          <button class="btn btn-jade editor-action" bindtap="createDocumentPreview" loading="{{organizingPreview}}" disabled="{{savingPhotos || savingEdit || organizingPreview || chatAsking}}">{{organizingPreview ? '正在成文' : '生成成文预览'}}</button>
         </view>
       </block>
     </view>
@@ -73,19 +82,19 @@
           <view>{{item.text}}</view>
         </view>
         <view class="coediting-notice" wx:if="{{chatNotice}}">{{chatNotice}}</view>
-        <textarea class="coediting-input" value="{{chatInput}}" maxlength="500" auto-height placeholder="补充细节，或告诉小忆你想怎么改" bindinput="onChatInput" disabled="{{chatAsking || organizingPreview}}" cursor-spacing="48" />
-        <button class="btn btn-jade" bindtap="sendCoeditingMessage" loading="{{chatAsking}}" disabled="{{chatAsking || organizingPreview || !chatInput}}">{{chatAsking ? '小忆在想' : '发送给小忆'}}</button>
+        <textarea class="coediting-input" value="{{chatInput}}" maxlength="500" auto-height placeholder="补充细节，或告诉小忆你想怎么改" bindinput="onChatInput" disabled="{{savingPhotos || chatAsking || organizingPreview}}" cursor-spacing="48" />
+        <button class="btn btn-jade" bindtap="sendCoeditingMessage" loading="{{chatAsking}}" disabled="{{savingPhotos || chatAsking || organizingPreview || !chatInput}}">{{chatAsking ? '小忆在想' : '发送给小忆'}}</button>
       </view>
     </view>
     <view class="coediting-panel">
       <view class="editor-label">这篇想怎么写（可不填）</view>
-      <textarea class="coediting-input" value="{{documentWritingInstruction}}" maxlength="300" auto-height placeholder="例如：保留我的口气，把刚聊到的细节融进去" bindinput="onDocumentWritingInstruction" disabled="{{savingEdit || organizingPreview}}" cursor-spacing="48" />
-      <button wx:if="{{!isEditingDocument}}" class="btn btn-jade" bindtap="createDocumentPreview" loading="{{organizingPreview}}" disabled="{{savingEdit || organizingPreview || chatAsking}}">生成成文预览</button>
+      <textarea class="coediting-input" value="{{documentWritingInstruction}}" maxlength="300" auto-height placeholder="例如：保留我的口气，把刚聊到的细节融进去" bindinput="onDocumentWritingInstruction" disabled="{{savingPhotos || savingEdit || organizingPreview}}" cursor-spacing="48" />
+      <button wx:if="{{!isEditingDocument}}" class="btn btn-jade" bindtap="createDocumentPreview" loading="{{organizingPreview}}" disabled="{{savingPhotos || savingEdit || organizingPreview || chatAsking}}">生成成文预览</button>
     </view>
     <view class="ai-history-controls" wx:if="{{editAiLabel || historyItems.length}}">
-      <button class="btn btn-ghost" bindtap="toggleOriginal" disabled="{{savingEdit}}">{{showOriginal ? '收起原话' : '查看原话'}}</button>
-      <button class="btn btn-ghost" bindtap="revertToSpoken" disabled="{{savingEdit || reverting || !canRevertToSpoken}}" loading="{{reverting}}" wx:if="{{canRevertToSpoken}}">撤回到原话</button>
-      <button class="btn btn-ghost" bindtap="toggleHistory" disabled="{{savingEdit}}" wx:if="{{historyItems.length}}">{{showHistory ? '收起修改历史' : '查看修改历史'}}</button>
+      <button class="btn btn-ghost" bindtap="toggleOriginal" disabled="{{savingPhotos || savingEdit}}">{{showOriginal ? '收起原话' : '查看原话'}}</button>
+      <button class="btn btn-ghost" bindtap="revertToSpoken" disabled="{{savingPhotos || savingEdit || reverting || !canRevertToSpoken}}" loading="{{reverting}}" wx:if="{{canRevertToSpoken}}">撤回到原话</button>
+      <button class="btn btn-ghost" bindtap="toggleHistory" disabled="{{savingPhotos || savingEdit}}" wx:if="{{historyItems.length}}">{{showHistory ? '收起修改历史' : '查看修改历史'}}</button>
     </view>
     <view class="ai-original-text" wx:if="{{showOriginal}}">{{originalText}}</view>
     <view class="ai-history-list" wx:if="{{showHistory}}">
@@ -96,17 +105,17 @@
       <button class="btn btn-ghost" wx:if="{{!isCurrentVersion}}" bindtap="selectCurrentMemoryRevision">回到当前版本</button>
     </view>
       <button wx:for="{{placements}}" wx:key="chapterId" class="btn btn-ghost" data-member="{{item.memberId}}" data-chapter="{{item.chapterId}}" bindtap="openPlacement">查看《{{item.bookTitle}}》· {{item.chapter}}</button>
-      <button class="btn btn-jade" bindtap="sendMemorySocial" disabled="{{savingEdit || organizingPreview}}">发朋友圈</button>
+      <button class="btn btn-jade" bindtap="sendMemorySocial" disabled="{{savingPhotos || savingEdit || organizingPreview}}">发送这段记忆</button>
     <view wx:if="{{isEditingDocument}}">
       <view class="editor-label">素材分组（可留空，不会写入正文）</view>
-      <input class="memory-input" value="{{editStory}}" maxlength="30" bindinput="onEditStory" placeholder="输入故事名，或从下面选择" disabled="{{savingEdit}}" />
+      <input class="memory-input" value="{{editStory}}" maxlength="30" bindinput="onEditStory" placeholder="输入故事名，或从下面选择" disabled="{{savingPhotos || savingEdit}}" />
       <view class="story-helper">输入时会筛选已有故事；没找到同名故事时，可以新建。</view>
       <view class="story-choices">
-        <button class="story-chip {{!editStory ? 'story-chip-selected' : ''}}" data-title="" bindtap="chooseEditStory" disabled="{{savingEdit}}" aria-label="暂不归类{{!editStory ? '，已选中' : ''}}">
+        <button class="story-chip {{!editStory ? 'story-chip-selected' : ''}}" data-title="" bindtap="chooseEditStory" disabled="{{savingPhotos || savingEdit}}" aria-label="暂不归类{{!editStory ? '，已选中' : ''}}">
           <text class="story-chip-mark" aria-hidden="true">{{!editStory ? '✓' : ''}}</text>
           <text class="story-chip-title">暂不归类</text>
         </button>
-        <button class="story-chip {{editStory === item ? 'story-chip-selected' : ''}}" wx:for="{{storySuggestions}}" wx:key="*this" data-title="{{item}}" bindtap="chooseEditStory" disabled="{{savingEdit}}" aria-label="{{item}}{{editStory === item ? '，已选中' : ''}}">
+        <button class="story-chip {{editStory === item ? 'story-chip-selected' : ''}}" wx:for="{{storySuggestions}}" wx:key="*this" data-title="{{item}}" bindtap="chooseEditStory" disabled="{{savingPhotos || savingEdit}}" aria-label="{{item}}{{editStory === item ? '，已选中' : ''}}">
           <text class="story-chip-mark" aria-hidden="true">{{editStory === item ? '✓' : ''}}</text>
           <text class="story-chip-title">{{item}}</text>
         </button>
@@ -116,41 +125,41 @@
           <view class="story-create-title">{{storyCreateHint}}</view>
           <view class="story-create-name">《{{storyCreateTitle}}》</view>
         </view>
-        <button class="story-create-button" bindtap="createEditStory" disabled="{{savingEdit}}">新建故事</button>
+        <button class="story-create-button" bindtap="createEditStory" disabled="{{savingPhotos || savingEdit}}">新建故事</button>
       </view>
     </view>
     <view class="editor-actions">
-      <button class="btn editor-action editor-organize" bindtap="organizeIntoBook" disabled="{{savingEdit}}" aria-label="整理进书，预览后写入">
+      <button class="btn editor-action editor-organize" bindtap="organizeIntoBook" disabled="{{savingPhotos || savingEdit}}" aria-label="整理进书，预览后写入">
         <view class="editor-action-copy">
           <view class="editor-action-title">整理进书</view>
           <view class="editor-action-note">预览后写入</view>
         </view>
         <text class="editor-action-arrow" aria-hidden="true">›</text>
       </button>
-      <button class="btn btn-ghost editor-action editor-return" bindtap="closeEditor" disabled="{{savingEdit}}">返回记忆列表</button>
+      <button class="btn btn-ghost editor-action editor-return" bindtap="closeEditor" disabled="{{savingPhotos || savingEdit}}">返回记忆列表</button>
     </view>
     <view class="document-preview-mask" wx:if="{{previewOpen}}">
       <view class="document-preview-card">
         <view class="archive-eyebrow">文档预览</view>
-        <input class="memory-input" value="{{previewTitle}}" maxlength="40" bindinput="onPreviewTitleInput" disabled="{{savingEdit}}" />
-        <textarea class="memory-text serif" value="{{previewText}}" maxlength="500" auto-height bindinput="onPreviewTextInput" disabled="{{savingEdit}}" cursor-spacing="48" />
+        <input class="memory-input" value="{{previewTitle}}" maxlength="40" bindinput="onPreviewTitleInput" disabled="{{savingPhotos || savingEdit}}" />
+        <textarea class="memory-text serif" value="{{previewText}}" maxlength="500" auto-height bindinput="onPreviewTextInput" disabled="{{savingPhotos || savingEdit}}" cursor-spacing="48" />
         <view class="ai-label" wx:if="{{previewAiLabel}}">{{previewAiLabel}}</view>
         <view class="preview-notice">{{previewNotice}}</view>
-        <button class="btn btn-ghost" bindtap="closeDocumentPreview" disabled="{{savingEdit}}">返回继续编辑</button>
+        <button class="btn btn-ghost" bindtap="closeDocumentPreview" disabled="{{savingPhotos || savingEdit}}">返回继续编辑</button>
         <view class="editor-actions">
-          <button class="btn editor-action" data-mode="update-current" bindtap="savePreview" loading="{{savingEdit}}" disabled="{{savingEdit}}">更新当前记忆</button>
-          <button class="btn btn-jade editor-action" data-mode="dated-version" bindtap="savePreview" loading="{{savingEdit}}" disabled="{{savingEdit}}">另存为日期版本</button>
+          <button class="btn editor-action" data-mode="update-current" bindtap="savePreview" loading="{{savingEdit}}" disabled="{{savingPhotos || savingEdit}}">更新当前记忆</button>
+          <button class="btn btn-jade editor-action" data-mode="dated-version" bindtap="savePreview" loading="{{savingEdit}}" disabled="{{savingPhotos || savingEdit}}">另存为日期版本</button>
         </view>
       </view>
     </view>
   </view>
   <block wx:elif="{{!loadError}}">
-    <button wx:if="{{hasItems}}" class="btn btn-jade" bindtap="organizeIntoBook">选择记忆，整理进书</button>
+    <button wx:if="{{hasItems}}" class="btn btn-jade" bindtap="organizeIntoBook">挑几段记忆，组成故事</button>
     <block wx:if="{{hasItems}}">
-      <view class="note-section-title">还没写进书的 · {{unrecordedItems.length}}</view>
-      <view class="note-list" wx:if="{{unrecordedItems.length}}">
-        <view class="note-swipe" wx:for="{{unrecordedItems}}" wx:key="id">
-          <button class="note-delete" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="deleteMemory" disabled="{{!!deletingItemId}}" aria-label="删除{{item.title}}"><view class="note-delete-badge">删除</view></button>
+      <view class="note-section-title">全部记忆 · {{archiveItems.length}}</view>
+      <view class="note-list" wx:if="{{archiveItems.length}}">
+        <view class="note-swipe" wx:for="{{archiveItems}}" wx:key="id">
+          <button class="note-delete" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="deleteMemory" disabled="{{savingPhotos || !!deletingItemId}}" aria-label="删除{{item.title}}"><view class="note-delete-badge">删除</view></button>
           <view class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}" data-id="{{item.id}}" bindtouchstart="onNoteTouchStart" bindtouchend="onNoteTouchEnd" bindtap="openMemory" role="button" aria-label="阅读{{item.title}}">
             <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
             <view class="note-date">{{item.dateLabel}}</view>
@@ -160,22 +169,6 @@
           </view>
         </view>
       </view>
-      <view class="note-section-empty" wx:else>都已经写进书了。</view>
-
-      <view class="note-section-title">已经写进书的 · {{recordedItems.length}}</view>
-      <view class="note-list" wx:if="{{recordedItems.length}}">
-        <view class="note-swipe" wx:for="{{recordedItems}}" wx:key="id">
-          <button class="note-delete" data-id="{{item.id}}" data-title="{{item.title}}" bindtap="deleteMemory" disabled="{{!!deletingItemId}}" aria-label="删除{{item.title}}"><view class="note-delete-badge">删除</view></button>
-          <view class="note-paper {{swipedItemId === item.id ? 'note-paper-open' : ''}}" data-id="{{item.id}}" bindtouchstart="onNoteTouchStart" bindtouchend="onNoteTouchEnd" bindtap="openMemory" role="button" aria-label="阅读{{item.title}}">
-            <view class="bookmark-tab" aria-hidden="true"><image class="bookmark-tab-art" src="/assets/illustrations/memory-bookmark.png" mode="widthFix"></image></view>
-            <view class="note-date">{{item.dateLabel}}</view>
-            <view class="note-title serif">{{item.title}}</view>
-            <view class="note-excerpt">{{item.excerpt}}</view>
-            <view class="note-archive">{{item.archiveLabel}} · 点开阅读全文</view>
-          </view>
-        </view>
-      </view>
-      <view class="note-section-empty" wx:else>还没有写进任何一本书。在书稿里把记忆放进某一章，它就会出现在这里。</view>
     </block>
     <view class="archive-empty" wx:else><view class="archive-empty-title serif">从一句话开始</view><view class="archive-empty-note">随手记和慢慢聊留下的记录，都在这里。</view></view>
     <view class="archive-version-note">点开可编辑与归类，左滑可删除。删掉的记忆在人生之书的「最近删除」里，可以恢复。</view>

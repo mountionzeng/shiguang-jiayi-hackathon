@@ -98,3 +98,12 @@ test('multiple cover pages keep the chapter backdrop aligned only with text page
   assert.equal(f.images.filter(args => args.length === 9 && args[5] === 0).length, paths.length - 2);
   assert.equal(f.drawn.filter(text => text === '拾光家忆 · AI 章节底图').length, paths.length - 2);
 });
+
+test('memory exports render uncropped own photos and complete text, without a book cover',async()=>{
+ const f=runtime({path:'local-photo',width:1600,height:600});
+ const memory:any={...material,descriptor:{...material.descriptor,sourceKind:'memory',photoIds:['photo-one','photo-two']},photoUrls:['https://example.test/one','https://example.test/two']};
+ await renderBookImages(memory,'pages',32,f.page,()=>true,()=>{});
+ assert.deepEqual(f.requested,memory.photoUrls);assert.equal(f.images[0].length,5);assert.ok(f.drawn.includes('配图 1 / 2'));assert.ok(f.drawn.some(text=>text.includes('测试正文')));
+ const text=runtime();await renderBookImages({...memory,descriptor:{...memory.descriptor,photoIds:[]},photoUrls:[]},'pages',32,text.page,()=>true,()=>{});assert.deepEqual(text.requested,[]);assert.ok(text.files.length>0);
+ const missing=runtime();await assert.rejects(renderBookImages({...memory,photoUrls:[]},'pages',32,missing.page,()=>true,()=>{}),/配图不完整/);assert.deepEqual(missing.files,[]);
+});

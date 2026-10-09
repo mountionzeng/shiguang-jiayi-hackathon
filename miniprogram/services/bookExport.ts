@@ -12,6 +12,7 @@ export interface MemoryBookExportSelection {
   memoryId: string;
   revisionId?: string;
   expectedSourceVersion: string;
+  includePhotos?: boolean;
   targetTextImageCount?: number;
 }
 export type BookExportSelection = StoryBookExportSelection | MemoryBookExportSelection;
@@ -23,8 +24,9 @@ export interface BookExportDescriptor {
   sourceKind?: 'memory';
   memoryId?: string;
   sourceVersion?: string;
+  photoIds?: string[];
 }
-export interface BookExportMaterial { descriptor: BookExportDescriptor; coverUrl: string; coverUrls?: string[]; backdropUrls?: Record<string, string> }
+export interface BookExportMaterial { descriptor: BookExportDescriptor; coverUrl: string; coverUrls?: string[]; backdropUrls?: Record<string, string>; photoUrls?: string[] }
 async function call<T>(action: string, input: object = {}): Promise<T> {
   if (!wx.cloud) throw new Error('图片导出需要连接云端后使用');
   const response = await wx.cloud.callFunction({ name: 'storyBooks', data: { ...input, action } });
@@ -43,12 +45,13 @@ export function bookExportSelection(snapshot: SendSnapshot, selection: SendSelec
   if (!selection.text.trim() || start < 0) throw new Error('请重新选择原文中的文字');
   return { ...base, excerpt: { chapterId: selection.textChapterId, start, end: start + selection.text.length } };
 }
-export function memoryBookExportSelection(source: MemoryExportSource, options: { targetTextImageCount?: number } = {}): MemoryBookExportSelection {
+export function memoryBookExportSelection(source: MemoryExportSource, options: { targetTextImageCount?: number; includePhotos?: boolean } = {}): MemoryBookExportSelection {
   return {
     sourceKind: 'memory',
     memoryId: source.memoryId,
     ...(source.revisionId ? { revisionId: source.revisionId } : {}),
     expectedSourceVersion: source.sourceVersion,
+    includePhotos: options.includePhotos === true,
     ...(options.targetTextImageCount ? { targetTextImageCount: options.targetTextImageCount } : {}),
   };
 }

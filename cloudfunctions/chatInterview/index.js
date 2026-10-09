@@ -1,3 +1,4 @@
+const {loadConnectionSources, connectionMessages, validateConnection} = require('./memoryConnections');
 const {loadDailySources, dailyMessages, validateDailyQuestion} = require('./dailyQuestion');
 const {createRepository: createMemoryRepository} = require('./personalMemoryRepository');
 const {prepareContext,commitContext} = require('./personalMemoryContext');
@@ -543,6 +544,31 @@ async function generateDailyQuestion(event, options) {
   } finally { clearTimeout(timeoutId); }
 }
 
+async function generateMemoryConnection(event, options) {
+  const {cloud, db, identity, apiKey, model, baseUrl, dependencies} = options;
+  if (!dependencies.skipGuard) assertConsentVersion(identity.account, AI_CONSENT_VERSION);
+  const sources = await loadConnectionSources(db, identity, event);
+  const messages = connectionMessages(sources);
+  if (!dependencies.skipGuard) {
+    await moderateText(cloud, identity.openid, messages[1].content, "记忆联系输入", {db, nowMs:dependencies.nowMs});
+    await reserveAiRequest(db, identity, "chatInterview", dependencies.nowMs);
+  }
+  const meter = createTextMeter({db, identity, kind:"chatInterview", model, baseUrl, fetcher:defaultFetch});
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 35_000);
+  try {
+    const content = await requestChatCompletion({baseUrl, apiKey, model, messages, temperature:0.5, signal:controller.signal, fetcher:meter.fetch});
+    const result = validateConnection(content, sources);
+    if (!dependencies.skipGuard) {
+      await moderateText(cloud, identity.openid, JSON.stringify(result), "记忆联系回复", {db, nowMs:dependencies.nowMs});
+      await assertIdentityStillActive(db, identity);
+    }
+    const latest = await loadConnectionSources(db, identity, event);
+    if (JSON.stringify(latest) !== JSON.stringify(sources)) throw new Error("CONNECTION_SOURCES_CHANGED");
+    return {...result, aiDisclosure:"文字 AI 生成", computeUsage:meter.snapshot()};
+  } finally { clearTimeout(timer); }
+}
+
 async function main(event, dependencies = {}) {
   const apiKey = process.env.CHAT_AI_API_KEY || process.env.AI_API_KEY;
   const model = process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
@@ -578,6 +604,10 @@ async function main(event, dependencies = {}) {
     if (cloud.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
     db = db || cloud.database();
     identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
+  }
+
+  if (event?.action === "memoryConnection") {
+    return generateMemoryConnection(event, {cloud, db, identity, apiKey, model, baseUrl, dependencies});
   }
 
   if (event?.action === "dailyQuestion") {

@@ -186,3 +186,31 @@ test('legacy memory export preview still passes caller openid to content safety'
   });
   assert.equal(preview.descriptor.memoryId, 'memory-one');
 });
+
+const {previewBookExport, exportBookImages} = require('../cloudfunctions/storyBooks/bookExports');
+async function photoFixture() {
+ const f=await setup();f.ctx.verifiedOpenid='owner';f.memory.photoIds=['photo-one'];f.tables.set('memories:family_owner_memory-one',f.memory);
+ const photo={familyId:'family_owner',photoId:'photo-one',_openid:'owner',moderation:{ok:true,suggest:'pass'},displayFileID:'cloud://env.bucket/user-photos/family_owner/photo-one/display.jpg'};
+ f.tables.set('photos:family_owner__photo-one',photo);
+ const source=(await memoryExportSource(f.repo,f.ctx,{memoryId:'memory-one'})).source;
+ return {...f,photo,source,input:{sourceKind:'memory',familyId:'family_owner',memoryId:'memory-one',expectedSourceVersion:source.sourceVersion,includePhotos:true}};
+}
+test('standalone memory exports bind moderated own photos and sign only the selected files',async()=>{
+ const f=await photoFixture();const options={approve:async()=>true};const preview=await previewBookExport(f.repo,f.ctx,f.input,options);
+ assert.deepEqual(preview.descriptor.photoIds,['photo-one']);const signed=[];
+ const material=await exportBookImages(f.repo,f.ctx,{...f.input,descriptorId:preview.descriptor.id},{...options,sign:async(file,ttl)=>{signed.push([file,ttl]);return 'https://example.test/photo.jpg';}});
+ assert.deepEqual(signed,[[f.photo.displayFileID,300]]);assert.deepEqual(material.photoUrls,['https://example.test/photo.jpg']);
+});
+test('unmoderated, foreign and revoked images cannot export; text-only still works',async()=>{
+ for(const patch of [{moderation:{ok:false,suggest:'review'}},{_openid:'other'},{deletedAt:'now'},{displayFileID:'cloud://env.bucket/other/display.jpg'},{sourceIds:[]}]){
+  const f=await photoFixture();f.tables.set('photos:family_owner__photo-one',{...f.photo,...patch});
+  await assert.rejects(previewBookExport(f.repo,f.ctx,f.input,{approve:async()=>true}),{code:'PHOTO_NOT_READY'});
+  const text=await previewBookExport(f.repo,f.ctx,{...f.input,includePhotos:false},{approve:async()=>true});assert.equal(text.descriptor.photoIds,undefined);
+ }
+});
+test('photo changes invalidate memory source and revocation during signing prevents delivery',async()=>{
+ const f=await photoFixture();const preview=await previewBookExport(f.repo,f.ctx,f.input,{approve:async()=>true});
+ await assert.rejects(exportBookImages(f.repo,f.ctx,{...f.input,descriptorId:preview.descriptor.id},{approve:async()=>true,sign:async()=>{f.tables.set('photos:family_owner__photo-one',{...f.photo,deletedAt:'now'});return 'https://example.test/p.jpg';}}));
+ f.memory.photoIds=[];f.tables.set('memories:family_owner_memory-one',f.memory);
+ await assert.rejects(memoryExportSource(f.repo,f.ctx,{memoryId:'memory-one',expectedSourceVersion:f.source.sourceVersion}),{code:'VERSION_CONFLICT'});
+});

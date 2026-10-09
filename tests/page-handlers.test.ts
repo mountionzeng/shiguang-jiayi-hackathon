@@ -3434,3 +3434,36 @@ test("首页书封和书架直接打开已保存或空白的独立故事书，�
   assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-direct");
   assert.equal(shelf.data.selectedKey, "");
 });
+
+test('connection reflection is independently saved only explicitly, and never copies AI interpretation',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+ const page=instantiate(await pageDefinition('book'));
+ page.organizeMemories=[];page.organizeSelection=[];
+ page.setData({panel:'organize',connection:{observation:'AI 的猜测',question:'AI 问题？',evidence:[]},connectionReflection:'这是我自己想到的新记忆。'});
+ const before=storage.roomState().contributions.length;
+ await callPage(page,'runOrganize');assert.equal(storage.roomState().contributions.length,before);assert.match(String(page.data.connectionNotice),/没保存/);
+ await callPage(page,'saveConnectionReflection');
+ const added=storage.roomState().contributions.filter(memory=>memory.text==='这是我自己想到的新记忆。');
+ assert.equal(added.length,1);assert.equal(added[0].scope,'personal');assert.equal(added[0].visibility,'private');assert.equal(("storyId" in added[0]),false);
+ assert.equal(page.data.connectionReflection,'');assert.ok((page.organizeSelection as string[]).includes(added[0].id));assert.equal(JSON.stringify(added).includes('AI 的猜测'),false);
+ await callPage(page,'saveConnectionReflection');assert.equal(storage.roomState().contributions.length,before+1);
+});
+test('changing memory selection invalidates connection output but keeps the user reflection',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);const page=instantiate(await pageDefinition('book'));
+ page.setData({connectionReflection:'尚未保存的想法',connection:{observation:'旧线索'},connectionBusy:true});const epoch=Number(page.connectionEpoch);
+ callPage(page,'onOrganizeMemories',{detail:{value:['new-memory']}});
+ assert.equal(page.data.connection,null);assert.equal(page.data.connectionBusy,false);assert.equal(page.data.connectionReflection,'尚未保存的想法');assert.ok(Number(page.connectionEpoch)>epoch);
+});
+test('archive photo writes block conflicting text edits, closing and preview generation',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);const page=instantiate(await pageDefinition('archive'));
+ page.setData({savingPhotos:true,editText:'原话',editingId:'memory-one'});
+ callPage(page,'onEditText',{detail:{value:'冲突输入'}});callPage(page,'closeEditor');await callPage(page,'createDocumentPreview');
+ assert.equal(page.data.editText,'原话');assert.equal(page.data.editingId,'memory-one');assert.equal(page.data.previewOpen,false);
+});
+
+test('unsaved connection reflections prevent navigation and survive closing the panel',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);const page=instantiate(await pageDefinition('book'));
+ callPage(page,'onConnectionReflection',{detail:{value:'不要丢掉这段新想法'}});assert.equal(callPage(page,'canLeaveEditor'),false);
+ callPage(page,'closePanel');assert.equal(page.data.connectionReflection,'不要丢掉这段新想法');
+ callPage(page,'onConnectionReflection',{detail:{value:''}});assert.equal(callPage(page,'canLeaveEditor'),true);
+});

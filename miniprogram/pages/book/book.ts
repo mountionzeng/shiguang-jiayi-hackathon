@@ -1,3 +1,4 @@
+import { exploreMemoryConnection, MemoryConnection } from "../../services/memoryConnections";
 import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft } from "../../services/chapterDraft";
 import { storyCoverApi } from "../../services/storyCoverService";
 import { logServiceFailure, SavedRefreshError } from '../../services/serviceFailure';
@@ -71,6 +72,7 @@ Page({
     insertionPoints: [] as ChapterInsertionPoint[], insertionIndex: 0,
     previewInsertion: false, insertionText: "",
     organizeWritingInstruction: "",
+    connection: null as MemoryConnection | null, connectionBusy: false, connectionSaving: false, connectionNotice: "", connectionReflection: "",
     organizeCount: 0, organizeBookTitle: "", switchingBook: false,
     organizeBooks: [] as Array<{ id: string; title: string; memberId: string; detail: string; memoryIds: string[] }>, organizeBookKey: "", previewText: "", previewTitle: "", previewAiLabel: "",
     protagonistName: "", memberId: "", storyId: "", savedRevisionId: "", writingMode: "objective" as "objective" | "creative", sources: [] as Array<{ id: string; text: string; byline: string }>,
@@ -136,6 +138,8 @@ Page({
   sourceFingerprint: "",
   story: undefined as Story | undefined,
   pendingSave: undefined as ManuscriptRevision | undefined,
+  connectionEpoch: 0,
+  connectionDraft: undefined as MemoryContribution | undefined,
   organizeSelection: [] as string[],
   organizeMemories: [] as MemoryContribution[],
   undoState: undefined as { draft: BiographyDraft; fingerprint: string } | undefined,
@@ -181,6 +185,8 @@ Page({
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
   onHide() {
+    this.connectionEpoch++;
+    this.setData({ connectionBusy: false });
     this.photoEpoch++;
     this.pendingPhotoImportChapter = "";
     this.setData({ photoMenu: "", preparingPhoto: false });
@@ -195,6 +201,7 @@ Page({
     // onUnload cannot await the network. The synchronous input backup is the guarantee.
     if (this.data.editing) { this.backupEdits(); void this.saveEdits(true); }
     this.unloaded = true;
+    this.connectionEpoch++;
     if (this.keyboardListener) wx.offKeyboardHeightChange(this.keyboardListener);
     this.editorContext = undefined;
   },
@@ -689,7 +696,8 @@ Page({
   },
   retryLoad() { this.onShow(); },
   canLeaveEditor() {
-    if (this.data.editing || this.data.saving || this.data.generating || this.data.pickingPhoto || this.data.appendingOwn || this.collecting) {
+    if (this.data.connectionReflection.trim()) { wx.showToast({ title: "还有未保存的想法，请先保存或清空", icon: "none" }); return false; }
+    if (this.data.connectionSaving || this.data.editing || this.data.saving || this.data.generating || this.data.pickingPhoto || this.data.appendingOwn || this.collecting) {
       wx.showToast({ title: this.data.editing ? "请先保存正文，或放弃修改" : "请稍等片刻", icon: "none" });
       return false;
     }
@@ -740,7 +748,7 @@ Page({
   toggleHistory() {
     if (this.canLeaveEditor()) this.setData({ panel: "history", showHistory: true, previewVersion: null });
   },
-  closePanel() { if (this.data.generating || this.data.saving || this.data.confirmingOrganize || this.data.appendingOwn) return; this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
+  closePanel() { if (this.data.generating || this.data.saving || this.data.confirmingOrganize || this.data.appendingOwn || this.data.connectionSaving) return; this.connectionEpoch++; this.setData({ connectionBusy: false }); this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
   showMore() {
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
@@ -1344,6 +1352,7 @@ Page({
   },
   /** AI organizing: step 1 choose memories, step 2 choose a chapter. Defaults follow where the user is. */
   showOrganize() {
+    this.clearMemoryConnection();
     if (this.data.protectedCopy) { this.setData({ saveNotice: "亲友原文不能整篇改写，请使用“补充我的经历”。" }); return; }
     const visibleChapters = this.visibleChapters();
     const active = this.data.view === "chapter" ? visibleChapters.find(chapter => chapter.id === this.activeChapterId) : undefined;
@@ -1359,9 +1368,10 @@ Page({
     this.updateOrganizeTarget(this.data.organizeTarget);
   },
   async onOrganizeBook(event: { detail: { value: string } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     const selected = this.data.organizeBooks.find(item => item.id === event.detail.value);
     if (!selected) return;
+    this.clearMemoryConnection();
     const previous = { key: this.requestedStoryKey, title: this.requestedStoryTitle, memberId: this.requestedMemberId };
     this.setData({ switchingBook: true, saveNotice: "" });
     this.openOrganizeOnLoad = true;
@@ -1394,7 +1404,8 @@ Page({
     });
   },
   onOrganizeMemories(event: { detail: { value: string[] } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
+    this.clearMemoryConnection();
     this.organizeSelection = event.detail.value;
     this.setData({ organizeCount: this.organizeSelection.length, organizeRows: this.data.organizeRows.map(row => ({ ...row, checked: this.organizeSelection.includes(row.id) })) });
   },
@@ -1407,19 +1418,19 @@ Page({
     });
   },
   onOrganizeTarget(event: { detail: { value: string } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     this.updateOrganizeTarget(event.detail.value);
   },
   onOrganizeMethod(event: { detail: { value: string } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     this.setData({ organizeMethod: event.detail.value === "blend" && this.data.writingMode === "creative" ? "blend" : "insert" });
   },
   onOrganizeWritingInstruction(event: WechatMiniprogram.Input) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     this.data.organizeWritingInstruction = event.detail.value;
   },
   onInsertionPoint(event: { detail: { value: string } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     const index = Number(event.detail.value);
     const point = this.data.insertionPoints[index];
     if (point) this.setData({ insertionPoint: point.id, insertionIndex: index });
@@ -1434,7 +1445,71 @@ Page({
       previewAiLabel: this.data.previewAiLabel ? "含 AI 文字 · 已由你修改" : "",
     });
   },
+  clearMemoryConnection() {
+    this.connectionEpoch++;
+    this.setData({ connection: null, connectionBusy: false, connectionNotice: "" });
+  },
+  async exploreConnections() {
+    if (this.data.connectionBusy || this.data.connectionSaving || this.data.generating || this.data.switchingBook || this.data.writingMode !== "creative") return;
+    const epoch = ++this.connectionEpoch;
+    const selected = [...this.organizeSelection];
+    this.setData({ connectionBusy: true, connection: null, connectionNotice: "正在一起看你选中的记忆…" });
+    try {
+      const connection = await exploreMemoryConnection(selected);
+      if (this.unloaded || epoch !== this.connectionEpoch || this.data.panel !== "organize") return;
+      this.setData({ connection, connectionNotice: connection.evidence.length ? "这只是一个可能的线索，由你判断；不会自动写进故事。" : "这几段还没有足够明确的联系，你也可以按自己的想法组合。" });
+    } catch (error) {
+      if (!this.unloaded && epoch === this.connectionEpoch) this.setData({ connectionNotice: error instanceof Error ? error.message : "暂时没能找到线索，可以直接组合。" });
+    } finally { if (!this.unloaded && epoch === this.connectionEpoch) this.setData({ connectionBusy: false }); }
+  },
+  dismissConnection() {
+    this.clearMemoryConnection();
+    this.setData({ connectionNotice: "这条线索不会采用。你写下的想法仍保留，也可以直接组合记忆。" });
+  },
+  onConnectionReflection(event: WechatMiniprogram.Input) {
+    if (this.data.connectionSaving) return;
+    this.setData({ connectionReflection: event.detail.value });
+    if (event.detail.value.trim()) wx.enableAlertBeforeUnload({ message: "你刚写的想法还没保存为记忆。" });
+    else if (!this.data.editing) wx.disableAlertBeforeUnload();
+  },
+  async saveConnectionReflection() {
+    if (this.data.connectionSaving || this.data.generating || this.data.switchingBook) return;
+    const text = this.data.connectionReflection.trim();
+    const storyKey = this.requestedStoryKey;
+    this.clearMemoryConnection();
+    if (!text || text.length > 500) { this.setData({ connectionNotice: "写下 1—500 字自己的想法，再保存。" }); return; }
+    this.setData({ connectionSaving: true });
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      const author = accountOwner(state.members);
+      if (!author) throw new Error("暂时无法确认记忆的主人，请重新打开。");
+      if (!this.connectionDraft) this.connectionDraft = createContribution({authorMemberId:author.id, authorName:author.name, relation:author.relation,
+        text, title:"看着几段记忆想到的事", memoryType:"note", scope:"personal", visibility:"private", sharedWithMemberIds:[], relatedMemberIds:[]});
+      if (this.connectionDraft.authorMemberId !== author.id) throw new Error("记忆主人已经变化，请重新打开后核对保存结果。");
+      if (this.connectionDraft.text !== text) throw new Error("上次补充尚未确认保存，请先保留原输入并重试核对，避免重复保存。");
+      const draft = this.connectionDraft;
+      const existing = state.contributions.find(memory => memory.id === draft.id);
+      if (existing && (existing.deletedAt || existing.text !== draft.text || existing.authorMemberId !== draft.authorMemberId)) throw new Error("这段补充已有变化，请在记忆列表核对。");
+      const saved = existing ? state : await appendContributionRemoteFirst(draft);
+      const confirmed = memoryPool(saved.contributions).find(memory => memory.id === draft.id);
+      if (!confirmed || confirmed.text !== draft.text) throw new Error("补充尚未确认保存，可以保留原输入再试一次。");
+      this.connectionDraft = undefined;
+      if (!this.data.editing) wx.disableAlertBeforeUnload();
+      if (this.unloaded) return;
+      if (storyKey !== this.requestedStoryKey) { this.setData({ connectionReflection: "", connectionNotice: "已存为独立记忆，可在记忆列表查看。" }); return; }
+      this.organizeMemories = [...this.organizeMemories.filter(memory => memory.id !== confirmed.id), confirmed];
+      this.organizeSelection = [...new Set([...this.organizeSelection, confirmed.id])];
+      this.setData({ connectionReflection: "", connection: null, connectionNotice: "已存为一段独立记忆，并勾选到这次组合中。下一步预览后才会写进故事。",
+        organizeCount:this.organizeSelection.length,
+        organizeRows:[...this.data.organizeRows.filter(row => row.id !== confirmed.id), {...memoryRow(confirmed), where:"独立记忆", checked:true}] });
+    } catch (error) {
+      if (!this.unloaded) this.setData({ connectionNotice: error instanceof Error ? error.message : "补充未确认保存，请保留输入重试。" });
+    } finally { if (!this.unloaded) this.setData({ connectionSaving:false }); }
+  },
   async runOrganize() {
+    if (this.data.connectionSaving) return;
+    if (this.data.connectionReflection.trim()) { this.setData({ connectionNotice: "你还有没保存的想法。先存为独立记忆，或清空输入后继续。" }); return; }
+    this.connectionEpoch++;
     if (this.data.generating || this.data.saving || this.data.editing || this.data.switchingBook) return;
     if (this.data.protectedCopy) return;
     const memoryIds = this.organizeSelection.filter(id => this.organizeMemories.some(memory => memory.id === id));
