@@ -71,6 +71,7 @@ Page({
     organizeMethod: "insert" as "insert" | "blend", organizeOriginal: "", insertionPoint: "end",
     insertionPoints: [] as ChapterInsertionPoint[], insertionIndex: 0,
     previewInsertion: false, insertionText: "",
+    memoryPreviewPhotos: [] as Array<{ id: string; path: string; ai: boolean }>,
     organizeWritingInstruction: "",
     connection: null as MemoryConnection | null, connectionBusy: false, connectionSaving: false, connectionNotice: "", connectionReflection: "",
     organizeCount: 0, organizeBookTitle: "", switchingBook: false,
@@ -151,7 +152,7 @@ Page({
   requestedStoryTitle: "",
   requestedMemoryIds: [] as string[],
   storyScopeMemoryIds: undefined as Set<string> | undefined,
-  organizeCandidate: undefined as { draft: BiographyDraft; fingerprint: string; chapterId: string; label: string; notice: string; revisionId: string; insertion?: { original: ManuscriptContent[]; pointId: string } } | undefined,
+  organizeCandidate: undefined as { draft: BiographyDraft; fingerprint: string; chapterId: string; label: string; notice: string; revisionId: string; insertion?: { original: ManuscriptContent[]; pointId: string; photoIds: string[] } } | undefined,
   xiaoyiAskedDimensions: [] as InterviewDimension[],
   xiaoyiConversation: [] as InterviewTurn[],
   xiaoyiContextCapturedText: "",
@@ -1261,7 +1262,7 @@ Page({
     const label = chapterLabel(chapters.length);
     if (await this.saveChapters(chapters, "新开" + label)) {
       this.openChapter({ currentTarget: { dataset: { id } } });
-      this.setData({ saveNotice: "已新开" + label + (memoryIds.length ? "，已把 " + memoryIds.length + " 条记忆原文加入正文" : "") + "。" });
+      this.setData({ saveNotice: "已新开" + label + (memoryIds.length ? "，已把 " + memoryIds.length + " 条记忆图文加入正文" : "") + "。" });
     }
   },
   chooseChapterFor(event: { currentTarget: { dataset: { id: string } } }) {
@@ -1284,14 +1285,14 @@ Page({
     }
     const index = target === "new" ? chapters.length - 1 : chapters.findIndex(chapter => chapter.id === target);
     if (await this.saveChapters(chapters, "调整章节")) {
-      this.setData({ panel: "", assignMemoryId: "", saveNotice: "已放进" + chapterLabel(index + 1) + "，原文已加入正文。" });
+      this.setData({ panel: "", assignMemoryId: "", saveNotice: "已放进" + chapterLabel(index + 1) + "，图文已加入正文，可以继续编辑。" });
     }
   },
   async addToChapter(event: { currentTarget: { dataset: { id: string } } }) {
     const memory = this.memories.find(item => item.id === event.currentTarget.dataset.id);
     if (!memory) { this.setData({ saveNotice: "这段记忆已经不存在，请重新打开书稿" }); return; }
     if (await this.saveChapters(placeMemoryInChapter(this.chapters, memory, this.activeChapterId), "调整章节")) {
-      this.setData({ saveNotice: "原文已加入本章，可以继续编辑。" });
+      this.setData({ saveNotice: "图文已加入本章，可以继续编辑；点图片可移除。" });
     }
   },
   async removeFromChapter(event: { currentTarget: { dataset: { id: string } } }) {
@@ -1441,7 +1442,7 @@ Page({
     if (!insertion) return;
     const text = event.detail.value;
     this.setData({ insertionText: text,
-      previewText: text.trim() ? insertChapterText(insertion.original, insertion.pointId, text).map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join("") : "",
+      previewText: text.trim() || insertion.photoIds.length ? insertChapterText(insertion.original, insertion.pointId, text, insertion.photoIds).map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join("") : "",
       previewAiLabel: this.data.previewAiLabel ? "含 AI 文字 · 已由你修改" : "",
     });
   },
@@ -1506,6 +1507,12 @@ Page({
       if (!this.unloaded) this.setData({ connectionNotice: error instanceof Error ? error.message : "补充未确认保存，请保留输入重试。" });
     } finally { if (!this.unloaded) this.setData({ connectionSaving:false }); }
   },
+  async showMemoryPreviewPhotos(photoIds: string[]) {
+    const ids = [...new Set(photoIds)];
+    const photos = await readLocalPhotos(ids);
+    if (this.unloaded) return;
+    this.setData({ memoryPreviewPhotos: ids.map(id => ({ id, path: photos.photoPaths[id] || "", ai: isStoryImageReference(id) })) });
+  },
   async runOrganize() {
     if (this.data.connectionSaving) return;
     if (this.data.connectionReflection.trim()) { this.setData({ connectionNotice: "你还有没保存的想法。先存为独立记忆，或清空输入后继续。" }); return; }
@@ -1519,7 +1526,7 @@ Page({
     if (target && !inserting && plainText(target.content).length > 4000) { this.setData({ saveNotice: "这一章较长，请新开一章整理，避免遗漏已有正文" }); return; }
     if (!inserting && target?.handEdited && plainText(target.content).trim() && !await this.confirm("这一章你亲手改过",
       "AI 会重写这一章的正文，照片保留。原来的文字在历史版本里能找回，整理完也可以马上撤回。继续吗？")) return;
-    this.setData({ generating: true, saveNotice: "正在整理，请稍候…" });
+    this.setData({ generating: true, memoryPreviewPhotos: [], saveNotice: "正在整理，请稍候…" });
     try {
       let state = await loadRoomStateRemoteFirst();
       let story = this.data.storyId ? activeStory(state, this.data.storyId) : undefined;
@@ -1540,7 +1547,8 @@ Page({
         if (target.pendingRevision?.edits.some(edit => edit.status === "pending")) throw new Error("这一章还有待确认的修改，请先处理完再插入");
         if (selectedMemories.length !== memoryIds.length) throw new Error("所选记忆已变动，请重新选择");
         const insertionText = selectedMemories.map(memory => memory.text.trim()).filter(Boolean).join("\n\n");
-        const content = insertChapterText(target.content, this.data.insertionPoint, insertionText);
+        const photoIds = selectedMemories.flatMap(memory => memory.photoIds ?? []);
+        const content = insertChapterText(target.content, this.data.insertionPoint, insertionText, photoIds);
         const containsAiText = Boolean(target.containsAiText || target.generationMode === "cloud-ai" || selectedMemories.some(memory => memoryAiLabel(memory)));
         const chapter: ManuscriptChapter = { ...target, content, containsAiText,
           memoryIds: Array.from(new Set([...target.memoryIds, ...memoryIds])),
@@ -1549,12 +1557,13 @@ Page({
         const chapters = this.chapters.map(item => item.id === target.id ? chapter : item);
         const label = this.data.chapterRows.find(row => row.id === target.id)?.label || chapterLabel(chapters.findIndex(item => item.id === target.id) + 1);
         this.organizeCandidate = { draft: draftWithChapters(this.data.draft ?? this.newBookBase(), chapters), fingerprint,
-          chapterId: target.id, label, notice: "原文和照片位置已保留。", revisionId: this.revisionId,
-          insertion: { original: target.content.map(item => ({ ...item })), pointId: this.data.insertionPoint },
+          chapterId: target.id, label, notice: "记忆的文字和配图已一起写入，原章节图片位置保留。可以继续编辑文字，点图片可移除；换图请用顶部照片入口。", revisionId: this.revisionId,
+          insertion: { original: target.content.map(item => ({ ...item })), pointId: this.data.insertionPoint, photoIds },
         };
         this.setData({ panel: "organize-preview", previewInsertion: true, insertionText,
           previewTitle: target.title, previewText: content.map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join(""),
-          previewAiLabel: containsAiText ? "含 AI 文字" : "", saveNotice: "尚未写入。可以调整新增文字，原章节内容保持不变。" });
+          previewAiLabel: containsAiText ? "含 AI 文字" : "", saveNotice: "尚未写入。记忆的配图也会一起带入，写入后可以修改图文。" });
+        await this.showMemoryPreviewPhotos(photoIds);
         return;
       }
       if (story?.writingMode === "creative" && usesCloudStorage()) {
@@ -1571,7 +1580,7 @@ Page({
       const latest = await loadRoomStateRemoteFirst();
       const latestFingerprint = story ? storySourceFingerprint(latest, story.id) : personalBookSourceFingerprint(latest, member.id);
       if (fingerprint !== latestFingerprint) throw new Error("素材刚刚变了，请重新整理");
-      const { chapters, chapterId, keptImageCount } = applyOrganized(this.chapters, target?.id ?? "new", organized, memoryIds);
+      const { chapters, chapterId, keptImageCount } = applyOrganized(this.chapters, target?.id ?? "new", organized, memoryIds, selectedMemories.flatMap(memory => memory.photoIds ?? []));
       const base = { ...(this.data.draft ?? this.newBookBase()), generationMode: organized.generationMode, generatedAt: organized.generatedAt };
       const label = this.data.chapterRows.find(row => row.id === chapterId)?.label || chapterLabel(this.data.chapterRows.length + 1);
       const notice = (story?.writingMode === "objective" ? "已按客观记录模式整理，未调用 AI。" : fallbackReason ? "这次没有用上在线 AI（" + FALLBACK_REASONS[fallbackReason] + "），预览由原话整理。" : "")
@@ -1583,8 +1592,9 @@ Page({
         previewTitle: chapter.title,
         previewText: plainText(chapter.content),
         previewAiLabel: organized.generationMode === "cloud-ai" ? "文字 AI 生成" : "",
-        saveNotice: notice + "尚未写入，请查看并确认。",
+        saveNotice: notice + "尚未写入，记忆的配图会一起带入，写入后可以修改图文。",
       });
+      await this.showMemoryPreviewPhotos(selectedMemories.flatMap(memory => memory.photoIds ?? []));
     } catch (error) {
       this.setData({ saveNotice: error instanceof Error ? error.message : "整理失败，请重试" });
     } finally { if (this.data.generating) this.setData({ generating: false }); }
@@ -1604,7 +1614,7 @@ Page({
       const chapters = candidate.draft.chapters!;
       const chapter = chapters.find(item => item.id === candidate.chapterId)!;
       const content = candidate.insertion
-        ? insertChapterText(candidate.insertion.original, candidate.insertion.pointId, this.data.insertionText)
+        ? insertChapterText(candidate.insertion.original, candidate.insertion.pointId, this.data.insertionText, candidate.insertion.photoIds)
         : [{ text: this.data.previewText.trim() + "\n" }, ...chapter.content.filter(item => item.photoId)];
       const next = draftWithChapters(candidate.draft, updateChapter(chapters, chapter.id, { title: this.data.previewTitle, content }));
       if (await this.persist(next, candidate.fingerprint, "version", (candidate.insertion ? "插入记忆到" : "AI 整理") + candidate.label)) {

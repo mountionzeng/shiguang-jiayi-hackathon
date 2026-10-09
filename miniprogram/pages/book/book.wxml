@@ -127,8 +127,9 @@
         <image class="chapter-backdrop" src="{{backdropUrl}}" mode="aspectFill" aria-label="AI 生成的本章底图" />
       </block>
       <view class="field-label">正文</view>
+      <view wx:if="{{!protectedCopy}}" class="panel-note">文字可以直接修改；点图片可删除，换图请用顶部「照片」入口。修改后点保存。</view>
       <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
-      <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{false}}" show-img-resize="{{false}}"></editor>
+      <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{!protectedCopy}}" show-img-resize="{{false}}"></editor>
       <button wx:if="{{!protectedCopy}}" class="xiaoyi-entry" catchtouchstart="openXiaoyi" disabled="{{saving || generating || pickingPhoto || !editorReady}}" aria-label="小忆">
         <image class="xiaoyi-entry-avatar" src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFill" aria-hidden="true" />
       </button>
@@ -295,6 +296,15 @@
         </block>
         <textarea wx:else class="preview-editor" value="{{previewText}}" bindinput="onPreviewText" maxlength="20000" auto-height disabled="{{saving || confirmingOrganize}}" />
       </block>
+      <view wx:if="{{panel === 'organize-preview' && memoryPreviewPhotos.length}}" class="memory-preview-photos">
+        <view class="field-label">随记忆一起带入的配图 · {{memoryPreviewPhotos.length}} 张</view>
+        <view class="panel-note">写入后可以修改文字、移除图片；需要换图时，使用顶部「照片」入口。原始记忆保留。</view>
+        <view wx:for="{{memoryPreviewPhotos}}" wx:key="id" class="memory-preview-photo">
+          <image wx:if="{{item.path}}" class="book-photo" src="{{item.path}}" mode="widthFix" />
+          <view wx:else class="panel-note">图片暂未加载，写入时会保留原图引用。</view>
+          <view wx:if="{{item.ai}}" class="chapter-ai-label">AI 生成图片</view>
+        </view>
+      </view>
       <block wx:if="{{panel === 'sources'}}">
         <view class="panel-title serif">原始记忆 · {{sourceCount}}</view>
         <view class="panel-note">{{storageLabel}}</view>
