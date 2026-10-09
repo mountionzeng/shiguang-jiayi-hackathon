@@ -74,3 +74,7 @@
 - 本提交在上述服务不可用时复用现有腾讯云审核适配器，使用现有短期运行角色凭据；微信/共享审核明确拒绝不重判，付费拒绝或不可用仍不允许导出。增加标题传递、分段拒绝、故障关闭回归，适配器一致性涵盖 storyBooks。
 - storyBooks 配置已保存 AI_PAID_MODERATION_ENABLED=true、AI_MODERATION_TENCENT_BIZ_TYPE=shiguang_ai_text；没有新密钥或IAM授权变更。
 - 修复仍需部署并重跑真实分享、照片参考、章节写入与清理。未生成新二维码，未合 main，完整验收记录保存在外部 deployment-20261009-memory-ai 目录。
+
+## 照片描述审核修复
+
+真实照片参考验收中，photo_caption_logs 记录 errorCode 45009（2026-10-09），看图之后的微信文字审核耗尽，界面只显示“没看出来”。storyImages/textCheck 现复用既有腾讯云 TMS 适配器，在微信请求异常时审核同一文本；明确 review/risky 不二次判定，付费拒绝、不可用、未知及异常均不放行。未改图片审核、密钥或 IAM。新增专项覆盖与适配器一致性检查。云端需开启现有付费审核的两个非密钥变量，真实复测通过后才能出码。
