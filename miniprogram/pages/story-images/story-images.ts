@@ -128,8 +128,9 @@ Page({
       const referencePhotoIds = (memory.photoIds || []).filter(id => LOCAL_PHOTO_ID.test(id)).slice(0,3);
       this.setData({memoryId:memory.id, bookTitle:memory.title || '一段回忆',
         groups:[{id:'memory', label:'这段回忆', title:memory.title || '', backdropImageId:'', backdropMissing:false,
-          referencePhotoIds, referencePhotoLabel:referencePhotoIds.length ? `可选参考这段回忆的${referencePhotoIds.length}张照片` : '可以选参考照片，也可以只根据回忆文字生成',
+          referencePhotoIds, referencePhotoLabel:referencePhotoIds.length ? `默认参考这段回忆的${referencePhotoIds.length}张照片，可关闭` : '可以选参考照片，也可以只根据回忆文字生成',
           images:list.images.map(image => card(image, '', refs)), pending:list.pending.map(jobRow)}],
+        useChapterPhotos:{...this.data.useChapterPhotos, memory:this.data.useChapterPhotos.memory ?? referencePhotoIds.length > 0},
         otherImages:[], usageLabel:`共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
         limitsLabel:'生成成功会产生供应商用量和费用。', loading:false, loadError:''});
       const selected = this.data.preview;
@@ -169,7 +170,7 @@ Page({
         return {
           id: chapter.id, label: chapterLabel(index + 1), title: chapter.title, backdropImageId,
           referencePhotoIds,
-          referencePhotoLabel: referencePhotoIds.length ? `可选参考本章 ${referencePhotoIds.length} 张照片` : "本章没有正文照片，可从手机选择或只根据文字生成",
+          referencePhotoLabel: referencePhotoIds.length ? `默认参考本章 ${referencePhotoIds.length} 张照片，可关闭` : "本章没有正文照片，可从手机选择或只根据文字生成",
           // The chosen picture was deleted or failed the platform check.
           backdropMissing: !!backdropImageId && !listed.has(backdropImageId),
           images: list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
@@ -181,6 +182,8 @@ Page({
       usageLabel: `共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
       limitsLabel: imageLimitLabel(list.limits),
       phoneReferences: Object.fromEntries(Object.entries(phoneReferences).filter(([id]) => chapterIds.has(id))),
+      useChapterPhotos: Object.fromEntries(chapters.map(chapter => [chapter.id,
+        this.data.useChapterPhotos[chapter.id] ?? chapterReferencePhotoIds(chapter).length > 0])),
       loading: false,
       loadError: "",
     });

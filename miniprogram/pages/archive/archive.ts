@@ -32,6 +32,7 @@ import { organizeMemory } from "../../services/memoryOrganizerService";
 
 import { readLocalPhotos, saveLocalPhoto, isStoryImageReference } from "../../services/bookImages";
 import { ensurePhotoUploads } from "../../services/photoCloud";
+import { confirmPhotoWritingReference, ConfirmedPhotoReference, writingReferencePhotoIds } from "../../services/photoWritingReference";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -203,6 +204,7 @@ Page({
   organizeRequestId: 0,
   openMemoryRequestId: 0,
   pendingMemorySocialSend: false,
+  photoWritingReference: undefined as {key: string; value?: ConfirmedPhotoReference} | undefined,
   editingOriginal: undefined as MemoryContribution | undefined,
   xiaoyiAskedDimensions: [] as InterviewDimension[],
   xiaoyiConversation: [] as InterviewTurn[],
@@ -618,8 +620,20 @@ Page({
       .map(message => ({ role: message.role, content: message.text }));
     this.setData({ organizingPreview: true, previewNotice: "正在结合原稿和对话成文，原记忆不会因此改变。" });
     try {
+      const isActive = () => !this.archiveUnloaded && requestId === this.organizeRequestId && this.editingOriginal?.id === memory.id;
+      const photoIds = writingReferencePhotoIds(memory.photoIds || []);
+      const referenceKey = JSON.stringify([memory.id, photoIds]);
+      if (this.photoWritingReference?.key !== referenceKey) {
+        if (photoIds.length) this.setData({previewNotice:"正在参考原稿和照片；照片描述核对后再成文。"});
+        const value = await confirmPhotoWritingReference(photoIds, isActive);
+        if (!isActive()) return;
+        this.photoWritingReference = {key:referenceKey, value};
+      }
+      const photoReference = this.photoWritingReference.value;
+      this.setData({previewNotice: photoReference ? "正在结合原稿和已核对的照片描述成文。" : "正在根据原稿和你的文字补充成文。"});
       const draft = await organizeMemory({
         transcript: [draftText, ...userAdditions],
+        ...(photoReference ? {photoReference} : {}),
         writingMode: "compose",
         writingInstruction,
         conversation,

@@ -1,3 +1,4 @@
+import type { ConfirmedPhotoReference } from "./photoWritingReference";
 import { measurePerformance } from "./performanceLog";
 import { logServiceFailure } from './serviceFailure';
 import type { ShiguangAppOptions } from "../app";
@@ -37,6 +38,7 @@ interface CloudOrganizedMemoryResult {
   places?: unknown;
   memoryType?: unknown;
   generationMode?: unknown;
+  photoReferenceApplied?: unknown;
 }
 
 function canUseCloudAi(): boolean {
@@ -112,6 +114,7 @@ export interface OrganizeMemoryInput extends WritingOptions {
   memoryId?: string;
   /** Editing an existing saved memory: require the cloud copy to still match this base text. */
   expectedSavedText?: string;
+  photoReference?: ConfirmedPhotoReference;
   expectedSourceRevisionId?: string;
 }
 
@@ -152,10 +155,14 @@ export async function organizeMemory(
           expectedText: input.expectedSavedText,
           sourceRevisionId: input.expectedSourceRevisionId,
           transcript,
+          ...(input.photoReference ? {photoReference: input.photoReference} : {}),
           ...(input.conversation ? { conversation: input.conversation } : {}),
         } : {}),
       },
     }));
+    if (input.photoReference && (response.result as CloudOrganizedMemoryResult | undefined)?.photoReferenceApplied !== true) {
+      throw new Error("照片参考尚未得到云端确认，已保留原稿");
+    }
     const cloudDraft = parseCloudDraft(response.result, fallback);
     if (cloudDraft) return cloudDraft;
     console.warn("AI 整理返回格式不完整，将保留原话草稿");

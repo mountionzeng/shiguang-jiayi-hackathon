@@ -89,6 +89,7 @@
     </view>
     <view class="coediting-panel">
       <view class="editor-label">这篇想怎么写（可不填）</view>
+      <view class="photo-notice">成文以你的原稿和补充为准。有照片时参考前 3 张用户照片，先核对画面描述；AI 配图不会作为真实经历的依据。</view>
       <textarea class="coediting-input" value="{{documentWritingInstruction}}" maxlength="300" auto-height placeholder="例如：保留我的口气，把刚聊到的细节融进去" bindinput="onDocumentWritingInstruction" disabled="{{savingPhotos || savingEdit || organizingPreview}}" cursor-spacing="48" />
       <button wx:if="{{!isEditingDocument}}" class="btn btn-jade" bindtap="createDocumentPreview" loading="{{organizingPreview}}" disabled="{{savingPhotos || savingEdit || organizingPreview || chatAsking}}">生成成文预览</button>
     </view>
