@@ -64,3 +64,33 @@ test('共享内容安全云函数故障时仍然抛 MODERATION_UNAVAILABLE', asy
     error => error.code === 'MODERATION_UNAVAILABLE',
   );
 });
+
+
+test('分享审核在微信及共享审核不可用时使用付费审核，包含标题', async () => {
+  const calls=[];
+  const moderate=createTextModerator({msgSecCheck:async()=>{throw new Error('daily quota');}},
+    async()=>({result:{ok:false,error:'daily quota'}}),
+    async input=>{calls.push(input);return {available:true,status:'pass'};});
+  assert.equal(await moderate('回忆正文','openid-1','回忆标题'),true);
+  assert.deepEqual(calls,[{content:'回忆标题\n回忆正文'}]);
+});
+
+test('分享审核不对微信或共享审核的拒绝进行付费重判', async () => {
+  let calls=0;const paid=async()=>{calls++;return {available:true,status:'pass'};};
+  assert.equal(await createTextModerator({msgSecCheck:async()=>({result:{suggest:'risky'}})},undefined,paid)('正文','openid-1'),false);
+  assert.equal(await createTextModerator(undefined,async()=>({result:{ok:false,suggest:'review'}}),paid)('正文','openid-1'),false);
+  assert.equal(calls,0);
+});
+
+test('付费分享审核拒绝或不可用时不能通过，前段通过也不代表全文通过', async () => {
+  const shared=async()=>({result:{error:'daily quota'}});
+  for(const result of [{available:true,status:'reject'},{available:true,status:'review'},{available:true}]) {
+    assert.equal(await createTextModerator(undefined,shared,async()=>result)('正文','openid-1'),false);
+  }
+  for(const paid of [async()=>({available:false}),async()=>{throw new Error('network');}]){
+    await assert.rejects(()=>createTextModerator(undefined,shared,paid)('正文','openid-1'),e=>e.code==='MODERATION_UNAVAILABLE');
+  }
+  let chunk=0;
+  assert.equal(await createTextModerator(undefined,shared,async()=>({available:true,status:++chunk===1?'pass':'reject'}))('字'.repeat(2501),'openid-1'),false);
+  assert.equal(chunk,2);
+});

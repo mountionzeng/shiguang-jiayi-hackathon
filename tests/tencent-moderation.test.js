@@ -6,7 +6,7 @@ const test = require("node:test");
 const moderation = require("../cloudfunctions/chatInterview/tencentModeration.js");
 
 test("AI cloud functions deploy the same paid moderation adapter and dependency", () => {
-  const names = ["chatInterview", "generateBiography", "organizeMemory", "personalMemory"];
+  const names = ["chatInterview", "generateBiography", "organizeMemory", "personalMemory", "storyBooks"];
   const canonical = fs.readFileSync(path.join(__dirname, "../cloudfunctions/chatInterview/tencentModeration.js"), "utf8").trimEnd();
   for (const name of names) {
     assert.equal(
