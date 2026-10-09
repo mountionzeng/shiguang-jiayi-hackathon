@@ -1,3 +1,4 @@
+import { storyCommand, operationId, activeStory } from './storyBooks';
 import { learnFromSavedMemory } from './personalMemory';
 import { startPerformanceMeasure } from './performanceLog';
 import type { ShiguangAppOptions } from "../app";
@@ -184,7 +185,6 @@ export async function purgeAllDeletedMemoriesRemoteFirst(): Promise<FamilyRoomSt
 
 export async function deleteStoryRemoteFirst(key: string, title: string): Promise<FamilyRoomState> {
   if (key.startsWith('story-')) {
-    const {storyCommand,operationId,activeStory} = await import('./storyBooks');
     const story = activeStory(await loadRoomStateRemoteFirst(),key);
     return storyCommand({action:'delete',storyId:key,expectedVersion:story.version,requestId:operationId()});
   }
@@ -194,7 +194,6 @@ export async function deleteStoryRemoteFirst(key: string, title: string): Promis
 
 export async function restoreStoryRemoteFirst(key: string): Promise<FamilyRoomState> {
   if (key.startsWith('story-')) {
-    const {storyCommand,operationId,activeStory} = await import('./storyBooks');
     const story = activeStory(await loadRoomStateRemoteFirst(),key,true);
     return storyCommand({action:'restore',storyId:key,expectedVersion:story.version,requestId:operationId()});
   }

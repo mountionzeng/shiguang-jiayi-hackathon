@@ -35,3 +35,17 @@ test('client and deployed story domain rules must stay identical', () => {
   assert.equal(fs.readFileSync('miniprogram/domain/storyBookCore.js','utf8'),fs.readFileSync('cloudfunctions/storyBooks/core.js','utf8'),
     'Run node scripts/sync-story-core.mjs after changing shared story rules');
 });
+
+// 微信开发者工具会把 import() 当成运行时 URL 请求，Node 测试不会暴露此问题。
+test('story lifecycle actions use packaged imports in the mini-program runtime', () => {
+  const file = 'miniprogram/services/roomRepository.ts';
+  const ast = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+  function check(node: ts.Node) {
+    if (ts.isCallExpression(node)) {
+      assert.notEqual(node.expression.kind, ts.SyntaxKind.ImportKeyword,
+        'roomRepository must use packaged static imports for story deletion and restoration');
+    }
+    ts.forEachChild(node, check);
+  }
+  check(ast);
+});
