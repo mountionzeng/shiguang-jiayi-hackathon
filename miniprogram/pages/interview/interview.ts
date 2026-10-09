@@ -725,7 +725,7 @@ Page({
       if (!this.data.saved) {
         const confirmed = await new Promise<boolean>(resolve => wx.showModal({
           title:'先保存这段回忆', content:'配图会根据保存的文字生成。这段回忆会独立保存，之后还能继续修改。',
-          confirmText:'保存并配图', success:result => resolve(result.confirm), fail:() => resolve(false),
+          confirmText:'保存配图', success:result => resolve(result.confirm), fail:() => resolve(false),
         }));
         if (!confirmed || this.interviewUnloaded) return;
       }

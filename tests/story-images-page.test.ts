@@ -831,7 +831,7 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   assert.equal(page.data.preview, null, "setData uses explicit null to close the native sheet");
 });
 
-test("本章照片可选，默认只按文字生成，选择和取消参考都生效", async context => {
+test("默认参考本章用户照片，取消参考后刷新仍保持只用文字", async context => {
   const state = stateWithBook();
   state.manuscriptRevisions![0].draft.chapters![0].content.push(
     { photoId: "photo-cat" },
@@ -853,7 +853,7 @@ test("本章照片可选，默认只按文字生成，选择和取消参考都�
   const groups = page.data.groups as Array<{ referencePhotoIds: string[] }>;
   assert.deepEqual(groups[0].referencePhotoIds, ["photo-cat"]);
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "backdrop" } } });
-  assert.deepEqual(submitted.pop(), { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop" });
+  assert.deepEqual(submitted.pop(), { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop", referencePhotoIds: ["photo-cat"] });
   call(page, "onReferenceModeChange", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: true } });
   await call(page, "refresh"); // Polling/refresh must preserve the explicit choice.
 
@@ -868,6 +868,7 @@ test("本章照片可选，默认只按文字生成，选择和取消参考都�
     { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa" },
   ]);
   call(page, "onReferenceModeChange", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: false } });
+  await call(page, "refresh");
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
   assert.deepEqual(submitted[submitted.length - 1], { memberId: "owner", chapterId: "chapter-a", purpose: "illustration" });
 });
