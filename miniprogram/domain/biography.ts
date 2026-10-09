@@ -155,6 +155,8 @@ export interface BiographyDraft {
   /** Unknown versions must never be flattened and saved by legacy editors. */
   provenanceVersion?: 1;
   title: string;
+  /** User-editable story introduction; older drafts derive a short excerpt from the body. */
+  introduction?: string;
   paragraphs: string[];
   sourceCount: number;
   generatedAt: string;
