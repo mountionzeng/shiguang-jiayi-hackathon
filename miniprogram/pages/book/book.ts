@@ -11,7 +11,7 @@ import {
   InterviewTurn,
 } from "../../domain/interview";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
-import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, usesCloudStorage } from "../../services/roomRepository";
+import { appendContributionRemoteFirst, deleteStoryRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, usesCloudStorage } from "../../services/roomRepository";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import {
   contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, readLocalPhotos, saveLocalPhoto,
@@ -834,6 +834,27 @@ Page({
     wx.hideKeyboard();
     this.closePhotoMenu();
     this.setData({ moreOpen: !this.data.moreOpen, sendOpen: false });
+  },
+  deleteCurrentStory() {
+    const story = this.story;
+    if (!story || !this.data.storyId || this.data.protectedCopy || this.data.editing || this.data.saving || this.data.generating) return;
+    wx.showModal({
+      title: `删除「${story.title}」？`,
+      content: "故事会进入最近删除；原始记忆和书稿版本都会保留，恢复后原样回来。",
+      confirmText: "删除",
+      confirmColor: "#c75245",
+      success: async (result) => {
+        if (!result.confirm) return;
+        try {
+          await deleteStoryRemoteFirst(story.id, story.title);
+          saveCurrentStoryId("");
+          wx.showToast({ title: "已放进最近删除", icon: "none" });
+          wx.navigateBack();
+        } catch (error) {
+          wx.showToast({ title: error instanceof Error ? error.message : "删除没有完成，请重试", icon: "none" });
+        }
+      },
+    });
   },
   toggleSend() {
     if (this.data.protectedCopy || !this.data.draft || this.data.view !== 'contents' || this.data.panel || this.data.preparingSend || this.data.generating || this.data.pickingPhoto) return;

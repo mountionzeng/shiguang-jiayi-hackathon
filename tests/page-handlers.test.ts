@@ -3435,6 +3435,26 @@ test("首页书封和书架直接打开已保存或空白的独立故事书，�
   assert.equal(shelf.data.selectedKey, "");
 });
 
+test("已保存的自有故事可从书稿菜单移入最近删除，原始记忆保留", async context => {
+  const state = createInitialRoomState();
+  const story = { id: "fixture-story-trash", title: "虚构验收故事", bookTitle: "虚构验收故事", writingMode: "objective",
+    memoryIds: [], imageIds: [], ownerMemberId: "owner", version: 1, createdAt: "2026-10-05", updatedAt: "2026-10-05" } as any;
+  state.stories = [story];
+  state.storyMigration = { status: "active", pending: [] } as any;
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  page.story = story;
+  page.setData({ storyId: story.id, savedRevisionId: "revision-test", editing: false, protectedCopy: false, saving: false, generating: false });
+
+  await callPage(page, "deleteCurrentStory");
+
+  assert.equal(storage.roomState().deletedStories?.some(item => item.key === story.id), true);
+  assert.equal(storage.backCount(), 1);
+  assert.ok(storage.toasts.includes("已放进最近删除"));
+  assert.match(readFileSync("miniprogram/pages/book/book.wxml", "utf8"), /删除整个故事（可恢复）/);
+});
+
 test('connection reflection is independently saved only explicitly, and never copies AI interpretation',async context=>{
  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
  const page=instantiate(await pageDefinition('book'));
