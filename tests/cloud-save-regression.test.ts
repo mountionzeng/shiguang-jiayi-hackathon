@@ -474,6 +474,14 @@ test('only explicit home loads request a projection; editors still request compl
   } finally {f.restore();}
 });
 
+test('a visible shelf snapshot hands off to one book opening only', () => {
+  const visible = createEmptyRoomState();
+  localRepository.stageRoomStateForBook(visible);
+  assert.equal(localRepository.takeStagedRoomStateForBook(), visible);
+  assert.equal(localRepository.takeStagedRoomStateForBook(), undefined,
+    'a later visit must fetch fresh cloud state instead of reusing an old account snapshot');
+});
+
 test('response size errors never masquerade as missing story service or an empty room', async () => {
   const f=fixture();
   try {

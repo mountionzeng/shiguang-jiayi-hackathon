@@ -106,6 +106,8 @@ function serverDate() {
 
 let cachedOpenId: string | undefined;
 let cachedFamilyId: string | undefined;
+let cachedPrimaryFamilyId: string | undefined;
+let pendingOpenId: Promise<string> | undefined;
 
 function sanitizeDocumentPart(value: string): string {
   return value.replace(/[^0-9A-Za-z_-]/g, "_");
@@ -113,21 +115,36 @@ function sanitizeDocumentPart(value: string): string {
 
 async function loadOpenId(): Promise<string> {
   if (cachedOpenId) return cachedOpenId;
-  const response = await wx.cloud.callFunction({ name: "getOpenId" });
-  const result = response.result as { openid?: unknown; account?: { primaryFamilyId?: unknown } } | undefined;
-  const openid = String(result?.openid ?? "").trim();
-  if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
-  cachedOpenId = openid;
-  const linkedFamilyId = String(result?.account?.primaryFamilyId ?? "").trim();
-  cachedFamilyId = /^family_[0-9A-Za-z_-]{1,120}$/.test(linkedFamilyId)
-    ? linkedFamilyId
-    : `family_${sanitizeDocumentPart(openid)}`;
-  return cachedOpenId;
+  if (pendingOpenId) return pendingOpenId;
+  const request = wx.cloud.callFunction({ name: "getOpenId" }).then(response => {
+    const result = response.result as { openid?: unknown; account?: { primaryFamilyId?: unknown } } | undefined;
+    const openid = String(result?.openid ?? "").trim();
+    if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
+    cachedOpenId = openid;
+    const linkedFamilyId = String(result?.account?.primaryFamilyId ?? "").trim();
+    cachedPrimaryFamilyId = linkedFamilyId;
+    cachedFamilyId = /^family_[0-9A-Za-z_-]{1,120}$/.test(linkedFamilyId)
+      ? linkedFamilyId
+      : `family_${sanitizeDocumentPart(openid)}`;
+    return cachedOpenId;
+  });
+  pendingOpenId = request;
+  try { return await request; }
+  finally { if (pendingOpenId === request) pendingOpenId = undefined; }
 }
 
 export async function currentFamilyId(): Promise<string> {
   const openid = await loadOpenId();
   return cachedFamilyId ?? `family_${sanitizeDocumentPart(openid)}`;
+}
+
+// A book reached from a visible shelf was just read under this identity. The
+// caller may use this value for that one navigation only; direct page opens
+// still revalidate before touching a locally stored draft.
+export function cachedAccountScope(): string | undefined {
+  if (!cachedOpenId) return undefined;
+  // Preserve the existing draft-key shape so saved local drafts remain readable.
+  return JSON.stringify([cachedOpenId, cachedPrimaryFamilyId ?? ""]);
 }
 
 function familyMemberDocId(familyId: string, memberId: string): string {

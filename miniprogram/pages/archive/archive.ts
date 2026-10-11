@@ -16,6 +16,7 @@ import {
   loadRoomStateRemoteFirst,
   replaceContributionRemoteFirst,
   roomDataModeLabel,
+  stageRoomStateForBook,
 } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
 import { storyShelf } from "../../services/storyShelf";
@@ -882,6 +883,7 @@ Page({
     const bookParam = placement?.storyId
       ? "storyId=" + encodeURIComponent(placement.storyId)
       : "memberId=" + encodeURIComponent(event.currentTarget.dataset.member);
+    stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?" + bookParam + "&chapterId=" + encodeURIComponent(event.currentTarget.dataset.chapter) });
   },
   organizeIntoBook() {
@@ -897,6 +899,7 @@ Page({
       ? "storyId=" + encodeURIComponent(`story:${storyTitle}`)
       : storyId ? "storyId=" + encodeURIComponent(storyId) : "";
     const query = [storyParam, "memoryIds=" + memoryIds].filter(Boolean).join("&");
+    stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?" + query });
   },
   startRecording() { wx.navigateTo({ url: "/pages/interview/interview?memoryType=note" }); },

@@ -23,7 +23,10 @@ async function call(action: string, data: Record<string,unknown> = {}): Promise<
   return result;
 }
 export async function ensureStoryBooks(): Promise<FamilyRoomState> {
-  let state = await loadRoomStateRemoteFirst();
+  // The shelf only needs each story's current revision. Avoid serialising every
+  // historical manuscript before it can paint; the editor fetches history only
+  // when the reader opens the history panel.
+  let state = await loadRoomStateRemoteFirst({view:'home'});
   if (state.storyMigration?.status === 'active') return state;
   if (usesCloudStorage()) {
     // Each bounded invocation resumes the same migration cursor. No paid model calls.
@@ -37,7 +40,7 @@ export async function ensureStoryBooks(): Promise<FamilyRoomState> {
         if (canReadLegacyStories(error)) return state;
         throw error;
       }
-      if (result.status === 'active') return loadRoomStateRemoteFirst();
+      if (result.status === 'active') return loadRoomStateRemoteFirst({view:'home'});
     }
     throw new Error('旧书整理仍在继续，请稍后再次打开书架');
   }

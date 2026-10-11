@@ -60,6 +60,23 @@ function shouldUseCloudDatabase(): boolean {
   return true;
 }
 
+// The shelf and home already have a read-only, current-version projection in
+// memory when a person taps a book. Hand it to the next book page once instead
+// of making that page wait for the same state (and every historical revision)
+// again. It is deliberately single-use: reopening a book always reads fresh
+// cloud state, and an account switch cannot inherit an old snapshot.
+let stagedBookState: FamilyRoomState | undefined;
+
+export function stageRoomStateForBook(state: FamilyRoomState | undefined): void {
+  stagedBookState = state;
+}
+
+export function takeStagedRoomStateForBook(): FamilyRoomState | undefined {
+  const state = stagedBookState;
+  stagedBookState = undefined;
+  return state;
+}
+
 export const usesCloudStorage = shouldUseCloudDatabase;
 
 export function roomDataModeLabel(): string {

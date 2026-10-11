@@ -10,7 +10,8 @@ import {
   InterviewTurn,
 } from "../../domain/interview";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
-import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, usesCloudStorage } from "../../services/roomRepository";
+import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, takeStagedRoomStateForBook, usesCloudStorage } from "../../services/roomRepository";
+import { cachedAccountScope } from "../../services/cloudRoomStorage";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import {
   contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, readLocalPhotos, saveLocalPhoto,
@@ -76,7 +77,7 @@ Page({
     sourceCount: 0, draft: null as BiographyDraft | null,
     loading: true, generating: false, saving: false, confirmingOrganize: false, isCloudDraft: false, modeLabel: "", modeNote: "",
     stale: false, showSources: false, editing: false, editTitle: "", editBody: "",
-    history: [] as ManuscriptRevision[], showHistory: false,
+    history: [] as ManuscriptRevision[], historyLoading: false, showHistory: false,
     previewVersion: null as ManuscriptRevision | null,
     loadError: "", storageLabel: "", versionName: "", saveNotice: "",
     keyboardHeight: 0, viewportHeight: 0, panel: "", moreOpen: false, editorKeys: [0], pickingPhoto: false, editorReady: false,
@@ -129,6 +130,7 @@ Page({
   fullWindowHeight: 0,
   windowWidth: 0,
   refreshId: 0,
+  historyRequestId: 0,
   loadingId: 0,
   keyboardListener: undefined as ((event: { height: number }) => void) | undefined,
   revisionId: "",
@@ -198,34 +200,44 @@ Page({
     this.editorContext = undefined;
   },
   onShow() {
+    // A staged snapshot belongs to this navigation attempt only. Consume it
+    // even if another return path (for example image selection) does not
+    // refresh the manuscript right now.
+    const staged = takeStagedRoomStateForBook();
     if (this.pendingStoryImage) {
       this.setData({ storyImageSelected: true, refreshingStoryImage: true, saveNotice: "插图已选好。请点正文中的位置，再点顶部「插入插图」。" });
       void this.refreshSelectedStoryImageUrl();
       return;
     }
     if (!this.organizeCandidate && !this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
-      void this.refresh().catch((error) => { logLoadError("book", error); this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }); });
+      void this.refresh(staged, { projection: Boolean(staged) }).catch((error) => { logLoadError("book", error); this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }); });
     }
   },
-  async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+  async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>, options: { projection?: boolean } = {}) {
     const loadingId = ++this.loadingId;
     this.setData({loading:true});
     const finish = startPerformanceMeasure('book.refresh');
     let outcome: 'ok' | 'error' = 'error';
     try {
-      await this.refreshBook(nextState);
+      await this.refreshBook(nextState, options.projection ?? !nextState);
       outcome = 'ok';
     } finally {
       if (!this.unloaded && loadingId === this.loadingId) this.setData({loading:false});
       finish(outcome);
     }
   },
-  async refreshBook(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+  async refreshBook(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>, projection = false) {
     const refreshId = ++this.refreshId;
     const storyId = this.requestedStoryKey || loadCurrentStoryId();
+    // The preceding shelf read already authenticated this exact one-time
+    // navigation. Reuse its account scope for the local-draft key; direct
+    // links still revalidate before they access any locally stored draft.
+    const stagedDraftScope = nextState && projection ? cachedAccountScope() : undefined;
     const [state, draftScope] = await Promise.all([
-      nextState ? Promise.resolve(nextState) : loadRoomStateRemoteFirst(),
-      measurePerformance('book.identity', chapterDraftScope),
+      // A current-version projection is enough to paint this book. Historical
+      // revisions load only if the reader explicitly opens that panel.
+      nextState ? Promise.resolve(nextState) : loadRoomStateRemoteFirst({view:"home"}),
+      stagedDraftScope ? Promise.resolve(stagedDraftScope) : measurePerformance('book.identity', chapterDraftScope),
     ]);
     if (storyId.startsWith("story-") && !(state.stories ?? []).some(item => item.id === storyId && !item.deletedAt)) {
       throw new Error("这本故事书已不可用，请返回书架");
@@ -356,7 +368,7 @@ Page({
       modeLabel: story?.sourcePolicyRequired ? "亲友故事副本" : story ? (story.writingMode === "creative" ? "AI 共创" : "客观记录") : "当前书稿",
       modeNote: story?.sourcePolicyRequired ? "亲友原文保持不变；你可以在章节末尾补充自己的经历。" : story ? "模式只影响以后的整理，不会改写旧章节。" : "可以直接编辑。",
       stale: !!current.draft && current.sourceFingerprint !== (story ? storySourceFingerprint(state, story.id) : personalBookSourceFingerprint(state, member.id)),
-      history: manuscriptHistory(state, bookId), storageLabel: roomDataModeLabel(), loadError: "",
+      history: projection ? [] : manuscriptHistory(state, bookId), historyLoading: false, storageLabel: roomDataModeLabel(), loadError: "",
       ...this.chapterData(),
     });
     this.bookImagesReady = images.then(result => {
@@ -731,7 +743,21 @@ Page({
     if (this.canLeaveEditor()) this.setData({ panel: "sources", showSources: true });
   },
   toggleHistory() {
-    if (this.canLeaveEditor()) this.setData({ panel: "history", showHistory: true, previewVersion: null });
+    if (!this.canLeaveEditor()) return;
+    this.setData({ panel: "history", showHistory: true, previewVersion: null });
+    void this.loadHistory();
+  },
+  async loadHistory() {
+    const requestId = ++this.historyRequestId;
+    this.setData({ historyLoading: true });
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      if (this.unloaded || requestId !== this.historyRequestId || this.data.panel !== "history") return;
+      this.setData({ history: manuscriptHistory(state, this.data.storyId || this.data.memberId), historyLoading: false });
+    } catch (error) {
+      if (this.unloaded || requestId !== this.historyRequestId) return;
+      this.setData({ historyLoading: false, saveNotice: error instanceof Error ? error.message : "历史版本暂时加载失败，请重试" });
+    }
   },
   closePanel() { if (this.data.generating || this.data.saving || this.data.confirmingOrganize || this.data.appendingOwn) return; this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
   showMore() {

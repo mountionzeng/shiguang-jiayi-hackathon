@@ -23,6 +23,7 @@ import {
   loadCurrentMemberRemoteFirst,
   loadRoomStateRemoteFirst,
   saveCurrentMemberIdLocal,
+  stageRoomStateForBook,
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import { bookmarkDateParts } from "../../services/memoryDates";
@@ -636,6 +637,7 @@ Page({
   openStoryChapters() {
     if (this.data.storyId) {
       saveCurrentStoryId(this.data.storyId);
+      stageRoomStateForBook(this.roomSnapshot);
       wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(this.data.storyId) });
       return;
     }
@@ -646,6 +648,7 @@ Page({
     }
     saveCurrentStoryId("");
     saveCurrentMemberIdLocal(memberId);
+    stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(memberId) });
   },
 

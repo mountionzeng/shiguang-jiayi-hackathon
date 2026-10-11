@@ -7,6 +7,7 @@ import {
   restoreMemoryRemoteFirst,
   restoreStoryRemoteFirst,
   saveCurrentMemberIdLocal,
+  stageRoomStateForBook,
   usesCloudStorage,
 } from "../../services/roomRepository";
 import { recentlyDeletedItems } from "../../services/recentlyDeleted";
@@ -138,11 +139,13 @@ Page({
   },
   openManuscript(storyId: string) {
     saveCurrentStoryId(storyId);
+    stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(storyId) });
   },
   openLegacyManuscript(memberId: string) {
     saveCurrentStoryId("");
     saveCurrentMemberIdLocal(memberId);
+    stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(memberId) });
   },
   openSelectedManuscript() { this.openManuscript(this.data.selectedKey); },

@@ -205,7 +205,8 @@
       </block>
       <block wx:if="{{panel === 'history'}}">
         <view class="panel-title serif">历史版本</view>
-        <view wx:if="{{!history.length}}" class="panel-note">保存修改后，这里会保留版本记录。</view>
+        <view wx:if="{{historyLoading}}" class="panel-note">正在加载历史版本…</view>
+        <view wx:elif="{{!history.length}}" class="panel-note">保存修改后，这里会保留版本记录。</view>
         <button class="version-row" wx:for="{{history}}" wx:key="id" data-id="{{item.id}}" bindtap="previewHistory">
           <text>{{item.label}}</text><text class="version-date">{{item.savedAt}}</text>
         </button>
