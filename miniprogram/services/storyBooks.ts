@@ -3,6 +3,7 @@ import { FamilyRoomState, Story, ManuscriptRevision } from '../domain/biography'
 import * as core from '../domain/storyBookCore';
 import { loadRoomStateRemoteFirst, usesCloudStorage } from './roomRepository';
 import { saveRoomState } from './roomStorage';
+import { roomStateFromStoryResponse } from './cloudRoomStorage';
 import { newStoryId } from './storyRecords';
 import { classifyServiceFailure, logServiceFailure, SavedRefreshError } from './serviceFailure';
 
@@ -58,7 +59,7 @@ export async function storyCommand(command: Record<string,unknown>, options: { v
   if (usesCloudStorage()) {
     let receipt: Record<string, unknown>;
     try {
-      receipt = await call(String(command.action), command);
+      receipt = await call(String(command.action), {...command, ...(command.action === 'save' && options.view === 'home' ? {returnState:'home'} : {})});
       if (receipt.ok !== true || typeof receipt.storyId !== 'string' || !receipt.storyId || receipt.storyId !== command.storyId) {
         throw Object.assign(new Error('暂未确认保存结果，请重新打开书籍核对；当前草稿仍保留'), { code: 'WRITE_UNCONFIRMED' });
       }
@@ -66,7 +67,13 @@ export async function storyCommand(command: Record<string,unknown>, options: { v
       logServiceFailure('storyBooks', 'write', error);
       throw error;
     }
-    try { return await loadRoomStateRemoteFirst(options); }
+    try {
+      if (command.action === 'save' && options.view === 'home') {
+        const state = roomStateFromStoryResponse(receipt.savedState);
+        if (state) return state;
+      }
+      return await loadRoomStateRemoteFirst(options);
+    }
     catch (error) {
       logServiceFailure('storyBooks', 'refresh', error);
       throw new SavedRefreshError(String(command.requestId || ''));

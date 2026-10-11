@@ -633,3 +633,29 @@ test('cloud timing logs contain only bounded whitelisted numbers',()=>{
   assert.deepEqual(cloudPerformanceMetrics({serverDurationMs:15,secret:'never log',phases:{'state.load':7,'state.identity':2,'state.authorize.before':1,'state.authorize.after':3,userText:'never log'}}),{serverDurationMs:15,serverLoadMs:7,serverIdentityMs:2,serverAuthorizeMs:4});
   assert.deepEqual(cloudPerformanceMetrics({serverDurationMs:Infinity,phases:{'state.load':-1,'state.identity':'secret'}}),{serverDurationMs:undefined,serverLoadMs:undefined,serverIdentityMs:undefined,serverAuthorizeMs:undefined});
 });
+
+
+test('save uses a complete inline state and falls back safely for old or incomplete receipts', async () => {
+  const f=fixture();
+  try {
+    const complete={...createEmptyRoomState(),roomStateVersion:1,roomName:'保存之后',
+      manuscriptRevisions:[],stories:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}};
+    for(const inline of [complete,undefined,{roomStateVersion:1}]) {
+      const calls:string[]=[];
+      (globalThis as any).wx.cloud.callFunction=async({name,data}:any)=>{
+        if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+        calls.push(data.action);
+        if(data.action==='save') {
+          assert.equal(data.returnState,'home');
+          return {result:{ok:true,storyId:'story-fixture',savedState:inline}};
+        }
+        return {result:complete};
+      };
+      const state=await saveStoryRevision({id:'revision-inline',storyId:'story-fixture'} as any,'previous');
+      assert.equal(state.roomName,'保存之后');
+      assert.deepEqual(calls,inline===complete?['save']:['save','state']);
+    }
+    (globalThis as any).wx.cloud.callFunction=async()=>({result:{ok:false,storyId:'story-fixture',savedState:complete}});
+    await assert.rejects(saveStoryRevision({id:'revision-inline',storyId:'story-fixture'} as any,'previous'),(error:any)=>error.code==='WRITE_UNCONFIRMED');
+  } finally {f.restore();}
+});

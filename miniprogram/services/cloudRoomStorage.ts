@@ -467,6 +467,14 @@ function isCompleteStoryServiceRoomState(result: StoryServiceRoomState): boolean
     !!result.personalDraftSourceFingerprints && typeof result.personalDraftSourceFingerprints === "object" && !Array.isArray(result.personalDraftSourceFingerprints);
 }
 
+/** Reuse the same validation and normalization for an authenticated save receipt. */
+export function roomStateFromStoryResponse(value: unknown): FamilyRoomState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const result = value as StoryServiceRoomState;
+  if (result.error || !isCompleteStoryServiceRoomState(result)) return undefined;
+  return normalizeStoryServiceRoomState(result);
+}
+
 function normalizeStoryServiceRoomState(result: StoryServiceRoomState): FamilyRoomState {
   const state: FamilyRoomState = {
     ...createEmptyRoomState(),

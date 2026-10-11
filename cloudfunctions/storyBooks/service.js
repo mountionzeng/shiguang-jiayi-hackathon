@@ -171,7 +171,23 @@ function createStoryService(repo, options = {}) {
     else if (action === 'memberDelete') result = await handlers.memberDelete(ctx, event);
     else if (action === 'memberRestore') result = await handlers.memberRestore(ctx, event);
     else if (action === 'roomProfileUpdate') result = await handlers.roomProfileUpdate(ctx, event);
-    else result = await handlers.command(ctx, event);
+    else {
+      // Response shape is not part of a write's idempotency fingerprint.
+      const {returnState, ...command} = event;
+      result = await handlers.command(ctx, command);
+      if (action === 'save' && returnState === 'home' && result?.ok === true) {
+        try {
+          const savedState = await measure('state.load',()=>handlers.state(ctx,{view:'home'}));
+          // Leave large results to the existing chunked read protocol. A receipt
+          // must remain small enough to acknowledge the already committed write.
+          const encoded = encodeStateResponse(savedState,{stateTransport:1});
+          if (encoded.stateTransport !== 1) result = {...result,savedState};
+        } catch {
+          // The write succeeded. Return its receipt and let the client retry the
+          // read; do not turn a readback outage into an unacknowledged write.
+        }
+      }
+    }
     // Reads and already-acknowledged operations can return without a write
     // transaction. Do not release data if identity was revoked during the read.
     if (accessEnabled) await measure('state.authorize.after',()=>assertSpaceOwner(repo, ctx));
