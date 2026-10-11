@@ -195,9 +195,9 @@ export async function replaceContributionRemoteFirst(
 }
 
 /** Read latest once, check conflicts in edit(), then save through the normal moderation path. */
-export async function editContributionRemoteFirst(id: string, edit: (latest: MemoryContribution) => MemoryContribution): Promise<FamilyRoomState> {
+export async function editContributionRemoteFirst(id: string, edit: (latest: MemoryContribution) => MemoryContribution, proposed?: MemoryContribution): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    const state = await editCloudContribution(id, edit);
+    const state = await editCloudContribution(id, edit, proposed);
     const saved = state.contributions.find(item => item.id === id);
     if (saved) learnFromSavedMemory(saved);
     return state;

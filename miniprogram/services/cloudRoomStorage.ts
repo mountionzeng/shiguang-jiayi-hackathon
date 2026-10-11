@@ -31,7 +31,7 @@ import {
 import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
 import { loadCurrentMember } from "./roomStorage";
-import { checkTextContent } from "./contentSecurityService";
+import { checkTextContent, ContentCheckResult } from "./contentSecurityService";
 import { jsonUtf8ByteLength, measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
 
 export const CLOUD_COLLECTIONS = {
@@ -263,7 +263,7 @@ async function saveContribution(
   contribution: MemoryContribution,
 ): Promise<void> {
   const sourceRecordId = sourceRecordDocId(familyId, contribution.id);
-  await collection(CLOUD_COLLECTIONS.sourceRecords).doc(sourceRecordId).set({
+  await measurePerformance('memory.source-write', () => collection(CLOUD_COLLECTIONS.sourceRecords).doc(sourceRecordId).set({
     data: definedFields({
       familyId,
       contributorMemberId: contribution.authorMemberId,
@@ -288,9 +288,9 @@ async function saveContribution(
       submittedAt: contribution.createdAt,
       updatedAt: serverDate(),
     }),
-  });
+  }));
 
-  await collection(CLOUD_COLLECTIONS.memories).doc(memoryDocId(familyId, contribution.id)).set({
+  await measurePerformance('memory.record-write', () => collection(CLOUD_COLLECTIONS.memories).doc(memoryDocId(familyId, contribution.id)).set({
     data: definedFields({
       familyId,
       sourceRecordId,
@@ -319,7 +319,7 @@ async function saveContribution(
       photoIds: contribution.photoIds,
       updatedAt: serverDate(),
     }),
-  });
+  }));
 }
 
 async function saveDraft(familyId: string, draft: BiographyDraft | undefined, sourceFingerprint = ""): Promise<void> {
@@ -652,11 +652,22 @@ export async function saveCloudManuscriptRevision(revision: ManuscriptRevision):
  * 检测没通过、或者检测服务暂时不可用时，仍然保存这段文字，但强制改成只有作者自己能看；
  * 调用方可以对比保存前后的 sharedWithMemberIds 判断是否发生了这种情况，据此提示作者。
  */
-async function enforceContentSecurity(contribution: MemoryContribution): Promise<MemoryContribution> {
-  const mayBeShownToOthers = contributionScope(contribution) === "personal" &&
+function needsContentCheck(contribution: MemoryContribution): boolean {
+  return contributionScope(contribution) === "personal" &&
     (contributionRelatedMemberIds(contribution).length > 0 || personalShareTargetMemberIds(contribution).length > 0);
-  if (!mayBeShownToOthers) return contribution;
-  const result = await checkTextContent(contribution.text, contribution.title);
+}
+
+interface PendingContentCheck {
+  text: string;
+  title?: string;
+  result: Promise<ContentCheckResult>;
+}
+
+async function enforceContentSecurity(contribution: MemoryContribution, pending?: PendingContentCheck): Promise<MemoryContribution> {
+  if (!needsContentCheck(contribution)) return contribution;
+  // A check belongs only to this save and this exact text/title, never another edit.
+  const result = pending && pending.text === contribution.text && pending.title === contribution.title
+    ? await pending.result : await checkTextContent(contribution.text, contribution.title);
   if (result.ok) return contribution;
   return { ...contribution, sharedWithMemberIds: undefined };
 }
@@ -672,7 +683,7 @@ export async function appendCloudContributions(
   rawContributions: MemoryContribution[],
 ): Promise<FamilyRoomState> {
   if (rawContributions.length === 0) return loadCloudRoomState();
-  const contributions = await Promise.all(rawContributions.map(enforceContentSecurity));
+  const contributions = await Promise.all(rawContributions.map(contribution => enforceContentSecurity(contribution)));
   const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
   for (let offset = 0; offset < contributions.length; offset += 5) {
@@ -749,20 +760,24 @@ export async function replaceCloudContribution(
   return writeCloudContribution(familyId, state, rawContribution);
 }
 
-export async function editCloudContribution(id: string, edit: (latest: MemoryContribution) => MemoryContribution): Promise<FamilyRoomState> {
+export async function editCloudContribution(id: string, edit: (latest: MemoryContribution) => MemoryContribution, proposed?: MemoryContribution): Promise<FamilyRoomState> {
+  const pending = proposed?.id === id && needsContentCheck(proposed) ? {
+    text: proposed.text, title: proposed.title,
+    result: measurePerformance('memory.moderate', () => checkTextContent(proposed.text, proposed.title)),
+  } : undefined;
   const state = await loadCloudRoomState({view: "memories"});
   const familyId = await currentFamilyId();
   const latest = state.contributions.find(item => item.id === id && !item.deletedAt);
   if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
   const next = edit(latest);
   if (next.id !== id) throw new Error("记忆编号发生变化，请重新打开");
-  return writeCloudContribution(familyId, state, next);
+  return writeCloudContribution(familyId, state, next, pending);
 }
 
-async function writeCloudContribution(familyId: string, state: FamilyRoomState, rawContribution: MemoryContribution): Promise<FamilyRoomState> {
-  const contribution = await enforceContentSecurity(rawContribution);
+async function writeCloudContribution(familyId: string, state: FamilyRoomState, rawContribution: MemoryContribution, pending?: PendingContentCheck): Promise<FamilyRoomState> {
+  const contribution = await enforceContentSecurity(rawContribution, pending);
   await saveContribution(familyId, contribution);
-  await invalidateDraft(familyId, contribution);
+  await measurePerformance('memory.invalidate', () => invalidateDraft(familyId, contribution));
   const personalDrafts = { ...(state.personalDrafts ?? {}) };
   delete personalDrafts[contribution.authorMemberId];
   return {

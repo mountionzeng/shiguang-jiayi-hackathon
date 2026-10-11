@@ -716,7 +716,7 @@ Page({
         savedRevision = { ...revisions[revisions.length - 1], saveKind: mode, ...(versionLabel ? { versionLabel } : {}) };
         next = { ...appended, aiRevisions: [...revisions.slice(0, -1), savedRevision] };
         return next;
-      });
+      }, { ...original, text, title });
       let resultState = returned;
       let confirmed = memoryPool(returned.contributions).find(item => item.id === next.id);
       let confirmedRevisionId = confirmed && memoryAiRevisions(confirmed).slice(-1)[0]?.id;
@@ -937,7 +937,7 @@ Page({
           next = appendAiRevision(withEdits, "manual", text, title, latest.organizationMode);
         }
         return next;
-      });
+      }, { ...original, text, title: this.data.editTitle.trim().slice(0, 40) || undefined });
       this.editingOriginal = next;
       const savedRevision = memoryAiRevisions(next).slice(-1)[0];
       this.setData({ selectedRevisionId: savedRevision?.id || "", selectedVersionLabel: memoryVersionLabel(savedRevision), isCurrentVersion: true });

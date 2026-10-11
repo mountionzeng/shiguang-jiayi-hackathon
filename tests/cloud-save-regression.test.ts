@@ -599,3 +599,31 @@ test('complete archive navigation snapshot is single-use and restricted to its s
   assert.equal(localRepository.takeStagedRoomStateForArchive('m'),state);
   assert.equal(localRepository.takeStagedRoomStateForArchive('m'),undefined);
 });
+
+
+test('memory edit overlaps moderation with fresh state and binds approval to exact saved text', async () => {
+  const f=fixture();
+  try {
+    const m={...memory(),id:'overlap-edit',relatedMemberIds:['relative'],sharedWithMemberIds:['relative']};
+    let releaseState!:()=>void;
+    const stateGate=new Promise<void>(resolve=>{releaseState=resolve;});
+    const checked:string[]=[];
+    (globalThis as any).wx.cloud.callFunction=async ({name,data}:any)=>{
+      if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+      if(name==='contentSecurityCheck') { checked.push(data.content); return {result:{ok:data.content!=='must-review'}}; }
+      await stateGate;
+      return {result:{...createEmptyRoomState(),roomStateVersion:1,contributions:[m],stories:[],manuscriptRevisions:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}}};
+    };
+    const next={...m,text:'approved-preview'};
+    const pending=localRepository.editContributionRemoteFirst(m.id,latest=>({...latest,text:next.text}),next);
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(checked,['approved-preview'],'moderation starts before fresh state returns');
+    assert.equal(f.records('memories').size,0,'no write before conflict check');
+    releaseState();
+    await pending;
+    assert.equal(checked.length,1,'reuse this request approval for identical text');
+    const changed=await localRepository.editContributionRemoteFirst(m.id,latest=>({...latest,text:'must-review'}),next);
+    assert.equal(checked[checked.length - 1],'must-review','changed text must be checked again');
+    assert.equal(changed.contributions[0].sharedWithMemberIds,undefined,'failed moderation cannot reuse earlier approval');
+  } finally {f.restore();}
+});
