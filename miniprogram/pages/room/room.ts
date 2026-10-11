@@ -8,7 +8,7 @@ import {
   memoryPool,
   MemoryContribution,
 } from "../../domain/biography";
-import { loadRoomStateRemoteFirst, stageRoomStateForStories, takeStagedRoomStateForRoom } from "../../services/roomRepository";
+import { loadRoomStateRemoteFirst, stageRoomStateForStories, stageRoomStateForArchive, takeStagedRoomStateForRoom } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
 import { loadSharedFamilyRoom } from "../../services/familyInviteService";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -169,6 +169,7 @@ Page({
   },
 
   openMemory(event: { currentTarget: { dataset: { id: string } } }) {
+    stageRoomStateForArchive(event.currentTarget.dataset.id, this.data.loadingDetails ? undefined : this.roomSnapshot);
     wx.navigateTo({ url: "/pages/archive/archive?id=" + encodeURIComponent(event.currentTarget.dataset.id) });
   },
 

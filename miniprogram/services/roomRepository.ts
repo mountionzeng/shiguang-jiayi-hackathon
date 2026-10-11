@@ -26,6 +26,7 @@ import {
   restoreCloudMemory,
   loadCloudRoomState,
   replaceCloudContribution,
+  editCloudContribution,
   resetCloudCurrentUserRoom,
   saveCloudDraftIfSourcesUnchanged,
   saveCloudPersonalDraftIfSourcesUnchanged,
@@ -69,6 +70,18 @@ function shouldUseCloudDatabase(): boolean {
 let stagedBookState: FamilyRoomState | undefined;
 let stagedStoriesState: FamilyRoomState | undefined;
 let stagedRoomState: FamilyRoomState | undefined;
+
+let stagedArchiveState: {id: string; state: FamilyRoomState} | undefined;
+
+export function stageRoomStateForArchive(id: string, state: FamilyRoomState | undefined): void {
+  stagedArchiveState = state ? {id, state} : undefined;
+}
+
+export function takeStagedRoomStateForArchive(id: string): FamilyRoomState | undefined {
+  const staged = stagedArchiveState;
+  stagedArchiveState = undefined;
+  return staged?.id === id ? staged.state : undefined;
+}
 
 export function stageRoomStateForRoom(state: FamilyRoomState | undefined): void {
   stagedRoomState = state;
@@ -179,6 +192,22 @@ export async function replaceContributionRemoteFirst(
   }
 
   return replaceContribution(contribution, loadRoomState());
+}
+
+/** Read latest once, check conflicts in edit(), then save through the normal moderation path. */
+export async function editContributionRemoteFirst(id: string, edit: (latest: MemoryContribution) => MemoryContribution): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) {
+    const state = await editCloudContribution(id, edit);
+    const saved = state.contributions.find(item => item.id === id);
+    if (saved) learnFromSavedMemory(saved);
+    return state;
+  }
+  const state = loadRoomState();
+  const latest = state.contributions.find(item => item.id === id && !item.deletedAt);
+  if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
+  const next = edit(latest);
+  if (next.id !== id) throw new Error("记忆编号发生变化，请重新打开");
+  return replaceContribution(next, state);
 }
 
 export async function deleteContributionRemoteFirst(

@@ -17,6 +17,8 @@ import {
   softDeleteMemoryRemoteFirst,
   loadRoomStateRemoteFirst,
   replaceContributionRemoteFirst,
+  editContributionRemoteFirst,
+  takeStagedRoomStateForArchive,
   roomDataModeLabel,
   stageRoomStateForBook,
 } from "../../services/roomRepository";
@@ -250,6 +252,8 @@ Page({
   },
 
   onShow() {
+    const staged = takeStagedRoomStateForArchive(this.data.editingId);
+    if (staged) this.roomSnapshot = staged;
     if (this.roomSnapshot) void this.refresh(this.roomSnapshot);
     void this.refresh().catch((error) => { logLoadError("archive", error); this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }); });
   },
@@ -692,26 +696,27 @@ Page({
       const title = this.data.previewTitle.trim().slice(0, 40) || undefined;
       const text = normalizeMemoryText(this.data.previewText);
       if (!text || text.length > MAX_MEMORY_LENGTH) throw new Error("请保留 1—500 字的记忆");
-      const state = await loadRoomStateRemoteFirst({view: "memories"});
-      const latest = memoryPool(state.contributions).find(item => item.id === this.editingOriginal?.id);
-      if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
       const original = this.editingOriginal;
-      const currentRevisionId = memoryAiRevisions(latest).slice(-1)[0]?.id || "";
-      const originalRevisionId = memoryAiRevisions(original).slice(-1)[0]?.id || "";
-      if (latest.text !== original.text || latest.title !== original.title || latest.storyTitle !== original.storyTitle || currentRevisionId !== originalRevisionId) {
-        throw new Error("这段记忆已有新修改，请重新打开后再保存");
-      }
-      const nextBase = { ...latest, title, storyTitle: this.data.editStory.trim().slice(0, 30) || undefined, summary: undefined };
-      const generatedByAi = this.data.previewAiLabel === "文字 AI 生成";
-      const appended = appendAiRevision(nextBase, generatedByAi ? "ai" : "manual", text, title, generatedByAi ? "cloud-ai" : "local-demo");
-      const revisions = memoryAiRevisions(appended);
-      const now = new Date();
-      const sameDay = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日版本`;
-      const count = revisions.filter(revision => revision.versionLabel?.startsWith(sameDay)).length;
-      const versionLabel = mode === "dated-version" ? `${sameDay}${count ? `（${count + 1}）` : ""}` : undefined;
-      const savedRevision = { ...revisions[revisions.length - 1], saveKind: mode, ...(versionLabel ? { versionLabel } : {}) };
-      const next = { ...appended, aiRevisions: [...revisions.slice(0, -1), savedRevision] };
-      const returned = await replaceContributionRemoteFirst(next, {view: "memories"});
+      let next!: MemoryContribution;
+      let savedRevision!: ReturnType<typeof memoryAiRevisions>[number];
+      const returned = await editContributionRemoteFirst(original.id, latest => {
+        const currentRevisionId = memoryAiRevisions(latest).slice(-1)[0]?.id || "";
+        const originalRevisionId = memoryAiRevisions(original).slice(-1)[0]?.id || "";
+        if (latest.text !== original.text || latest.title !== original.title || latest.storyTitle !== original.storyTitle || currentRevisionId !== originalRevisionId) {
+          throw new Error("这段记忆已有新修改，请重新打开后再保存");
+        }
+        const nextBase = { ...latest, title, storyTitle: this.data.editStory.trim().slice(0, 30) || undefined, summary: undefined };
+        const generatedByAi = this.data.previewAiLabel === "文字 AI 生成";
+        const appended = appendAiRevision(nextBase, generatedByAi ? "ai" : "manual", text, title, generatedByAi ? "cloud-ai" : "local-demo");
+        const revisions = memoryAiRevisions(appended);
+        const now = new Date();
+        const sameDay = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日版本`;
+        const count = revisions.filter(revision => revision.versionLabel?.startsWith(sameDay)).length;
+        const versionLabel = mode === "dated-version" ? `${sameDay}${count ? `（${count + 1}）` : ""}` : undefined;
+        savedRevision = { ...revisions[revisions.length - 1], saveKind: mode, ...(versionLabel ? { versionLabel } : {}) };
+        next = { ...appended, aiRevisions: [...revisions.slice(0, -1), savedRevision] };
+        return next;
+      });
       let resultState = returned;
       let confirmed = memoryPool(returned.contributions).find(item => item.id === next.id);
       let confirmedRevisionId = confirmed && memoryAiRevisions(confirmed).slice(-1)[0]?.id;
@@ -908,31 +913,31 @@ Page({
     try {
       const text = normalizeMemoryText(this.data.editText);
       if (!text || text.length > MAX_MEMORY_LENGTH) throw new Error("请保留 1—500 字的记忆");
-      const state = await loadRoomStateRemoteFirst({view: "memories"});
-      const latest = memoryPool(state.contributions).find(item => item.id === this.data.editingId);
-      if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
       const original = this.editingOriginal;
-      if (latest.text !== original.text || latest.title !== original.title || latest.storyTitle !== original.storyTitle) {
-        throw new Error("这段记忆已有新修改，请重新打开后编辑");
-      }
-      const title = this.data.editTitle.trim().slice(0, 40) || undefined;
-      const textChanged = text !== latest.text;
-      const withEdits = { ...latest, title, storyTitle: this.data.editStory.trim().slice(0, 30) || undefined,
-        summary: textChanged ? undefined : latest.summary };
-      // 只有正文真的改了才追加历史；只改标题/分组不会假装成一次人工修改。
-      // 如果本次正文来自“小忆整理稿”，先记录一条 AI revision；用户落回后又继续手改时，
-      // 再追加 manual revision，保留“AI 整理 → 人工修改”的来源链。
-      let next: MemoryContribution = { ...withEdits, text };
-      const revisions = memoryAiRevisions(latest);
-      if (textChanged && this.xiaoyiLandedAiText) {
-        const withAi = appendAiRevision(withEdits, "ai", this.xiaoyiLandedAiText, title, "cloud-ai");
-        next = text === this.xiaoyiLandedAiText
-          ? withAi
-          : appendAiRevision(withAi, "manual", text, title, "cloud-ai");
-      } else if (textChanged && revisions.length > 0) {
-        next = appendAiRevision(withEdits, "manual", text, title, latest.organizationMode);
-      }
-      this.roomSnapshot = await replaceContributionRemoteFirst(next, {view: "memories"});
+      let next!: MemoryContribution;
+      this.roomSnapshot = await editContributionRemoteFirst(this.data.editingId, latest => {
+        if (latest.text !== original.text || latest.title !== original.title || latest.storyTitle !== original.storyTitle) {
+          throw new Error("这段记忆已有新修改，请重新打开后编辑");
+        }
+        const title = this.data.editTitle.trim().slice(0, 40) || undefined;
+        const textChanged = text !== latest.text;
+        const withEdits = { ...latest, title, storyTitle: this.data.editStory.trim().slice(0, 30) || undefined,
+          summary: textChanged ? undefined : latest.summary };
+        // 只有正文真的改了才追加历史；只改标题/分组不会假装成一次人工修改。
+        // 如果本次正文来自“小忆整理稿”，先记录一条 AI revision；用户落回后又继续手改时，
+        // 再追加 manual revision，保留“AI 整理 → 人工修改”的来源链。
+        next = { ...withEdits, text };
+        const revisions = memoryAiRevisions(latest);
+        if (textChanged && this.xiaoyiLandedAiText) {
+          const withAi = appendAiRevision(withEdits, "ai", this.xiaoyiLandedAiText, title, "cloud-ai");
+          next = text === this.xiaoyiLandedAiText
+            ? withAi
+            : appendAiRevision(withAi, "manual", text, title, "cloud-ai");
+        } else if (textChanged && revisions.length > 0) {
+          next = appendAiRevision(withEdits, "manual", text, title, latest.organizationMode);
+        }
+        return next;
+      });
       this.editingOriginal = next;
       const savedRevision = memoryAiRevisions(next).slice(-1)[0];
       this.setData({ selectedRevisionId: savedRevision?.id || "", selectedVersionLabel: memoryVersionLabel(savedRevision), isCurrentVersion: true });

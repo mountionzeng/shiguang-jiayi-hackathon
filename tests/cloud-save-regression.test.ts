@@ -566,3 +566,36 @@ test('memory editing reads complete histories and photos without loading all man
     await assert.rejects(loadRoomStateRemoteFirst({view: 'memories'}), /permission denied/);
   } finally { f.restore(); }
 });
+
+
+test('memory edit reads latest once, preserves photos and refuses a conflicting edit before writing', async () => {
+  const f=fixture();
+  try {
+    const m={...memory(),id:'edit-once',photoIds:['photo-keep'],aiRevisions:[]};
+    let reads=0;
+    (globalThis as any).wx.cloud.callFunction=async ({name,data}:any)=>{
+      if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+      if(data.action!=='state')return {result:{}};
+      reads++;
+      return {result:{...createEmptyRoomState(),roomStateVersion:1,contributions:[m],stories:[],manuscriptRevisions:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}}};
+    };
+    const result=await localRepository.editContributionRemoteFirst(m.id,latest=>({...latest,text:'虚构编辑文本'}));
+    assert.equal(reads,1);
+    assert.deepEqual(result.contributions[0].photoIds,m.photoIds);
+    const before=JSON.stringify([...f.records('memories')]);
+    await assert.rejects(localRepository.editContributionRemoteFirst(m.id,()=>{throw new Error('已有新修改')}),/已有新修改/);
+    assert.equal(JSON.stringify([...f.records('memories')]),before);
+    await assert.rejects(localRepository.editContributionRemoteFirst(m.id,latest=>({...latest,id:'other'})),/编号/);
+    assert.equal(JSON.stringify([...f.records('memories')]),before);
+  } finally {f.restore();}
+});
+
+test('complete archive navigation snapshot is single-use and restricted to its selected memory',()=>{
+  const state=createEmptyRoomState();
+  localRepository.stageRoomStateForArchive('m',state);
+  assert.equal(localRepository.takeStagedRoomStateForArchive('other'),undefined);
+  assert.equal(localRepository.takeStagedRoomStateForArchive('m'),undefined);
+  localRepository.stageRoomStateForArchive('m',state);
+  assert.equal(localRepository.takeStagedRoomStateForArchive('m'),state);
+  assert.equal(localRepository.takeStagedRoomStateForArchive('m'),undefined);
+});

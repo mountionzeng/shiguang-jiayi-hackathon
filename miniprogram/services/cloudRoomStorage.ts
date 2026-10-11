@@ -746,6 +746,20 @@ export async function replaceCloudContribution(
   if (!state.contributions.some(item => item.id === rawContribution.id)) {
     throw new Error("这段记忆已不存在，请刷新列表");
   }
+  return writeCloudContribution(familyId, state, rawContribution);
+}
+
+export async function editCloudContribution(id: string, edit: (latest: MemoryContribution) => MemoryContribution): Promise<FamilyRoomState> {
+  const state = await loadCloudRoomState({view: "memories"});
+  const familyId = await currentFamilyId();
+  const latest = state.contributions.find(item => item.id === id && !item.deletedAt);
+  if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
+  const next = edit(latest);
+  if (next.id !== id) throw new Error("记忆编号发生变化，请重新打开");
+  return writeCloudContribution(familyId, state, next);
+}
+
+async function writeCloudContribution(familyId: string, state: FamilyRoomState, rawContribution: MemoryContribution): Promise<FamilyRoomState> {
   const contribution = await enforceContentSecurity(rawContribution);
   await saveContribution(familyId, contribution);
   await invalidateDraft(familyId, contribution);
