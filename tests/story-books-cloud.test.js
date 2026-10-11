@@ -436,3 +436,24 @@ test('saving current edits avoids manuscript scans and retains idempotency, old 
   await h.command(ctx,{...save('revision-perf-three','revision-perf-two',3),restoreRevisionId:'revision-perf-one'});
   assert.deepEqual(tables.get('biography_drafts:family_test_revision-perf-three').revision.draft,original.revision.draft);
 });
+
+
+test('opt-in request timing stays outside state chunks and does not relax authentication', async()=>{
+  const {repo,tables}=fixture();
+  const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+  const service=createStoryService(repo);
+  const normal=await service({OPENID:'test'},{action:'state'});
+  assert.equal(normal.performance,undefined);
+  const measured=await service({OPENID:'test'},{action:'state',performanceDiagnostics:1});
+  assert.ok(Number.isFinite(measured.performance.serverDurationMs));
+  assert.ok(Number.isFinite(measured.performance.phases['state.load']));
+  const {performance,...state}=measured;
+  assert.deepEqual(state,normal);
+  assert.ok(Object.values(performance.phases).every(value=>Number.isFinite(value)&&value>=0));
+  await assert.rejects(service({}, {action:'state',performanceDiagnostics:1}),{code:'AUTH_REQUIRED'});
+  tables.set('biography_drafts:timing-large',{familyId:'family_test',revision:{id:'large',draft:{text:'测试'.repeat(300000)}}});
+  const chunk=await service({OPENID:'test'},{action:'state',stateTransport:1,performanceDiagnostics:1});
+  const next=await service({OPENID:'test'},{action:'state',stateTransport:1,performanceDiagnostics:1,stateOffset:chunk.nextOffset,stateDigest:chunk.digest});
+  assert.equal(next.digest,chunk.digest,'per-request timings do not affect chunk fingerprints');
+  assert.equal(next.offset,chunk.nextOffset);
+});

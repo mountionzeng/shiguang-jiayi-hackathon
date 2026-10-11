@@ -6,7 +6,7 @@ import { addCloudFamilyMember, appendCloudContribution as appendContributionRemo
 import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
 import { ensureStoryBooks, storyCommand, saveStoryRevision } from "../miniprogram/services/storyBooks";
-import { jsonUtf8ByteLength } from "../miniprogram/services/performanceLog";
+import { cloudPerformanceMetrics, jsonUtf8ByteLength } from "../miniprogram/services/performanceLog";
 import { SavedRefreshError } from '../miniprogram/services/serviceFailure';
 
 // Synthetic wx I/O only: repository, cloud storage and domain code all run unmocked.
@@ -496,7 +496,7 @@ test('only explicit home loads request a projection; editors still request compl
     };
     await localRepository.loadRoomStateRemoteFirst({view:'home'});
     await localRepository.loadRoomStateRemoteFirst();
-    assert.deepEqual(calls,[{action:'state',view:'home',stateTransport:1},{action:'state',stateTransport:1}]);
+    assert.deepEqual(calls,[{action:'state',performanceDiagnostics:1,view:'home',stateTransport:1},{action:'state',performanceDiagnostics:1,stateTransport:1}]);
   } finally {f.restore();}
 });
 
@@ -626,4 +626,10 @@ test('memory edit overlaps moderation with fresh state and binds approval to exa
     assert.equal(checked[checked.length - 1],'must-review','changed text must be checked again');
     assert.equal(changed.contributions[0].sharedWithMemberIds,undefined,'failed moderation cannot reuse earlier approval');
   } finally {f.restore();}
+});
+
+
+test('cloud timing logs contain only bounded whitelisted numbers',()=>{
+  assert.deepEqual(cloudPerformanceMetrics({serverDurationMs:15,secret:'never log',phases:{'state.load':7,'state.identity':2,'state.authorize.before':1,'state.authorize.after':3,userText:'never log'}}),{serverDurationMs:15,serverLoadMs:7,serverIdentityMs:2,serverAuthorizeMs:4});
+  assert.deepEqual(cloudPerformanceMetrics({serverDurationMs:Infinity,phases:{'state.load':-1,'state.identity':'secret'}}),{serverDurationMs:undefined,serverLoadMs:undefined,serverIdentityMs:undefined,serverAuthorizeMs:undefined});
 });

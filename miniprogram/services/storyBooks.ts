@@ -1,4 +1,4 @@
-import { measurePerformance } from './performanceLog';
+import { cloudPerformanceMetrics, measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
 import { FamilyRoomState, Story, ManuscriptRevision } from '../domain/biography';
 import * as core from '../domain/storyBookCore';
 import { loadRoomStateRemoteFirst, usesCloudStorage } from './roomRepository';
@@ -14,14 +14,21 @@ function canReadLegacyStories(error: unknown): boolean {
   return classifyServiceFailure(error) === 'missing' || /MIGRATION_NOT_READY|故事库.*(?:准备|迁移测试范围)|新版故事库正在准备/i.test(text);
 }
 async function call(action: string, data: Record<string,unknown> = {}): Promise<Record<string,unknown>> {
-  const response = await wx.cloud.callFunction({name:'storyBooks',data:{...data,action}});
-  const result = response.result as {error?:string;code?:string;message?:string;[key:string]:unknown};
-  if (!result || typeof result !== 'object' || Array.isArray(result) || result.error) {
-    const error = new Error(result?.message || '故事服务暂不可用，请重试') as Error & { code?: string };
-    if (result?.code) error.code = result.code;
-    throw error;
-  }
-  return result;
+  const finish = startPerformanceMeasure('story.request');
+  let outcome: 'ok' | 'error' = 'error';
+  let metrics: PerformanceMetrics = {};
+  try {
+    const response = await wx.cloud.callFunction({name:'storyBooks',data:{...data,action,...(action==='save'?{performanceDiagnostics:1}:{})}});
+    const result = response.result as {error?:string;code?:string;message?:string;[key:string]:unknown};
+    if (!result || typeof result !== 'object' || Array.isArray(result) || result.error) {
+      const error = new Error(result?.message || '故事服务暂不可用，请重试') as Error & { code?: string };
+      if (result?.code) error.code = result.code;
+      throw error;
+    }
+    metrics = cloudPerformanceMetrics(result.performance);
+    outcome = 'ok';
+    return result;
+  } finally { finish(outcome, metrics); }
 }
 export async function ensureStoryBooks(): Promise<FamilyRoomState> {
   // The shelf only needs each story's current revision. Avoid serialising every

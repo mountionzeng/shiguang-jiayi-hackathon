@@ -32,7 +32,7 @@ import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
 import { loadCurrentMember } from "./roomStorage";
 import { checkTextContent, ContentCheckResult } from "./contentSecurityService";
-import { jsonUtf8ByteLength, measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
+import { cloudPerformanceMetrics, jsonUtf8ByteLength, measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
 
 export const CLOUD_COLLECTIONS = {
   families: "families",
@@ -413,10 +413,17 @@ function missingStoryService(error: unknown): boolean {
 
 async function loadStoryServiceRoomState(view?: "home" | "memories"): Promise<StoryServiceRoomState> {
   return await readStoryState(async transport => {
-    const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state", ...(view ? {view} : {}), ...transport } });
-    const result = (response.result ?? {}) as StoryServiceRoomState;
-    if (result.error) throw storyServiceError(result);
-    return result;
+    const finish = startPerformanceMeasure('room.request');
+    let outcome: 'ok' | 'error' = 'error';
+    let metrics: PerformanceMetrics = {};
+    try {
+      const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state", performanceDiagnostics: 1, ...(view ? {view} : {}), ...transport } });
+      const result = (response.result ?? {}) as StoryServiceRoomState & {performance?: unknown};
+      metrics = cloudPerformanceMetrics(result.performance);
+      if (result.error) throw storyServiceError(result);
+      outcome = 'ok';
+      return result;
+    } finally { finish(outcome, metrics); }
   }) as StoryServiceRoomState;
 }
 

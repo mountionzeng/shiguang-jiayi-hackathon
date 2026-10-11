@@ -22,8 +22,12 @@ function createStoryService(repo, options = {}) {
   const accessEnabled = options.accessEnabled === true;
   const canaryFamilies = new Set(options.sharedReadFamilyIds || []);
   const invitations = createInvitationService(repo, options);
-  async function dispatch(context, event = {}) {
-    const measure = event?.action === 'state' ? measurePerformance : (_operation,work)=>work();
+  async function dispatch(context, event = {}, phases) {
+    const measure = async (operation, work) => {
+      const started = Date.now();
+      try { return await (event?.action === 'state' ? measurePerformance(operation,work) : work()); }
+      finally { if (phases) phases[operation] = Math.max(0, Date.now() - started); }
+    };
     if (!context || typeof context.OPENID !== 'string' || !/^[0-9A-Za-z_-]{1,128}$/.test(context.OPENID)) throw identityError('AUTH_REQUIRED');
     if (accessEnabled && options.rulesReady !== true) throw accessError('STORY_ACCESS_NOT_READY');
     const ctx = accessEnabled
@@ -173,9 +177,16 @@ function createStoryService(repo, options = {}) {
     if (accessEnabled) await measure('state.authorize.after',()=>assertSpaceOwner(repo, ctx));
     return action === 'state' ? encodeStateResponse(result, event) : result;
   }
-  return (context,event={}) => event?.action === 'state'
-    ? measurePerformance('state.total',()=>dispatch(context,event))
-    : dispatch(context,event);
+  return async (context,event={}) => {
+    const started = Date.now();
+    const phases = event.performanceDiagnostics === 1 && ['state','save'].includes(event.action) ? {} : undefined;
+    const result = event?.action === 'state'
+      ? await measurePerformance('state.total',()=>dispatch(context,event,phases))
+      : await dispatch(context,event,phases);
+    // Attach outside chunk encoding: changing timings must not change a state digest.
+    // Only fixed operation names and elapsed milliseconds, never document values.
+    return phases ? {...result,performance:{serverDurationMs:Math.max(0,Date.now()-started),phases}} : result;
+  };
 }
 
 module.exports = { createStoryService };
