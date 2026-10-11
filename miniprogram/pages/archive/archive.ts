@@ -1,3 +1,4 @@
+import { startPerformanceMeasure } from "../../services/performanceLog";
 import {
   appendAiRevision,
   contributionStoryTitle,
@@ -235,7 +236,7 @@ Page({
   },
 
   onShow() {
-    this.roomSnapshot = undefined;
+    if (this.roomSnapshot) void this.refresh(this.roomSnapshot);
     void this.refresh().catch((error) => { logLoadError("archive", error); this.setData({ loadError: "记忆暂时未加载成功，请重试。原有记录不会被清空。" }); });
   },
 
@@ -254,8 +255,8 @@ Page({
     this.onShow();
   },
 
-  async refresh() {
-    const state = await loadRoomStateRemoteFirst();
+  async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
+    const state = nextState ?? await loadRoomStateRemoteFirst({view: "memories"});
     const member = await loadCurrentMemberRemoteFirst(state);
     this.roomSnapshot = state;
     // One pool for every book. A memory is either not written yet, or written into
@@ -584,7 +585,7 @@ Page({
       const title = this.data.previewTitle.trim().slice(0, 40) || undefined;
       const text = normalizeMemoryText(this.data.previewText);
       if (!text || text.length > MAX_MEMORY_LENGTH) throw new Error("请保留 1—500 字的记忆");
-      const state = await loadRoomStateRemoteFirst();
+      const state = await loadRoomStateRemoteFirst({view: "memories"});
       const latest = memoryPool(state.contributions).find(item => item.id === this.editingOriginal?.id);
       if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
       const original = this.editingOriginal;
@@ -603,13 +604,13 @@ Page({
       const versionLabel = mode === "dated-version" ? `${sameDay}${count ? `（${count + 1}）` : ""}` : undefined;
       const savedRevision = { ...revisions[revisions.length - 1], saveKind: mode, ...(versionLabel ? { versionLabel } : {}) };
       const next = { ...appended, aiRevisions: [...revisions.slice(0, -1), savedRevision] };
-      const returned = await replaceContributionRemoteFirst(next);
+      const returned = await replaceContributionRemoteFirst(next, {view: "memories"});
       let resultState = returned;
       let confirmed = memoryPool(returned.contributions).find(item => item.id === next.id);
       let confirmedRevisionId = confirmed && memoryAiRevisions(confirmed).slice(-1)[0]?.id;
       for (let attempt = 0; (!confirmed || confirmed.text !== next.text || confirmedRevisionId !== savedRevision.id) && attempt < 3; attempt += 1) {
         await waitForSaveConfirmation();
-        resultState = await loadRoomStateRemoteFirst();
+        resultState = await loadRoomStateRemoteFirst({view: "memories"});
         confirmed = memoryPool(resultState.contributions).find(item => item.id === next.id);
         confirmedRevisionId = confirmed && memoryAiRevisions(confirmed).slice(-1)[0]?.id;
       }
@@ -671,11 +672,11 @@ Page({
   async confirmRevertToSpoken() {
     this.setData({ reverting: true });
     try {
-      const state = await loadRoomStateRemoteFirst();
+      const state = await loadRoomStateRemoteFirst({view: "memories"});
       const latest = memoryPool(state.contributions).find(item => item.id === this.data.editingId);
       if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
       const reverted = revertMemoryToSpoken(latest);
-      await replaceContributionRemoteFirst(reverted);
+      await replaceContributionRemoteFirst(reverted, {view: "memories"});
       this.editingOriginal = reverted;
       this.setData({
         editText: reverted.text,
@@ -697,7 +698,7 @@ Page({
     const requestId = ++this.openMemoryRequestId;
     const memoryId = event.currentTarget.dataset.id;
     try {
-      const state = this.roomSnapshot ?? await loadRoomStateRemoteFirst();
+      const state = this.roomSnapshot ?? await loadRoomStateRemoteFirst({view: "memories"});
       if (requestId !== this.openMemoryRequestId) return;
       const memory = memoryPool(state.contributions).find(item => item.id === memoryId);
       if (!memory) throw new Error("这段记忆已不存在，请刷新列表");
@@ -791,10 +792,12 @@ Page({
     if (this.data.savingEdit || this.data.organizingPreview || !this.editingOriginal) return;
     if (!this.confirmEditStoryCreation(() => { void this.saveEdit(); })) return;
     this.setData({ savingEdit: true });
+    const finish = startPerformanceMeasure("memory.save");
+    let outcome: "ok" | "error" = "error";
     try {
       const text = normalizeMemoryText(this.data.editText);
       if (!text || text.length > MAX_MEMORY_LENGTH) throw new Error("请保留 1—500 字的记忆");
-      const state = await loadRoomStateRemoteFirst();
+      const state = await loadRoomStateRemoteFirst({view: "memories"});
       const latest = memoryPool(state.contributions).find(item => item.id === this.data.editingId);
       if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
       const original = this.editingOriginal;
@@ -818,7 +821,7 @@ Page({
       } else if (textChanged && revisions.length > 0) {
         next = appendAiRevision(withEdits, "manual", text, title, latest.organizationMode);
       }
-      this.roomSnapshot = await replaceContributionRemoteFirst(next);
+      this.roomSnapshot = await replaceContributionRemoteFirst(next, {view: "memories"});
       this.editingOriginal = next;
       const savedRevision = memoryAiRevisions(next).slice(-1)[0];
       this.setData({ selectedRevisionId: savedRevision?.id || "", selectedVersionLabel: memoryVersionLabel(savedRevision), isCurrentVersion: true });
@@ -829,10 +832,11 @@ Page({
         canRevertToSpoken: memoryAiRevisions(next).length > 0 && memoryOriginalSpokenText(next) !== next.text,
         historyItems: historyRows(memoryAiRevisions(next)),
       });
+      outcome = "ok";
       wx.showToast({ title: "修改已保存", icon: "success" });
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : "修改未确认，请重试", icon: "none" });
-    } finally { this.setData({ savingEdit: false }); }
+    } finally { finish(outcome); this.setData({ savingEdit: false }); }
   },
 
   openXiaoyi() {

@@ -265,7 +265,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     legacyImageJobs:[...(source.legacyImageJobs || [])].filter(job=>!job.storyId).sort((a,b)=>String(a._id).localeCompare(String(b._id))),
   });
   const sourceDigest = source => core.hash(core.stable(legacySource(source)));
-  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false,home=false}={}) {
+  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false,home=false,keepMemoryHistory=false}={}) {
     const measure = readState ? measurePerformance : (_operation,work)=>work();
     const readFamily = async () => {
       const family = await measure('state.query.families',()=>repo.get('families',ctx.familyId));
@@ -302,7 +302,8 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
           return record?.familyId===ctx.familyId && record.storyId===story.id &&
             record.revision?.id===story.currentRevisionId && record.revision.storyId===story.id ? record : undefined;
         })));
-      const memories = initial[2].filter(memory=>!memory.deletedAt).map(({aiRevisions,...memory})=>memory);
+      const memories = initial[2].filter(memory=>!memory.deletedAt)
+        .map(memory=>{if(keepMemoryHistory)return memory;const {aiRevisions,...current}=memory;return current;});
       rows = [stories,drafts.filter(Boolean),[],memories,initial[3],[],[]];
     } else {
       [family,rows] = readState
@@ -331,7 +332,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     return state;
   }
   async function state(ctx,event={}) {
-    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true,home:event.view==='home'});
+    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true,home:['home','memories'].includes(event.view),keepMemoryHistory:event.view==='memories'});
     const membersById=new Map(loaded.members.map(member=>[member.id,member]));
     return {
       roomStateVersion:1,
@@ -370,7 +371,16 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     });
   }
   async function command(ctx,event) {
-    const input={...event,familyId:ctx.familyId}, previous=await load(ctx);
+    const input={...event,familyId:ctx.familyId};
+    // Saving edits only needs current manuscripts. Keep all memory provenance,
+    // and point-read the submitted revision ID to preserve collision rejection.
+    const previous=await load(ctx,{home:input.action==='save' && !input.restoreRevisionId,keepMemoryHistory:true});
+    if(input.action==='save' && typeof input.revision?.id==='string') {
+      const existing=await repo.get('biography_drafts',docId(ctx.familyId,input.revision.id));
+      if(existing?.revision && !previous.manuscriptRevisions.some(r=>r.id===existing.revision.id)) {
+        previous.manuscriptRevisions.push(existing.revision);
+      }
+    }
     const previousStory=previous.stories.find(story=>story.id===input.storyId);
     const guardsContent=!['delete','restore'].includes(input.action);
     if (guardsContent && previousStory) assertLegacyWritable(previousStory,core.current(previous,previousStory.id).draft);
@@ -454,6 +464,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         if(!pending || pending.item.resolvedStoryId)throw new Error('此章节已处理，请刷新');
         await tx.set('story_migration_items',id,{familyId:ctx.familyId,item:next.storyMigration.pending.find(p=>p.id===input.pendingId)});
       }
+      if(newRevision && await tx.get('biography_drafts',docId(ctx.familyId,newRevision.id)))throw new Error('版本编号冲突');
       if(newRevision)await tx.set('biography_drafts',docId(ctx.familyId,newRevision.id),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision:newRevision});
       await tx.set('stories',docId(ctx.familyId,story.id),story);
       if (core.isEmptyStoryCreate(input) && family.storyBooks?.status!=='active') {

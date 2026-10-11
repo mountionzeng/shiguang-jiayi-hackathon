@@ -53,7 +53,7 @@ Component({
 
     openFamily() {
       if (this.data.current === "family") return;
-      wx.reLaunch({ url: "/pages/room/room" });
+      this.triggerEvent('openfamily');
     },
 
     startInterview() {

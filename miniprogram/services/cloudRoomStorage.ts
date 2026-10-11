@@ -411,7 +411,7 @@ function missingStoryService(error: unknown): boolean {
   return classifyServiceFailure(error) === 'missing';
 }
 
-async function loadStoryServiceRoomState(view?: "home"): Promise<StoryServiceRoomState> {
+async function loadStoryServiceRoomState(view?: "home" | "memories"): Promise<StoryServiceRoomState> {
   return await readStoryState(async transport => {
     const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state", ...(view ? {view} : {}), ...transport } });
     const result = (response.result ?? {}) as StoryServiceRoomState;
@@ -485,7 +485,7 @@ function normalizeStoryServiceRoomState(result: StoryServiceRoomState): FamilyRo
   return state;
 }
 
-export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "home" } = {}): Promise<FamilyRoomState> {
+export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "home" | "memories" } = {}): Promise<FamilyRoomState> {
   const finish = startPerformanceMeasure('room.cloud');
   const metrics: PerformanceMetrics = { route: 'identity', clientPageReads: 0 };
   let outcome: 'ok' | 'error' = 'error';
@@ -500,12 +500,21 @@ export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "
   }
 }
 
-async function readCloudRoomState(options: { readOnly?: boolean; view?: "home" }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
-  const familyId = await measurePerformance('room.identity', currentFamilyId);
+async function readCloudRoomState(options: { readOnly?: boolean; view?: "home" | "memories" }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
+  // Both endpoints authorize on the server; neither read depends on the other.
+  // Still require identity success before returning state or using client fallback.
+  const [familyId, serviceRead] = await Promise.all([
+    measurePerformance('room.identity', currentFamilyId),
+    measurePerformance('room.state', () => loadStoryServiceRoomState(options.view)).then(
+      state => ({ ok: true as const, state }),
+      error => ({ ok: false as const, error }),
+    ),
+  ]);
   metrics.route = 'story-service';
   let storyServiceState: StoryServiceRoomState | undefined;
   try {
-    storyServiceState = await measurePerformance('room.state', () => loadStoryServiceRoomState(options.view));
+    if (!serviceRead.ok) throw serviceRead.error;
+    storyServiceState = serviceRead.state;
     const responseAnalysisStarted = Date.now();
     metrics.responseBytes = jsonUtf8ByteLength(storyServiceState);
     metrics.responseAnalysisMs = Math.max(0, Date.now() - responseAnalysisStarted);
@@ -730,9 +739,10 @@ export async function addCloudFamilyMember(
 
 export async function replaceCloudContribution(
   rawContribution: MemoryContribution,
+  options: { view?: "memories" } = {},
 ): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
-  const state = await loadCloudRoomState();
+  const state = await loadCloudRoomState(options);
   if (!state.contributions.some(item => item.id === rawContribution.id)) {
     throw new Error("这段记忆已不存在，请刷新列表");
   }

@@ -64,3 +64,17 @@ test('home retains owner authorization and rejects revocation during the read', 
   repo.all=async (table,id)=>{const result=await all(table,id);tables.get(`story_identity_aliases:${aliasIdFor(context.APPID,context.OPENID)}`).status='revoked';return result};
   await assert.rejects(service(context,{action:'state',view:'home'}),{code:'STORY_FORBIDDEN'});
 });
+
+
+test('memory editor projection retains full history and media without scanning manuscript history', async () => {
+  const {repo,tables}=homeFixture();
+  tables.get('memories:m').photoIds=['photo-keep'];
+  const full=await createHandlers(repo).state({familyId:'family_owner'});
+  const reads=[]; const all=repo.all;
+  repo.all=async (table,id)=>{reads.push(table);return all(table,id)};
+  const editor=await createHandlers(repo).state({familyId:'family_owner'},{view:'memories'});
+  assert.deepEqual(editor.contributions,full.contributions.filter(m=>!m.deletedAt));
+  assert.equal(editor.manuscriptRevisions.length,1);
+  assert.ok(!reads.includes('biography_drafts'));
+  assert.ok(!reads.includes('story_migration_items'));
+});

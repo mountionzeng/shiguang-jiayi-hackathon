@@ -57,7 +57,7 @@
       </view>
     </view>
         <view class="editor-actions">
-          <button class="btn btn-jade editor-action" bindtap="saveEdit" disabled="{{savingEdit || organizingPreview}}">保存修改</button>
+          <button class="btn btn-jade editor-action" bindtap="saveEdit" loading="{{savingEdit}}" disabled="{{savingEdit || organizingPreview}}">{{savingEdit ? '正在保存' : '保存修改'}}</button>
           <button class="btn btn-ghost editor-action" bindtap="cancelDocumentEdit" disabled="{{savingEdit || organizingPreview}}">撤销未保存改动</button>
           <button class="btn btn-jade editor-action" bindtap="createDocumentPreview" loading="{{organizingPreview}}" disabled="{{savingEdit || organizingPreview}}">{{organizingPreview ? '正在整理' : '整理成片段'}}</button>
         </view>

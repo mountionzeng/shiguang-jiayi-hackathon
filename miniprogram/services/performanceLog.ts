@@ -1,4 +1,4 @@
-type Operation = 'room.load' | 'room.cloud' | 'room.identity' | 'room.state' | 'story.shelf'
+type Operation = 'story.save' | 'memory.save' | 'room.load' | 'room.cloud' | 'room.identity' | 'room.state' | 'story.shelf'
   | 'ai.daily-question' | 'ai.organize' | 'ai.biography' | 'image.submit' | 'image.status' | 'image.list' | 'image.other'
   | 'book.export-preview' | 'book.export-material' | 'book.export-render'
   | 'book.refresh' | 'book.identity' | 'book.photos' | 'book.images' | 'book.cover-cache' | 'book.cover-render';

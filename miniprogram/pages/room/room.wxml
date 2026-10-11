@@ -13,6 +13,8 @@
     <view wx:if="{{loadError}}" class="room-sub">{{loadError}}<button class="room-manage" bindtap="retryLoad">重新加载</button></view>
   </view>
 
+  <view class="room-sub" wx:if="{{loading}}">正在打开记忆…</view>
+  <view class="room-sub" wx:elif="{{loadingDetails}}">正在同步记忆详情…</view>
   <scroll-view class="filter-strip" scroll-x enhanced show-scrollbar="{{false}}">
     <view class="filter-row">
       <view
@@ -57,7 +59,7 @@
     <view class="empty-filter-note">聊完一段记忆时选上 ta，这段就会出现在这里。</view>
   </view>
 
-  <view class="empty-room wash" wx:else>
+  <view class="empty-room wash" wx:elif="{{!loading && !loadError}}">
     <view class="empty-room-title serif">还没有记忆</view>
     <view class="empty-room-note">先和 AI 聊一段，聊完就会收在这里。</view>
     <button class="btn btn-jade empty-room-btn" bindtap="startInterview">开始聊聊</button>

@@ -67,6 +67,17 @@ function shouldUseCloudDatabase(): boolean {
 // cloud state, and an account switch cannot inherit an old snapshot.
 let stagedBookState: FamilyRoomState | undefined;
 let stagedStoriesState: FamilyRoomState | undefined;
+let stagedRoomState: FamilyRoomState | undefined;
+
+export function stageRoomStateForRoom(state: FamilyRoomState | undefined): void {
+  stagedRoomState = state;
+}
+
+export function takeStagedRoomStateForRoom(): FamilyRoomState | undefined {
+  const state = stagedRoomState;
+  stagedRoomState = undefined;
+  return state;
+}
 
 export function stageRoomStateForBook(state: FamilyRoomState | undefined): void {
   stagedBookState = state;
@@ -96,7 +107,7 @@ export function roomDataModeLabel(): string {
   return shouldUseCloudDatabase() ? "数据：微信云端" : "数据：本机存储";
 }
 
-export async function loadRoomStateRemoteFirst(options: { view?: "home" } = {}): Promise<FamilyRoomState> {
+export async function loadRoomStateRemoteFirst(options: { view?: "home" | "memories" } = {}): Promise<FamilyRoomState> {
   const finish = startPerformanceMeasure('room.load');
   let outcome: 'ok' | 'error' = 'error';
   let route: 'local' | 'cloud' | undefined;
@@ -158,9 +169,10 @@ export async function addFamilyMemberRemoteFirst(
 
 export async function replaceContributionRemoteFirst(
   contribution: MemoryContribution,
+  options: { view?: "memories" } = {},
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    const state = await replaceCloudContribution(contribution);
+    const state = await replaceCloudContribution(contribution, options);
     learnFromSavedMemory(contribution);
     return state;
   }

@@ -5,7 +5,7 @@ import { createContribution, createEmptyRoomState, personalBookSourceFingerprint
 import { addCloudFamilyMember, appendCloudContribution as appendContributionRemoteFirst, appendCloudContributions, deleteCloudContribution as deleteContributionRemoteFirst, loadCloudRoomState as loadRoomStateRemoteFirst } from "../miniprogram/services/cloudRoomStorage";
 import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
-import { ensureStoryBooks, storyCommand } from "../miniprogram/services/storyBooks";
+import { ensureStoryBooks, storyCommand, saveStoryRevision } from "../miniprogram/services/storyBooks";
 import { jsonUtf8ByteLength } from "../miniprogram/services/performanceLog";
 import { SavedRefreshError } from '../miniprogram/services/serviceFailure';
 
@@ -68,6 +68,32 @@ function fixture() {
 }
 
 const memory = () => createContribution({ authorMemberId: "owner", authorName: "测试者", relation: "自己", text: "仅供测试的虚构记录。", scope: "personal", visibility: "private" });
+
+test('initial identity and story reads overlap, but identity failure cannot return story data', async () => {
+  const f = fixture();
+  try {
+    for (const validIdentity of [false, true]) {
+      let releaseIdentity!: () => void;
+      let stateStarted = false;
+      const identity = new Promise<void>(resolve => { releaseIdentity = resolve; });
+      (globalThis as any).wx.cloud.callFunction = async ({ name }: any) => {
+        if (name === 'getOpenId') {
+          await identity;
+          return { result: validIdentity ? { openid: 'fixture-user' } : {} };
+        }
+        stateStarted = true;
+        return { result: { ...createEmptyRoomState(), roomStateVersion: 1,
+          manuscriptRevisions: [], stories: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {} } };
+      };
+      const pending = loadRoomStateRemoteFirst();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(stateStarted, true, 'the story request starts before slow identity resolves');
+      releaseIdentity();
+      if (validIdentity) assert.deepEqual((await pending).contributions, []);
+      else await assert.rejects(pending, /OPENID_NOT_AVAILABLE/);
+    }
+  } finally { f.restore(); }
+});
 
 test('cloud story commands perform one authoritative read after the write and preserve failure boundaries', async () => {
   const f = fixture();
@@ -499,4 +525,44 @@ test('response size errors never masquerade as missing story service or an empty
     };
     await assert.rejects(localRepository.loadRoomStateRemoteFirst(), /response size exceeded/);
   } finally {f.restore();}
+});
+
+
+test('story revision confirmation reads current versions without downloading historical manuscripts', async () => {
+  const f = fixture();
+  try {
+    const reads: unknown[] = [];
+    (globalThis as any).wx.cloud.callFunction = async ({name, data}: any) => {
+      if (name === 'getOpenId') return {result: {openid: 'fixture-user'}};
+      if (data.action !== 'state') return {result: {ok: true, storyId: 'story-fixture'}};
+      reads.push(data.view);
+      return {result: {...createEmptyRoomState(), roomStateVersion: 1, stories: [],
+        manuscriptRevisions: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {}}};
+    };
+    await saveStoryRevision({id: 'revision-confirm', storyId: 'story-fixture'} as any, 'previous');
+    await storyCommand({action: 'delete', storyId: 'story-fixture'});
+    assert.deepEqual(reads, ['home', undefined], 'only manuscript saves opt into the current-version projection');
+  } finally { f.restore(); }
+});
+
+test('memory editing reads complete histories and photos without loading all manuscript revisions', async () => {
+  const f = fixture();
+  try {
+    const m = {...memory(), id: 'memory-editor', photoIds: ['photo-kept'],
+      aiRevisions: [{id: 'revision-kept', kind: 'manual', text: '虚构修改记录'}]};
+    f.records('memories').set('family_fixture-user_memory-editor', {...m, frontendContributionId: m.id, familyId: 'family_fixture-user'});
+    const reads: unknown[] = [];
+    (globalThis as any).wx.cloud.callFunction = async ({name, data}: any) => {
+      if (name === 'getOpenId') return {result: {openid: 'fixture-user'}};
+      reads.push(data.view);
+      return {result: {...createEmptyRoomState(), contributions: [m],
+        roomStateVersion: 1, stories: [], manuscriptRevisions: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {}}};
+    };
+    const state = await loadRoomStateRemoteFirst({view: 'memories'} as any);
+    assert.deepEqual(reads, ['memories']);
+    assert.deepEqual(state.contributions[0].aiRevisions, m.aiRevisions);
+    assert.deepEqual(state.contributions[0].photoIds, m.photoIds);
+    (globalThis as any).wx.cloud.callFunction = async () => { throw new Error('permission denied'); };
+    await assert.rejects(loadRoomStateRemoteFirst({view: 'memories'}), /permission denied/);
+  } finally { f.restore(); }
 });

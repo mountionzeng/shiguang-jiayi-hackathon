@@ -226,11 +226,13 @@ test('opening an illustrated chapter waits for image mappings and a later chapte
   const opening = call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-a' } } });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(page.data.view, 'contents', 'do not mount an image editor before its URL-to-ID mapping exists');
+  assert.equal((page.data.openingChapter as { text: string }).text, '院子里晒着被子。\n', 'show readable text while image URLs are pending');
   await call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-b' } } });
   resolveImages(listWith());
   await opening;
   await loading;
   assert.equal(page.activeChapterId, 'chapter-b', 'late image response cannot undo the newer selection');
+  assert.equal(page.data.openingChapter, null);
   await call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-a' } } });
   assert.equal(page.activeChapterId, 'chapter-a');
   assert.equal((page.photoPaths as Record<string, string>)['photo-ai-req-aaaaaaaa'], 'https://tmp.example/a.png');
@@ -253,6 +255,7 @@ test('direct entry to an illustrated chapter still waits before seeding the nati
   const loading = Promise.resolve(call(page, 'refresh')).then(() => { completed = true; });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(completed, false);
+  assert.equal((page.data.openingChapter as { title: string }).title, '老院子');
   assert.equal(deltas.length, 0);
   resolveImages(listWith());
   await loading;
@@ -279,6 +282,7 @@ test('late image mappings preserve newly inserted photos and a cancelled chapter
   await opening;
   await page.bookImagesReady;
   assert.equal(page.data.view, 'contents');
+  assert.equal(page.data.openingChapter, null, 'cancelling also removes the pending preview');
   assert.equal((page.photoPaths as Record<string, string>)['photo-new'], 'wxfile://usr/new.jpg');
   assert.equal((page.imageIds as Record<string, string>)['wxfile://usr/new.jpg'], 'photo-new');
 });

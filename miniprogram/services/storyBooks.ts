@@ -1,3 +1,4 @@
+import { measurePerformance } from './performanceLog';
 import { FamilyRoomState, Story, ManuscriptRevision } from '../domain/biography';
 import * as core from '../domain/storyBookCore';
 import { loadRoomStateRemoteFirst, usesCloudStorage } from './roomRepository';
@@ -46,7 +47,7 @@ export async function ensureStoryBooks(): Promise<FamilyRoomState> {
   }
   state = core.migrate(state,'local'); saveRoomState(state); return state;
 }
-export async function storyCommand(command: Record<string,unknown>): Promise<FamilyRoomState> {
+export async function storyCommand(command: Record<string,unknown>, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
   if (usesCloudStorage()) {
     let receipt: Record<string, unknown>;
     try {
@@ -58,7 +59,7 @@ export async function storyCommand(command: Record<string,unknown>): Promise<Fam
       logServiceFailure('storyBooks', 'write', error);
       throw error;
     }
-    try { return await loadRoomStateRemoteFirst(); }
+    try { return await loadRoomStateRemoteFirst(options); }
     catch (error) {
       logServiceFailure('storyBooks', 'refresh', error);
       throw new SavedRefreshError(String(command.requestId || ''));
@@ -80,7 +81,7 @@ export function linkStoryMemories(story:Story,memoryIds:string[],requestId = ope
   return storyCommand({action:'link',storyId:story.id,expectedVersion:story.version,memoryIds,requestId});
 }
 export function saveStoryRevision(revision:ManuscriptRevision,expectedRevisionId:string) {
-  return storyCommand({action:'save',storyId:revision.storyId,expectedVersion:revision.expectedStoryVersion,expectedRevisionId,revision,requestId:revision.id});
+  return measurePerformance('story.save', () => storyCommand({action:'save',storyId:revision.storyId,expectedVersion:revision.expectedStoryVersion,expectedRevisionId,revision,requestId:revision.id}, {view:'home'}));
 }
 export function resolveStoryChapter(story:Story,pendingId:string,revision:ManuscriptRevision) {
   return storyCommand({action:'resolve',storyId:story.id,expectedVersion:story.version,expectedRevisionId:story.currentRevisionId || '',pendingId,revision,requestId:revision.id});

@@ -66,6 +66,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 
 Page({
   data: {
+    openingChapter: null as { title: string; text: string } | null,
     photoMenu: "", photoAction: "", preparingPhoto: false, bookIntroduction: "",
     coverUrl: "", coverImageId: "", sendOpen: false, preparingSend: false,
     organizeMethod: "insert" as "insert" | "blend", organizeOriginal: "", insertionPoint: "end",
@@ -290,11 +291,12 @@ Page({
     const storyImageReferences = new Set(chapters.flatMap(chapter => chapter.content)
       .flatMap(item => item.photoId && isStoryImageReference(item.photoId) ? [item.photoId] : []));
     const backdropImageIds = new Set(chapters.flatMap(chapter => chapter.backdropImageId ? [chapter.backdropImageId] : []));
+    const cloudImages = storyImageReferences.size || backdropImageIds.size || story?.coverImageId
+      ? measurePerformance('book.images', () => storyImageApi.listStoryImages(bookId)).then(list => list.images).catch(() => [] as StoryImage[])
+      : Promise.resolve([] as StoryImage[]);
     const images = Promise.all([
       measurePerformance('book.photos', () => readLocalPhotos(localPhotoIds)),
-      storyImageReferences.size || backdropImageIds.size
-        ? measurePerformance('book.images', () => storyImageApi.listStoryImages(bookId)).then(list => list.images).catch(() => [] as StoryImage[])
-        : Promise.resolve([] as StoryImage[]),
+      cloudImages,
     ]).then(([{ photoPaths, imageIds }, cloudImages]) => {
       // Unavailable URLs retain their opaque recoverable markers in the editor.
       cloudImages.forEach(image => {
@@ -313,6 +315,10 @@ Page({
     // Contents and plain text can render while decoration/unopened photos load.
     const needsInlineImages = view === "chapter" && chapters
       .find(chapter => chapter.id === activeChapterId)?.content.some(item => item.photoId);
+    if (needsInlineImages) {
+      const chapter = chapters.find(item => item.id === activeChapterId)!;
+      this.setData({ openingChapter: { title: chapter.title, text: plainText(chapter.content) } });
+    }
     const { photoPaths, imageIds, backdropUrls } = needsInlineImages
       ? await images : { photoPaths: {}, imageIds: {}, backdropUrls: {} };
     if (this.unloaded || refreshId !== this.refreshId || this.data.editing || this.data.pickingPhoto) return;
@@ -357,6 +363,7 @@ Page({
       });
     }
     this.setData({
+      openingChapter: null,
       coverImageId: story?.coverImageId || "", coverUrl: "",
       editTitle: this.titleBuffer, editBody: this.bodyBuffer, editChapterTitle: this.chapterTitleBuffer, view,
       organizeBooks, organizeBookKey, organizeBookTitle: organizeBooks.find(item => item.id === organizeBookKey)?.title || "",
@@ -382,7 +389,8 @@ Page({
       if (backdropUrl !== this.data.backdropUrl) this.setData({ backdropUrl });
     }).catch(error => logLoadError('book.images', error));
     if (story?.coverImageId) {
-      void storyCoverApi.resolveUrl(story.id, story.coverImageId).then(url => {
+      void cloudImages.then(images => {
+        const url = images.find(image => image.imageId === story.coverImageId && image.purpose === 'cover' && image.moderation === 'pass')?.url || '';
         if (!this.unloaded && refreshId === this.refreshId) this.setData({coverUrl:url});
       }).catch(() => undefined);
     }
@@ -703,6 +711,14 @@ Page({
     return true;
   },
   async onBack() {
+    if (this.data.openingChapter) {
+      if (!this.data.draft) {
+        this.refreshId++;
+        this.setData({ openingChapter: null });
+        await this.goHome();
+      } else await this.backToContents();
+      return;
+    }
     if (this.data.view === "chapter") await this.backToContents();
     else await this.goHome();
   },
@@ -712,11 +728,12 @@ Page({
     return this.canLeaveEditor();
   },
   async backToContents() {
+    if (this.data.openingChapter && this.data.loading) this.refreshId++;
     this.chapterOpenId++;
     this.pendingPhotoImportChapter = "";
     if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
     if (!this.canLeaveEditor()) return;
-    this.setData({ view: "contents", moreOpen: false, panel: "" });
+    this.setData({ openingChapter: null, view: "contents", moreOpen: false, panel: "" });
   },
   async openChapter(event: { currentTarget: { dataset: { id: string } } }) {
     const openId = ++this.chapterOpenId;
@@ -727,6 +744,7 @@ Page({
     const chapter = this.chapters.find(chapter => chapter.id === id);
     if (!chapter) return;
     if (chapter.content.some(item => item.photoId) && this.bookImagesReady) {
+      this.setData({ openingChapter: { title: chapter.title, text: plainText(chapter.content) } });
       const refreshId = this.refreshId;
       const sequence = this.editSequence;
       const panel = this.data.panel;
@@ -736,7 +754,7 @@ Page({
     }
     this.activeChapterId = id;
     this.loadActiveChapter();
-    this.setData({ view: "chapter", panel: "", moreOpen: false, editChapterTitle: this.chapterTitleBuffer, ...this.chapterData() });
+    this.setData({ openingChapter: null, view: "chapter", panel: "", moreOpen: false, editChapterTitle: this.chapterTitleBuffer, ...this.chapterData() });
     this.seedEditor();
   },
   toggleSources() {
@@ -1592,7 +1610,10 @@ Page({
   async goHome() {
     if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
     if (!this.canLeaveEditor()) return;
-    wx.reLaunch({ url: "/pages/index/index" });
+    const previous = typeof getCurrentPages === "function" ? getCurrentPages().slice(-2)[0] : undefined;
+    if (previous && ["pages/index/index", "pages/stories/stories"].includes(previous.route)) {
+      wx.navigateBack();
+    } else wx.reLaunch({ url: "/pages/index/index" });
   },
   onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
   onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },

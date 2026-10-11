@@ -1,5 +1,13 @@
 <view class="writing-page {{keyboardHeight ? 'keyboard-open' : ''}}" style="height: {{viewportHeight ? viewportHeight + 'px' : '100%'}};">
-  <view class="writing-toolbar" wx:if="{{panel !== 'organize' && panel !== 'organize-preview'}}">
+  <view wx:if="{{openingChapter}}" class="writing-toolbar"><button class="tool-button" bindtap="onBack">‹ 返回目录</button></view>
+  <scroll-view wx:if="{{openingChapter}}" class="reading-panel" scroll-y>
+    <view class="panel-content">
+      <view class="contents-section serif">{{openingChapter.title || '还没起名字'}}</view>
+      <view class="notice">图片正在加载，可以先阅读正文…</view>
+      <text class="chapter-loading-text serif" selectable>{{openingChapter.text}}</text>
+    </view>
+  </scroll-view>
+  <view class="writing-toolbar" wx:if="{{!openingChapter && panel !== 'organize' && panel !== 'organize-preview'}}">
     <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{view === 'chapter' ? '目录' : '返回'}}</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button" bindtap="togglePhotoMenu" disabled="{{!draft || panel || saving || generating || pickingPhoto || preparingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}<text class="send-chevron">⌄</text></button>
     <button wx:if="{{!protectedCopy && storyImageSelected}}" class="tool-button" catchtouchstart="placeSelectedStoryImage" disabled="{{!editorReady || refreshingStoryImage || saving || generating || pickingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{refreshingStoryImage ? '准备插图' : '插入插图'}}</button>
@@ -75,10 +83,10 @@
     <button wx:if="{{panel === 'share-excerpt'}}" class="tool-button save-button" bindtap="sendExcerpt" disabled="{{sharingExcerpt}}">{{sharingExcerpt ? '发送中…' : '确认发送'}}</button>
     <button wx:if="{{panel === 'append-own'}}" class="tool-button save-button" bindtap="appendOwnExperience" disabled="{{appendingOwn}}">{{appendingOwn ? '保存中…' : '保存我的补充'}}</button>
   </view>
-  <view class="book-generation" wx:if="{{loading && !draft && !loadError}}"><generation-status text="正在打开这本书…" /></view>
+  <view class="book-generation" wx:if="{{loading && !draft && !loadError && !openingChapter}}"><generation-status text="正在打开这本书…" /></view>
   <view class="book-generation" wx:if="{{generating}}"><generation-status text="正在整理正文，完成后可以先预览…" /></view>
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
-  <scroll-view class="reading-panel contents-view" scroll-y hidden="{{!draft || panel || view !== 'contents'}}">
+  <scroll-view class="reading-panel contents-view" scroll-y hidden="{{openingChapter || !draft || panel || view !== 'contents'}}">
     <view class="panel-content contents-content">
       <view class="contents-head {{coverUrl ? 'contents-head-covered' : ''}}">
         <image wx:if="{{coverUrl}}" class="contents-cover-background" src="{{coverUrl}}" mode="aspectFill" binderror="onCoverError" aria-hidden="true"></image>
@@ -117,7 +125,7 @@
     </view>
   </scroll-view>
   <!-- One chapter: keep both native inputs mounted; initialize values only on load/switch/save/discard. -->
-  <view wx:for="{{editorKeys}}" wx:key="*this" class="writing-fields" hidden="{{!draft || panel || view !== 'chapter'}}">
+  <view wx:for="{{editorKeys}}" wx:key="*this" class="writing-fields" hidden="{{openingChapter || !draft || panel || view !== 'chapter'}}">
     <view class="title-field">
       <view class="field-label">{{editTitle}} · {{chapterLabelText}}</view>
       <input class="manuscript-title serif" value="{{editChapterTitle}}" maxlength="40" bindinput="onEditChapterTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{protectedCopy || saving || generating}}" placeholder="给这一章起个名字（可以不填）" />

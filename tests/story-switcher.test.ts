@@ -89,8 +89,8 @@ test("the persistent story switcher opens all three destinations, and 随手记 
     definition.methods.openAllMemories.call(instance);
     definition.methods.openFamily.call(instance);
 
-    assert.deepEqual(events, ["openpersonal"]);
-    assert.deepEqual(relaunches, ["/pages/room/room"]);
+    assert.deepEqual(events, ["openpersonal", "openfamily"]);
+    assert.deepEqual(relaunches, []);
     assert.deepEqual(navigations, [
       "/pages/interview/interview?memoryType=note",
       `/pages/interview/interview?memoryType=memoir&sourceId=demo-personal-rain&storyTitle=${encodeURIComponent("外公接我放学")}`,

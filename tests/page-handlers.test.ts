@@ -3414,3 +3414,21 @@ test("首页书封和书架直接打开已保存或空白的独立故事书，�
   assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-direct");
   assert.equal(shelf.data.selectedKey, "");
 });
+
+
+test("returning from a book reuses the existing shelf instead of rebuilding home", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'getCurrentPages');
+  let backCount = 0;
+  Object.defineProperty(globalThis, 'getCurrentPages', { configurable: true, value: () => [{ route: 'pages/stories/stories' }, { route: 'pages/book/book' }] });
+  (wx as any).navigateBack = () => { backCount++; };
+  context.after(() => {
+    if (previous) Object.defineProperty(globalThis, 'getCurrentPages', previous);
+    else delete (globalThis as any).getCurrentPages;
+  });
+  const book = instantiate(await pageDefinition('book'));
+  await callPage(book, 'goHome');
+  assert.equal(backCount, 1);
+  assert.deepEqual(storage.relaunches, []);
+});

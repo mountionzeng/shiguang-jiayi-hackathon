@@ -8,7 +8,7 @@ import {
   memoryPool,
   MemoryContribution,
 } from "../../domain/biography";
-import { loadRoomStateRemoteFirst, stageRoomStateForStories } from "../../services/roomRepository";
+import { loadRoomStateRemoteFirst, stageRoomStateForStories, takeStagedRoomStateForRoom } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
 import { loadSharedFamilyRoom } from "../../services/familyInviteService";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -64,6 +64,8 @@ function formatDate(iso: string): string {
 
 Page({
   roomSnapshot: undefined as FamilyRoomState | undefined,
+  loadSequence: 0,
+  onUnload() { this.loadSequence++; },
   data: {
     people: [] as PersonTab[],
     activeId: ME,
@@ -72,6 +74,8 @@ Page({
     hasMemories: false,
     hasAnyMemory: false,
     loadError: "",
+    loading: true,
+    loadingDetails: false,
     viewerId: "",
     viewerName: "",
     viewerRole: "" as FamilyMember["role"] | "",
@@ -84,10 +88,13 @@ Page({
   },
 
   onShow() {
-    void this.refresh().catch((error) => { logLoadError("room", error); this.setData({ loadError: "记忆暂时没加载出来，请重试。" }); });
+    const staged = takeStagedRoomStateForRoom();
+    if (staged && !this.data.sharedFamilyId) void this.refresh(staged, true);
+    void this.refresh().catch((error) => { logLoadError("room", error); this.setData({ loading: false, loadingDetails: false, loadError: "记忆暂时没加载出来，请重试。" }); });
   },
 
-  async refresh(state?: FamilyRoomState) {
+  async refresh(state?: FamilyRoomState, preview = false) {
+    const sequence = state ? this.loadSequence : ++this.loadSequence;
     let currentState: FamilyRoomState;
     let viewer: FamilyMember | undefined;
     let viewerRole: FamilyMember["role"] | "";
@@ -99,11 +106,12 @@ Page({
       viewer = matchedViewer;
       viewerRole = shared.viewerRole;
     } else {
-      currentState = state ?? await loadRoomStateRemoteFirst();
+      currentState = state ?? await loadRoomStateRemoteFirst({view: "memories"});
       viewer = currentState.members.find(member => member.relation === "自己") ?? currentState.members[0];
       // 新用户还没有人物档案时，个人记忆之家仍可浏览空状态。
       viewerRole = viewer?.role ?? "";
     }
+    if (sequence !== this.loadSequence) return;
     this.roomSnapshot = this.data.sharedFamilyId ? undefined : currentState;
     const pool = memoryPool(currentState.contributions);
     const placements = memoryPlacements(currentState);
@@ -134,12 +142,14 @@ Page({
           placeLabel: places.length
             ? "写进了 " + places.map((place) => `${place.bookName}的书${place.chapter}`).join("、")
             : "还没写进书",
-          aiLabel: memoryAiLabel(memory),
+          aiLabel: preview ? "" : memoryAiLabel(memory),
         };
       });
 
     this.setData({
       people,
+      loading: false,
+      loadingDetails: preview,
       activeId: active.id,
       activeName: active.name,
       memories,
@@ -155,7 +165,7 @@ Page({
 
   choosePerson(event: { currentTarget: { dataset: { id: string } } }) {
     this.setData({ activeId: event.currentTarget.dataset.id });
-    void this.refresh(this.roomSnapshot).catch((error) => { logLoadError("room", error); this.setData({ loadError: "记忆暂时没加载出来，请重试。" }); });
+    void this.refresh(this.roomSnapshot, this.data.loadingDetails).catch((error) => { logLoadError("room", error); this.setData({ loadError: "记忆暂时没加载出来，请重试。" }); });
   },
 
   openMemory(event: { currentTarget: { dataset: { id: string } } }) {

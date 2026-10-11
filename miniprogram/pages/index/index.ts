@@ -24,6 +24,7 @@ import {
   loadRoomStateRemoteFirst,
   saveCurrentMemberIdLocal,
   stageRoomStateForBook,
+  stageRoomStateForRoom,
   stageRoomStateForStories,
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
@@ -351,7 +352,7 @@ Page({
   async refresh(state?: FamilyRoomState) {
     this.dailyRequestId += 1;
     const coverRefreshId = ++this.coverRefreshId;
-    this.setData({homeLoading:true, homeLoadError:false});
+    this.setData({homeLoading:!this.roomSnapshot, homeLoadError:false});
     let currentState: FamilyRoomState;
     try {
       currentState = state ?? await loadRoomStateRemoteFirst({view:"home"});
@@ -660,10 +661,12 @@ Page({
 
   /** 人都在记忆之家：先看人，再看和这个人有关的记忆。 */
   openPeople() {
+    stageRoomStateForRoom(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/room/room" });
   },
 
   openMemoryHome() {
+    stageRoomStateForRoom(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/room/room" });
   },
 
