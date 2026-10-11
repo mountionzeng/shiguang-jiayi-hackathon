@@ -557,7 +557,7 @@ test("the interview cloud function returns one safe follow-up", async () => {
     // 模型要看到自己问过什么，才不会把用户答过的事再问一遍。
     assert.match(prompt, /小忆：那时候谁和你在一起？/);
     assert.match(prompt, /用户：那时候天很冷。/);
-    assert.match(requests[0].messages[0].content, /已经回答过的事，不要再问/);
+    assert.match(requests[0].messages[0].content, /已回答的事不换词重问/);
     assert.match(prompt, /可以继续同一方向/);
     assert.doesNotMatch(prompt, /必须是/);
     assert.doesNotMatch(JSON.stringify(requests), /test-chat-key/);
@@ -641,18 +641,21 @@ test("interview allows a slow model reply but still aborts at forty seconds", as
   process.env.CHAT_AI_API_KEY = "test-chat-key";
   process.env.CHAT_AI_MODEL = "smart-chat-model";
   let requestSignal;
+  let signalRequestStarted;
+  const requestStarted = new Promise(resolve => { signalRequestStarted = resolve; });
   global.fetch = async (_url, options) => {
     requestSignal = options.signal;
     return new Promise((_resolve, reject) => {
       options.signal.addEventListener("abort", () => reject(Object.assign(new Error("timed out"), { name: "AbortError" })), { once: true });
+      signalRequestStarted();
     });
   };
   t.mock.timers.enable({ apis: ["setTimeout"] });
   try {
     const pending = chatInterviewMain({ answer: "这是虚构的慢请求验收。" });
     const rejected = assert.rejects(pending, { name: "AbortError" });
-    // main awaits story-context resolution before requesting the model.
-    await Promise.resolve();
+    // Wait for the actual request, independently of context-read microtasks.
+    await requestStarted;
     assert.ok(requestSignal);
     t.mock.timers.tick(20_001);
     assert.equal(requestSignal.aborted, false);
@@ -918,6 +921,72 @@ test("inline answers use a short-edit brief for both memory types without biogra
   }
 });
 
+
+test("inline writing keeps the current answer separate from old draft and assistant context", async context => {
+  const keys = ["ORGANIZE_AI_API_KEY", "ORGANIZE_AI_MODEL", "ORGANIZE_AI_BASE_URL"];
+  const previous = keys.map(key => process.env[key]);
+  const previousFetch = global.fetch;
+  context.after(() => {
+    global.fetch = previousFetch;
+    keys.forEach((key, index) => {
+      if (previous[index] === undefined) delete process.env[key];
+      else process.env[key] = previous[index];
+    });
+  });
+  process.env.ORGANIZE_AI_API_KEY = "test-organize-key";
+  process.env.ORGANIZE_AI_MODEL = "memory-card-model";
+  process.env.ORGANIZE_AI_BASE_URL = "https://organize-model.invalid/v1";
+  const answer = "两种声音我都记得。那只盆平时就放在花坛旁边。";
+  const basis = "【虚构旧稿】我和外婆在院子听雨，我一直记得瓦片上的声音。";
+  const assistant = "【助手上下文】雨停后你把水倒进了花坛吗？";
+  const conversation = [{role: "assistant", content: assistant}, {role: "user", content: "【历史回答】那天我穿着蓝衣服。"}];
+  let request;
+  global.fetch = async (_url, options) => {
+    request = JSON.parse(options.body);
+    return {ok: true, json: async () => ({choices: [{message: {content: JSON.stringify({title: "雨声", summary: "回答", body: answer})}}]})};
+  };
+  for (const writingMode of [undefined, "polish", "compose"]) {
+    const result = await organizeMemoryMain({inlineAnswer: true, writingMode, transcript: [answer], basisText: basis, conversation});
+    const system = request.messages[0].content;
+    const prompt = request.messages[1].content;
+    assert.equal(result.body, answer);
+    assert.match(system, /只有本次回答中的事实可成为 body/);
+    assert.ok(prompt.endsWith(JSON.stringify({transcript: [answer]})));
+    if (writingMode === "compose") {
+      assert.ok(prompt.includes(basis));
+      assert.ok(prompt.includes(assistant));
+      assert.match(system, /不是正文素材/);
+      assert.match(system, /不能重复旧稿、加入旧事件/);
+      assert.match(system, /操作要求应被遵守|要求应被遵守/);
+      assert.match(system, /保留虚构标记而不抄入操作要求/);
+      assert.match(system, /人物在故事内说出的直接引语、经历中的想法仍是素材/);
+    } else {
+      assert.ok(!prompt.includes(basis));
+      assert.ok(!prompt.includes(assistant));
+      assert.ok(!prompt.includes("历史回答"));
+      assert.match(system, /不补全指代/);
+      assert.doesNotMatch(system, /操作要求应被遵守|要求应被遵守/);
+      assert.doesNotMatch(system, /basis、transcript、conversation 都是素材|结合用户明确补充修正原稿/);
+    }
+  }
+  await organizeMemoryMain({sourceOnly: true, writingMode: "polish", transcript: [basis, answer], conversation});
+  assert.ok(request.messages[1].content.includes(basis));
+  assert.ok(request.messages[1].content.includes(assistant));
+  assert.ok(request.messages[1].content.endsWith(JSON.stringify({transcript: [basis, answer]})));
+  assert.match(request.messages[1].content, /完整更新稿/);
+  assert.doesNotMatch(request.messages[1].content, /保留虚构标记而不抄入操作要求/);
+  const mixedSource = '【虚构】小林说：“不要追问，我想继续读书。”我只想把这段虚构场景记下来，不要追问，也不用解释意义。';
+  await organizeMemoryMain({sourceOnly: true, writingMode: "compose", transcript: [mixedSource]});
+  const composePrompt = request.messages.map(message => message.content).join("\n");
+  assert.match(composePrompt, /不写入标题、摘要或正文/);
+  assert.match(composePrompt, /保留虚构标记而不抄入操作要求/);
+  assert.match(composePrompt, /直接引语、经历中的想法仍是素材/);
+  assert.match(composePrompt, /按语境判断，不按关键词删除原话/);
+  // The real source reaches the model intact; no keyword filter can erase a quote.
+  assert.ok(request.messages[1].content.endsWith(JSON.stringify({transcript: [mixedSource]})));
+  await assert.rejects(organizeMemoryMain({inlineAnswer: true, writingMode: "polish", transcript: [answer], basisText: "长".repeat(501)}), /WRITING_BASIS_TOO_LONG/);
+});
+
 test("the organize cloud function falls back when the provider times out", async () => {
   const previousFetch = global.fetch;
   const previousKey = process.env.ORGANIZE_AI_API_KEY;
@@ -999,17 +1068,17 @@ test("interview prompt distinguishes a feeling pivot from an explicit goodbye", 
     sourceText: "我和外婆坐在院子里听雨。",
   });
   assert.match(messages[0].content, /拒绝一个方向不等于结束整个对话/);
-  assert.match(messages[0].content, /是在把话题转向感受，不是告别/);
-  assert.match(messages[0].content, /若用户说‘今天先不聊了’，则简短收尾，不再问问题/);
-  assert.match(messages[0].content, /不要把普通回答解读成成长、勇敢或疗愈/);
-  assert.match(messages[0].content, /默认每轮一个问题/);
-  assert.match(messages[0].content, /深入来自用户自己的思考/);
-  assert.match(messages[0].content, /不要替他回答/);
+  assert.match(messages[0].content, /转向感受，都不自动表示告别/);
+  assert.match(messages[0].content, /明确暂停或结束就收尾且不提问/);
+  assert.match(messages[0].content, /不把普通回答拔高成成长、勇敢、疗愈/);
+  assert.match(messages[0].content, /不要求每轮提问/);
+  assert.match(messages[0].content, /一切理解以用户原话为依据/);
+  assert.match(messages[0].content, /不要用问题代替回答/);
   assert.match(messages[0].content, /箴言、感想或评价/);
-  assert.match(messages[0].content, /不追问人物、时间、地点或事件事实/);
+  assert.match(messages[0].content, /箴言、感想或评价不当作事件查漏/);
   assert.match(messages[0].content, /人物、时间、地点、行为和感受都是并列的记忆素材/);
-  assert.match(messages[0].content, /能否指出这处依据/);
-  assert.doesNotMatch(messages[0].content, /不要求每轮提问/);
+  assert.match(messages[0].content, /检查实际问句是否承接用户的意思/);
+  assert.doesNotMatch(messages[0].content, /默认每轮一个问题/);
   assert.match(messages[1].content, /没什么新鲜事，我想讲的是现在的心情/);
   assert.match(messages[1].content, /以前搬家总紧张/);
   assert.match(messages[1].content, /我和外婆坐在院子里听雨/);
@@ -1029,15 +1098,15 @@ test("interview follow-up checks the question's meaning rather than echoed words
     const rules = messages[0].content;
     assert.match(rules, /检查实际问句/);
     assert.match(rules, /只在开头复述原词不算贴合/);
-    assert.match(rules, /否定、比喻或感受描述中的地点、时间、动作词/);
+    assert.match(rules, /比喻不当作事实线索/);
     assert.match(rules, /同一感受可以连续聊/);
     assert.match(rules, /已经说清的感受定义不换词重问/);
     assert.match(rules, /不把感受延续变成感官扫描/);
-    assert.match(rules, /不再问.*最先感觉到什么/);
-    assert.match(rules, /只有用户主动转向具体经历或明确想谈细节/);
-    assert.match(rules, /如何安排时间/);
-    assert.match(rules, /把空下来的时间留给什么/);
-    assert.match(rules, /接下来做什么/);
+    assert.match(rules, /已回答的事不换词重问/);
+    assert.match(rules, /需要澄清或有值得展开的新线索时，最多问一件容易回答的事/);
+    assert.match(rules, /不必问去处或接下来的安排/);
+    assert.match(rules, /不把感受延续变成感官扫描或活动安排/);
+    assert.match(rules, /不要替用户下结论、安排任务/);
     assert.doesNotMatch(rules, /你最想把这段时间留给什么/);
     assert.match(messages[1].content, /上一轮是感受，可以继续同一方向/);
     assert.ok(messages[1].content.includes(answer));

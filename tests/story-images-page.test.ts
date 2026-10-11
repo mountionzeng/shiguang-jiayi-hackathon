@@ -835,7 +835,7 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   assert.equal(page.data.preview, null, "setData uses explicit null to close the native sheet");
 });
 
-test("本章照片可选，默认只按文字生成，选择和取消参考都生效", async context => {
+test("默认参考本章用户照片，取消参考后刷新仍保持只用文字", async context => {
   const state = stateWithBook();
   state.manuscriptRevisions![0].draft.chapters![0].content.push(
     { photoId: "photo-cat" },
@@ -857,7 +857,7 @@ test("本章照片可选，默认只按文字生成，选择和取消参考都�
   const groups = page.data.groups as Array<{ referencePhotoIds: string[] }>;
   assert.deepEqual(groups[0].referencePhotoIds, ["photo-cat"]);
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "backdrop" } } });
-  assert.deepEqual(submitted.pop(), { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop" });
+  assert.deepEqual(submitted.pop(), { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop", referencePhotoIds: ["photo-cat"] });
   call(page, "onReferenceModeChange", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: true } });
   await call(page, "refresh"); // Polling/refresh must preserve the explicit choice.
 
@@ -872,6 +872,7 @@ test("本章照片可选，默认只按文字生成，选择和取消参考都�
     { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa" },
   ]);
   call(page, "onReferenceModeChange", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: false } });
+  await call(page, "refresh");
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
   assert.deepEqual(submitted[submitted.length - 1], { memberId: "owner", chapterId: "chapter-a", purpose: "illustration" });
 });
@@ -1128,22 +1129,24 @@ test("照片菜单不会在保存失败、离页或受保护副本时启动图�
   assert.deepEqual(env.navigations, []);
 });
 
-test("目录页用封面背景和正文摘录展示书的简介，不再显示制作封面小书壳", async () => {
+test("目录页展示可编辑的故事简介和封面背景，不再显示制作封面小书壳", async () => {
   const page = instantiate(await pageDefinition("book"));
   const longText = Array.from({ length: 180 }, (_, index) => index % 2 ? "春" : "🌿").join("");
   page.chapters = [
     { id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: `  ${longText}  ` }, { photoId: "photo-secret" }] },
     { id: "chapter-b", title: "渡口", memoryIds: [], content: [{ text: "第二章会继续写下去。\n" }] },
   ];
+  page.introductionBuffer = "这是用户编辑后保存的故事简介。";
 
   const data = call(page, "chapterData") as { bookIntroduction: string };
-  assert.equal(Array.from(data.bookIntroduction).length, 161);
-  assert.ok(data.bookIntroduction.endsWith("…"));
+  assert.equal(data.bookIntroduction, "这是用户编辑后保存的故事简介。");
   assert.equal(data.bookIntroduction.includes("photo-secret"), false);
 
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
   assert.match(markup, /class="contents-cover-background"/);
-  assert.match(markup, /内容简介/);
+  assert.match(markup, /内容简介<text wx:if="\{\{!protectedCopy\}\}"> · 可编辑<\/text>/);
+  assert.match(markup, /class="intro-edit" bindtap="editIntroduction"/);
+  assert.match(readFileSync("miniprogram/pages/book/book.wxss", "utf8"), /backdrop-filter: blur\(14px\)/);
   assert.match(markup, /图片导入/);
   assert.match(markup, /生成插图/);
   assert.match(markup, /生成底图/);

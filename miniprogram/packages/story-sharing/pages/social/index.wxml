@@ -5,13 +5,14 @@
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <block wx:if="{{title}}">
     <view class="cover-summary">
-      <image class="cover" src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}" mode="{{coverUrl ? 'aspectFill' : 'aspectFit'}}" />
+      <image class="cover" wx:if="{{sourceKind !== 'memory'}}" src="{{coverUrl || '/assets/illustrations/story-book-cover.png'}}" mode="{{coverUrl ? 'aspectFill' : 'aspectFit'}}" />
       <view><view class="serif">{{title}}</view><view class="caption">{{sourceKind === 'memory' ? '发送这段已保存的记忆' : coverUrl ? '使用这本书已有的封面' : coverNotice || '封面示意'}}</view></view>
     </view>
     <view hidden="{{preview}}">
       <view class="section-title serif">{{sourceKind === 'memory' ? '分享这段记忆' : '分享哪些内容'}}</view>
-      <view class="caption" wx:if="{{sourceKind === 'memory'}}">正文来自云端已保存版本；生成图片和保存相册前都会重新核对。</view>
+      <view class="caption" wx:if="{{sourceKind === 'memory'}}">正文来自所选已保存版本；配图使用这段记忆当前的图片。生成和发送前都会核对版本与权限。</view>
       <view class="reading-chapter" wx:if="{{sourceKind === 'memory'}}" wx:for="{{chapters}}" wx:key="id"><view class="section-title serif">{{item.title}}</view><text class="paragraph" selectable>{{item.text}}</text></view>
+      <button class="secondary" wx:if="{{sourceKind === 'memory' && memoryPhotoCount}}" bindtap="toggleMemoryPhotos" disabled="{{checking || exportBusy || albumSaving}}">{{includeMemoryPhotos ? '✓ 包含这段记忆的' : '不包含'}} {{memoryPhotoCount}} 张配图</button>
       <view class="scope-options" wx:if="{{sourceKind === 'story'}}">
         <button class="scope {{scope === 'book' ? 'selected' : ''}}" data-scope="book" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">整本书</button>
         <button class="scope {{scope === 'chapters' ? 'selected' : ''}}" data-scope="chapters" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">选择章节</button>
@@ -51,14 +52,14 @@
       <view class="scope-options"><button class="scope {{layout === 'pages' ? 'selected' : ''}}" data-layout="pages" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}">分页图片</button><button class="scope {{layout === 'long' ? 'selected' : ''}}" data-layout="long" bindtap="chooseLayout" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}">一张长图</button></view>
       <picker range="{{['紧凑','标准','大字']}}" value="{{fontSize === 28 ? 0 : fontSize === 32 ? 1 : 2}}" bindchange="chooseFont" disabled="{{exportBusy || albumSaving || sharingIndex >= 0}}"><view class="chapter-picker">字号：{{fontSize === 28 ? '紧凑' : fontSize === 32 ? '标准' : '大字'}}　⌄</view></picker>
       <picker range="{{textImageCountOptions}}" value="{{targetTextImageCount - 1}}" bindchange="chooseTextImageCount" disabled="{{exportBusy || albumSaving || layout === 'long'}}"><view class="chapter-picker">正文图片：{{layout === 'long' ? '长图自动决定' : targetTextImageCount + ' 张'}}　⌄</view></picker>
-      <view class="caption">封面单独成图，正文按所选张数排版；正文会沿用每章已经选好的底图，没有底图时使用纸张背景。正文不会截断。</view>
+      <view class="caption">{{sourceKind === 'memory' ? '所选配图单独成图，保持完整画面；文字另行排版。仅发送本段记忆的内容。' : '封面单独成图，正文按所选张数排版；正文沿用每章的底图，不会截断。'}}</view>
       <view class="notice" wx:if="{{capabilityKnown && !exportAvailable}}">图片导出服务暂时没有打开，请稍后重新进入。</view>
       <button class="primary" bindtap="generateImages" loading="{{exportBusy}}" disabled="{{!exportAvailable || exportBusy || albumSaving || sharingIndex >= 0}}">{{exportBusy ? renderProgress : imagePaths.length ? '重新生成图片' : '生成图片预览'}}</button>
       <generation-status wx:if="{{exportBusy}}" kind="image" text="{{renderProgress || '正在排版图片…'}}" />
       <block wx:if="{{imagePaths.length}}">
         <view class="section-title serif">共 {{imagePaths.length}} 张图片</view>
         <view class="export-image" wx:for="{{imagePaths}}" wx:key="*this">
-          <view class="caption">{{index < coverImageCount ? (coverImageCount > 1 ? '封面 ' + (index + 1) : '封面') : '文字图 ' + (index - coverImageCount + 1)}}</view>
+          <view class="caption">{{index < coverImageCount ? (sourceKind === 'memory' ? '记忆配图 ' + (index + 1) : coverImageCount > 1 ? '封面 ' + (index + 1) : '封面') : '文字图 ' + (index - coverImageCount + 1)}}</view>
           <image src="{{item}}" mode="widthFix" />
           <button class="share-image-action" data-index="{{index}}" bindtap="shareImage" loading="{{sharingIndex === index}}" disabled="{{sharingIndex >= 0 || albumSaving || exportBusy}}">发这张图片</button>
         </view>
@@ -72,7 +73,7 @@
 
   </block>
   <button class="secondary" wx:if="{{!loading && !checking && !title}}" bindtap="refresh">重新加载</button>
-  <button class="secondary" bindtap="goBack" disabled="{{checking || exportBusy || albumSaving}}">回到书稿</button>
+  <button class="secondary" bindtap="goBack" disabled="{{checking || exportBusy || albumSaving}}">{{sourceKind === 'memory' ? '回到记忆' : '回到书稿'}}</button>
 </view>
 
 <canvas type="2d" id="book-send-canvas" class="export-canvas" style="height: {{canvasHeight}}px;"></canvas>

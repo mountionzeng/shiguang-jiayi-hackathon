@@ -27,7 +27,9 @@ test('native dictation and draft editing retain the latest full value without ec
   onXiaoyiDraftInput.call(page, { detail: { value: '很久很久以前，我愿意照顾它。' } });
   assert.equal(patches.some(patch => 'xiaoyiDraftText' in patch), false);
   await useXiaoyiDraft.call(page);
-  assert.deepEqual(landed, ['很久很久以前，我愿意照顾它。'], 'intentional repetition is preserved');
+  assert.deepEqual(landed, [], 'drafts without generated origin must not land');
+  assert.equal(page.data.xiaoyiDraftText, '', 'stale draft text is cleared after rejection');
+  assert.match(page.data.xiaoyiStatus, /重新生成/);
 });
 
 test('organize stays available without a prior successful question and keyboard taps keep their target', () => {

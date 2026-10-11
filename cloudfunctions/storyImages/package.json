@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "jpeg-js": "0.4.4",
-    "wx-server-sdk": "latest"
+    "wx-server-sdk": "latest",
+    "tencentcloud-sdk-nodejs-tms": "4.1.311"
   }
 }

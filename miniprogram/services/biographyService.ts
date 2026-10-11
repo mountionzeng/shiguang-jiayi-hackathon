@@ -59,6 +59,7 @@ export interface ChapterRequest {
   chapterTitle?: string;
   existingText?: string;
   storyId?: string;
+  writingInstruction?: string;
 }
 
 export async function generateBiographyWithStatus(
@@ -75,7 +76,8 @@ export async function generateBiographyWithStatus(
     throw new Error(chapter ? "先勾选要整理的记忆" : "至少写下一段自己的经历后才能生成章节");
   }
   if (chapter && personal.length > 20) throw new Error("一次最多整理 20 条记忆");
-  const existingText = (chapter?.existingText ?? "").slice(0, 4000);
+  const existingText = chapter?.existingText ?? "";
+  if (existingText.length > 4000) throw new Error("这一章较长，请分段整理，避免遗漏已有正文");
 
   const app = getApp<ShiguangAppOptions>();
   let fallbackReason: BiographyFallbackReason;
@@ -93,6 +95,7 @@ export async function generateBiographyWithStatus(
           memoryIds: personal.map((memory) => memory.id),
           ...(chapter?.storyId ? { storyId: chapter.storyId } : {}),
           ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),
+          ...(chapter?.writingInstruction !== undefined ? { writingInstruction: chapter.writingInstruction } : {}),
         },
       }));
 

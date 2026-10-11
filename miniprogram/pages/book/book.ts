@@ -1,3 +1,4 @@
+import { exploreMemoryConnection, MemoryConnection } from "../../services/memoryConnections";
 import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft } from "../../services/chapterDraft";
 import { storyCoverApi } from "../../services/storyCoverService";
 import { logServiceFailure, SavedRefreshError } from '../../services/serviceFailure';
@@ -10,7 +11,7 @@ import {
   InterviewTurn,
 } from "../../domain/interview";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
-import { appendContributionRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, takeStagedRoomStateForBook, usesCloudStorage } from "../../services/roomRepository";
+import { appendContributionRemoteFirst, deleteStoryRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, takeStagedRoomStateForBook, usesCloudStorage } from "../../services/roomRepository";
 import { cachedAccountScope } from "../../services/cloudRoomStorage";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import {
@@ -31,7 +32,7 @@ import { audioCreatePath } from "../../services/storyAudioService";
 import { storySharing } from "../../services/storySharing";
 import { copyRequestId, storyCopies } from "../../services/storyCopies";
 import {
-  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer,
+  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
   resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
 } from "../../services/xiaoyiCompanion";
 
@@ -48,6 +49,7 @@ const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
 
 type MemoryRow = { id: string; text: string; title: string; excerpt: string; dateLabel: string; createdAt: string; aiLabel: string };
 type PendingEditRow = { id: string; kind: string; text: string; label: string; status: string };
+type ChapterDrag = { id: string; startIndex: number; startY: number; rowHeight: number; changed: boolean; lastY: number; original: ManuscriptChapter[] };
 const imageCount = (content: ManuscriptContent[]) => content.filter(item => item.photoId).length;
 const plainText = (content: ManuscriptContent[]) => content.map(item => item.text ?? "").join("");
 const memoryDate = (iso: string) => {
@@ -67,11 +69,14 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 Page({
   data: {
     openingChapter: null as { title: string; text: string } | null,
-    photoMenu: "", photoAction: "", preparingPhoto: false, bookIntroduction: "",
+    photoMenu: "", photoAction: "", preparingPhoto: false, bookIntroduction: "", editIntroduction: "",
     coverUrl: "", coverImageId: "", sendOpen: false, preparingSend: false,
     organizeMethod: "insert" as "insert" | "blend", organizeOriginal: "", insertionPoint: "end",
     insertionPoints: [] as ChapterInsertionPoint[], insertionIndex: 0,
     previewInsertion: false, insertionText: "",
+    memoryPreviewPhotos: [] as Array<{ id: string; path: string; ai: boolean }>,
+    organizeWritingInstruction: "",
+    connection: null as MemoryConnection | null, connectionBusy: false, connectionSaving: false, connectionNotice: "", connectionReflection: "",
     organizeCount: 0, organizeBookTitle: "", switchingBook: false,
     organizeBooks: [] as Array<{ id: string; title: string; memberId: string; detail: string; memoryIds: string[] }>, organizeBookKey: "", previewText: "", previewTitle: "", previewAiLabel: "",
     protagonistName: "", memberId: "", storyId: "", savedRevisionId: "", writingMode: "objective" as "objective" | "creative", sources: [] as Array<{ id: string; text: string; byline: string }>,
@@ -87,6 +92,7 @@ Page({
     // "contents" lists the chapters; "chapter" edits one of them. Empty until the first load.
     view: "" as "" | "contents" | "chapter",
     chapterRows: [] as Array<{ id: string; label: string; title: string; memoryCount: number; photoCount: number }>,
+    swipeOpenChapterId: "", draggingChapterId: "",
     chapterLabelText: "", chapterAiLabelText: "", editChapterTitle: "",
     unassigned: [] as MemoryRow[], chapterMemories: [] as MemoryRow[],
     storyOptions: [] as Array<{ title: string; count: number }>, assignMemoryId: "",
@@ -111,9 +117,13 @@ Page({
   editSave: undefined as Promise<boolean> | undefined,
   titleBuffer: "",
   chapterTitleBuffer: "",
+  introductionBuffer: "",
   bodyBuffer: "",
   contentBuffer: [] as ManuscriptContent[],
   chapters: [] as ManuscriptChapter[],
+  chapterSwipe: undefined as { id: string; startX: number; startY: number; moved: boolean } | undefined,
+  chapterDrag: undefined as ChapterDrag | undefined,
+  suppressChapterOpen: false,
   activeChapterId: "",
   bookImagesReady: undefined as Promise<void> | undefined,
   chapterOpenId: 0,
@@ -138,6 +148,8 @@ Page({
   sourceFingerprint: "",
   story: undefined as Story | undefined,
   pendingSave: undefined as ManuscriptRevision | undefined,
+  connectionEpoch: 0,
+  connectionDraft: undefined as MemoryContribution | undefined,
   organizeSelection: [] as string[],
   organizeMemories: [] as MemoryContribution[],
   undoState: undefined as { draft: BiographyDraft; fingerprint: string } | undefined,
@@ -149,7 +161,7 @@ Page({
   requestedStoryTitle: "",
   requestedMemoryIds: [] as string[],
   storyScopeMemoryIds: undefined as Set<string> | undefined,
-  organizeCandidate: undefined as { draft: BiographyDraft; fingerprint: string; chapterId: string; label: string; notice: string; revisionId: string; insertion?: { original: ManuscriptContent[]; pointId: string } } | undefined,
+  organizeCandidate: undefined as { draft: BiographyDraft; fingerprint: string; chapterId: string; label: string; notice: string; revisionId: string; insertion?: { original: ManuscriptContent[]; pointId: string; photoIds: string[] } } | undefined,
   xiaoyiAskedDimensions: [] as InterviewDimension[],
   xiaoyiConversation: [] as InterviewTurn[],
   xiaoyiContextCapturedText: "",
@@ -183,6 +195,8 @@ Page({
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
   onHide() {
+    this.connectionEpoch++;
+    this.setData({ connectionBusy: false });
     this.photoEpoch++;
     this.pendingPhotoImportChapter = "";
     this.setData({ photoMenu: "", preparingPhoto: false });
@@ -197,6 +211,7 @@ Page({
     // onUnload cannot await the network. The synchronous input backup is the guarantee.
     if (this.data.editing) { this.backupEdits(); void this.saveEdits(true); }
     this.unloaded = true;
+    this.connectionEpoch++;
     if (this.keyboardListener) wx.offKeyboardHeightChange(this.keyboardListener);
     this.editorContext = undefined;
   },
@@ -278,6 +293,8 @@ Page({
     if (this.data.editing || this.data.pickingPhoto || this.unloaded) return;
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
     const visibleChapters = this.visibleChapters(chapters, story);
+    const derivedIntroduction = visibleChapters.map(chapter => plainText(chapter.content).trim()).filter(Boolean).join(" ").replace(/\s+/g, " ");
+    this.introductionBuffer = current.draft?.introduction ?? (Array.from(derivedIntroduction).slice(0, 160).join("") + (Array.from(derivedIntroduction).length > 160 ? "…" : ""));
     let activeChapterId = backup?.chapterId || this.activeChapterId;
     let view = backup?.view || this.data.view;
     if (!visibleChapters.length) view = "contents";
@@ -328,6 +345,10 @@ Page({
     if (backup) {
       this.pendingSave = acknowledged ? undefined : backup.pendingSave;
     }
+    if (this.activeChapterId !== activeChapterId || this.data.storyId !== (story?.id ?? "")) {
+      resetXiaoyiPanel.call(this);
+      this.xiaoyiContextCapturedText = "";
+    }
     this.activeChapterId = activeChapterId;
     this.revisionId = current.revisionId;
     this.sourceFingerprint = current.sourceFingerprint;
@@ -370,6 +391,7 @@ Page({
       protagonistName: member.name, memberId: member.id, storyId: story?.id || "", savedRevisionId: current.revisionId || "", writingMode: story?.writingMode || "creative",
       sources: qualified.map(item => ({ id: item.id, text: item.text, byline: item.authorName + " · 讲述" })),
       sourceCount: qualified.length, draft: current.draft ?? null,
+      editIntroduction: this.introductionBuffer,
       protectedCopy: story?.sourcePolicyRequired === true,
       isCloudDraft: current.draft?.generationMode === "cloud-ai",
       modeLabel: story?.sourcePolicyRequired ? "亲友故事副本" : story ? (story.writingMode === "creative" ? "AI 共创" : "客观记录") : "当前书稿",
@@ -503,11 +525,7 @@ Page({
       if (title) stories.set(title, (stories.get(title) ?? 0) + 1);
     });
     return {
-      bookIntroduction: (() => {
-        const text = visibleChapters.map(chapter => plainText(chapter.content).trim()).filter(Boolean).join(" ").replace(/\s+/g, " ");
-        const chars = Array.from(text);
-        return chars.length > 160 ? chars.slice(0, 160).join("") + "…" : text;
-      })(),
+      bookIntroduction: this.introductionBuffer,
       chapterRows: visibleChapters.map((chapter, index) => ({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
         memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: imageCount(chapter.content),
@@ -704,7 +722,8 @@ Page({
   },
   retryLoad() { this.onShow(); },
   canLeaveEditor() {
-    if (this.data.editing || this.data.saving || this.data.generating || this.data.pickingPhoto || this.data.appendingOwn || this.collecting) {
+    if (this.data.connectionReflection.trim()) { wx.showToast({ title: "还有未保存的想法，请先保存或清空", icon: "none" }); return false; }
+    if (this.data.connectionSaving || this.data.editing || this.data.saving || this.data.generating || this.data.pickingPhoto || this.data.appendingOwn || this.collecting) {
       wx.showToast({ title: this.data.editing ? "请先保存正文，或放弃修改" : "请稍等片刻", icon: "none" });
       return false;
     }
@@ -736,6 +755,7 @@ Page({
     this.setData({ openingChapter: null, view: "contents", moreOpen: false, panel: "" });
   },
   async openChapter(event: { currentTarget: { dataset: { id: string } } }) {
+    if (this.suppressChapterOpen) { this.suppressChapterOpen = false; return; }
     const openId = ++this.chapterOpenId;
     if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
     if (openId !== this.chapterOpenId || !this.canLeaveEditor()) return;
@@ -753,9 +773,84 @@ Page({
           sequence !== this.editSequence || panel !== this.data.panel || !this.canLeaveEditor()) return;
     }
     this.activeChapterId = id;
+    resetXiaoyiPanel.call(this);
+    this.xiaoyiContextCapturedText = "";
     this.loadActiveChapter();
     this.setData({ openingChapter: null, view: "chapter", panel: "", moreOpen: false, editChapterTitle: this.chapterTitleBuffer, ...this.chapterData() });
     this.seedEditor();
+  },
+  startChapterSwipe(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.protectedCopy || this.chapterDrag) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    this.chapterSwipe = { id: String(event.currentTarget.dataset.id || ""), startX: touch.clientX, startY: touch.clientY, moved: false };
+  },
+  moveChapterSwipe(event: WechatMiniprogram.TouchEvent) {
+    if (!this.chapterSwipe || this.chapterDrag) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const dx = touch.clientX - this.chapterSwipe.startX;
+    const dy = touch.clientY - this.chapterSwipe.startY;
+    if (Math.abs(dx) < 36 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    this.chapterSwipe.moved = true;
+    if (dx < 0) this.setData({ swipeOpenChapterId: this.chapterSwipe.id });
+    else if (this.data.swipeOpenChapterId) this.setData({ swipeOpenChapterId: "" });
+  },
+  endChapterSwipe() {
+    if (this.chapterSwipe?.moved) this.suppressNextChapterTap();
+    this.chapterSwipe = undefined;
+  },
+  suppressNextChapterTap() {
+    this.suppressChapterOpen = true;
+    setTimeout(() => { this.suppressChapterOpen = false; }, 400);
+  },
+  startChapterDrag(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.protectedCopy || this.data.saving || this.data.editing || this.data.chapterRows.length < 2 || this.chapterDrag) return;
+    const touch = event.touches[0];
+    const id = String(event.currentTarget.dataset.id || "");
+    const startIndex = this.chapters.findIndex(chapter => chapter.id === id);
+    if (!touch || startIndex < 0) return;
+    const drag: ChapterDrag = {
+      id, startIndex, startY: touch.clientY, rowHeight: Math.max(1, 124 * this.windowWidth / 750), changed: false, lastY: touch.clientY,
+      original: this.chapters.map(chapter => ({ ...chapter, memoryIds: [...chapter.memoryIds], content: chapter.content.map(item => ({ ...item })) })),
+    };
+    this.chapterDrag = drag;
+    this.setData({ draggingChapterId: id, swipeOpenChapterId: "" });
+  },
+  moveChapterDrag(event: WechatMiniprogram.TouchEvent) {
+    const drag = this.chapterDrag, touch = event.touches[0];
+    if (!drag || !touch) return;
+    drag.lastY = touch.clientY;
+    this.applyChapterDrag(drag.lastY);
+  },
+  applyChapterDrag(y: number) {
+    const drag = this.chapterDrag;
+    if (!drag) return;
+    const offset = Math.round((y - drag.startY) / drag.rowHeight);
+    const target = Math.max(0, Math.min(this.chapters.length - 1, drag.startIndex + offset));
+    const current = this.chapters.findIndex(chapter => chapter.id === drag.id);
+    if (current < 0 || target === current) return;
+    this.chapters = moveChapter(this.chapters, drag.id, target - current);
+    drag.changed = true;
+    this.setData({ ...this.chapterData(), draggingChapterId: drag.id, swipeOpenChapterId: "" });
+  },
+  async endChapterDrag() {
+    const drag = this.chapterDrag;
+    if (!drag) return;
+    this.chapterDrag = undefined;
+    this.suppressNextChapterTap();
+    this.setData({ draggingChapterId: "" });
+    const before = drag.original.map(chapter => chapter.id), after = this.chapters.map(chapter => chapter.id);
+    if (!drag.changed || JSON.stringify(before) === JSON.stringify(after)) {
+      this.setData({ saveNotice: "按住右侧把手并上下移动，即可调整章节顺序。" });
+      return;
+    }
+    if (await this.saveChapters(this.chapters, "调整章节顺序")) {
+      this.setData({ saveNotice: "章节顺序已保存。" });
+    } else {
+      this.chapters = drag.original;
+      this.setData({ ...this.chapterData(), saveNotice: this.data.saveNotice || "顺序没有保存，请重试。" });
+    }
   },
   toggleSources() {
     if (this.canLeaveEditor()) this.setData({ panel: "sources", showSources: true });
@@ -777,12 +872,33 @@ Page({
       this.setData({ historyLoading: false, saveNotice: error instanceof Error ? error.message : "历史版本暂时加载失败，请重试" });
     }
   },
-  closePanel() { if (this.data.generating || this.data.saving || this.data.confirmingOrganize || this.data.appendingOwn) return; this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
+  closePanel() { if (this.data.generating || this.data.saving || this.data.confirmingOrganize || this.data.appendingOwn || this.data.connectionSaving) return; this.connectionEpoch++; this.setData({ connectionBusy: false }); this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
   showMore() {
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
     this.closePhotoMenu();
     this.setData({ moreOpen: !this.data.moreOpen, sendOpen: false });
+  },
+  deleteCurrentStory() {
+    const story = this.story;
+    if (!story || !this.data.storyId || this.data.protectedCopy || this.data.editing || this.data.saving || this.data.generating) return;
+    wx.showModal({
+      title: `删除「${story.title}」？`,
+      content: "故事会进入最近删除；原始记忆和书稿版本都会保留，恢复后原样回来。",
+      confirmText: "删除",
+      confirmColor: "#c75245",
+      success: async (result) => {
+        if (!result.confirm) return;
+        try {
+          await deleteStoryRemoteFirst(story.id, story.title);
+          saveCurrentStoryId("");
+          wx.showToast({ title: "已放进最近删除", icon: "none" });
+          wx.navigateBack();
+        } catch (error) {
+          wx.showToast({ title: error instanceof Error ? error.message : "删除没有完成，请重试", icon: "none" });
+        }
+      },
+    });
   },
   toggleSend() {
     if (this.data.protectedCopy || !this.data.draft || this.data.view !== 'contents' || this.data.panel || this.data.preparingSend || this.data.generating || this.data.pickingPhoto) return;
@@ -904,10 +1020,12 @@ Page({
   xiaoyiContextText() {
     return this.xiaoyiContextCapturedText || this.bodyBuffer || plainText(this.contentBuffer);
   },
+  xiaoyiContextKey() { return [this.data.storyId, this.data.memberId, this.activeChapterId].join(":"); },
   xiaoyiMessagesAppend,
   askXiaoyiQuestion,
   onXiaoyiAnswerInput,
   onXiaoyiDraftInput,
+  onXiaoyiWritingInstruction,
   useXiaoyiOriginal,
   organizeXiaoyiAnswer,
   useXiaoyiDraft,
@@ -1054,7 +1172,7 @@ Page({
     const chapters = this.data.view === "chapter" && this.activeChapterId
       ? updateChapter(this.chapters, this.activeChapterId, {title:this.chapterTitleBuffer, content:this.contentBuffer})
       : this.chapters;
-    return draftWithChapters({...this.data.draft, title:this.titleBuffer}, chapters);
+    return draftWithChapters({...this.data.draft, title:this.titleBuffer, introduction:this.introductionBuffer}, chapters);
   },
   backupEdits(): boolean {
     if (this.data.protectedCopy) return false;
@@ -1085,6 +1203,18 @@ Page({
     wx.enableAlertBeforeUnload({message:backedUp ? "草稿已留在本机，尚未确认保存到故事。" : "草稿备份失败，请取消退出，先保存或复制正文。"});
   },
   onEditTitle(event: WechatMiniprogram.Input) { this.titleBuffer = event.detail.value; this.editManuscript(); },
+  editIntroduction() {
+    if (this.data.protectedCopy || this.data.view !== "contents" || !this.data.draft) return;
+    this.introductionBuffer = this.data.bookIntroduction;
+    this.setData({ editIntroduction: this.introductionBuffer });
+    this.editManuscript();
+  },
+  onEditIntroduction(event: WechatMiniprogram.Input) {
+    this.introductionBuffer = event.detail.value;
+    this.editSequence++;
+    this.setData({ editIntroduction: event.detail.value });
+    this.editManuscript();
+  },
   onEditChapterTitle(event: WechatMiniprogram.Input) { this.chapterTitleBuffer = event.detail.value; this.editManuscript(); },
   copyCurrentDraft() {
     wx.setClipboardData({data:this.chapterTitleBuffer + "\n\n" + this.bodyBuffer});
@@ -1099,11 +1229,12 @@ Page({
         this.editorError = "";
         this.pendingSave = undefined;
         this.titleBuffer = this.data.draft?.title ?? "";
+        this.introductionBuffer = this.data.draft?.introduction ?? this.data.bookIntroduction;
         this.loadActiveChapter();
         this.editorContext = undefined;
         // Explicit discard remounts native fields, even if the original bound value is unchanged.
         this.setData({
-          editing: false, editTitle: this.titleBuffer, editBody: this.bodyBuffer, editChapterTitle: this.chapterTitleBuffer,
+          editing: false, editTitle: this.titleBuffer, editIntroduction: this.introductionBuffer, editBody: this.bodyBuffer, editChapterTitle: this.chapterTitleBuffer,
           editorKeys: [this.data.editorKeys[0] + 1], editorReady: false, saveNotice: "本次修改已放弃",
         });
         wx.disableAlertBeforeUnload();
@@ -1288,7 +1419,7 @@ Page({
     const label = chapterLabel(chapters.length);
     if (await this.saveChapters(chapters, "新开" + label)) {
       this.openChapter({ currentTarget: { dataset: { id } } });
-      this.setData({ saveNotice: "已新开" + label + (memoryIds.length ? "，已把 " + memoryIds.length + " 条记忆原文加入正文" : "") + "。" });
+      this.setData({ saveNotice: "已新开" + label + (memoryIds.length ? "，已把 " + memoryIds.length + " 条记忆图文加入正文" : "") + "。" });
     }
   },
   chooseChapterFor(event: { currentTarget: { dataset: { id: string } } }) {
@@ -1311,14 +1442,14 @@ Page({
     }
     const index = target === "new" ? chapters.length - 1 : chapters.findIndex(chapter => chapter.id === target);
     if (await this.saveChapters(chapters, "调整章节")) {
-      this.setData({ panel: "", assignMemoryId: "", saveNotice: "已放进" + chapterLabel(index + 1) + "，原文已加入正文。" });
+      this.setData({ panel: "", assignMemoryId: "", saveNotice: "已放进" + chapterLabel(index + 1) + "，图文已加入正文，可以继续编辑。" });
     }
   },
   async addToChapter(event: { currentTarget: { dataset: { id: string } } }) {
     const memory = this.memories.find(item => item.id === event.currentTarget.dataset.id);
     if (!memory) { this.setData({ saveNotice: "这段记忆已经不存在，请重新打开书稿" }); return; }
     if (await this.saveChapters(placeMemoryInChapter(this.chapters, memory, this.activeChapterId), "调整章节")) {
-      this.setData({ saveNotice: "原文已加入本章，可以继续编辑。" });
+      this.setData({ saveNotice: "图文已加入本章，可以继续编辑；点图片可移除。" });
     }
   },
   async removeFromChapter(event: { currentTarget: { dataset: { id: string } } }) {
@@ -1329,20 +1460,29 @@ Page({
     if (JSON.stringify(chapters.map(chapter => chapter.id)) === JSON.stringify(this.chapters.map(chapter => chapter.id))) return;
     await this.saveChapters(chapters, "调整章节顺序");
   },
-  deleteActiveChapter() {
+  deleteChapterFromContents(event: WechatMiniprogram.TouchEvent) {
+    const id = String(event.currentTarget.dataset.id || "");
+    this.suppressChapterOpen = false;
+    if (id) void this.deleteChapterById(id);
+  },
+  deleteActiveChapter() { return this.deleteChapterById(this.activeChapterId); },
+  deleteChapterById(chapterId: string) {
     return new Promise<void>(resolve => {
       let chapters: ManuscriptChapter[];
-      try { chapters = removeChapter(this.chapters, this.activeChapterId); } catch (error) {
+      const index = this.chapters.findIndex(chapter => chapter.id === chapterId);
+      if (index < 0) { resolve(); return; }
+      const label = chapterLabel(index + 1);
+      try { chapters = removeChapter(this.chapters, chapterId); } catch (error) {
         this.setData({ saveNotice: error instanceof Error ? error.message : "无法删除这一章" });
         resolve();
         return;
       }
       wx.showModal({
-        title: "删掉" + this.data.chapterLabelText + "？",
-        content: "会存成一个新版本。这一章在历史版本里还能找回，里面的记忆会回到「还没放进书稿」，原始记忆不会被删除。",
+        title: "删除" + label + "？",
+        content: "会保存为一个新版本。这一章可以从历史版本恢复，里面的记忆会回到「还没放进书稿」；原始记忆和其他章节都不会删除。",
         success: async result => {
-          if (result.confirm && await this.saveChapters(chapters, "删除" + this.data.chapterLabelText)) {
-            this.setData({ view: "contents", saveNotice: "这一章已从新版本里拿掉，历史版本里还在。" });
+          if (result.confirm && await this.saveChapters(chapters, "删除" + label)) {
+            this.setData({ view: "contents", swipeOpenChapterId: "", saveNotice: "这一章已从新版本移除，历史版本仍可恢复。" });
           }
           resolve();
         },
@@ -1379,6 +1519,7 @@ Page({
   },
   /** AI organizing: step 1 choose memories, step 2 choose a chapter. Defaults follow where the user is. */
   showOrganize() {
+    this.clearMemoryConnection();
     if (this.data.protectedCopy) { this.setData({ saveNotice: "亲友原文不能整篇改写，请使用“补充我的经历”。" }); return; }
     const visibleChapters = this.visibleChapters();
     const active = this.data.view === "chapter" ? visibleChapters.find(chapter => chapter.id === this.activeChapterId) : undefined;
@@ -1394,9 +1535,10 @@ Page({
     this.updateOrganizeTarget(this.data.organizeTarget);
   },
   async onOrganizeBook(event: { detail: { value: string } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     const selected = this.data.organizeBooks.find(item => item.id === event.detail.value);
     if (!selected) return;
+    this.clearMemoryConnection();
     const previous = { key: this.requestedStoryKey, title: this.requestedStoryTitle, memberId: this.requestedMemberId };
     this.setData({ switchingBook: true, saveNotice: "" });
     this.openOrganizeOnLoad = true;
@@ -1429,28 +1571,33 @@ Page({
     });
   },
   onOrganizeMemories(event: { detail: { value: string[] } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
+    this.clearMemoryConnection();
     this.organizeSelection = event.detail.value;
     this.setData({ organizeCount: this.organizeSelection.length, organizeRows: this.data.organizeRows.map(row => ({ ...row, checked: this.organizeSelection.includes(row.id) })) });
   },
   updateOrganizeTarget(id: string) {
     const target = this.chapters.find(chapter => chapter.id === id);
     const points = target ? chapterInsertionPoints(target.content) : [];
-    this.setData({ organizeTarget: id, organizeMethod: "insert", insertionPoint: "end",
+    this.setData({ organizeTarget: id, organizeMethod: "insert", insertionPoint: "end", organizeWritingInstruction: "",
       insertionPoints: points, insertionIndex: Math.max(0, points.length - 1),
       organizeOriginal: target ? target.content.map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join("") : "",
     });
   },
   onOrganizeTarget(event: { detail: { value: string } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     this.updateOrganizeTarget(event.detail.value);
   },
   onOrganizeMethod(event: { detail: { value: string } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     this.setData({ organizeMethod: event.detail.value === "blend" && this.data.writingMode === "creative" ? "blend" : "insert" });
   },
+  onOrganizeWritingInstruction(event: WechatMiniprogram.Input) {
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
+    this.data.organizeWritingInstruction = event.detail.value;
+  },
   onInsertionPoint(event: { detail: { value: string } }) {
-    if (this.data.generating || this.data.saving || this.data.switchingBook) return;
+    if (this.data.connectionSaving || this.data.generating || this.data.saving || this.data.switchingBook) return;
     const index = Number(event.detail.value);
     const point = this.data.insertionPoints[index];
     if (point) this.setData({ insertionPoint: point.id, insertionIndex: index });
@@ -1461,11 +1608,81 @@ Page({
     if (!insertion) return;
     const text = event.detail.value;
     this.setData({ insertionText: text,
-      previewText: text.trim() ? insertChapterText(insertion.original, insertion.pointId, text).map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join("") : "",
+      previewText: text.trim() || insertion.photoIds.length ? insertChapterText(insertion.original, insertion.pointId, text, insertion.photoIds).map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join("") : "",
       previewAiLabel: this.data.previewAiLabel ? "含 AI 文字 · 已由你修改" : "",
     });
   },
+  clearMemoryConnection() {
+    this.connectionEpoch++;
+    this.setData({ connection: null, connectionBusy: false, connectionNotice: "" });
+  },
+  async exploreConnections() {
+    if (this.data.connectionBusy || this.data.connectionSaving || this.data.generating || this.data.switchingBook || this.data.writingMode !== "creative") return;
+    const epoch = ++this.connectionEpoch;
+    const selected = [...this.organizeSelection];
+    this.setData({ connectionBusy: true, connection: null, connectionNotice: "正在一起看你选中的记忆…" });
+    try {
+      const connection = await exploreMemoryConnection(selected);
+      if (this.unloaded || epoch !== this.connectionEpoch || this.data.panel !== "organize") return;
+      this.setData({ connection, connectionNotice: connection.evidence.length ? "这只是一个可能的线索，由你判断；不会自动写进故事。" : "这几段还没有足够明确的联系，你也可以按自己的想法组合。" });
+    } catch (error) {
+      if (!this.unloaded && epoch === this.connectionEpoch) this.setData({ connectionNotice: error instanceof Error ? error.message : "暂时没能找到线索，可以直接组合。" });
+    } finally { if (!this.unloaded && epoch === this.connectionEpoch) this.setData({ connectionBusy: false }); }
+  },
+  dismissConnection() {
+    this.clearMemoryConnection();
+    this.setData({ connectionNotice: "这条线索不会采用。你写下的想法仍保留，也可以直接组合记忆。" });
+  },
+  onConnectionReflection(event: WechatMiniprogram.Input) {
+    if (this.data.connectionSaving) return;
+    this.setData({ connectionReflection: event.detail.value });
+    if (event.detail.value.trim()) wx.enableAlertBeforeUnload({ message: "你刚写的想法还没保存为记忆。" });
+    else if (!this.data.editing) wx.disableAlertBeforeUnload();
+  },
+  async saveConnectionReflection() {
+    if (this.data.connectionSaving || this.data.generating || this.data.switchingBook) return;
+    const text = this.data.connectionReflection.trim();
+    const storyKey = this.requestedStoryKey;
+    this.clearMemoryConnection();
+    if (!text || text.length > 500) { this.setData({ connectionNotice: "写下 1—500 字自己的想法，再保存。" }); return; }
+    this.setData({ connectionSaving: true });
+    try {
+      const state = await loadRoomStateRemoteFirst();
+      const author = accountOwner(state.members);
+      if (!author) throw new Error("暂时无法确认记忆的主人，请重新打开。");
+      if (!this.connectionDraft) this.connectionDraft = createContribution({authorMemberId:author.id, authorName:author.name, relation:author.relation,
+        text, title:"看着几段记忆想到的事", memoryType:"note", scope:"personal", visibility:"private", sharedWithMemberIds:[], relatedMemberIds:[]});
+      if (this.connectionDraft.authorMemberId !== author.id) throw new Error("记忆主人已经变化，请重新打开后核对保存结果。");
+      if (this.connectionDraft.text !== text) throw new Error("上次补充尚未确认保存，请先保留原输入并重试核对，避免重复保存。");
+      const draft = this.connectionDraft;
+      const existing = state.contributions.find(memory => memory.id === draft.id);
+      if (existing && (existing.deletedAt || existing.text !== draft.text || existing.authorMemberId !== draft.authorMemberId)) throw new Error("这段补充已有变化，请在记忆列表核对。");
+      const saved = existing ? state : await appendContributionRemoteFirst(draft);
+      const confirmed = memoryPool(saved.contributions).find(memory => memory.id === draft.id);
+      if (!confirmed || confirmed.text !== draft.text) throw new Error("补充尚未确认保存，可以保留原输入再试一次。");
+      this.connectionDraft = undefined;
+      if (!this.data.editing) wx.disableAlertBeforeUnload();
+      if (this.unloaded) return;
+      if (storyKey !== this.requestedStoryKey) { this.setData({ connectionReflection: "", connectionNotice: "已存为独立记忆，可在记忆列表查看。" }); return; }
+      this.organizeMemories = [...this.organizeMemories.filter(memory => memory.id !== confirmed.id), confirmed];
+      this.organizeSelection = [...new Set([...this.organizeSelection, confirmed.id])];
+      this.setData({ connectionReflection: "", connection: null, connectionNotice: "已存为一段独立记忆，并勾选到这次组合中。下一步预览后才会写进故事。",
+        organizeCount:this.organizeSelection.length,
+        organizeRows:[...this.data.organizeRows.filter(row => row.id !== confirmed.id), {...memoryRow(confirmed), where:"独立记忆", checked:true}] });
+    } catch (error) {
+      if (!this.unloaded) this.setData({ connectionNotice: error instanceof Error ? error.message : "补充未确认保存，请保留输入重试。" });
+    } finally { if (!this.unloaded) this.setData({ connectionSaving:false }); }
+  },
+  async showMemoryPreviewPhotos(photoIds: string[]) {
+    const ids = [...new Set(photoIds)];
+    const photos = await readLocalPhotos(ids);
+    if (this.unloaded) return;
+    this.setData({ memoryPreviewPhotos: ids.map(id => ({ id, path: photos.photoPaths[id] || "", ai: isStoryImageReference(id) })) });
+  },
   async runOrganize() {
+    if (this.data.connectionSaving) return;
+    if (this.data.connectionReflection.trim()) { this.setData({ connectionNotice: "你还有没保存的想法。先存为独立记忆，或清空输入后继续。" }); return; }
+    this.connectionEpoch++;
     if (this.data.generating || this.data.saving || this.data.editing || this.data.switchingBook) return;
     if (this.data.protectedCopy) return;
     const memoryIds = this.organizeSelection.filter(id => this.organizeMemories.some(memory => memory.id === id));
@@ -1475,7 +1692,7 @@ Page({
     if (target && !inserting && plainText(target.content).length > 4000) { this.setData({ saveNotice: "这一章较长，请新开一章整理，避免遗漏已有正文" }); return; }
     if (!inserting && target?.handEdited && plainText(target.content).trim() && !await this.confirm("这一章你亲手改过",
       "AI 会重写这一章的正文，照片保留。原来的文字在历史版本里能找回，整理完也可以马上撤回。继续吗？")) return;
-    this.setData({ generating: true, saveNotice: "正在整理，请稍候…" });
+    this.setData({ generating: true, memoryPreviewPhotos: [], saveNotice: "正在整理，请稍候…" });
     try {
       let state = await loadRoomStateRemoteFirst();
       let story = this.data.storyId ? activeStory(state, this.data.storyId) : undefined;
@@ -1496,7 +1713,8 @@ Page({
         if (target.pendingRevision?.edits.some(edit => edit.status === "pending")) throw new Error("这一章还有待确认的修改，请先处理完再插入");
         if (selectedMemories.length !== memoryIds.length) throw new Error("所选记忆已变动，请重新选择");
         const insertionText = selectedMemories.map(memory => memory.text.trim()).filter(Boolean).join("\n\n");
-        const content = insertChapterText(target.content, this.data.insertionPoint, insertionText);
+        const photoIds = selectedMemories.flatMap(memory => memory.photoIds ?? []);
+        const content = insertChapterText(target.content, this.data.insertionPoint, insertionText, photoIds);
         const containsAiText = Boolean(target.containsAiText || target.generationMode === "cloud-ai" || selectedMemories.some(memory => memoryAiLabel(memory)));
         const chapter: ManuscriptChapter = { ...target, content, containsAiText,
           memoryIds: Array.from(new Set([...target.memoryIds, ...memoryIds])),
@@ -1505,12 +1723,13 @@ Page({
         const chapters = this.chapters.map(item => item.id === target.id ? chapter : item);
         const label = this.data.chapterRows.find(row => row.id === target.id)?.label || chapterLabel(chapters.findIndex(item => item.id === target.id) + 1);
         this.organizeCandidate = { draft: draftWithChapters(this.data.draft ?? this.newBookBase(), chapters), fingerprint,
-          chapterId: target.id, label, notice: "原文和照片位置已保留。", revisionId: this.revisionId,
-          insertion: { original: target.content.map(item => ({ ...item })), pointId: this.data.insertionPoint },
+          chapterId: target.id, label, notice: "记忆的文字和配图已一起写入，原章节图片位置保留。可以继续编辑文字，点图片可移除；换图请用顶部照片入口。", revisionId: this.revisionId,
+          insertion: { original: target.content.map(item => ({ ...item })), pointId: this.data.insertionPoint, photoIds },
         };
         this.setData({ panel: "organize-preview", previewInsertion: true, insertionText,
           previewTitle: target.title, previewText: content.map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join(""),
-          previewAiLabel: containsAiText ? "含 AI 文字" : "", saveNotice: "尚未写入。可以调整新增文字，原章节内容保持不变。" });
+          previewAiLabel: containsAiText ? "含 AI 文字" : "", saveNotice: "尚未写入。记忆的配图也会一起带入，写入后可以修改图文。" });
+        await this.showMemoryPreviewPhotos(photoIds);
         return;
       }
       if (story?.writingMode === "creative" && usesCloudStorage()) {
@@ -1519,7 +1738,7 @@ Page({
         selectedMemories = context.memories;
         aiState = { ...state, contributions: context.memories };
       }
-      const request = { memoryIds, storyId: story?.id, chapterTitle: target?.title ?? "", existingText: target ? plainText(target.content).trim() : "" };
+      const request = { memoryIds, storyId: story?.id, chapterTitle: target?.title ?? "", existingText: target ? plainText(target.content).trim() : "", writingInstruction: this.data.organizeWritingInstruction.trim() };
       const result = !story || story.writingMode === "creative"
         ? await generateBiographyWithStatus(aiState, member, request)
         : { draft: buildLocalChapterDraft(selectedMemories, request.existingText, request.chapterTitle) };
@@ -1527,7 +1746,7 @@ Page({
       const latest = await loadRoomStateRemoteFirst();
       const latestFingerprint = story ? storySourceFingerprint(latest, story.id) : personalBookSourceFingerprint(latest, member.id);
       if (fingerprint !== latestFingerprint) throw new Error("素材刚刚变了，请重新整理");
-      const { chapters, chapterId, keptImageCount } = applyOrganized(this.chapters, target?.id ?? "new", organized, memoryIds);
+      const { chapters, chapterId, keptImageCount } = applyOrganized(this.chapters, target?.id ?? "new", organized, memoryIds, selectedMemories.flatMap(memory => memory.photoIds ?? []));
       const base = { ...(this.data.draft ?? this.newBookBase()), generationMode: organized.generationMode, generatedAt: organized.generatedAt };
       const label = this.data.chapterRows.find(row => row.id === chapterId)?.label || chapterLabel(this.data.chapterRows.length + 1);
       const notice = (story?.writingMode === "objective" ? "已按客观记录模式整理，未调用 AI。" : fallbackReason ? "这次没有用上在线 AI（" + FALLBACK_REASONS[fallbackReason] + "），预览由原话整理。" : "")
@@ -1539,8 +1758,9 @@ Page({
         previewTitle: chapter.title,
         previewText: plainText(chapter.content),
         previewAiLabel: organized.generationMode === "cloud-ai" ? "文字 AI 生成" : "",
-        saveNotice: notice + "尚未写入，请查看并确认。",
+        saveNotice: notice + "尚未写入，记忆的配图会一起带入，写入后可以修改图文。",
       });
+      await this.showMemoryPreviewPhotos(selectedMemories.flatMap(memory => memory.photoIds ?? []));
     } catch (error) {
       this.setData({ saveNotice: error instanceof Error ? error.message : "整理失败，请重试" });
     } finally { if (this.data.generating) this.setData({ generating: false }); }
@@ -1560,7 +1780,7 @@ Page({
       const chapters = candidate.draft.chapters!;
       const chapter = chapters.find(item => item.id === candidate.chapterId)!;
       const content = candidate.insertion
-        ? insertChapterText(candidate.insertion.original, candidate.insertion.pointId, this.data.insertionText)
+        ? insertChapterText(candidate.insertion.original, candidate.insertion.pointId, this.data.insertionText, candidate.insertion.photoIds)
         : [{ text: this.data.previewText.trim() + "\n" }, ...chapter.content.filter(item => item.photoId)];
       const next = draftWithChapters(candidate.draft, updateChapter(chapters, chapter.id, { title: this.data.previewTitle, content }));
       if (await this.persist(next, candidate.fingerprint, "version", (candidate.insertion ? "插入记忆到" : "AI 整理") + candidate.label)) {

@@ -10,6 +10,7 @@ import {
   normalizeMemoryText,
   revertMemoryToSpoken,
   MAX_MEMORY_LENGTH,
+  MAX_MEMORY_PHOTOS,
 } from "../../domain/biography";
 import {
   loadCurrentMemberRemoteFirst,
@@ -25,11 +26,15 @@ import { logLoadError } from "../../services/loadErrorLog";
 import { loadCurrentStoryId } from "../../services/storySelection";
 import { InterviewDimension, InterviewTurn } from "../../domain/interview";
 import {
-  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer,
+  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
   resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
 } from "../../services/xiaoyiCompanion";
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
+
+import { readLocalPhotos, saveLocalPhoto, isStoryImageReference } from "../../services/bookImages";
+import { ensurePhotoUploads } from "../../services/photoCloud";
+import { confirmPhotoWritingReference, ConfirmedPhotoReference, writingReferencePhotoIds } from "../../services/photoWritingReference";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -137,6 +142,9 @@ function waitForSaveConfirmation() {
 Page({
   roomSnapshot: undefined as Awaited<ReturnType<typeof loadRoomStateRemoteFirst>> | undefined,
   data: {
+    memoryPhotos: [] as Array<{ id: string; path: string; aiGenerated: boolean }>,
+    photoNotice: "",
+    savingPhotos: false,
     placements: [] as Array<{ storyId?: string; memberId: string; bookName: string; bookTitle: string; chapter: string; chapterId: string }>,
     memberName: "",
     notes: [] as NoteView[],
@@ -166,6 +174,7 @@ Page({
     chatExpanded: false,
     chatMessages: [] as Array<{ id: string; role: "assistant" | "user"; text: string; label: string }>,
     chatInput: "",
+    documentWritingInstruction: "",
     chatAsking: false,
     chatNotice: "",
     coeditingAskedDimensions: [] as InterviewDimension[],
@@ -188,6 +197,8 @@ Page({
     ...initialXiaoyiPanelData(),
   },
 
+  photoRequestId: 0,
+  archiveUnloaded: false,
   swipeStartX: 0,
   swipeStartY: 0,
   swipeActiveId: "",
@@ -195,6 +206,7 @@ Page({
   organizeRequestId: 0,
   openMemoryRequestId: 0,
   pendingMemorySocialSend: false,
+  photoWritingReference: undefined as {key: string; value?: ConfirmedPhotoReference} | undefined,
   editingOriginal: undefined as MemoryContribution | undefined,
   xiaoyiAskedDimensions: [] as InterviewDimension[],
   xiaoyiConversation: [] as InterviewTurn[],
@@ -232,6 +244,8 @@ Page({
     this.updateViewport();
   },
   onUnload() {
+    this.archiveUnloaded = true;
+    this.photoRequestId++;
     if (this.keyboardListener) wx.offKeyboardHeightChange(this.keyboardListener);
   },
 
@@ -317,24 +331,84 @@ Page({
 
   retryLoad() { this.onShow(); },
 
-  resetArchiveXiaoyiState() {
-    this.xiaoyiAskedDimensions = [];
-    this.xiaoyiConversation = [];
-    this.xiaoyiLandedAiText = "";
-    this.setData({
-      xiaoyiOpen: false,
-      xiaoyiLoading: false,
-      xiaoyiContextPreview: "",
-      xiaoyiAnswer: "",
-      xiaoyiDraftText: "",
-      xiaoyiStatus: "",
-      xiaoyiMessages: [],
-    });
+  async loadMemoryPhotos(memory: MemoryContribution, savedNotice = "") {
+    const requestId = ++this.photoRequestId;
+    const ids = memory.photoIds || [];
+    this.setData({ memoryPhotos: ids.map(id => ({ id, path: "", aiGenerated:isStoryImageReference(id) })), photoNotice: ids.length ? "正在读取配图…" : "" });
+    const { photoPaths } = await readLocalPhotos(ids).catch(() => ({ photoPaths: {} as Record<string, string> }));
+    if (this.archiveUnloaded || requestId !== this.photoRequestId || this.data.editingId !== memory.id) return;
+    this.setData({ memoryPhotos: ids.map(id => ({ id, path: photoPaths[id] || "", aiGenerated:isStoryImageReference(id) })),
+      photoNotice: ids.some(id => !photoPaths[id]) ? savedNotice + "部分配图暂未读到，原图引用仍保留。" : savedNotice });
+  },
+  previewMemoryPhoto(event: { currentTarget: { dataset: { id: string } } }) {
+    const photos = this.data.memoryPhotos.filter(photo => photo.path);
+    const photo = photos.find(item => item.id === event.currentTarget.dataset.id);
+    if (photo) wx.previewImage({ current: photo.path, urls: photos.map(item => item.path) });
+  },
+  async changeMemoryPhotos(removeId?: string) {
+    const original = this.editingOriginal;
+    if (!original || this.data.savingPhotos || this.data.savingEdit || this.data.organizingPreview || this.data.xiaoyiLoading || this.data.chatAsking) return;
+    if (this.hasUnsavedEditorWork()) { this.setData({ photoNotice: "请先保存文字修改，再调整配图。" }); return; }
+    const before = [...(original.photoIds || [])];
+    if (!removeId && before.length >= MAX_MEMORY_PHOTOS) { this.setData({ photoNotice: "一段记忆最多放 9 张图。" }); return; }
+    if (removeId && !before.includes(removeId)) return;
+    this.setData({ savingPhotos: true, photoNotice: "" });
+    try {
+      let ids = before.filter(id => id !== removeId);
+      if (!removeId) {
+        const picked = await new Promise<WechatMiniprogram.ChooseMediaSuccessCallbackResult>((resolve, reject) => wx.chooseMedia({
+          count: MAX_MEMORY_PHOTOS - before.length, mediaType: ["image"], sourceType: ["album", "camera"], sizeType: ["compressed"], success: resolve, fail: reject,
+        }));
+        if (this.archiveUnloaded || this.editingOriginal?.id !== original.id) return;
+        for (const file of picked.tempFiles.slice(0, MAX_MEMORY_PHOTOS - before.length)) {
+          const photo = await saveLocalPhoto(file.tempFilePath, "import");
+          ids.push(photo.id);
+        }
+        await ensurePhotoUploads(ids.filter(id => !before.includes(id)));
+      }
+      const state = await loadRoomStateRemoteFirst();
+      if (this.archiveUnloaded || this.editingOriginal?.id !== original.id) return;
+      const latest = memoryPool(state.contributions).find(memory => memory.id === original.id);
+      if (!latest || latest.authorMemberId !== original.authorMemberId || JSON.stringify(latest.photoIds || []) !== JSON.stringify(before)) {
+        throw new Error("记忆或配图已有变化，请重新打开后再试。");
+      }
+      const next = { ...latest, photoIds: ids };
+      this.roomSnapshot = await replaceContributionRemoteFirst(next);
+      if (this.archiveUnloaded || this.editingOriginal?.id !== original.id) return;
+      this.showEditor(next, removeId ? "已从这段记忆移除，云端原图和书中图片仍保留。" : "配图已保存到这段记忆，内容检查通过后可随记忆发送。");
+    } catch (error) {
+      const message = String((error as { errMsg?: string })?.errMsg || (error as Error)?.message || "配图未确认保存，请重试。");
+      if (!this.archiveUnloaded && this.editingOriginal?.id === original.id && !/cancel/i.test(message)) this.setData({ photoNotice: message });
+    } finally { if (!this.archiveUnloaded) this.setData({ savingPhotos: false }); }
+  },
+  addMemoryPhotos() {
+    if (this.data.savingPhotos || this.data.savingEdit) return;
+    wx.showActionSheet({itemList:['从相册或拍照选照片', 'AI生成配图'], success: result => {
+      if (result.tapIndex === 0) void this.changeMemoryPhotos();
+      if (result.tapIndex === 1) this.generateMemoryPhotos();
+    }});
+  },
+  generateMemoryPhotos() {
+    if (!this.editingOriginal || this.data.savingPhotos || this.data.savingEdit || this.data.organizingPreview || this.data.xiaoyiLoading || this.data.chatAsking) return;
+    if (this.hasUnsavedEditorWork()) {this.setData({photoNotice:'请先保存文字修改，再生成配图。'}); return;}
+    const id = this.editingOriginal.id;
+    // Reopen from server when returning, so the newly selected images are not overwritten by an old editor snapshot.
+    wx.navigateTo({url:`/pages/story-images/story-images?memoryId=${encodeURIComponent(id)}`,
+      success:() => {this.editingOriginal = undefined;}});
+  },
+  removeMemoryPhoto(event: { currentTarget: { dataset: { id: string } } }) {
+    void this.changeMemoryPhotos(event.currentTarget.dataset.id);
   },
 
-  showEditor(memory: MemoryContribution) {
+  resetArchiveXiaoyiState() {
+    resetXiaoyiPanel.call(this);
+    this.xiaoyiLandedAiText = "";
+  },
+
+  showEditor(memory: MemoryContribution, photoNotice = "") {
     this.resetArchiveXiaoyiState();
     this.editingOriginal = memory;
+    void this.loadMemoryPhotos(memory, photoNotice);
     this.chatRequestId++;
     this.organizeRequestId++;
     const revisions = memoryAiRevisions(memory);
@@ -347,6 +421,7 @@ Page({
       chatExpanded: false,
       chatMessages: [{ id: "welcome-" + memory.id, role: "assistant", text: "我会围绕上方这段记忆和你聊。可以补充细节，也可以告诉我想怎么改。", label: "" }],
       chatInput: "",
+      documentWritingInstruction: "",
       chatAsking: false,
       chatNotice: "",
       coeditingAskedDimensions: [],
@@ -386,12 +461,15 @@ Page({
   },
 
   startDocumentEdit() {
+    if (this.data.savingPhotos) return;
     this.setData({ isEditingDocument: true });
   },
 
   cancelDocumentEdit() {
+    if (this.data.xiaoyiLoading || this.data.organizingPreview || this.data.savingEdit || this.data.savingPhotos) return;
     const original = this.editingOriginal;
     if (!original) return;
+    this.resetArchiveXiaoyiState();
     const selected = memoryAiRevisions(original).find(revision => revision.id === this.data.selectedRevisionId);
     this.setData({
       editTitle: selected?.title || original.title || "",
@@ -403,6 +481,7 @@ Page({
   },
 
   selectMemoryRevision(event: { currentTarget: { dataset: { id: string } } }) {
+    if (this.data.organizingPreview || this.data.chatAsking || this.data.xiaoyiLoading || this.data.savingEdit || this.data.savingPhotos) return;
     const original = this.editingOriginal;
     const revisionId = event.currentTarget.dataset.id || "";
     const revisions = original ? memoryAiRevisions(original) : [];
@@ -412,8 +491,11 @@ Page({
     const changed = this.data.editTitle !== (currentSelection?.title || original.title || "")
       || this.data.editText !== (currentSelection?.text || original.text)
       || this.data.chatInput.trim().length > 0
+      || this.data.documentWritingInstruction.trim().length > 0
       || this.data.chatMessages.some(message => message.role === "user");
-    const apply = () => this.setData({
+    const apply = () => {
+      this.resetArchiveXiaoyiState();
+      this.setData({
       selectedRevisionId: selected.id,
       selectedVersionLabel: memoryVersionLabel(selected),
       isCurrentVersion: selected.id === revisions[revisions.length - 1]?.id,
@@ -424,9 +506,11 @@ Page({
       chatExpanded: false,
       chatMessages: [{ id: "welcome-" + original.id + "-" + selected.id, role: "assistant", text: "我会围绕当前选中的保存版本和你聊。", label: "" }],
       chatInput: "",
+      documentWritingInstruction: "",
       chatNotice: "",
       coeditingAskedDimensions: [],
-    });
+      });
+    };
     if (changed) {
       wx.showModal({ title: "切换保存版本？", content: "本次未保存的正文与对话会清除，已保存版本不会变化。", success: result => { if (result.confirm) apply(); } });
       return;
@@ -435,6 +519,7 @@ Page({
   },
 
   selectCurrentMemoryRevision() {
+    if (this.data.organizingPreview || this.data.chatAsking || this.data.xiaoyiLoading || this.data.savingEdit || this.data.savingPhotos) return;
     const original = this.editingOriginal;
     if (!original) return;
     const revisions = memoryAiRevisions(original);
@@ -444,28 +529,27 @@ Page({
       return;
     }
     const changed = this.data.editTitle !== (original.title || "") || this.data.editText !== original.text
-      || this.data.chatInput.trim().length > 0 || this.data.chatMessages.some(message => message.role === "user");
-    const apply = () => this.setData({ editTitle: original.title || "", editText: original.text,
+      || this.data.chatInput.trim().length > 0 || this.data.documentWritingInstruction.trim().length > 0
+      || this.data.chatMessages.some(message => message.role === "user");
+    const apply = () => {
+      this.resetArchiveXiaoyiState();
+      this.setData({ editTitle: original.title || "", editText: original.text,
       selectedRevisionId: "", selectedVersionLabel: memoryVersionLabel(undefined), isCurrentVersion: true,
-      editAiLabel: "", isEditingDocument: false, chatExpanded: false, chatInput: "", chatNotice: "",
+      editAiLabel: memoryAiLabel(original), isEditingDocument: false, chatExpanded: false, chatInput: "", chatNotice: "", documentWritingInstruction: "",
       chatMessages: [{ id: "welcome-" + original.id, role: "assistant", text: "我会围绕上方这段记忆和你聊。", label: "" }] });
+    };
     if (changed) {
       wx.showModal({ title: "回到当前版本？", content: "本次未保存的正文与对话会清除。", success: result => { if (result.confirm) apply(); } });
       return;
     }
-    this.setData({
-      selectedRevisionId: "",
-      selectedVersionLabel: memoryVersionLabel(undefined),
-      isCurrentVersion: true,
-      editTitle: original.title || "",
-      editText: original.text,
-      editAiLabel: memoryAiLabel(original),
-      isEditingDocument: false,
-    });
+    apply();
   },
 
   onChatInput(event: WechatMiniprogram.Input) {
     this.setData({ chatInput: event.detail.value });
+  },
+  onDocumentWritingInstruction(event: WechatMiniprogram.Input) {
+    this.data.documentWritingInstruction = event.detail.value;
   },
 
   async sendCoeditingMessage() {
@@ -514,7 +598,7 @@ Page({
   },
 
   async createDocumentPreview() {
-    if (this.data.organizingPreview || this.data.savingEdit || !this.editingOriginal) return;
+    if (this.data.organizingPreview || this.data.savingPhotos || this.data.savingEdit || this.data.chatAsking || !this.editingOriginal) return;
     if (!this.confirmEditStoryCreation(() => { void this.createDocumentPreview(); })) return;
     const text = normalizeMemoryText(this.data.editText);
     if (!text || text.length > MAX_MEMORY_LENGTH) {
@@ -528,11 +612,33 @@ Page({
     const draftText = text;
     const draftTitle = this.data.editTitle;
     const draftStory = this.data.editStory;
-    const userAdditions = this.data.chatMessages.filter(message => message.role === "user").map(message => message.text);
-    this.setData({ organizingPreview: true, previewNotice: "正在整理，原记忆不会因此改变。" });
+    const writingInstruction = this.data.documentWritingInstruction.trim();
+    const userAdditions = this.data.chatMessages
+      .filter(message => message.role === "user" && !message.id.startsWith("welcome-"))
+      .map(message => message.text.trim())
+      .filter(Boolean);
+    // Preserve the draft separately: a long conversation must never push it out of context.
+    const conversation = this.data.chatMessages.filter(message => !message.id.startsWith("welcome-")).slice(-10)
+      .map(message => ({ role: message.role, content: message.text }));
+    this.setData({ organizingPreview: true, previewNotice: "正在结合原稿和对话成文，原记忆不会因此改变。" });
     try {
+      const isActive = () => !this.archiveUnloaded && requestId === this.organizeRequestId && this.editingOriginal?.id === memory.id;
+      const photoIds = writingReferencePhotoIds(memory.photoIds || []);
+      const referenceKey = JSON.stringify([memory.id, photoIds]);
+      if (this.photoWritingReference?.key !== referenceKey) {
+        if (photoIds.length) this.setData({previewNotice:"正在参考原稿和照片；照片描述核对后再成文。"});
+        const value = await confirmPhotoWritingReference(photoIds, isActive);
+        if (!isActive()) return;
+        this.photoWritingReference = {key:referenceKey, value};
+      }
+      const photoReference = this.photoWritingReference.value;
+      this.setData({previewNotice: photoReference ? "正在结合原稿和已核对的照片描述成文。" : "正在根据原稿和你的文字补充成文。"});
       const draft = await organizeMemory({
         transcript: [draftText, ...userAdditions],
+        ...(photoReference ? {photoReference} : {}),
+        writingMode: "compose",
+        writingInstruction,
+        conversation,
         memoryType: memory.memoryType ?? "note",
         memberName: this.data.memberName,
         storyTitle: this.data.editStory.trim() || undefined,
@@ -542,7 +648,8 @@ Page({
       });
       if (requestId !== this.organizeRequestId || !this.editingOriginal || this.editingOriginal.id !== memory.id) return;
       if (normalizeMemoryText(this.data.editText) !== draftText
-        || this.data.editTitle !== draftTitle || this.data.editStory !== draftStory) {
+        || this.data.editTitle !== draftTitle || this.data.editStory !== draftStory
+        || this.data.documentWritingInstruction.trim() !== writingInstruction) {
         wx.showToast({ title: "文档已有新修改，未采用旧整理结果；请重新整理预览", icon: "none" });
         this.setData({ previewNotice: "文档已更新，请重新整理预览。" });
         return;
@@ -578,7 +685,7 @@ Page({
 
   async savePreview(event: { currentTarget: { dataset: { mode: "update-current" | "dated-version" } } }) {
     const mode = event.currentTarget.dataset.mode;
-    if (!this.data.previewOpen || this.data.savingEdit || !this.editingOriginal || !["update-current", "dated-version"].includes(mode)) return;
+    if (!this.data.previewOpen || this.data.savingPhotos || this.data.savingEdit || !this.editingOriginal || !["update-current", "dated-version"].includes(mode)) return;
     if (!this.confirmEditStoryCreation(() => { void this.savePreview(event); })) return;
     this.setData({ savingEdit: true, loadError: "" });
     try {
@@ -620,7 +727,7 @@ Page({
       this.editingOriginal = confirmed;
       this.roomSnapshot = resultState;
       this.resetArchiveXiaoyiState();
-      this.setData({ chatMessages: [], chatInput: "", chatNotice: "", coeditingAskedDimensions: [] });
+      this.setData({ chatMessages: [], chatInput: "", chatNotice: "", documentWritingInstruction: "", coeditingAskedDimensions: [] });
       const confirmedStory = contributionStoryTitle(confirmed);
       const storyOptions = uniqueStoryNames(this.data.storyOptions.concat(confirmedStory ? [confirmedStory] : []));
       this.setData({
@@ -694,6 +801,7 @@ Page({
   },
 
   async openMemory(event: { currentTarget: { dataset: { id: string } } }) {
+    if (this.data.savingPhotos) return;
     if (this.data.swipedItemId) { this.closeSwipe(); return; }
     const requestId = ++this.openMemoryRequestId;
     const memoryId = event.currentTarget.dataset.id;
@@ -709,9 +817,10 @@ Page({
     }
   },
 
-  onEditTitle(event: WechatMiniprogram.Input) { this.setData({ editTitle: event.detail.value }); },
-  onEditText(event: WechatMiniprogram.Input) { this.setData({ editText: event.detail.value }); },
+  onEditTitle(event: WechatMiniprogram.Input) { if (this.data.savingPhotos) return; this.setData({ editTitle: event.detail.value }); },
+  onEditText(event: WechatMiniprogram.Input) { if (this.data.savingPhotos) return; this.setData({ editText: event.detail.value }); },
   onEditStory(event: WechatMiniprogram.Input) {
+    if (this.data.savingPhotos) return;
     const editStory = event.detail.value;
     this.setData({ editStory, ...storyGroupingState(this.data.storyOptions, editStory) });
   },
@@ -722,7 +831,7 @@ Page({
   confirmEditStoryCreation(afterConfirm?: () => void): boolean {
     const title = normalizeStoryName(this.data.storyCreateTitle);
     if (!title) return true;
-    if (this.data.savingEdit) return false;
+    if (this.data.savingPhotos || this.data.savingEdit || this.data.savingPhotos) return false;
     wx.showModal({
       title: "新建故事？",
       content: `没有找到同名故事。要新建「${title}」并把这段记忆放进去吗？`,
@@ -744,12 +853,13 @@ Page({
     const selected = original && memoryAiRevisions(original).find(revision => revision.id === this.data.selectedRevisionId);
     const documentChanged = original && (this.data.editTitle !== (selected?.title || original.title || "")
       || this.data.editText !== (selected?.text || original.text) || this.data.editStory !== contributionStoryTitle(original));
-    const chatChanged = this.data.chatInput.trim().length > 0 || this.data.chatMessages.some(message => message.role === "user");
+    const chatChanged = this.data.chatInput.trim().length > 0 || this.data.chatMessages.some(message => message.role === "user")
+      || this.data.documentWritingInstruction.trim().length > 0;
     return Boolean(documentChanged || chatChanged || this.data.previewOpen);
   },
   sendMemorySocial() {
     const original = this.editingOriginal;
-    if (!original || this.data.savingEdit || this.data.organizingPreview) return;
+    if (!original || this.data.savingPhotos || this.data.savingEdit || this.data.organizingPreview || this.data.xiaoyiLoading || this.data.chatAsking) return;
     if (this.hasUnsavedEditorWork()) {
       this.pendingMemorySocialSend = true;
       if (this.data.previewOpen) {
@@ -771,7 +881,7 @@ Page({
     wx.navigateTo({ url: "/packages/story-sharing/pages/social/index?" + query });
   },
   closeEditor() {
-    if (this.data.savingEdit) return;
+    if (this.data.savingPhotos || this.data.savingEdit || this.data.savingPhotos) return;
     if (this.hasUnsavedEditorWork()) {
       wx.showModal({ title: "放弃本次修改？", content: "尚未保存的正文和对话会清除，原来的记忆仍会保留。", success: result => { if (result.confirm) this.discardEditor(); } });
       return;
@@ -779,17 +889,18 @@ Page({
     this.discardEditor();
   },
   discardEditor() {
+    this.photoRequestId++;
     this.chatRequestId++;
     this.organizeRequestId++;
     this.openMemoryRequestId++;
     this.pendingMemorySocialSend = false;
     this.editingOriginal = undefined;
     this.resetArchiveXiaoyiState();
-    this.setData({ editingId: "", chatInput: "", chatMessages: [], previewOpen: false });
+    this.setData({ editingId: "", chatInput: "", documentWritingInstruction: "", chatMessages: [], previewOpen: false });
     this.onShow();
   },
   async saveEdit() {
-    if (this.data.savingEdit || this.data.organizingPreview || !this.editingOriginal) return;
+    if (this.data.savingPhotos || this.data.savingEdit || this.data.organizingPreview || !this.editingOriginal) return;
     if (!this.confirmEditStoryCreation(() => { void this.saveEdit(); })) return;
     this.setData({ savingEdit: true });
     const finish = startPerformanceMeasure("memory.save");
@@ -840,7 +951,7 @@ Page({
   },
 
   openXiaoyi() {
-    if (!this.data.editingId || this.data.savingEdit) return;
+    if (!this.data.editingId || this.data.savingEdit || this.data.savingPhotos) return;
     const text = this.data.editText.trim();
     const preview = text ? (text.length > 120 ? text.slice(0, 120) + "…" : text) : "这段记忆还没写正文，小忆会先从你接下来要说的话问起。";
     this.setData({ xiaoyiOpen: true, xiaoyiStatus: "", xiaoyiContextPreview: preview });
@@ -858,16 +969,18 @@ Page({
   xiaoyiContextText() {
     return this.data.editText.trim();
   },
+  xiaoyiContextKey() { return this.data.editingId + ":" + this.data.selectedRevisionId; },
   xiaoyiMessagesAppend,
   askXiaoyiQuestion,
   onXiaoyiAnswerInput,
   onXiaoyiDraftInput,
+  onXiaoyiWritingInstruction,
   useXiaoyiOriginal,
   organizeXiaoyiAnswer,
   useXiaoyiDraft,
   /** 就地小忆共享机制的落回目标：接到 editText 末尾，仍需点“保存修改”才真正持久化。 */
   async xiaoyiLand(text: string, kind: XiaoyiLandKind): Promise<boolean> {
-    if (!this.editingOriginal || this.data.savingEdit) return false;
+    if (!this.editingOriginal || this.data.savingEdit || this.data.savingPhotos) return false;
     const landed = normalizeMemoryText(text);
     const next = normalizeMemoryText([this.data.editText, landed].filter(Boolean).join("\n\n"));
     this.xiaoyiLandedAiText = kind === "organized" ? next : "";
@@ -891,7 +1004,7 @@ Page({
     wx.navigateTo({ url: "/pages/book/book?" + bookParam + "&chapterId=" + encodeURIComponent(event.currentTarget.dataset.chapter) });
   },
   organizeIntoBook() {
-    if (this.data.savingEdit) return;
+    if (this.data.savingPhotos || this.data.savingEdit || this.data.savingPhotos) return;
     const original = this.editingOriginal;
     if (original && (this.data.editTitle !== (original.title || "") || this.data.editText !== original.text || this.data.editStory !== contributionStoryTitle(original))) {
       wx.showToast({ title: "请先保存记忆修改，再整理进书", icon: "none" }); return;

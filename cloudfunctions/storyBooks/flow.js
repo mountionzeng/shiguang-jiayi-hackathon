@@ -449,7 +449,22 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       for(const id of imageRefs) {
         const image=await tx.get('story_images',id);
         const link=await tx.get('story_image_links',docId(ctx.familyId,core.hash(story.id+'|'+id)));
-        if(!image || image.familyId!==ctx.familyId || (image.storyId!==story.id && !(story.imageIds || []).includes(id) && link?.storyId!==story.id) || image.deletedAtMs!==undefined)throw Object.assign(new Error('书稿引用了不可用或其他故事的插图'),{code:'STORY_NOT_FOUND'});
+        let belongs = image && (image.storyId===story.id || (before?.imageIds || []).includes(id) || link?.storyId===story.id);
+        if (image?.memoryId && !belongs) {
+          const source = await tx.get('memories',docId(ctx.familyId,image.memoryId));
+          const owner = source?.authorMemberId ? await tx.get('family_members',docId(ctx.familyId,source.authorMemberId)) : undefined;
+          const reference = 'photo-ai-' + id.slice(id.lastIndexOf('_img_')+5);
+          const inChapter = newRevision.draft.chapters.some(chapter => chapter.memoryIds.includes(image.memoryId) && chapter.content.some(block => block.photoId===reference));
+          belongs = source?.familyId===ctx.familyId && !source.deletedAt && source.scope==='personal' && source.reviewStatus==='confirmed' &&
+            !source.sourcePolicyRequired && source.sourceIds===undefined && !source.sourceSystem &&
+            owner?.familyId===ctx.familyId && !owner.deletedAt && owner.kind!=='person' && (owner.role==='owner' || owner.relation==='自己') &&
+            story.memoryIds.includes(image.memoryId) && inChapter && (source.photoIds || []).includes(reference) &&
+            !image.storyId && image.purpose==='illustration' && !image.sourcePolicyRequired && image.sourceIds===undefined &&
+            image.requestId===reference.slice(9) && typeof image.fileID==='string' && image.fileID.startsWith('cloud://') &&
+            ['png','jpg','jpeg','webp'].some(ext=>image.fileID.endsWith(`/story-images/${ctx.familyId}/memory-${image.memoryId}/${image.requestId}.${ext}`));
+        }
+        if(!image || image.familyId!==ctx.familyId || !belongs || image.deletedAtMs!==undefined || (image.memoryId && image.moderation!=='pass'))throw Object.assign(new Error('书稿引用了不可用或其他故事的插图'),{code:'STORY_NOT_FOUND'});
+        if(image.memoryId && !link) await tx.set('story_image_links',docId(ctx.familyId,core.hash(story.id+'|'+id)),{familyId:ctx.familyId,storyId:story.id,imageId:id});
       }
       if(imageRefs.size)story.imageIds=[...new Set([...(story.imageIds || []),...imageRefs])];
       const nameId=docId(ctx.familyId,core.hash(story.title)),name=await tx.get('story_names',nameId);

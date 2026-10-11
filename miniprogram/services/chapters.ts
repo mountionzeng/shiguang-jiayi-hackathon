@@ -115,27 +115,30 @@ export function removeMemoryFromChapter(chapters: ManuscriptChapter[], memoryId:
   });
 }
 
-/** Puts a memory into one chapter and appends its original text once, preserving existing text and photos. */
+/** Puts a memory into one chapter and appends its original text and photos once, preserving existing content. */
 export function placeMemoryInChapter(
   chapters: ManuscriptChapter[],
-  memory: Pick<MemoryContribution, "id" | "text">,
+  memory: Pick<MemoryContribution, "id" | "text" | "photoIds">,
   chapterId: string,
 ): ManuscriptChapter[] {
   const target = chapters.find(chapter => chapter.id === chapterId);
   const next = assignMemory(chapters, memory.id, chapterId);
   const memoryText = memory.text.trim();
-  if (!target || !memoryText) return next;
+  if (!target) return next;
 
   return next.map(chapter => {
     if (chapter.id !== chapterId) return chapter;
     const existingText = chapter.content.map(item => item.text ?? "").join("");
-    if (existingText.includes(memoryText)) return chapter;
+    const existingPhotos = new Set(chapter.content.flatMap(item => item.photoId ? [item.photoId] : []));
+    const photos: ManuscriptContent[] = [...new Set(memory.photoIds ?? [])].filter(id => !existingPhotos.has(id))
+      .flatMap(photoId => [{ photoId }, { text: "\n" }] as ManuscriptContent[]);
+    if (existingText.includes(memoryText) && !photos.length) return chapter;
     const last = chapter.content[chapter.content.length - 1];
     const separator = !last ? "" : typeof last.text !== "string" ? "\n"
       : last.text.endsWith("\n\n") ? "" : last.text.endsWith("\n") ? "\n" : "\n\n";
     return {
       ...chapter,
-      content: [...chapter.content.map(item => ({ ...item })), { text: separator + memoryText + "\n" }],
+      content: [...chapter.content.map(item => ({ ...item })), ...(existingText.includes(memoryText) ? [] : [{ text: separator + memoryText + "\n" }]), ...photos],
       handEdited: true,
     };
   });
@@ -455,7 +458,7 @@ export function organizedChapterTitle(aiTitle: string) {
  * changes: its pictures stay after the new text in their order, the chosen memories move
  * into it, and every other chapter is copied unchanged.
  */
-export function applyOrganized(chapters: ManuscriptChapter[], targetId: string, organized: BiographyDraft, memoryIds: string[]) {
+export function applyOrganized(chapters: ManuscriptChapter[], targetId: string, organized: BiographyDraft, memoryIds: string[], memoryPhotoIds: string[] = []) {
   const creating = !chapters.some(chapter => chapter.id === targetId);
   let next = creating ? addChapter(chapters, organizedChapterTitle(organized.title), memoryIds) : chapters.map(copyChapter);
   const chapterId = creating ? next[next.length - 1].id : targetId;
@@ -466,6 +469,10 @@ export function applyOrganized(chapters: ManuscriptChapter[], targetId: string, 
     if (chapter.id !== chapterId) return chapter;
     keptPhotoIds = chapter.content.flatMap(item => item.photoId ? [item.photoId] : []);
     keptImages = chapter.content.filter(item => item.photoId).map(item => ({ ...item }));
+    const seen = new Set(keptPhotoIds);
+    for (const photoId of memoryPhotoIds) {
+      if (!seen.has(photoId)) { keptImages.push({ photoId }); seen.add(photoId); }
+    }
     const content: ManuscriptContent[] = [{ text: organized.paragraphs.join("\n\n") + "\n" }];
     for (const image of keptImages) content.push(image, { text: "\n" });
     const written = { ...chapter, title: chapter.title || organizedChapterTitle(organized.title), content, generationMode: organized.generationMode, generatedAt: organized.generatedAt };

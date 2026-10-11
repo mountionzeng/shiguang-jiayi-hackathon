@@ -12,7 +12,8 @@
     <button wx:if="{{!protectedCopy}}" class="tool-button" bindtap="togglePhotoMenu" disabled="{{!draft || panel || saving || generating || pickingPhoto || preparingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '照片'}}<text class="send-chevron">⌄</text></button>
     <button wx:if="{{!protectedCopy && storyImageSelected}}" class="tool-button" catchtouchstart="placeSelectedStoryImage" disabled="{{!editorReady || refreshingStoryImage || saving || generating || pickingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{refreshingStoryImage ? '准备插图' : '插入插图'}}</button>
     <button wx:if="{{!protectedCopy && view === 'contents'}}" class="tool-button send-toggle" bindtap="toggleSend" disabled="{{!draft || panel || preparingSend || generating || pickingPhoto}}">{{preparingSend ? '准备中' : '发送'}}<text class="send-chevron">⌄</text></button>
-    <button wx:elif="{{!protectedCopy}}" class="tool-button" catchtouchstart="openShareSelection" disabled="{{!draft || view !== 'chapter' || panel || saving || generating || pickingPhoto || !editorReady || sharingExcerpt}}">发给家人</button>
+    <button wx:elif="{{!protectedCopy && view !== 'chapter'}}" class="tool-button" catchtouchstart="openShareSelection" disabled="{{!draft || panel || saving || generating || pickingPhoto || sharingExcerpt}}">发给家人</button>
+    <button wx:if="{{!protectedCopy && view === 'chapter' && !storyImageSelected}}" class="tool-button chapter-create-short" data-action="new-chapter" bindtap="selectTool" disabled="{{saving || generating}}"><view class="action-icon icon-new" aria-hidden="true"></view>新建章</button>
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button save-button" bindtap="openAppendOwn" disabled="{{panel || appendingOwn}}">补充经历</button>
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button" bindtap="returnOwnExperience" disabled="{{panel || returningOwn || appendingOwn}}">{{returningOwn ? '发送中' : '发回原作者'}}</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}"><view class="action-icon icon-save" aria-hidden="true"></view>{{saving ? '保存中' : '保存'}}</button>
@@ -46,10 +47,12 @@
   <view class="top-tools" wx:if="{{moreOpen}}">
     <button wx:if="{{storyId && savedRevisionId && !editing}}" class="tool-button" data-action="invite" bindtap="selectTool">亲友阅读与权限</button>
     <button wx:if="{{storyId && savedRevisionId && !editing}}" class="tool-button" data-action="share-card" bindtap="selectTool">制作公开故事卡</button>
+    <button wx:if="{{storyId && savedRevisionId && !editing && !protectedCopy}}" class="tool-button" bindtap="deleteCurrentStory">删除整个故事（可恢复）</button>
     <button wx:if="{{protectedCopy && draft}}" class="tool-button" data-action="history" bindtap="selectTool"><view class="action-icon icon-history" aria-hidden="true"></view>历史版本</button>
     <button wx:if="{{editing}}" class="tool-button" data-action="copy-draft" bindtap="selectTool">复制当前正文</button>
     <button wx:if="{{editing}}" class="tool-button" data-action="discard" bindtap="selectTool"><view class="action-icon icon-undo" aria-hidden="true"></view>放弃修改</button>
-    <block wx:elif="{{!protectedCopy && view === 'chapter'}}">
+    <button wx:if="{{!protectedCopy && view === 'chapter'}}" class="tool-button" catchtouchstart="openShareSelection">发给家人</button>
+    <block wx:if="{{!protectedCopy && view === 'chapter'}}">
       <button class="tool-button" data-action="memories" bindtap="selectTool"><view class="action-icon icon-memories" aria-hidden="true"></view>本章记忆</button>
       <button class="tool-button" data-action="up" bindtap="selectTool"><view class="action-icon icon-up" aria-hidden="true"></view>上移本章</button>
       <button class="tool-button" data-action="down" bindtap="selectTool"><view class="action-icon icon-down" aria-hidden="true"></view>下移本章</button>
@@ -95,20 +98,25 @@
           <view class="field-label">书名</view>
           <input class="manuscript-title serif" value="{{editTitle}}" maxlength="80" bindinput="onEditTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{protectedCopy || saving || generating}}" placeholder="写一个标题" />
           <view class="contents-summary">{{chapterRows.length}} 章 · {{unassigned.length}} 段记忆还没写进</view>
-          <view class="contents-intro-label">内容简介<text wx:if="{{bookIntroduction}}"> · 摘自本书正文</text></view>
-          <view class="contents-introduction">{{bookIntroduction || '还没有正文。从一段记忆开始，慢慢写成这本书。'}}</view>
+          <view class="contents-intro-label"><text>内容简介<text wx:if="{{!protectedCopy}}"> · 可编辑</text></text><button wx:if="{{!protectedCopy && !editing}}" class="intro-edit" bindtap="editIntroduction">编辑</button></view>
+          <textarea wx:if="{{editing && view === 'contents'}}" class="contents-introduction contents-introduction-edit" value="{{editIntroduction}}" maxlength="500" auto-height bindinput="onEditIntroduction" placeholder="写几句话介绍这本故事" />
+          <view wx:else class="contents-introduction">{{bookIntroduction || '还没有正文。从一段记忆开始，慢慢写成这本书。'}}</view>
         </view>
       </view>
-      <view class="contents-section serif">目录</view>
-      <button class="chapter-row" wx:for="{{chapterRows}}" wx:key="id" data-id="{{item.id}}" bindtap="openChapter">
-        <text class="chapter-number">{{item.label}}</text>
-        <view class="chapter-copy">
-          <text class="chapter-name serif">{{item.title || '还没起名字'}}</text>
-          <text class="chapter-meta">{{item.memoryCount}} 段记忆 · {{item.photoCount}} 张图片</text>
+      <view class="contents-section serif"><text>目录</text><button wx:if="{{!protectedCopy}}" class="contents-add-inline" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新建章节</button></view>
+      <view wx:if="{{chapterRows.length > 1 && !protectedCopy}}" class="contents-count chapter-list-hint">按住右侧拖动排序 · 左滑删除</view>
+      <view wx:for="{{chapterRows}}" wx:key="id" class="chapter-swipe-row {{swipeOpenChapterId === item.id ? 'chapter-swipe-open' : ''}} {{draggingChapterId === item.id ? 'chapter-row-dragging' : ''}}" data-id="{{item.id}}" bindtouchstart="startChapterSwipe" bindtouchmove="moveChapterSwipe" bindtouchend="endChapterSwipe" bindtouchcancel="endChapterSwipe">
+        <button wx:if="{{chapterRows.length > 1 && !protectedCopy}}" class="chapter-delete-action" data-id="{{item.id}}" bindtap="deleteChapterFromContents">删除</button>
+        <view class="chapter-row chapter-row-content" data-id="{{item.id}}" bindtap="openChapter">
+          <text class="chapter-number">{{item.label}}</text>
+          <view class="chapter-copy">
+            <text class="chapter-name serif">{{item.title || '还没起名字'}}</text>
+            <text class="chapter-meta">{{item.memoryCount}} 段记忆 · {{item.photoCount}} 张图片</text>
+          </view>
+          <view wx:if="{{chapterRows.length > 1 && !protectedCopy}}" class="chapter-drag-handle" data-id="{{item.id}}" catchtouchstart="startChapterDrag" catchtouchmove="moveChapterDrag" catchtouchend="endChapterDrag" catchtouchcancel="endChapterDrag" aria-label="拖动调整章节顺序"><text>⠿</text></view>
+          <text class="chapter-arrow" aria-hidden="true">›</text>
         </view>
-        <text class="chapter-arrow" aria-hidden="true">›</text>
-      </button>
-      <button wx:if="{{!protectedCopy}}" class="tool-button add-chapter contents-add" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新开一章</button>
+      </view>
       <block wx:if="{{unassigned.length}}">
         <view class="contents-section serif">还没写进书的记忆<text class="contents-count">最近的在前</text></view>
         <view class="contents-memory" wx:for="{{unassigned}}" wx:key="id">
@@ -135,8 +143,9 @@
         <image class="chapter-backdrop" src="{{backdropUrl}}" mode="aspectFill" aria-label="AI 生成的本章底图" />
       </block>
       <view class="field-label">正文</view>
+      <view wx:if="{{!protectedCopy}}" class="panel-note">文字可以直接修改；点图片可删除，换图请用顶部「照片」入口。修改后点保存。</view>
       <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
-      <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{false}}" show-img-resize="{{false}}"></editor>
+      <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{!protectedCopy}}" show-img-resize="{{false}}"></editor>
       <button wx:if="{{!protectedCopy}}" class="xiaoyi-entry" catchtouchstart="openXiaoyi" disabled="{{saving || generating || pickingPhoto || !editorReady}}" aria-label="小忆">
         <image class="xiaoyi-entry-avatar" src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFill" aria-hidden="true" />
       </button>
@@ -163,7 +172,7 @@
       </view>
       <view class="xiaoyi-options">
         <button class="xiaoyi-option" data-mode="ask" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">问我一个问题</button>
-        <button class="xiaoyi-option" data-mode="write" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">帮我写一下</button>
+        <button class="xiaoyi-option" data-mode="compose" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">写成一段</button>
         <button class="xiaoyi-option" bindtap="openXiaoyiMemories" disabled="{{xiaoyiLoading}}">看看这一章的记忆</button>
       </view>
       <scroll-view class="xiaoyi-thread" scroll-y wx:if="{{xiaoyiMessages.length}}">
@@ -173,14 +182,16 @@
         </view>
       </scroll-view>
       <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+      <view class="xiaoyi-message-label">这次怎么写（可不填）</view>
+      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
       <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
       <view class="xiaoyi-status" wx:elif="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
       <view class="xiaoyi-actions">
         <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{xiaoyiLoading}}">就用我的原话</button>
-        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '请小忆整理'}}</button>
+        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '整理原话'}}</button>
       </view>
       <view wx:if="{{xiaoyiDraftText}}" class="xiaoyi-draft-box">
-        <view class="xiaoyi-message-label">整理稿，可以改</view>
+        <view class="xiaoyi-message-label">小忆草稿，可以改</view>
         <textarea class="xiaoyi-draft" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiDraftText}}" maxlength="800" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" bindinput="onXiaoyiDraftInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
         <button class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{xiaoyiLoading}}">把这段放进正文待确认</button>
       </view>
@@ -228,27 +239,45 @@
       </block>
       <block wx:if="{{panel === 'organize'}}">
         <view class="panel-title serif">把记忆写进故事</view>
-        <view class="panel-note">选好记忆和章节，再点底部“下一步”。</view>
+        <view class="panel-note">记忆各自保留。挑选、看看联系，再预览它们组成的故事。</view>
         <view class="field-label">写进哪个故事</view>
-        <radio-group bindchange="onOrganizeBook"><label class="memory-row" wx:for="{{organizeBooks}}" wx:key="id"><radio value="{{item.id}}" checked="{{organizeBookKey === item.id}}" disabled="{{generating || switchingBook}}" /><text class="memory-text">{{item.title}}</text><text class="version-date">{{item.detail}}</text></label></radio-group>
+        <radio-group bindchange="onOrganizeBook"><label class="memory-row" wx:for="{{organizeBooks}}" wx:key="id"><radio value="{{item.id}}" checked="{{organizeBookKey === item.id}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text class="memory-text">{{item.title}}</text><text class="version-date">{{item.detail}}</text></label></radio-group>
         <view class="panel-note">切换故事会保留你勾选的记忆。没有章节也可以新开一章。</view>
         <view class="field-label">1. 勾选要整理的记忆</view>
         <checkbox-group bindchange="onOrganizeMemories">
           <label class="memory-row" wx:for="{{organizeRows}}" wx:key="id">
-            <checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{generating || switchingBook}}" />
+            <checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{connectionSaving || generating || switchingBook}}" />
             <text class="memory-text">{{item.text}}</text>
             <text class="version-date">{{item.where}}</text>
           </label>
         </checkbox-group>
         <view wx:if="{{!organizeRows.length}}" class="panel-note">还没有可整理的记忆，请先记录一段经历。</view>
+        <view class="connection-panel" wx:if="{{organizeCount >= 2 || connectionReflection || connectionNotice}}">
+          <view class="field-label">放在一起，你想到了什么？</view>
+          <view class="panel-note">可以看一条线索，自己说说，也可以跳过。</view>
+          <button wx:if="{{writingMode === 'creative'}}" class="btn btn-ghost" bindtap="exploreConnections" loading="{{connectionBusy}}" disabled="{{connectionBusy || connectionSaving || generating || switchingBook || organizeCount < 2 || organizeCount > 8}}">让小忆一起看看</button>
+          <view wx:if="{{organizeCount > 8 && writingMode === 'creative'}}" class="panel-note">一次选 2—8 段来看联系；更多记忆仍可直接组合。</view>
+          <block wx:if="{{connection}}">
+            <view class="chapter-ai-label">小忆提供的线索 · 文字 AI 生成</view>
+            <view class="panel-note" wx:if="{{connection.observation}}">{{connection.observation}}</view>
+            <view class="connection-evidence" wx:for="{{connection.evidence}}" wx:key="memoryId">
+              <view class="field-label">{{item.title}}</view><text selectable>“{{item.quote}}”</text>
+            </view>
+            <view class="field-label">{{connection.question}}</view>
+            <button class="btn btn-ghost" bindtap="dismissConnection">我不觉得有关，先跳过</button>
+          </block>
+          <view class="panel-note">{{connectionNotice}}</view>
+          <textarea class="xiaoyi-answer" value="{{connectionReflection}}" maxlength="500" auto-height placeholder="只写你自己想到的，不必接受小忆的说法" bindinput="onConnectionReflection" disabled="{{connectionSaving}}" />
+          <button class="btn btn-ghost" bindtap="saveConnectionReflection" loading="{{connectionSaving}}" disabled="{{!connectionReflection || connectionSaving || generating || switchingBook}}">把我的想法存成一段记忆</button>
+        </view>
         <view class="field-label contents-label">2. 放进哪一章</view>
         <radio-group bindchange="onOrganizeTarget">
           <label class="memory-row" wx:for="{{chapterRows}}" wx:key="id">
-            <radio value="{{item.id}}" checked="{{organizeTarget === item.id}}" disabled="{{generating || switchingBook}}" />
+            <radio value="{{item.id}}" checked="{{organizeTarget === item.id}}" disabled="{{connectionSaving || generating || switchingBook}}" />
             <text class="memory-text">{{item.label}}{{item.title ? '　' + item.title : ''}}</text>
           </label>
           <label class="memory-row">
-            <radio value="new" checked="{{organizeTarget === 'new'}}" disabled="{{generating || switchingBook}}" />
+            <radio value="new" checked="{{organizeTarget === 'new'}}" disabled="{{connectionSaving || generating || switchingBook}}" />
             <text class="memory-text">新开一章</text>
           </label>
         </radio-group>
@@ -257,13 +286,17 @@
           <scroll-view class="chapter-original" scroll-y><text selectable>{{organizeOriginal || '这一章还没有正文'}}</text></scroll-view>
           <view class="field-label contents-label">3. 怎样放进去</view>
           <radio-group bindchange="onOrganizeMethod">
-            <label class="memory-row"><radio value="insert" checked="{{organizeMethod === 'insert'}}" disabled="{{generating || switchingBook}}" /><text>保留原文，插入这段记忆</text></label>
-            <label wx:if="{{writingMode === 'creative'}}" class="memory-row"><radio value="blend" checked="{{organizeMethod === 'blend'}}" disabled="{{generating || switchingBook}}" /><text>让 AI 结合本章重新衔接</text></label>
+            <label class="memory-row"><radio value="insert" checked="{{organizeMethod === 'insert'}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text>保留原文，插入这段记忆</text></label>
+            <label wx:if="{{writingMode === 'creative'}}" class="memory-row"><radio value="blend" checked="{{organizeMethod === 'blend'}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text>让 AI 结合本章重新衔接</text></label>
           </radio-group>
-          <picker wx:if="{{organizeMethod === 'insert'}}" range="{{insertionPoints}}" range-key="label" value="{{insertionIndex}}" bindchange="onInsertionPoint" disabled="{{generating || switchingBook}}">
+          <picker wx:if="{{organizeMethod === 'insert'}}" range="{{insertionPoints}}" range-key="label" value="{{insertionIndex}}" bindchange="onInsertionPoint" disabled="{{connectionSaving || generating || switchingBook}}">
             <view class="insertion-picker">插入位置：{{insertionPoints[insertionIndex].label}}　⌄</view>
           </picker>
           <view wx:else class="panel-note">AI 会读取整章原文与所选记忆，生成新的章节正文。请在下一步检查事实、语气和照片位置。</view>
+        </block>
+        <block wx:if="{{writingMode === 'creative' && (organizeTarget === 'new' || organizeMethod === 'blend')}}">
+          <view class="field-label contents-label">这一章怎么写（可不填）</view>
+          <textarea class="xiaoyi-answer" value="{{organizeWritingInstruction}}" maxlength="300" auto-height placeholder="例如：保留原来的开头，写得更口语，不用总结道理" bindinput="onOrganizeWritingInstruction" disabled="{{generating || saving || switchingBook}}" />
         </block>
         <view class="panel-note">下一步会将所选记忆收进故事并生成预览；确认后才写入正文，旧版本和原始记忆保留。</view>
       </block>
@@ -280,6 +313,15 @@
         </block>
         <textarea wx:else class="preview-editor" value="{{previewText}}" bindinput="onPreviewText" maxlength="20000" auto-height disabled="{{saving || confirmingOrganize}}" />
       </block>
+      <view wx:if="{{panel === 'organize-preview' && memoryPreviewPhotos.length}}" class="memory-preview-photos">
+        <view class="field-label">随记忆一起带入的配图 · {{memoryPreviewPhotos.length}} 张</view>
+        <view class="panel-note">写入后可以修改文字、移除图片；需要换图时，使用顶部「照片」入口。原始记忆保留。</view>
+        <view wx:for="{{memoryPreviewPhotos}}" wx:key="id" class="memory-preview-photo">
+          <image wx:if="{{item.path}}" class="book-photo" src="{{item.path}}" mode="widthFix" />
+          <view wx:else class="panel-note">图片暂未加载，写入时会保留原图引用。</view>
+          <view wx:if="{{item.ai}}" class="chapter-ai-label">AI 生成图片</view>
+        </view>
+      </view>
       <block wx:if="{{panel === 'sources'}}">
         <view class="panel-title serif">原始记忆 · {{sourceCount}}</view>
         <view class="panel-note">{{storageLabel}}</view>

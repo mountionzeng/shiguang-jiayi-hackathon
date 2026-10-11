@@ -113,6 +113,7 @@ function createStoryService(repo, options = {}) {
         ? { familyId: exportCtx.familyId, sourceKind: 'memory', memoryId: event.memoryId,
           ...(event.revisionId !== undefined ? { revisionId: event.revisionId } : {}),
           expectedSourceVersion: event.expectedSourceVersion,
+          ...(event.includePhotos !== undefined ? { includePhotos: event.includePhotos } : {}),
           ...(event.targetTextImageCount !== undefined ? { targetTextImageCount: event.targetTextImageCount } : {}) }
         : { familyId: exportCtx.familyId, storyId: event.storyId, revisionId: event.revisionId, expectedVersion: event.expectedVersion,
           scope: event.scope, chapterIds: event.chapterIds, ...(event.excerpt !== undefined ? { excerpt: event.excerpt } : {}),

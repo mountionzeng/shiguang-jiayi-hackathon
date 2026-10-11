@@ -81,10 +81,34 @@ test('pre-write failure prevents network; post-write failure leaves durable pend
   assert.equal([...second.records.values()][0].attempts[0].estimatedMicros, null);
   assert.equal(m.snapshot().recordingFailed, true);
 });
-test('disabled metering passes through without changing behavior or requiring a database', async () => {
-  const fetcher = async () => response();
+test('disabled metering preserves request and response behavior without requiring a database', async (t) => {
+  const providerResponse = response();
+  const options = { headers: { Authorization: 'private-credential' }, body: 'private-prompt' };
+  const calls = [];
+  const logs = [];
+  t.mock.method(console, 'info', (...args) => logs.push(args));
+  const fetcher = async (...args) => { calls.push(args); return providerResponse; };
   const m = createTextMeter({ fetcher, env: {} });
-  assert.equal(m.fetch, fetcher); assert.equal(m.snapshot(), null);
+  const result = await m.fetch(BASE, options);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], BASE);
+  assert.equal(calls[0][1], options);
+  assert.equal(result.ok, providerResponse.ok);
+  assert.equal(result.status, providerResponse.status);
+  assert.equal(result.headers, providerResponse.headers);
+  assert.deepEqual(await result.json(), await providerResponse.json());
+  assert.equal(m.snapshot(), null);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], 'TEXT_AI_STAGE_TIMING');
+  const timing = JSON.parse(logs[0][1]);
+  assert.equal(timing.meteringEnabled, false);
+  assert.equal(timing.pendingWriteMs, null);
+  assert.equal(timing.receiptWriteMs, null);
+  assert.ok(Number.isFinite(timing.providerMs) && timing.providerMs >= 0);
+  assert.doesNotMatch(JSON.stringify(logs), /private-|provider-id|completion-id|tokenhub/);
+  const failure = new Error('provider unavailable');
+  const failed = createTextMeter({ fetcher: async () => { throw failure; }, env: {} });
+  await assert.rejects(failed.fetch(BASE, options), error => error === failure);
 });
 test('history reads only the server-resolved migrated account, strips internal fields and rejects other apps/revoked accounts', async () => {
   const { db, records } = fixture();

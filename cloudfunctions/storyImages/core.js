@@ -43,6 +43,9 @@ const MESSAGES = {
 };
 
 const SCENE_FAILURE_MESSAGES = {
+  MEMORY_NOT_FOUND: "这段回忆已不可用于配图，请重新打开",
+  MEMORY_EMPTY: "先保存几句回忆，再请小忆配图",
+  REVISION_CHANGED: "文字已修改，请按新内容重新配图",
   SCENE_TIMEOUT: "读取章节超时，还没有开始画图，请稍后重试",
   SCENE_REQUEST_FAILED: "暂时无法读取章节画面，还没有开始画图，请稍后重试",
   SCENE_PARSE_FAILED: "没能提炼出这一章的画面，还没有开始画图，请稍后重试",
@@ -114,14 +117,16 @@ function normalizeSubmitInput(event) {
   const familyId = String(input.familyId || "").trim();
   const memberId = String(input.memberId || "").trim();
   const storyId = String(input.storyId || "").trim();
-  const chapterId = input.purpose === "cover" ? COVER_CHAPTER_ID : String(input.chapterId || "").trim();
+  const memoryId = input.memoryId === undefined ? "" : String(input.memoryId).trim();
+  if (input.memoryId !== undefined && (typeof input.memoryId !== "string" || !/^[0-9A-Za-z_-]{1,160}$/.test(memoryId) || storyId || memberId || (input.purpose && input.purpose !== "illustration"))) throw new StoryImageError("INVALID_MEMORY", "记忆配图来源无效");
+  const chapterId = memoryId ? "memory" : input.purpose === "cover" ? COVER_CHAPTER_ID : String(input.chapterId || "").trim();
   const requestId = String(input.requestId || "").trim();
   const purpose = String(input.purpose || "illustration");
   const referenceImageId = String(input.referenceImageId || "").trim();
   const referencePhotoIds = normalizeReferencePhotoIds(input.referencePhotoIds);
   const phoneReferencePhotoIds = normalizeReferencePhotoIds(input.phoneReferencePhotoIds);
   const artDirection = normalizeArtDirection(input.artDirection);
-  if (!ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
+  if (!memoryId && !ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
   if (!ID_PATTERN.test(chapterId)) throw new StoryImageError("INVALID_CHAPTER", "章节信息不完整");
   if (!REQUEST_ID_PATTERN.test(requestId)) throw new StoryImageError("INVALID_REQUEST", "请求编号无效，请重试");
   if (!PURPOSES.includes(purpose)) throw new StoryImageError("INVALID_PURPOSE", "不支持这种配图");
@@ -156,7 +161,7 @@ function normalizeSubmitInput(event) {
     }
     return { familyId, memberId: "", storyId, chapterId, requestId, purpose, referenceImageId: "", referenceImageIds, referencePhotoIds, phoneReferencePhotoIds, artDirection };
   }
-  return { familyId, memberId, storyId, chapterId, requestId, purpose, referenceImageId, referencePhotoIds, phoneReferencePhotoIds, artDirection };
+  return { familyId, memberId, storyId, ...(memoryId ? { memoryId } : {}), chapterId, requestId, purpose, referenceImageId, referencePhotoIds, phoneReferencePhotoIds, artDirection };
 }
 
 function normalizeMemberInput(event) {
@@ -717,6 +722,7 @@ function sweepAction(job, nowMs) {
 function publicJob(job) {
   return {
     jobId: job._id,
+    ...(job.memoryId ? { memoryId: job.memoryId } : {}),
     status: job.status,
     message: (job.status === "failed" && SCENE_FAILURE_MESSAGES[job.errorCode]) || MESSAGES[job.status] || "",
     chapterId: job.chapterId,
@@ -733,6 +739,7 @@ function publicJob(job) {
 function publicImage(image, url) {
   return {
     imageId: image._id,
+    ...(image.memoryId ? { memoryId: image.memoryId } : {}),
     chapterId: image.chapterId || "",
     purpose: image.purpose,
     url: url || "",

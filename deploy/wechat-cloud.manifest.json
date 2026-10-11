@@ -89,7 +89,10 @@
         "STORY_EXCERPT_SHARING_ENABLED",
         "STORY_SHARED_EDIT_ENABLED",
         "STORY_COPY_RECEIVE_ENABLED",
-        "STORY_SHARE_CARD_ENABLED"
+        "STORY_SHARE_CARD_ENABLED",
+        "AI_PAID_MODERATION_ENABLED",
+        "AI_MODERATION_TENCENT_BIZ_TYPE",
+        "AI_MODERATION_TENCENT_REGION"
       ],
       "databaseRulesFile": "deploy/story-sharing/database.rules.json",
       "storageRulesFile": "deploy/story-sharing/storage.rules.json"
@@ -155,7 +158,10 @@
         "TOKENHUB_BASE_URL",
         "VISION_API_KEY",
         "VISION_BASE_URL",
-        "VISION_MODEL"
+        "VISION_MODEL",
+        "AI_PAID_MODERATION_ENABLED",
+        "AI_MODERATION_TENCENT_BIZ_TYPE",
+        "AI_MODERATION_TENCENT_REGION"
       ],
       "timerTriggers": [
         "sweepImageJobs: every minute"

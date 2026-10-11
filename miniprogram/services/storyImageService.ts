@@ -26,6 +26,7 @@ export interface PhotoCaptionResult {
 }
 
 export interface StoryImageJob {
+  memoryId?: string;
   jobId: string;
   status: StoryImageStatus;
   message: string;
@@ -40,6 +41,7 @@ export interface StoryImageJob {
 }
 
 export interface StoryImage {
+  memoryId?: string;
   imageId: string;
   chapterId: string;
   purpose: string;
@@ -153,11 +155,11 @@ function isJob(value: unknown): value is StoryImageJob {
   return Boolean(job && typeof job.jobId === "string" && typeof job.status === "string" && typeof job.message === "string");
 }
 
-async function submitChapterImage(input: { storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string; referencePhotoIds?: string[]; phoneReferencePhotoIds?: string[]; artDirection?: string }): Promise<StoryImageJob> {
+async function submitChapterImage(input: { memoryId?: string; storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string; referencePhotoIds?: string[]; phoneReferencePhotoIds?: string[]; artDirection?: string }): Promise<StoryImageJob> {
   if (!await requestAiConsent()) {
-    throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图要把这一章的文字发给 AI 服务");
+    throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图需要读取已保存的文字");
   }
-  let capabilities: { referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown } | undefined;
+  let capabilities: { memoryImages?: unknown; referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown } | undefined;
   const loadCapabilities = async (unavailable: () => StoryImageServiceError) => {
     try {
       if (!capabilities) capabilities = await callStoryImages("capabilities", {});
@@ -165,8 +167,12 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
       if (error instanceof StoryImageServiceError && error.code === "UNKNOWN_ACTION") throw unavailable();
       throw error;
     }
-    return capabilities as { referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown };
+    return capabilities as { memoryImages?: unknown; referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown };
   };
+  if (input.memoryId) {
+    const supported = await loadCapabilities(() => new StoryImageServiceError('MEMORY_IMAGES_UNAVAILABLE', '记忆配图服务正在更新，请稍后再试'));
+    if (supported.memoryImages !== true) throw new StoryImageServiceError('MEMORY_IMAGES_UNAVAILABLE', '记忆配图服务正在更新，请稍后再试');
+  }
   const referencePhotoIds = [...new Set((input.referencePhotoIds || []).map(id => String(id || "").trim()).filter(Boolean))].slice(0, 3);
   const phoneReferencePhotoIds = (input.phoneReferencePhotoIds || []).filter(id => referencePhotoIds.includes(id));
   if (input.referenceImageId) {
@@ -198,7 +204,7 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
   }
   await prepareReferencePhotos(referencePhotoIds);
   const result = await callStoryImages<{ job?: unknown }>("submit", {
-    ...(input.storyId ? { storyId: input.storyId } : { memberId: input.memberId || "" }),
+    ...(input.memoryId ? {memoryId: input.memoryId} : input.storyId ? { storyId: input.storyId } : { memberId: input.memberId || "" }),
     chapterId: input.chapterId,
     requestId: input.requestId ?? newImageRequestId(),
     purpose: input.purpose,
@@ -207,7 +213,7 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
     ...(input.artDirection?.trim() ? { artDirection: input.artDirection.trim() } : {}),
   });
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
-  if (result.job.chapterId !== input.chapterId || result.job.purpose !== input.purpose) {
+  if (result.job.memoryId !== input.memoryId || result.job.chapterId !== input.chapterId || result.job.purpose !== input.purpose) {
     throw new StoryImageServiceError("REQUEST_CONFLICT", "这次配图对应的章节已经变化，请重新操作");
   }
   if (input.referenceImageId && (result.job.referenceApplied !== true || result.job.referenceImageId !== input.referenceImageId)) {
@@ -227,14 +233,15 @@ async function submitChapterImage(input: { storyId?: string; memberId?: string; 
 
 const bookScope = (bookId?:string) => bookId?.startsWith('story-') ? {storyId:bookId} : (bookId ? {memberId:bookId} : {});
 
-async function checkImageJob(jobId: string,bookId?:string): Promise<{ job: StoryImageJob; image?: StoryImage }> {
-  const result = await callStoryImages<{ job?: unknown; image?: StoryImage }>("status", { jobId,...bookScope(bookId) });
+async function checkImageJob(jobId: string,bookId?:string,memoryId?:string): Promise<{ job: StoryImageJob; image?: StoryImage }> {
+  const result = await callStoryImages<{ job?: unknown; image?: StoryImage }>("status", { jobId,...(memoryId ? {memoryId} : bookScope(bookId)) });
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
+  if (memoryId && result.job.memoryId !== memoryId) throw new StoryImageServiceError("MALFORMED", "配图来源不一致，请重新打开");
   return { job: result.job, image: result.image };
 }
 
-async function listStoryImages(bookId: string): Promise<StoryImageList> {
-  const result = await callStoryImages<Partial<StoryImageList>>("list", bookId.startsWith("story-") ? { storyId: bookId } : { memberId: bookId });
+async function listStoryImages(bookId: string, memoryId?: string): Promise<StoryImageList> {
+  const result = await callStoryImages<Partial<StoryImageList>>("list", memoryId ? {memoryId} : bookId.startsWith("story-") ? { storyId: bookId } : { memberId: bookId });
   if (!Array.isArray(result.images) || !Array.isArray(result.pending) || !result.usage || !result.limits) {
     throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
   }
@@ -271,6 +278,10 @@ async function removeStoryImage(imageId: string,bookId?:string): Promise<void> {
 
 /** Pages call through this object so page tests can stand in for the cloud. */
 export const storyImageApi = {
+  async selectMemoryImage(memoryId: string, imageId: string, remove = false): Promise<void> {
+    const result = await callStoryImages<{ok?: boolean}>('selectMemoryImage', {memoryId, imageId, remove});
+    if (result.ok !== true) throw new StoryImageServiceError('MALFORMED', '配图未确认保存，请重新打开核对');
+  },
   captionPhotos,
   submitChapterImage,
   checkImageJob,

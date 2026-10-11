@@ -1,7 +1,7 @@
 import { illustrationAnchor, illustrationPoints, IllustrationPoint, saveChapterIllustration } from "../../services/chapterIllustrations";
 import { saveChapterBackdrop } from "../../services/chapterBackdrop";
 import { chapterLabel, chaptersOf } from "../../services/chapters";
-import { FamilyRoomState, isRecordingProfile, ManuscriptChapter } from "../../domain/biography";
+import { FamilyRoomState, isRecordingProfile, ManuscriptChapter, memoryPool } from "../../domain/biography";
 import { currentManuscript } from "../../services/manuscript";
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst } from "../../services/roomRepository";
 import {
@@ -55,7 +55,7 @@ const imageLimitLabel = (limits: { daily: number | null; book: number | null; un
  */
 Page({
   data: {
-    storyId: "", memberId: "", bookTitle: "", focusChapterId: "", focusPurpose: "" as "" | "illustration" | "backdrop",
+    memoryId: "", storyId: "", memberId: "", bookTitle: "", focusChapterId: "", focusPurpose: "" as "" | "illustration" | "backdrop",
     groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
@@ -77,10 +77,15 @@ Page({
   pollTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   requestedMemberId: "",
   requestedStoryId: "",
+  requestedMemoryId: "",
   referenceBookId: "",
 
-  onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; purpose?: string } = {}) {
+  onLoad(options: { memoryId?: string; storyId?: string; memberId?: string; chapterId?: string; purpose?: string } = {}) {
     this.unloaded = false;
+    if (options.memoryId) {
+      try { this.requestedMemoryId = decodeURIComponent(options.memoryId); } catch { this.requestedMemoryId = '!invalid'; }
+      this.setData({memoryId:this.requestedMemoryId, focusChapterId:'memory', focusPurpose:'illustration'});
+    }
     if (options.memberId) {
       try { this.requestedMemberId = decodeURIComponent(options.memberId); } catch { this.requestedMemberId = ""; }
     }
@@ -110,6 +115,32 @@ Page({
     if (imagesOnly && (this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId)) return;
     const refreshId = ++this.refreshId;
     const state = imagesOnly && this.roomState ? this.roomState : await loadRoomStateRemoteFirst();
+    if (this.requestedMemoryId) {
+      const memory = memoryPool(state.contributions).find(item => item.id === this.requestedMemoryId);
+      if (!memory) throw new Error('这段记忆已不可用，请返回记忆列表');
+      const list = await storyImageApi.listStoryImages('', memory.id);
+      if (this.unloaded || refreshId !== this.refreshId) return;
+      this.roomState = state;
+      this.activeJobIds = list.pending.filter(isActiveJob).map(job => job.jobId);
+      this.pendingImageChecks = list.images.some(image => image.moderation === 'pending' || image.quality === 'pending');
+      if (!this.activeJobIds.length && !this.pendingImageChecks) this.pollStartedAt = 0;
+      const refs = new Set(memory.photoIds || []);
+      const referencePhotoIds = (memory.photoIds || []).filter(id => LOCAL_PHOTO_ID.test(id)).slice(0,3);
+      this.setData({memoryId:memory.id, bookTitle:memory.title || '一段回忆',
+        groups:[{id:'memory', label:'这段回忆', title:memory.title || '', backdropImageId:'', backdropMissing:false,
+          referencePhotoIds, referencePhotoLabel:referencePhotoIds.length ? `默认参考这段回忆的${referencePhotoIds.length}张照片，可关闭` : '可以选参考照片，也可以只根据回忆文字生成',
+          images:list.images.map(image => card(image, '', refs)), pending:list.pending.map(jobRow)}],
+        useChapterPhotos:{...this.data.useChapterPhotos, memory:this.data.useChapterPhotos.memory ?? referencePhotoIds.length > 0},
+        otherImages:[], usageLabel:`共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
+        limitsLabel:'生成成功会产生供应商用量和费用。', loading:false, loadError:''});
+      const selected = this.data.preview;
+      if (selected) {
+        const latest = this.data.groups[0].images.find(image => image.imageId === selected.imageId);
+        this.setData({preview:latest ? {...latest, chapterId:'memory'} : null});
+      }
+      this.schedulePoll();
+      return;
+    }
     const story = this.requestedStoryId ? activeStory(state, this.requestedStoryId) : undefined;
     const member = story ? undefined : (this.requestedMemberId
       ? state.members.find(item => item.id === this.requestedMemberId && isRecordingProfile(item))
@@ -139,7 +170,7 @@ Page({
         return {
           id: chapter.id, label: chapterLabel(index + 1), title: chapter.title, backdropImageId,
           referencePhotoIds,
-          referencePhotoLabel: referencePhotoIds.length ? `可选参考本章 ${referencePhotoIds.length} 张照片` : "本章没有正文照片，可从手机选择或只根据文字生成",
+          referencePhotoLabel: referencePhotoIds.length ? `默认参考本章 ${referencePhotoIds.length} 张照片，可关闭` : "本章没有正文照片，可从手机选择或只根据文字生成",
           // The chosen picture was deleted or failed the platform check.
           backdropMissing: !!backdropImageId && !listed.has(backdropImageId),
           images: list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
@@ -151,6 +182,8 @@ Page({
       usageLabel: `共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
       limitsLabel: imageLimitLabel(list.limits),
       phoneReferences: Object.fromEntries(Object.entries(phoneReferences).filter(([id]) => chapterIds.has(id))),
+      useChapterPhotos: Object.fromEntries(chapters.map(chapter => [chapter.id,
+        this.data.useChapterPhotos[chapter.id] ?? chapterReferencePhotoIds(chapter).length > 0])),
       loading: false,
       loadError: "",
     });
@@ -186,7 +219,7 @@ Page({
         if (this.unloaded || this.hidden) return;
         await Promise.all(jobs.slice(offset, offset + 2).map(async jobId => {
           try {
-            const { job } = await storyImageApi.checkImageJob(jobId, this.data.storyId || this.data.memberId);
+            const { job } = await storyImageApi.checkImageJob(jobId, this.data.storyId || this.data.memberId, this.data.memoryId || undefined);
             if (this.unloaded || this.hidden) return;
             this.setData({
               groups: this.data.groups.map(group => ({ ...group,
@@ -221,11 +254,11 @@ Page({
     const referencePhotoIds = [...new Set([...phoneIds, ...(this.data.useChapterPhotos[chapterId] ? group?.referencePhotoIds || [] : [])])].slice(0, 3);
     this.setData({
       submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"),
-      notice: "正在读取这一章，准备配图…", noticeChapterId: chapterId,
+      notice: this.data.memoryId ? "正在读取这段回忆，准备配图…" : "正在读取这一章，准备配图…", noticeChapterId: chapterId,
     });
     try {
       const job = await storyImageApi.submitChapterImage({
-        ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
+        ...(this.data.memoryId ? {memoryId:this.data.memoryId} : this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
         ...(referenceImageId ? { referenceImageId } : {}),
         ...(!referenceImageId && referencePhotoIds.length ? { referencePhotoIds,
           ...(phoneIds.length ? { phoneReferencePhotoIds: phoneIds.filter(id => referencePhotoIds.includes(id)) } : {}) } : {}),
@@ -284,7 +317,7 @@ Page({
   async setBackdrop(event: { currentTarget: { dataset: { chapter: string; image?: string } } }) {
     const chapterId = event.currentTarget.dataset.chapter;
     const imageId = event.currentTarget.dataset.image ?? "";
-    if (this.data.savingBackdrop || this.data.savingPlacement || this.data.removingId || this.data.submitting || !chapterId) return;
+    if (this.data.memoryId || this.data.savingBackdrop || this.data.savingPlacement || this.data.removingId || this.data.submitting || !chapterId) return;
     ++this.refreshId;
     this.setData({ savingBackdrop: true, notice: "", noticeChapterId: chapterId });
     try {
@@ -321,17 +354,18 @@ Page({
   async savePlacement(event: { currentTarget?: { dataset?: { remove?: boolean | string } } } = {}) {
     const image = this.data.preview, point = this.data.placementOptions[this.data.placementIndex];
     const remove = event.currentTarget?.dataset?.remove === true || event.currentTarget?.dataset?.remove === 'true';
-    if (!image || image.isBackdrop || (!remove && (!point || !image.referenceReady)) || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
+    if (!image || image.isBackdrop || (!remove && ((!this.data.memoryId && !point) || !image.referenceReady)) || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
     ++this.refreshId;
     this.setData({ savingPlacement: true, previewNotice: '' });
     try {
-      await saveChapterIllustration({ ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }),
+      if (this.data.memoryId) await storyImageApi.selectMemoryImage(this.data.memoryId, image.imageId, remove);
+      else await saveChapterIllustration({ ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }),
         chapterId: image.chapterId, imageId: image.imageId, after: point?.after || null, remove });
       if (this.unloaded) return;
       await this.refresh();
       const latest = this.data.groups.find(group => group.id === image.chapterId)?.images.find(item => item.imageId === image.imageId);
       if (latest) this.updatePreviewImage(latest, image.chapterId);
-      this.setData({ previewNotice: remove ? '已从正文移除，原图仍保留' : '位置已保存，回到书稿就能看到' });
+      this.setData({ previewNotice: this.data.memoryId ? (remove ? '已从这段记忆移除，原图仍保留' : '已加入这段记忆，返回就能看到') : remove ? '已从正文移除，原图仍保留' : '位置已保存，回到书稿就能看到' });
     } catch (error) {
       // Refresh the paragraph choices after a stale anchor/version, without silently choosing a different position.
       await this.refresh().catch(() => undefined);
@@ -344,6 +378,10 @@ Page({
   },
   updatePreviewImage(image: ImageCard, chapterId: string) {
     if (!this.roomState) return;
+    if (this.data.memoryId) {
+      this.setData({preview:{...image, chapterId}, placementOptions:[], placementIndex:0});
+      return;
+    }
     const current = currentManuscript(this.roomState, this.data.storyId || this.data.memberId);
     const content = current.draft && chaptersOf(current.draft, current.sourceFingerprint).find(item => item.id === chapterId)?.content || [];
     const options = illustrationPoints(content, image.imageId);

@@ -26,14 +26,17 @@ export function chapterInsertionPoints(content: ManuscriptContent[]): ChapterIns
   return points;
 }
 
-export function insertChapterText(content: ManuscriptContent[], pointId: string, text: string): ManuscriptContent[] {
+export function insertChapterText(content: ManuscriptContent[], pointId: string, text: string, photoIds: string[] = []): ManuscriptContent[] {
   const point = chapterInsertionPoints(content).find(item => item.id === pointId);
   if (!point) throw new Error("插入位置已变动，请重新选择");
   const added = text.trim();
-  if (!added) throw new Error("请写下要插入的文字");
+  if (!added && !photoIds.length) throw new Error("请写下要插入的文字或选择带图的记忆");
   const next = content.map(item => ({ ...item }));
-  if (pointId === "start") return [{ text: added + "\n\n" }, ...next];
-  if (pointId === "end") return [...next, { text: "\n\n" + added + "\n" }];
+  const existing = new Set(content.flatMap(item => item.photoId ? [item.photoId] : []));
+  const photos: ManuscriptContent[] = [...new Set(photoIds)].filter(id => !existing.has(id))
+    .flatMap(photoId => [{ photoId }, { text: "\n" }] as ManuscriptContent[]);
+  if (pointId === "start") return [{ text: added + "\n\n" }, ...photos, ...next];
+  if (pointId === "end") return [...next, { text: "\n\n" + added + "\n" }, ...photos];
   const block = next[point.contentIndex];
   if (typeof block.text !== "string") throw new Error("插入位置已变动，请重新选择");
   // Existing characters, formatting delimiters and image order all survive unchanged.
@@ -42,6 +45,7 @@ export function insertChapterText(content: ManuscriptContent[], pointId: string,
   const parts: ManuscriptContent[] = [];
   if (before) parts.push({ ...block, text: before });
   parts.push({ text: (before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n") + added + "\n\n" });
+  parts.push(...photos);
   if (after) parts.push({ ...block, text: after });
   next.splice(point.contentIndex, 1, ...parts);
   return next;

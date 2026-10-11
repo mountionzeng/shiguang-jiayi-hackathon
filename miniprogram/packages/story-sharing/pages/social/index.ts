@@ -27,6 +27,7 @@ Page({
   data: {
     loading: false, checking: false, exportBusy: false, albumSaving: false, sharingIndex: -1, exportAvailable: false, capabilityKnown: false,
     layout: 'pages' as ImageLayoutMode, fontSize: 32 as ImageFontSize, canvasHeight: 1080,
+    includeMemoryPhotos: true, memoryPhotoCount: 0,
     imagePaths: [] as string[], savedIndices: [] as number[], renderProgress: '', coverImageCount: 0,
     notice: '', title: '', coverUrl: '', coverNotice: '',
     sourceKind: 'story' as 'story' | 'memory',
@@ -98,7 +99,7 @@ Page({
     const epoch = ++this.epoch;
     this.snapshot = undefined; this.memorySource = undefined; this.resetImages();
     this.setData({ loading: true, exportAvailable: false, capabilityKnown: false, notice: '', title: '', sourceKind: 'memory',
-      chapters: [], coverUrl: '', coverNotice: '记忆分享暂不生成 AI 封面', selectedText: '', selectedCount: 0, characterCount: 0,
+      memoryPhotoCount: 0, chapters: [], coverUrl: '', coverNotice: '', selectedText: '', selectedCount: 0, characterCount: 0,
       preview: false, previewChapters: [], editorReady: false, textChapterIndex: 0 });
     try {
       if (!this.expectedMemory) throw new Error('请从记忆页面重新进入发送');
@@ -106,7 +107,7 @@ Page({
       if (this.hidden || epoch !== this.epoch) return;
       this.memorySource = result.source;
       const chapter = this.memoryChapter(result.source);
-      this.setData({ title: result.source.title || '一段记忆', chapters: [{ ...chapter, checked: true }] });
+      this.setData({ memoryPhotoCount: result.source.photoIds?.length || 0, title: result.source.title || '一段记忆', chapters: [{ ...chapter, checked: true }] });
       this.updateSelection();
       void this.checkExportCapability(epoch);
     } catch (error) {
@@ -273,6 +274,11 @@ Page({
       if (!this.hidden && epoch === this.epoch) this.setData({ checking: false });
     }
   },
+  toggleMemoryPhotos() {
+    if (this.busy()) return;
+    this.resetImages();
+    this.setData({ includeMemoryPhotos: !this.data.includeMemoryPhotos });
+  },
   busy() { return this.data.checking || this.data.exportBusy || this.data.albumSaving || this.data.sharingIndex >= 0; },
   async checkExportCapability(epoch: number) {
     try {
@@ -359,7 +365,7 @@ Page({
         coverImageIds: this.data.selectedCoverImageIds,
         targetTextImageCount: this.data.targetTextImageCount,
       })
-        : memoryBookExportSelection(source as MemoryExportSource, { targetTextImageCount: this.data.targetTextImageCount });
+        : memoryBookExportSelection(source as MemoryExportSource, { targetTextImageCount: this.data.targetTextImageCount, includePhotos: this.data.includeMemoryPhotos });
       this.setData({ renderProgress: '正在准备所选内容…' });
       const preview = await bookExportApi.preview(selection); if (!active()) return;
       this.setData({ renderProgress: '正在读取封面和底图…' });
@@ -385,7 +391,7 @@ Page({
       if (!active()) { removeImageFiles(paths); return; }
       if (checked.descriptor.id !== material.descriptor.id) throw new Error('预览已变化，请重新生成');
       this.descriptor = material.descriptor; this.exportSelection = selection;
-      this.setData({ imagePaths: paths, savedIndices: [], coverImageCount: Math.max(1, material.descriptor.coverImageIds?.length || 0),
+      this.setData({ imagePaths: paths, savedIndices: [], coverImageCount: source ? material.descriptor.photoIds?.length || 0 : Math.max(1, material.descriptor.coverImageIds?.length || 0),
         notice: '请检查下面的全部图片，再保存到相册。' });
     } catch (error) {
       removeImageFiles(paths);

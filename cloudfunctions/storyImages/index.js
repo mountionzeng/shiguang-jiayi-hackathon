@@ -1,4 +1,5 @@
 const cloud = require("wx-server-sdk");
+const {memoryId, memorySource, assertMemoryImage} = require("./memory");
 const { createAigcMetadataWriter } = require("./aigcMetadata");
 const { StoryImageError, assertUnrestrictedStory, chapterSource, bookSource, draftReferencesStoryImage, textHash } = require("./core");
 const { createCoverServices, coverSelectionPatch } = require("./cover");
@@ -91,7 +92,43 @@ async function getTransactionDoc(transaction,collectionName,id) {
   catch(error) { if(isMissing(error))return undefined; throw error; }
 }
 
+async function readMemorySource(reader, familyId, id) {
+  memoryId(id);
+  const isOwner = row => row && row.familyId === familyId && !row.deletedAt && row.kind !== 'person' && (row.relation === '自己' || row.role === 'owner');
+  let owner = await reader('family_members', `${familyId}_owner`);
+  if (!isOwner(owner)) {
+    const candidate = (await loadAll('family_members', {familyId})).find(isOwner);
+    // Re-read through the supplied reader so transactions track the permission record too.
+    owner = candidate?._id ? await reader('family_members', candidate._id) : undefined;
+  }
+  const ownerId = isOwner(owner) ? owner.memberId || owner.id : undefined;
+  const record = await reader(MEMORIES, `${familyId}_${id}`);
+  return {record, source: memorySource(record, ownerId, familyId, id)};
+}
+function assertMemoryUnchanged(source, job) {
+  if (source.fullTextHash !== job.source.textHash || (job.source.photoHash && source.photoHash !== job.source.photoHash))
+    throw new StoryImageError('REVISION_CHANGED', '这段记忆已有修改，请重新配图');
+}
+
 const repo = {
+  async getMemorySource(familyId, id) { return (await readMemorySource(getDoc, familyId, id)).source; },
+  async assertMemoryImageSource(job) {
+    const source = await repo.getMemorySource(job.familyId, job.memoryId);
+    assertMemoryUnchanged(source, job);
+  },
+  async createJobForMemory(id, job) {
+    return db.runTransaction(async tx => {
+      const reader = (collection, key) => getTransactionDoc(tx, collection, key);
+      const existing = await reader(JOBS, id);
+      if (existing) return existing;
+      const {source} = await readMemorySource(reader, job.familyId, job.memoryId);
+      assertMemoryUnchanged(source, job);
+      await tx.collection(JOBS).doc(id).set({data:withoutId(job)});
+      return undefined;
+    });
+  },
+  listMemoryImages: (familyId, memoryId) => loadAll(IMAGES, {familyId, memoryId, deletedAtMs: _.exists(false)}),
+  listMemoryJobs: (familyId, memoryId, sinceMs) => loadAll(JOBS, {familyId, memoryId, createdAtMs: _.gte(sinceMs)}),
   async listStoryMemories(familyId, story) {
     const ids = [...new Set(Array.isArray(story?.memoryIds) ? story.memoryIds : [])]
       .filter(id => typeof id === "string" && id.length <= 120);
@@ -358,6 +395,44 @@ const diagnostics = createDiagnostics({
   expectedToken: process.env.STORY_IMAGES_DIAGNOSE_TOKEN,
 });
 
+async function selectMemoryImage(ctx, event) {
+  require('./core').requireOwner(ctx.openid, event.familyId);
+  const id = memoryId(event.memoryId);
+  if (typeof event.imageId !== 'string' || !event.imageId.startsWith(`${event.familyId}_img_req-`)) throw new StoryImageError('IMAGE_NOT_FOUND','没找到这张图');
+  return db.runTransaction(async tx => {
+    const reader = (collection, key) => getTransactionDoc(tx, collection, key);
+    const {record, source} = await readMemorySource(reader, event.familyId, id);
+    const image = await reader(IMAGES, event.imageId);
+    const ref = 'photo-ai-' + event.imageId.slice(event.imageId.lastIndexOf('_img_') + 5);
+    const before = Array.isArray(record.photoIds) ? record.photoIds : [];
+    if (event.remove !== true) {
+      assertMemoryImage(image, event.familyId, id);
+      if (!before.includes(ref) && image.sourceTextHash !== source.fullTextHash) throw new StoryImageError('REVISION_CHANGED','文字已修改，请按新内容重新配图');
+    } else if (!image || image.familyId !== event.familyId || image.memoryId !== id) throw new StoryImageError('IMAGE_NOT_FOUND','没找到这张图');
+    const photoIds = event.remove === true ? before.filter(item => item !== ref) : [...new Set([...before, ref])];
+    if (photoIds.length > 9) throw new StoryImageError('IMAGE_LIMIT', '一段记忆最多放9张图，请先移除一张');
+    await tx.collection(MEMORIES).doc(`${event.familyId}_${id}`).update({data:{photoIds, updatedAt:db.serverDate()}});
+    return {ok:true, photoIds};
+  });
+}
+async function readMemoryImage(ctx, event) {
+  require('./core').requireOwner(ctx.openid, event.familyId);
+  const load = async () => {
+    const image = typeof event.imageId === 'string' && event.imageId.startsWith(`${event.familyId}_img_req-`) ? await getDoc(IMAGES,event.imageId) : undefined;
+    if (!image?.memoryId) throw new StoryImageError('IMAGE_NOT_FOUND','没找到这张图');
+    const {record} = await readMemorySource(getDoc,event.familyId,image.memoryId);
+    assertMemoryImage(image,event.familyId,image.memoryId);
+    const ref = 'photo-ai-' + event.imageId.slice(event.imageId.lastIndexOf('_img_') + 5);
+    if (!(record.photoIds || []).includes(ref)) throw new StoryImageError('IMAGE_NOT_FOUND','图片已从记忆移除');
+    return image;
+  };
+  const before = await load();
+  const urls = await storage.tempUrls([before.fileID]);
+  const after = await load();
+  if (before.fileID !== after.fileID) throw new StoryImageError('IMAGE_NOT_FOUND','图片已变动');
+  return {url:urls[before.fileID] || ''};
+}
+
 async function main(event = {}) {
   const context = cloud.getWXContext();
   if (event.Type === "Timer" || context.SOURCE === "wx_trigger") {
@@ -374,9 +449,11 @@ async function main(event = {}) {
   const ctx = { openid: String(context.OPENID || "").trim() };
   try {
     switch (event.action) {
-      case "capabilities": return { apiVersion: 5, referenceIllustration: referenceAnalyzer.configured, referencePhotos: referenceAnalyzer.configured, guidedGeneration: true, bookCover: true };
+      case "capabilities": return { apiVersion: 6, memoryImages: true, referenceIllustration: referenceAnalyzer.configured, referencePhotos: referenceAnalyzer.configured, guidedGeneration: true, bookCover: true };
       case "coverSources": return await coverServices.sources(ctx, event);
       case "selectCover": return await coverServices.select(ctx, event);
+      case "selectMemoryImage": return await selectMemoryImage(ctx,event);
+      case "readMemoryImage": return await readMemoryImage(ctx,event);
       case "submit": return await handlers.submit(ctx, event);
       case "status": return await handlers.status(ctx, event);
       case "list": return await handlers.list(ctx, event);

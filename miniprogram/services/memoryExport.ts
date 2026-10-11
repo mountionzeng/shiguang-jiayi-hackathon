@@ -6,6 +6,7 @@ export interface MemoryExportSource {
   title: string;
   text: string;
   containsAiText: boolean;
+  photoIds?: string[];
 }
 
 async function call<T>(input: {
