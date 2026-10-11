@@ -265,5 +265,5 @@
   </button>
 </scroll-view>
 
-<story-switcher current="home"></story-switcher>
+<story-switcher current="home" bind:openpersonal="openPersonalStories"></story-switcher>
 <canvas type="2d" id="book-frame-canvas" class="book-frame-canvas" aria-hidden="true"></canvas>

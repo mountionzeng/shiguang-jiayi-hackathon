@@ -66,6 +66,7 @@ function shouldUseCloudDatabase(): boolean {
 // again. It is deliberately single-use: reopening a book always reads fresh
 // cloud state, and an account switch cannot inherit an old snapshot.
 let stagedBookState: FamilyRoomState | undefined;
+let stagedStoriesState: FamilyRoomState | undefined;
 
 export function stageRoomStateForBook(state: FamilyRoomState | undefined): void {
   stagedBookState = state;
@@ -74,6 +75,18 @@ export function stageRoomStateForBook(state: FamilyRoomState | undefined): void 
 export function takeStagedRoomStateForBook(): FamilyRoomState | undefined {
   const state = stagedBookState;
   stagedBookState = undefined;
+  return state;
+}
+
+// The two top-level story views can also share the state that is already on
+// screen. This is single-use for the same reason as the book handoff above.
+export function stageRoomStateForStories(state: FamilyRoomState | undefined): void {
+  stagedStoriesState = state;
+}
+
+export function takeStagedRoomStateForStories(): FamilyRoomState | undefined {
+  const state = stagedStoriesState;
+  stagedStoriesState = undefined;
   return state;
 }
 

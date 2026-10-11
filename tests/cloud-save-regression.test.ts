@@ -482,6 +482,14 @@ test('a visible shelf snapshot hands off to one book opening only', () => {
     'a later visit must fetch fresh cloud state instead of reusing an old account snapshot');
 });
 
+test('a visible room snapshot hands off to one stories opening only', () => {
+  const visible = createEmptyRoomState();
+  localRepository.stageRoomStateForStories(visible);
+  assert.equal(localRepository.takeStagedRoomStateForStories(), visible);
+  assert.equal(localRepository.takeStagedRoomStateForStories(), undefined,
+    'a later visit must fetch fresh cloud state instead of reusing an old room snapshot');
+});
+
 test('response size errors never masquerade as missing story service or an empty room', async () => {
   const f=fixture();
   try {

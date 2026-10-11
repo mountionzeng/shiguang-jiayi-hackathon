@@ -8,6 +8,7 @@ import {
   restoreStoryRemoteFirst,
   saveCurrentMemberIdLocal,
   stageRoomStateForBook,
+  takeStagedRoomStateForStories,
   usesCloudStorage,
 } from "../../services/roomRepository";
 import { recentlyDeletedItems } from "../../services/recentlyDeleted";
@@ -69,7 +70,11 @@ Page({
     if (options.key) try { this.setData({ selectedKey: decodeURIComponent(options.key) }); } catch { /* 显示全部故事 */ }
   },
 
-  onShow() { this.roomSnapshot = undefined; void this.refresh().then(() => { if (this.openCreateOnShow) { this.openCreateOnShow = false; this.openCreate(); } }).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
+  onShow() {
+    const staged = takeStagedRoomStateForStories();
+    this.roomSnapshot = undefined;
+    void this.refresh(staged).then(() => { if (this.openCreateOnShow) { this.openCreateOnShow = false; this.openCreate(); } }).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); });
+  },
   async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
     const refreshId = ++this.spineRefreshId;
     const state = nextState ?? (usesCloudStorage() ? await ensureStoryBooks() : await loadRoomStateRemoteFirst());

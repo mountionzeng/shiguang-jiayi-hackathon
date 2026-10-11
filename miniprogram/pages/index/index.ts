@@ -24,6 +24,7 @@ import {
   loadRoomStateRemoteFirst,
   saveCurrentMemberIdLocal,
   stageRoomStateForBook,
+  stageRoomStateForStories,
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import { bookmarkDateParts } from "../../services/memoryDates";
@@ -650,6 +651,11 @@ Page({
     saveCurrentMemberIdLocal(memberId);
     stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(memberId) });
+  },
+
+  openPersonalStories() {
+    stageRoomStateForStories(this.roomSnapshot);
+    wx.reLaunch({ url: "/pages/stories/stories" });
   },
 
   /** 人都在记忆之家：先看人，再看和这个人有关的记忆。 */

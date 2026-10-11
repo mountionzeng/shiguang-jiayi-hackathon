@@ -8,7 +8,7 @@ import {
   memoryPool,
   MemoryContribution,
 } from "../../domain/biography";
-import { loadRoomStateRemoteFirst } from "../../services/roomRepository";
+import { loadRoomStateRemoteFirst, stageRoomStateForStories } from "../../services/roomRepository";
 import { memoryPlacements } from "../../services/manuscript";
 import { loadSharedFamilyRoom } from "../../services/familyInviteService";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -177,6 +177,10 @@ Page({
 
   goHome() {
     wx.reLaunch({ url: "/pages/index/index" });
+  },
+  openPersonalStories() {
+    stageRoomStateForStories(this.roomSnapshot);
+    wx.reLaunch({ url: "/pages/stories/stories" });
   },
   onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
   onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },

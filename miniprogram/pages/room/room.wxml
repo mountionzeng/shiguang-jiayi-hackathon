@@ -68,4 +68,4 @@
   </view>
 </view>
 
-<story-switcher current="family"></story-switcher>
+<story-switcher current="family" bind:openpersonal="openPersonalStories"></story-switcher>

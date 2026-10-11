@@ -48,7 +48,7 @@ Component({
     /** 人生之书是你所有的故事，不是某一本书稿。 */
     openPersonal() {
       if (this.data.current === "personal") return;
-      wx.reLaunch({ url: "/pages/stories/stories" });
+      this.triggerEvent('openpersonal');
     },
 
     openFamily() {
