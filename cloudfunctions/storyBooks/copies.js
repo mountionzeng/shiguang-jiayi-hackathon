@@ -40,6 +40,11 @@ function assertBounded(draft){
   // Bound one transaction/document rather than silently splitting a chapter.
   if(Buffer.byteLength(JSON.stringify(draft),'utf8')>240000)throw error('STORY_COPY_LIMIT','这份章节超过接收上限，请减少章节后重试');
 }
+const FALLBACK_SENDER='一位亲友';
+function senderName(invitation,principalId){
+  const name=invitation?.applicants?.find(item=>item.principalId===principalId)?.displayName;
+  return typeof name==='string'&&name.trim()?name.trim().slice(0,30):FALLBACK_SENDER;
+}
 function copyKeys(ctx,input){
   return {copyId:'copy-'+digest([ctx.principalId,input.sourceFamilyId,input.sourceStoryId,input.sourceRevisionId,input.chapterIds,'receive-text-v1']),
     requestId:'request-'+digest([ctx.principalId,input.requestId]),fingerprint:digest(input)};
@@ -53,11 +58,12 @@ async function loadCopySource(tx,ctx,input){
   const permitted=action=>evaluateStoryAccess({principalId:ctx.principalId,ownerPrincipalId:space.principalId,story:source,grant,action,chapterIds:input.chapterIds});
   if(!permitted('copy'))throw identityError();
   if(source.currentRevisionId!==input.sourceRevisionId)conflict();
+  const invitation=grant?.invitationId?await tx.get('story_invitations',grant.invitationId):undefined;
   const sourceRevision=await loadRevision(tx,input.sourceFamilyId,source);
   const prepared=protectedDraft(sourceRevision.draft,{familyId:input.sourceFamilyId,storyId:source.id,revisionId:sourceRevision.id},source.sourcePolicyRequired);
   const selected=prepared.chapters.filter(chapter=>input.chapterIds.includes(chapter.id));
   if(selected.length!==input.chapterIds.length)throw identityError();
-  return {sourceFamily,space,source,grant,sourceRevision,selected,permitted};
+  return {sourceFamily,space,source,grant,sourceRevision,selected,permitted,invitation};
 }
 
 // Internal-only until U5 closes ALL legacy export/generation paths. This is not
@@ -121,7 +127,8 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
         sourceOwnerPrincipalId:space.principalId,recipientPrincipalId:ctx.principalId,grantVersion:grant.version,createdAt:stamp}]);
       const destinationChapterId='chapter-'+digest([copyId,chapter.id]).slice(0,40);
       receivedSources.push({copyId,sourceId,destinationChapterId,sourceFamilyId:input.sourceFamilyId,sourceStoryId:source.id,
-        sourceRevisionId:sourceRevision.id,sourceChapterId:chapter.id,sourceOwnerPrincipalId:space.principalId});
+        sourceRevisionId:sourceRevision.id,sourceChapterId:chapter.id,sourceOwnerPrincipalId:space.principalId,
+        senderName:senderName(sourceContext.invitation,ctx.principalId)});
       base.chapters.push({id:destinationChapterId,title:chapter.title,memoryIds:[],
         content:chapter.content.map((block,index)=>({...(typeof block.text==='string'?{text:block.text}:{photoId:media.assets.find(asset=>asset.sourcePhotoId===block.photoId).photoId}),blockId:'block-'+digest([copyId,chapter.id,index]),sourceIds:[sourceId]}))});
     }

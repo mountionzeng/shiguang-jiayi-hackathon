@@ -49,7 +49,7 @@ async function sendOwnReturn(repo,ctx,raw,{now=()=>new Date().toISOString()}={})
     }
     await tx.set('story_returns',returnId,{familyId:route.sourceFamilyId,sourceStoryId:route.sourceStoryId,sourceChapterId:route.sourceChapterId,
       sourceOwnerPrincipalId:route.sourceOwnerPrincipalId,senderFamilyId:ctx.familyId,senderPrincipalId:ctx.principalId,senderStoryId:story.id,
-      senderChapterId:chapter.id,senderRevisionId:current.id,blocks,status:'pending',fingerprint,createdAt:stamp});
+      senderChapterId:chapter.id,senderRevisionId:current.id,senderName:route.senderName||'一位亲友',blocks,status:'pending',fingerprint,createdAt:stamp});
     await tx.set('story_return_indexes',indexId,{familyId:route.sourceFamilyId,principalId:route.sourceOwnerPrincipalId,returnIds:[...returnIds,returnId],updatedAt:stamp});
     await tx.set('stories',docId(ctx.familyId,story.id),{...story,returnedOwnBlockIds:[...returned,...blocks.map(block=>block.blockId)],updatedAt:stamp});
     return {ok:true,returnId,status:'pending',alreadySent:false};
@@ -62,7 +62,7 @@ async function listReturns(repo,ctx){
   const rows=[];for(const id of index?.returnIds||[]){if(RETURN.test(id)){const row=await repo.get('story_returns',id);if(row)rows.push({_id:id,...row});}}
   await assertSpaceOwner(repo,ctx);
   return {returns:rows.filter(row=>row.sourceOwnerPrincipalId===ctx.principalId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(row=>({
-    returnId:row._id,status:row.status,sourceStoryId:row.sourceStoryId,sourceChapterId:row.sourceChapterId,blocks:row.blocks,createdAt:row.createdAt,
+    returnId:row._id,status:row.status,sourceStoryId:row.sourceStoryId,sourceChapterId:row.sourceChapterId,senderName:row.senderName||'一位亲友',blocks:row.blocks,createdAt:row.createdAt,
     decidedAt:row.decidedAt||'',resultRevisionId:row.resultRevisionId||'',
   }))};
 }
