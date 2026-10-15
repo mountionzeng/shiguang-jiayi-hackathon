@@ -8,6 +8,10 @@
   <block wx:if="{{available && !recipient}}">
     <view class="section-title serif">{{title}}</view>
     <input class="name-input" maxlength="30" value="{{inviteeName}}" bindinput="enterInviteeName" disabled="{{busy}}" placeholder="怎么称呼这位家人，例如：小岚、妈妈" aria-label="家人的称呼"/>
+    <view class="relation-row">
+      <button class="relation-chip {{relation === item ? 'relation-on' : ''}}" wx:for="{{relationOptions}}" wx:key="*this" data-value="{{item}}" bindtap="chooseRelation" disabled="{{busy}}">{{item}}</button>
+      <input class="name-input relation-input" maxlength="12" value="{{relation}}" bindinput="enterRelation" disabled="{{busy}}" placeholder="或者自己写，不选默认“家人”" aria-label="你们的关系"/>
+    </view>
     <view class="caption">选择已保存的章节 · 新增章节不会自动分享</view>
     <checkbox-group bindchange="chooseChapters">
       <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{busy}}" color="#4f7f6b"/><text>{{item.title || '未命名章节'}}</text></label>

@@ -94,3 +94,16 @@ test('owner changes a family member access with the full target state, and keeps
     assert.equal(calls.length,2,'removing the last chapter never reaches the server');assert.match(String(p.data.notice),/至少要留一个章节/);}
   finally{(globalThis as any).wx=prior;}
 });
+
+test('the owner can pick or type a relation, leaving it empty sends none, and a duplicate person is reported as is',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];let exists=false;
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);
+    return exists?{result:{error:'STORY_BOOK_ERROR',code:'STORY_INVITEE_EXISTS',message:'这个人已经存在，不需要再邀请一次'}}:{result:{token:'t'.repeat(48),invitationId:'i'.repeat(64)}};}},hideShareMenu:()=>{}};
+  try{const p=instance(invite);p.onLoad({storyId:'story-a'});p.familyId='family_owner';p.data.available=true;p.data.inviteeName='小岚';p.data.chapters=[{id:'chapter-three',title:'章',checked:true}];
+    await p.create();assert.equal(calls[0].relation,undefined,'no relation chosen, the server defaults to 家人');
+    p.chooseRelation({currentTarget:{dataset:{value:'朋友'}}});assert.equal(p.data.relation,'朋友');
+    p.chooseRelation({currentTarget:{dataset:{value:'朋友'}}});assert.equal(p.data.relation,'','tapping again clears it');
+    p.chooseRelation({currentTarget:{dataset:{value:'朋友'}}});await p.create();assert.equal(calls[1].relation,'朋友');
+    exists=true;await p.create();assert.match(String(p.data.notice),/已经存在/);assert.equal(p.data.shareReady,false);}
+  finally{(globalThis as any).wx=prior;}
+});

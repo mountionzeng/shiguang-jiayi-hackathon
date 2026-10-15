@@ -2,7 +2,7 @@ export interface Applicant { applicantId:string; displayName:string; verificatio
 export interface InvitedMember { name:string; active:boolean; chapterIds:string[]; permissions:{read:boolean;edit?:boolean;copy?:boolean} }
 export interface Invitation { invitationId:string; status:string; expiresAtMs:number; chapterIds:string[]; permissions:{read:boolean;forward:boolean;edit?:boolean;copy?:boolean}; applicants:Applicant[]; member?:InvitedMember }
 export interface ManagedStory { story:{id:string;title:string}; chapters:Array<{id:string;title:string}>; invitations:Invitation[] }
-export interface InviteStatus { status:string; expiresAtMs:number; inviteeName?:string; displayName?:string; applicantId?:string; verificationCode?:string; familyId?:string; storyId?:string }
+export interface InviteStatus { status:string; expiresAtMs:number; inviteeName?:string; relation?:string; displayName?:string; applicantId?:string; verificationCode?:string; familyId?:string; storyId?:string }
 export interface ChapterChange { revisionId:string; by:string; savedAt:string; title?:{before:string;after:string}; blocks:Array<{index:number;before:string;after:string}> }
 export interface SharedChapter { id:string; title:string; content:Array<{text:string;blockIndex?:number}>; textBlocks:Array<{index:number;text:string}> }
 export interface SharedStory { story:{id:string;title:string;version:number}; revisionId:string; draftScope:string; chapters:SharedChapter[]; capabilities?:{requestInvitation?:boolean;sharedEdit?:boolean;copy?:boolean} }
@@ -21,7 +21,7 @@ async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> 
 export const storySharing = {
   capabilities:()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string}>('capabilities'),
   manage:(familyId:string,storyId:string)=>call<ManagedStory>('inviteManage',{familyId,storyId}),
-  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string)=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{})}),
+  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string,relation?:string)=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{}),...(relation?{relation}:{})}),
   status:(token:string)=>call<InviteStatus>('inviteGet',{token}),
   accept:(token:string)=>call<InviteStatus>('inviteAccept',{token}),
   revoke:(familyId:string,storyId:string,invitationId:string)=>call('inviteRevoke',{familyId,storyId,invitationId}),

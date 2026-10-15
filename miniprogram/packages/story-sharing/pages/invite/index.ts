@@ -2,7 +2,7 @@ import {storySharing,Invitation,InviteStatus,sharingHome,invitationPath,sharedRe
 import {storyCopies,StoryReturn} from '../../../../services/storyCopies';
 const statusLabel=(status:string)=>({pending:'等待主人确认',approved:'已加入',rejected:'申请未通过',revoked:'已撤销',expired:'已过期',unrequested:'等待申请'}[status] || '暂不可用');
 Page({
-  data:{recipient:false,available:false,loading:false,busy:false,title:'',notice:'',displayName:'',inviteeName:'',forward:false,edit:false,editAvailable:false,copy:false,copyAvailable:false,shareReady:false,
+  data:{recipient:false,available:false,loading:false,busy:false,title:'',notice:'',displayName:'',inviteeName:'',relation:'',relationOptions:['家人','朋友'],forward:false,edit:false,editAvailable:false,copy:false,copyAvailable:false,shareReady:false,
     chapters:[] as Array<{id:string;title:string;checked:boolean}>,invitations:[] as Array<Invitation & {label:string}>,returns:[] as StoryReturn[],status:null as InviteStatus|null,statusText:''},
   storyId:'',familyId:'',token:'',shareToken:'',epoch:0,hidden:false,
   onLoad(options:{storyId?:string;token?:string}={}) {
@@ -39,6 +39,8 @@ Page({
   chooseCopy(event:WechatMiniprogram.CustomEvent<{value:boolean}>) {this.setData({copy:event.detail.value});},
   enterName(event:WechatMiniprogram.Input){this.setData({displayName:event.detail.value});},
   enterInviteeName(event:WechatMiniprogram.Input){this.setData({inviteeName:event.detail.value});},
+  enterRelation(event:WechatMiniprogram.Input){this.setData({relation:event.detail.value});},
+  chooseRelation(event:WechatMiniprogram.TouchEvent){const value=String(event.currentTarget.dataset.value || '');this.setData({relation:this.data.relation===value?'':value});},
   async create() {
     if(this.data.busy || !this.data.available || this.data.recipient)return;
     const ids=this.data.chapters.filter(c=>c.checked).map(c=>c.id);
@@ -46,7 +48,7 @@ Page({
     if(!this.data.inviteeName.trim()){this.setData({notice:'请先写下怎么称呼这位家人。'});return;}
     const epoch=this.epoch;this.setData({busy:true,notice:'',shareReady:false});this.shareToken='';
     try {
-      const result=await storySharing.create(this.familyId,this.storyId,ids,this.data.forward,this.data.editAvailable && this.data.edit,this.data.copyAvailable && this.data.copy,this.data.inviteeName.trim() || undefined);
+      const result=await storySharing.create(this.familyId,this.storyId,ids,this.data.forward,this.data.editAvailable && this.data.edit,this.data.copyAvailable && this.data.copy,this.data.inviteeName.trim() || undefined,this.data.relation.trim() || undefined);
       if(this.hidden || epoch!==this.epoch)return;
       this.shareToken=result.token;this.setData({shareReady:true,notice:'邀请已生成，24 小时内可申请。发给亲友后，请回到这里刷新并确认申请。'});
     }catch(error){if(!this.hidden && epoch===this.epoch)this.setData({notice:error instanceof Error?error.message:'生成失败；请刷新查看是否已创建，避免重复生成'});}
