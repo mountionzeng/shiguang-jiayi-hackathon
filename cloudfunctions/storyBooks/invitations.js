@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const { assertCurrentIdentity, assertSpaceOwner, identityError, FAMILY_ID } = require('./identity');
 const { evaluateStoryAccess, grantIdFor } = require('./access');
 const { ADMISSIONS, isRolledOut } = require('./rollout');
+const core = require('./core');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const ID = /^[a-f0-9]{64}$/;
 const TOKEN = /^[a-f0-9]{48}$/;
@@ -10,7 +11,8 @@ const TTL = 24 * 60 * 60 * 1000;
 const LIMIT = 12;
 function fail(code = 'STORY_FORBIDDEN') {
   if (code === 'STORY_FORBIDDEN') throw identityError();
-  throw Object.assign(new Error(code === 'STORY_INVITE_LIMIT' ? '邀请或申请次数已达上限，请稍后再试或撤销旧邀请' : '这项操作暂未开放'), { code });
+  const messages = { STORY_INVITE_LIMIT:'邀请或申请次数已达上限，请稍后再试或撤销旧邀请', STORY_INVITEE_EXISTS:'这个人已经存在，不需要再邀请一次' };
+  throw Object.assign(new Error(messages[code] || '这项操作暂未开放'), { code });
 }
 function chapterIds(value) {
   return Array.isArray(value) && value.length > 0 && value.length <= 30 && new Set(value).size === value.length &&
@@ -60,10 +62,20 @@ async function memberView(tx, inv) {
     active, chapterIds:active && grant.scope?.type === 'chapters' ? grant.scope.chapterIds : [],
     permissions:active ? grant.permissions : { read:false, edit:false, copy:false, forward:false, publish:false } };
 }
+const DEFAULT_RELATION = '家人';
+function inviteeRelation(value) {
+  if (value === undefined) return DEFAULT_RELATION;
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > 12 || NAME_BAD.test(value)) fail();
+  return value.trim();
+}
+// 与 flow.js 的 memberNameClaims 同一把钥匙：名字相同就是同一个人，不看关系。
+const claimKey = name => core.hash(name);
+const memberIdFor = invitationId => 'wx_' + invitationId.slice(0, 24);
+const alreadyThere = () => fail('STORY_INVITEE_EXISTS');
 const ownStatus = (inv, principalId) => {
   const applicant = inv.applicants.find(item => item.principalId === principalId);
   return { status: inv.status === 'revoked' ? 'revoked' : applicant?.status || 'unrequested', expiresAtMs: inv.expiresAtMs,
-    inviteeName: inv.inviteeName || DEFAULT_INVITEE,
+    inviteeName: inv.inviteeName || DEFAULT_INVITEE, relation: inv.relation || DEFAULT_RELATION,
     ...(applicant ? { applicantId: applicant.id, verificationCode: applicant.verificationCode } : {}),
     ...(inv.status === 'approved' && inv.recipientPrincipalId === principalId ? {familyId:inv.familyId,storyId:inv.storyId} : {}) };
 };
@@ -127,10 +139,19 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
         if (old && old.status !== 'revoked' && (old.status === 'approved' || old.expiresAtMs > time)) retained.push(id);
       }
       if (retained.length >= LIMIT) fail('STORY_INVITE_LIMIT');
+      const name = inviteeName(input.inviteeName), relation = inviteeRelation(input.relation);
+      // 名字相同就是同一个人（与手动添加一致）：ta 已经在名单里，或已有一份有效邀请在等 ta。
+      const family = await tx.get('families', story.familyId);
+      const claim = family?.memberNameClaims?.[claimKey(name)];
+      if (claim && claim.name === name && await tx.get('family_members', `${story.familyId}_${claim.memberId}`)) alreadyThere();
+      for (const id of retained) {
+        const waiting = await tx.get('story_invitations', id);
+        if (waiting && waiting.status === 'pending' && waiting.inviteeName === name) alreadyThere();
+      }
       await rate(tx,ctx.principalId,time);
       const token = crypto.randomBytes(24).toString('hex'), id = digest(token);
       const inv = {familyId:story.familyId,storyId:story.id,ownerPrincipalId:space.principalId,creatorPrincipalId:ctx.principalId,
-        chapterIds:[...input.chapterIds],permissions,inviteeName:inviteeName(input.inviteeName),status:'pending',expiresAtMs:time+TTL,applicants:[],
+        chapterIds:[...input.chapterIds],permissions,inviteeName:name,relation,status:'pending',expiresAtMs:time+TTL,applicants:[],
         ...(parentGrantVersion ? {parentGrantVersion} : {})};
       await tx.set('story_invitations',id,inv);
       await tx.set('story_invite_indexes',directoryId,{ids:[...retained,id]});
@@ -197,6 +218,17 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
       inv.applicants = [{ id:crypto.randomBytes(12).toString('hex'), principalId:ctx.principalId, displayName, verificationCode:'', status:'approved' }];
       inv.status = 'approved'; inv.recipientPrincipalId = ctx.principalId; inv.acceptedAtMs = time;
       await tx.set('story_invitations', id, inv);
+      const memberId = memberIdFor(id), relation = inv.relation || DEFAULT_RELATION;
+      const existingMember = await tx.get('family_members', `${inv.familyId}_${memberId}`);
+      if (!existingMember) {
+        const ownerFamily = await tx.get('families', inv.familyId);
+        const claims = { ...(ownerFamily?.memberNameClaims || {}) }, key = claimKey(displayName), held = claims[key];
+        if (held && (held.name !== displayName || held.memberId !== memberId) && await tx.get('family_members', `${inv.familyId}_${held.memberId}`)) alreadyThere();
+        claims[key] = { name: displayName, memberId };
+        await tx.set('families', inv.familyId, { ...ownerFamily, memberNameClaims: claims });
+        await tx.set('family_members', `${inv.familyId}_${memberId}`, { familyId:inv.familyId, memberId, id:memberId, accountId:recipient.accountId,
+          name:displayName, relation, avatarText:Array.from(displayName)[0] || '忆', role:'contributor', kind:'person', invitationId:id });
+      }
       await tx.set(ADMISSIONS, recipient.familyId, { familyId:recipient.familyId, principalId:ctx.principalId,
         status:'active', sourceFamilyId:inv.familyId, invitationId:id, createdAtMs:time });
       return { ...ownStatus(inv, ctx.principalId), displayName };

@@ -207,3 +207,66 @@ test('还没有人加入的邀请不能改权限', async () => {
   const inv = await f.invite();
   await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { permissions: { read: true, copy: true } })), { code: 'STORY_FORBIDDEN' });
 });
+
+function addMember(f, name, relation = '朋友', memberId = 'member-manual') {
+  f.tables.set(`family_members:family_owner_${memberId}`, { familyId: 'family_owner', memberId, id: memberId, name, relation, avatarText: name.slice(0, 1), role: 'contributor', kind: 'person' });
+  const family = f.tables.get('families:family_owner');
+  family.memberNameClaims = { ...(family.memberNameClaims || {}), [require('../cloudfunctions/storyBooks/core').hash(name)]: { name, memberId } };
+}
+
+test('接受邀请后，这位家人出现在主人的记忆之家名单里，关系默认「家人」', async () => {
+  const f = await setup();
+  const inv = await f.invite();
+  await f.call('friend', 'inviteAccept', { token: inv.token });
+  const member = [...f.tables].find(([key]) => key.startsWith('family_members:family_owner_wx_'))[1];
+  assert.equal(member.name, '小岚');
+  assert.equal(member.relation, '家人');
+  assert.equal(member.role, 'contributor');
+  assert.equal(member.kind, 'person');
+});
+
+test('邀请时选的关系会带进名单；重复点开不会产生第二个人', async () => {
+  const f = await setup();
+  const inv = await f.invite({ relation: '同学' });
+  await f.call('friend', 'inviteAccept', { token: inv.token });
+  await f.call('friend', 'inviteAccept', { token: inv.token });
+  const members = [...f.tables].filter(([key]) => key.startsWith('family_members:family_owner_wx_'));
+  assert.equal(members.length, 1);
+  assert.equal(members[0][1].relation, '同学');
+});
+
+test('名字已经在名单里：直接告诉主人“这个人已经存在”，不生成邀请', async () => {
+  const f = await setup();
+  addMember(f, '小岚', '同学');
+  await assert.rejects(f.invite(), { code: 'STORY_INVITEE_EXISTS', message: /已经存在/ });
+  await assert.rejects(f.invite({ relation: '朋友' }), { code: 'STORY_INVITEE_EXISTS' }, '关系不同也算同一个人，和手动添加一致');
+  const other = await f.invite({ inviteeName: '阿远' });
+  assert.ok(other.token);
+});
+
+test('同一个名字已有一份等待中的邀请时，不能再发第二份', async () => {
+  const f = await setup();
+  await f.invite();
+  await assert.rejects(f.invite(), { code: 'STORY_INVITEE_EXISTS' });
+});
+
+test('邀请发出后主人手动加了同名的人：接受时拦下，不产生重名成员', async () => {
+  const f = await setup();
+  const inv = await f.invite();
+  addMember(f, '小岚', '同事');
+  await assert.rejects(f.call('friend', 'inviteAccept', { token: inv.token }), { code: 'STORY_INVITEE_EXISTS' });
+  await assert.rejects(f.call('friend', 'sharedRead', { familyId: 'family_owner', storyId: 'story-a' }), { code: 'STORY_ACCESS_DISABLED' });
+});
+
+test('同名成员在「最近删除」里时仍算已存在，和手动添加一致', async () => {
+  const f = await setup();
+  addMember(f, '小岚', '同学');
+  f.tables.get('family_members:family_owner_member-manual').deletedAt = '2026-10-01T00:00:00.000Z';
+  await assert.rejects(f.invite(), { code: 'STORY_INVITEE_EXISTS' });
+});
+
+test('关系过长或带控制字符的邀请被拒绝', async () => {
+  const f = await setup();
+  await assert.rejects(f.invite({ relation: '关'.repeat(13) }), { code: 'STORY_FORBIDDEN' });
+  await assert.rejects(f.invite({ relation: '同‮学' }), { code: 'STORY_FORBIDDEN' });
+});
