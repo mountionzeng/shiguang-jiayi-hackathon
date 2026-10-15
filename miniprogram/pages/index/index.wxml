@@ -266,4 +266,5 @@
 </scroll-view>
 
 <story-switcher current="home"></story-switcher>
+<first-login-intro></first-login-intro>
 <canvas type="2d" id="book-frame-canvas" class="book-frame-canvas" aria-hidden="true"></canvas>
