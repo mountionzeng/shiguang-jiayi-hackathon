@@ -1,7 +1,7 @@
 export interface Applicant { applicantId:string; displayName:string; verificationCode:string; status:string }
 export interface Invitation { invitationId:string; status:string; expiresAtMs:number; chapterIds:string[]; permissions:{read:boolean;forward:boolean;edit?:boolean;copy?:boolean}; applicants:Applicant[] }
 export interface ManagedStory { story:{id:string;title:string}; chapters:Array<{id:string;title:string}>; invitations:Invitation[] }
-export interface InviteStatus { status:string; expiresAtMs:number; applicantId?:string; verificationCode?:string; familyId?:string; storyId?:string }
+export interface InviteStatus { status:string; expiresAtMs:number; inviteeName?:string; displayName?:string; applicantId?:string; verificationCode?:string; familyId?:string; storyId?:string }
 export interface SharedChapter { id:string; title:string; content:Array<{text:string;blockIndex?:number}>; textBlocks:Array<{index:number;text:string}> }
 export interface SharedStory { story:{id:string;title:string;version:number}; revisionId:string; draftScope:string; chapters:SharedChapter[]; capabilities?:{requestInvitation?:boolean;sharedEdit?:boolean;copy?:boolean} }
 export interface SharedExcerptInput {storyId:string;revisionId:string;expectedVersion:number;chapterId:string;text:string;recipientMemberIds:string[];requestId:string}
@@ -19,8 +19,9 @@ async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> 
 export const storySharing = {
   capabilities:()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string}>('capabilities'),
   manage:(familyId:string,storyId:string)=>call<ManagedStory>('inviteManage',{familyId,storyId}),
-  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false)=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy}}),
+  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string)=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{})}),
   status:(token:string)=>call<InviteStatus>('inviteGet',{token}),
+  accept:(token:string)=>call<InviteStatus>('inviteAccept',{token}),
   apply:(token:string,displayName:string)=>call<InviteStatus>('inviteApply',{token,displayName}),
   decide:(familyId:string,storyId:string,invitationId:string,applicantId:string,decision:'approve'|'reject',verificationCode:string)=>call('inviteDecide',{familyId,storyId,invitationId,applicantId,decision,verificationCode}),
   revoke:(familyId:string,storyId:string,invitationId:string)=>call('inviteRevoke',{familyId,storyId,invitationId}),

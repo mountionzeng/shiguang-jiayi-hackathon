@@ -1,12 +1,13 @@
 <view class="sharing-page">
   <view class="eyebrow">拾光家忆 · 发送给家人</view>
   <view class="heading serif">{{recipient ? '一份故事邀请' : '和家人一起，留住故事'}}</view>
-  <view class="intro">{{recipient ? '先告诉主人你是谁。主人确认之前，这里不会展示故事内容。' : '每位家人使用各自的权限。选择要分享的章节，再为这位家人设置阅读、改写等权限。'}}</view>
+  <view class="intro">{{recipient ? '点一下加入，就能读到 ta 想让你读的章节，也可以回一封信。' : '先写下怎么称呼这位家人，再选要分享的章节，并设置 ta 能做什么。'}}</view>
   <view class="invite-letter" wx:if="{{!recipient}}"><view class="caption">一份故事邀请</view><view class="letter-heading serif">有些日子，想和你再回味。</view><view class="intro">你可以让家人阅读，也可以允许他一起改写。每份邀请的权限分别设置。</view></view>
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <view class="intro" wx:if="{{loading}}">正在确认访问权限…</view>
   <block wx:if="{{available && !recipient}}">
     <view class="section-title serif">{{title}}</view>
+    <input class="name-input" maxlength="30" value="{{inviteeName}}" bindinput="enterInviteeName" disabled="{{busy}}" placeholder="怎么称呼这位家人，例如：小岚、妈妈" aria-label="家人的称呼"/>
     <view class="caption">选择已保存的章节 · 新增章节不会自动分享</view>
     <checkbox-group bindchange="chooseChapters">
       <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{busy}}" color="#4f7f6b"/><text>{{item.title || '未命名章节'}}</text></label>
@@ -44,10 +45,12 @@
     </view>
   </block>
   <block wx:if="{{available && recipient && status}}">
-    <view class="section-title serif">{{statusText}}</view>
-    <block wx:if="{{status.status === 'unrequested'}}"><input class="name-input" maxlength="30" value="{{displayName}}" bindinput="enterName" placeholder="告诉主人你是谁" aria-label="你的称呼"/><button class="primary" bindtap="apply" loading="{{busy}}" disabled="{{busy || !displayName}}">申请阅读</button></block>
-    <block wx:if="{{status.status === 'pending'}}"><view class="intro">请通过你们平常的微信聊天或电话，把核对码告诉主人。</view><view class="verification-code" user-select>{{status.verificationCode}}</view><view class="caption">等待主人确认后，点击刷新。</view></block>
-    <button wx:if="{{status.status === 'approved'}}" class="primary" bindtap="openStory">阅读获准的章节</button>
+    <view class="section-title serif" wx:if="{{status.status === 'approved'}}">已加入</view>
+    <view class="section-title serif" wx:else>{{status.inviteeName || '亲友'}}，有人想和你分享一段故事</view>
+    <button wx:if="{{status.status === 'unrequested'}}" class="primary" bindtap="accept" loading="{{busy}}" disabled="{{busy}}">加入，读一读</button>
+    <button wx:if="{{status.status === 'approved'}}" class="primary" bindtap="openStory">阅读分享的章节</button>
+    <view class="intro" wx:if="{{status.status === 'revoked' || status.status === 'rejected'}}">这份邀请已经失效，请让邀请你的人重新发一份。</view>
+    <view class="caption" wx:if="{{status.status === 'unrequested'}}">加入后你的称呼是“{{status.inviteeName || '亲友'}}”，以后可以在“我的”里随时修改。你写的内容不会直接进入对方的书。</view>
   </block>
   <button class="secondary refresh" disabled="{{busy || loading}}" bindtap="refresh">{{loading ? '正在刷新…' : '刷新状态'}}</button>
 </view>
