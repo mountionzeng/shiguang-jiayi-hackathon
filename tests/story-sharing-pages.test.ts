@@ -107,3 +107,57 @@ test('the owner can pick or type a relation, leaving it empty sends none, and a 
     exists=true;await p.create();assert.match(String(p.data.notice),/已经存在/);assert.equal(p.data.shareReady,false);}
   finally{(globalThis as any).wx=prior;}
 });
+
+function readerWith(calls:any[],opts:{duplicates?:number}={}){
+  let duplicates=opts.duplicates ?? 0;
+  const navigations:string[]=[];
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);
+    if(data.action==='copyReceive' && duplicates-- > 0)return {result:{error:'STORY_BOOK_ERROR',code:'DUPLICATE_TITLE',message:'已有同名故事，请换一个名称'}};
+    return {result:{ok:true,storyId:data.target?.storyId,revisionId:'revision-new',alreadyReceived:false}};}},
+    reLaunch:({url}:any)=>navigations.push(url),redirectTo:({url}:any)=>navigations.push(url),navigateTo:({url}:any)=>navigations.push(url),hideShareMenu:()=>{},setStorageSync:()=>{}};
+  return navigations;
+}
+async function reader(){
+  // 页面模块只会执行一次：沿用前面测试捕获的定义，否则单独运行时再捕获。
+  read=read || await capture('../miniprogram/packages/story-sharing/pages/read/index');const p=instance(read);
+  p.onLoad({familyId:'family_owner',storyId:'story-a'});p.hidden=false;p.revisionId='revision-a';p.epoch=0;
+  p.data.title='外婆家的夏天';p.data.canCopy=true;p.data.chapters=[{id:'chapter-three',title:'井水西瓜',content:[],textBlocks:[]},{id:'chapter-five',title:'院子',content:[],textBlocks:[]}];
+  return p;
+}
+test('keep: one tap saves every shared chapter as the friend\'s own new story and goes home',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];const navigations=readerWith(calls);
+  try{const p=await reader();await p.keep({currentTarget:{dataset:{intent:'keep'}}});
+    assert.equal(calls.length,1);const input=calls[0];
+    assert.deepEqual(input.chapterIds,['chapter-three','chapter-five']);assert.equal(input.target.mode,'new');assert.equal(input.target.title,'外婆家的夏天');
+    assert.equal(input.sourceRevisionId,'revision-a');assert.equal(JSON.stringify(input).includes('井水里'),false,'only references are sent, never text');
+    assert.deepEqual(navigations,['/pages/index/index']);}
+  finally{(globalThis as any).wx=prior;}
+});
+test('expand: same one tap, then opens the first chapter of the new story for writing',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];const navigations=readerWith(calls);
+  try{const p=await reader();await p.keep({currentTarget:{dataset:{intent:'expand'}}});
+    assert.match(navigations[0],/^\/pages\/book\/book\?storyId=story-[^&]+&chapterId=chapter-three$/);}
+  finally{(globalThis as any).wx=prior;}
+});
+test('keep: a title clash with the friend\'s own book retries with a number, never loses the request',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];readerWith(calls,{duplicates:1});
+  try{const p=await reader();await p.keep({currentTarget:{dataset:{intent:'keep'}}});
+    assert.deepEqual(calls.map(c=>c.target.title),['外婆家的夏天','外婆家的夏天·2']);
+    assert.notEqual(calls[0].requestId,calls[1].requestId,'a clash is a different request');}
+  finally{(globalThis as any).wx=prior;}
+});
+test('keep: a failure keeps the same request and story id so a retry cannot duplicate',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);if(calls.length===1)throw new Error('网络断了');return {result:{ok:true,storyId:data.target.storyId}};}},
+    reLaunch:()=>{},hideShareMenu:()=>{},setStorageSync:()=>{}};
+  try{const p=await reader();await p.keep({currentTarget:{dataset:{intent:'keep'}}});
+    assert.match(String(p.data.notice),/网络断了.*不会重复添加/);
+    await p.keep({currentTarget:{dataset:{intent:'keep'}}});
+    assert.equal(calls[0].requestId,calls[1].requestId);assert.equal(calls[0].target.storyId,calls[1].target.storyId);}
+  finally{(globalThis as any).wx=prior;}
+});
+test('keep does nothing when copying is not allowed',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];readerWith(calls);
+  try{const p=await reader();p.data.canCopy=false;await p.keep({currentTarget:{dataset:{intent:'keep'}}});assert.equal(calls.length,0);}
+  finally{(globalThis as any).wx=prior;}
+});
