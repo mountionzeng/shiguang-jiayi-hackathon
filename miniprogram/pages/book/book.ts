@@ -27,7 +27,7 @@ import { measurePerformance, startPerformanceMeasure } from '../../services/perf
 import { activeStory, linkStoryMemories, storyAiContext, storySourceFingerprint, updateStoryBook } from "../../services/storyBooks";
 import { loadCurrentStoryId, saveCurrentStoryId } from "../../services/storySelection";
 import { audioCreatePath } from "../../services/storyAudioService";
-import { storySharing } from "../../services/storySharing";
+import { storySharing, ChapterChange } from "../../services/storySharing";
 import { copyRequestId, storyCopies } from "../../services/storyCopies";
 import { chapterIdsWithReturns, invalidatePendingReturns, loadPendingReturns, PendingReturn, returnsForChapter, senderLabel } from "../../services/storyReturnsInbox";
 import {
@@ -97,6 +97,7 @@ Page({
     shareRecipients: [] as Array<{ id: string; name: string; relation: string; checked: boolean }>,
     protectedCopy: false, appendOwnText: "", appendingOwn: false, returningOwn: false,
     chapterReturns: [] as Array<{ returnId: string; senderName: string; text: string }>, decidingReturn: false,
+    chapterChanges: [] as Array<{ revisionId: string; by: string; when: string; titleChange: string; blocks: Array<{ index: number; before: string; after: string }> }>, changesOpen: false,
     ...initialXiaoyiPanelData(),
     chapterPendingEdits: [] as PendingEditRow[], chapterPendingCount: 0,
   },
@@ -120,6 +121,8 @@ Page({
   excerptRequestId: "",
   appendOwnRequestId: "",
   pendingReturns: [] as PendingReturn[],
+  chapterChangeCache: {} as Record<string, ChapterChange[]>,
+  ownFamilyId: "",
   returnDecisionRequests: {} as Record<string, string>,
   returnOwnRequestId: "",
   memories: [] as MemoryContribution[],
@@ -161,6 +164,9 @@ Page({
     this.requestedMemoryIds = (options.memoryIds || "").split(",").filter(Boolean);
     if (options.chapterId) { this.activeChapterId = options.chapterId; this.setData({ view: "chapter" }); }
     this.unloaded = false;
+    // 非 data 字段挂在页面定义上，每次打开都从干净状态开始，避免串到上一次的书。
+    this.chapterChangeCache = {};
+    this.ownFamilyId = "";
     const window = wx.getWindowInfo();
     this.fullWindowHeight = window.windowHeight;
     this.windowWidth = window.windowWidth;
@@ -387,6 +393,7 @@ Page({
     }
     this.seedEditor();
     void this.loadReturns(refreshId);
+    void this.loadChapterChanges();
     if (this.openOrganizeOnLoad || this.requestedMemoryIds.length) {
       this.openOrganizeOnLoad = false;
       this.showOrganize();
@@ -1211,6 +1218,28 @@ Page({
     this.pendingReturns = returns;
     if (changed) this.setData(this.chapterData());
   },
+  /** 谁改了本章的哪几段：只有自己的书、且本章有人改过时才去读，失败就不显示。 */
+  async loadChapterChanges() {
+    const story = this.story, chapterId = this.activeChapterId;
+    if (!story || story.sourcePolicyRequired === true || !chapterId) { this.setData({ chapterChanges: [], changesOpen: false }); return; }
+    const key = story.id + ":" + chapterId + ":" + story.currentRevisionId;
+    let changes = this.chapterChangeCache[key];
+    if (!changes) {
+      try {
+        const familyId = this.ownFamilyId || (await storySharing.capabilities()).familyId || "";
+        if (!familyId) return;
+        this.ownFamilyId = familyId;
+        changes = (await storySharing.chapterChanges(familyId, story.id, chapterId)).changes;
+      } catch { changes = []; }
+      this.chapterChangeCache[key] = changes;
+    }
+    if (this.unloaded || this.activeChapterId !== chapterId) return;
+    this.setData({ changesOpen: false, chapterChanges: changes.map(change => ({
+      revisionId: change.revisionId, by: change.by, when: change.savedAt.slice(0, 10),
+      titleChange: change.title ? "标题：" + change.title.before + " → " + change.title.after : "", blocks: change.blocks,
+    })) });
+  },
+  toggleChanges() { this.setData({ changesOpen: !this.data.changesOpen }); },
   /** 收下或不要一封回信。收下会在本章末尾生成新版本，旧版本仍保留。 */
   async decideChapterReturn(event: { currentTarget: { dataset: { id: string; decision: string } } }) {
     const { id, decision } = event.currentTarget.dataset;

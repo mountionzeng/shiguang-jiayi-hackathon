@@ -3,6 +3,7 @@ export interface InvitedMember { name:string; active:boolean; chapterIds:string[
 export interface Invitation { invitationId:string; status:string; expiresAtMs:number; chapterIds:string[]; permissions:{read:boolean;forward:boolean;edit?:boolean;copy?:boolean}; applicants:Applicant[]; member?:InvitedMember }
 export interface ManagedStory { story:{id:string;title:string}; chapters:Array<{id:string;title:string}>; invitations:Invitation[] }
 export interface InviteStatus { status:string; expiresAtMs:number; inviteeName?:string; displayName?:string; applicantId?:string; verificationCode?:string; familyId?:string; storyId?:string }
+export interface ChapterChange { revisionId:string; by:string; savedAt:string; title?:{before:string;after:string}; blocks:Array<{index:number;before:string;after:string}> }
 export interface SharedChapter { id:string; title:string; content:Array<{text:string;blockIndex?:number}>; textBlocks:Array<{index:number;text:string}> }
 export interface SharedStory { story:{id:string;title:string;version:number}; revisionId:string; draftScope:string; chapters:SharedChapter[]; capabilities?:{requestInvitation?:boolean;sharedEdit?:boolean;copy?:boolean} }
 export interface SharedExcerptInput {storyId:string;revisionId:string;expectedVersion:number;chapterId:string;text:string;recipientMemberIds:string[];requestId:string}
@@ -24,6 +25,7 @@ export const storySharing = {
   status:(token:string)=>call<InviteStatus>('inviteGet',{token}),
   accept:(token:string)=>call<InviteStatus>('inviteAccept',{token}),
   revoke:(familyId:string,storyId:string,invitationId:string)=>call('inviteRevoke',{familyId,storyId,invitationId}),
+  chapterChanges:(familyId:string,storyId:string,chapterId:string)=>call<{changes:ChapterChange[]}>('chapterChanges',{familyId,storyId,chapterId}),
   setAccess:(familyId:string,storyId:string,invitationId:string,permissions:{read:true;edit:boolean;copy:boolean},chapterIds?:string[])=>call('inviteSetAccess',{familyId,storyId,invitationId,permissions,...(chapterIds?{chapterIds}:{})}),
   read:(familyId:string,storyId:string)=>call<SharedStory>('sharedRead',{familyId,storyId}),
   edit:(input:{familyId:string;storyId:string;chapterId:string;revisionId:string;expectedVersion:number;requestId:string;title:string;textBlocks:Array<{index:number;text:string}>})=>

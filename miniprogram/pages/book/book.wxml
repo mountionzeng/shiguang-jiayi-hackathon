@@ -133,6 +133,20 @@
         <image class="xiaoyi-entry-avatar" src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFill" aria-hidden="true" />
       </button>
     </view>
+    <view class="return-letters" wx:if="{{chapterChanges.length}}">
+      <view class="pending-title" bindtap="toggleChanges" role="button">家人改过这一章 <text>{{chapterChanges.length}} 次 · {{changesOpen ? '收起' : '看看改了哪里'}}</text></view>
+      <block wx:if="{{changesOpen}}">
+        <view class="pending-card" wx:for="{{chapterChanges}}" wx:key="revisionId" wx:for-item="change">
+          <view class="pending-label">{{change.by}} · {{change.when}}</view>
+          <view class="pending-text" wx:if="{{change.titleChange}}">{{change.titleChange}}</view>
+          <view wx:for="{{change.blocks}}" wx:key="index" wx:for-item="block">
+            <view class="pending-text change-before" wx:if="{{block.before}}">原来：{{block.before}}</view>
+            <view class="pending-text serif" wx:if="{{block.after}}">现在：{{block.after}}</view>
+            <view class="pending-text change-before" wx:else>这一段被删掉了</view>
+          </view>
+        </view>
+      </block>
+    </view>
     <view class="return-letters" wx:if="{{chapterReturns.length}}">
       <view class="pending-title">朋友的回信 <text>不采用也不会改动你的书</text></view>
       <view class="pending-card" wx:for="{{chapterReturns}}" wx:key="returnId">

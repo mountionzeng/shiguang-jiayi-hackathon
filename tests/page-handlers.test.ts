@@ -3518,3 +3518,36 @@ test("首页点开回信提示，直接进入有回信的那一章", async conte
   callPage(page, "openReturnNotice");
   assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-a");
 });
+
+test("章节里能看到家人改了哪几段，只在自己的书里读，副本和失败都不显示", async context => {
+  const { page } = await bookWithChapters(context);
+  const calls: any[] = [];
+  const change = { revisionId: "revision-collab-1", by: "小岚", savedAt: "2026-10-15T09:30:00.000Z", blocks: [{ index: 0, before: "井水里的西瓜很凉。", after: "井水里的西瓜很凉，很甜。" }] };
+  (globalThis as any).wx.cloud = { callFunction: async ({ data }: any) => {
+    calls.push(data.action);
+    if (data.action === "capabilities") return { result: { familyId: "family_owner" } };
+    return { result: { changes: [change] } };
+  } };
+  await callPage(page, "loadChapterChanges");
+  assert.deepEqual(calls, ["capabilities", "chapterChanges"]);
+  assert.deepEqual((page.data.chapterChanges as any[]).map(item => [item.by, item.when]), [["小岚", "2026-10-15"]]);
+  assert.equal(page.data.changesOpen, false, "默认收起，不抢正文");
+  callPage(page, "toggleChanges");
+  assert.equal(page.data.changesOpen, true);
+
+  await callPage(page, "loadChapterChanges");
+  assert.equal(calls.length, 2, "同一章同一版本只读一次");
+
+  (page as any).story = { id: "story-a", title: "x", version: 3, currentRevisionId: "revision-a", sourcePolicyRequired: true };
+  await callPage(page, "loadChapterChanges");
+  assert.deepEqual(page.data.chapterChanges, [], "亲友副本里没有这回事");
+  assert.equal(calls.length, 2);
+});
+
+test("读取章节改动失败时安静地什么都不显示", async context => {
+  const { page } = await bookWithChapters(context);
+  callPage(page, "onLoad", {});
+  (globalThis as any).wx.cloud = { callFunction: async () => { throw new Error("网络断了"); } };
+  await callPage(page, "loadChapterChanges");
+  assert.deepEqual(page.data.chapterChanges, []);
+});
