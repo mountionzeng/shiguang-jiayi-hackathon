@@ -3,6 +3,7 @@ const { measurePerformance } = require('./performance');
 const { resolveStoryIdentity, assertSpaceOwner, identityError } = require('./identity');
 const { readAuthorizedStory } = require('./access');
 const { createInvitationService } = require('./invitations');
+const { isRolledOut } = require('./rollout');
 const { readStoryMedia } = require('./media');
 const { shareExcerpt } = require('./excerpts');
 const { editAuthorizedChapter } = require('./collaboration');
@@ -22,6 +23,7 @@ function createStoryService(repo, options = {}) {
   const accessEnabled = options.accessEnabled === true;
   const canaryFamilies = new Set(options.sharedReadFamilyIds || []);
   const invitations = createInvitationService(repo, options);
+  const rolledOut = familyId => isRolledOut(repo, canaryFamilies, familyId);
   async function dispatch(context, event = {}) {
     const measure = event?.action === 'state' ? measurePerformance : (_operation,work)=>work();
     if (!context || typeof context.OPENID !== 'string' || !/^[0-9A-Za-z_-]{1,128}$/.test(context.OPENID)) throw identityError('AUTH_REQUIRED');
@@ -31,36 +33,37 @@ function createStoryService(repo, options = {}) {
       : { familyId: `family_${context.OPENID}`, verifiedOpenid: context.OPENID };
     const action = String(event?.action || '');
     if (action === 'capabilities') {
+      const inRollout = accessEnabled && await rolledOut(ctx.familyId);
       return { apiVersion: 1, independentStories: true, identityVersion: accessEnabled ? 1 : 0,
         familyId: accessEnabled ? ctx.familyId : undefined,
-        invitations: accessEnabled && options.invitationsEnabled === true && canaryFamilies.has(ctx.familyId),
-        sharedRead: accessEnabled && canaryFamilies.has(ctx.familyId),
-        excerptShare: accessEnabled && options.excerptSharingEnabled === true && canaryFamilies.has(ctx.familyId),
-        sharedEdit: accessEnabled && options.sharedEditEnabled === true && canaryFamilies.has(ctx.familyId),
-        copy: accessEnabled && options.copyReceiveEnabled === true && canaryFamilies.has(ctx.familyId),
+        invitations: options.invitationsEnabled === true && inRollout,
+        sharedRead: inRollout,
+        excerptShare: options.excerptSharingEnabled === true && inRollout,
+        sharedEdit: options.sharedEditEnabled === true && inRollout,
+        copy: options.copyReceiveEnabled === true && inRollout,
         // Owner-only book image export is locally rendered and resolves the
         // trusted WeChat identity again before preview, save, and share. It is
         // independent from both the public share-card and shared-read rollouts.
         bookExport: true,
         memoryBookExport: true,
-        shareCard: accessEnabled && options.shareCardEnabled === true && canaryFamilies.has(ctx.familyId), forward: false, publish: false };
+        shareCard: options.shareCardEnabled === true && inRollout, forward: false, publish: false };
     }
     if (action.startsWith('invite')) {
       if (!accessEnabled || options.invitationsEnabled !== true) throw accessError('STORY_ACCESS_DISABLED');
       return invitations(ctx, event);
     }
     if (action === 'sharedMedia') {
-      if (!accessEnabled || options.sharedMediaEnabled !== true || !canaryFamilies.has(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      if (!accessEnabled || options.sharedMediaEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return readStoryMedia(repo,ctx,event,options.signMedia);
     }
     if (action === 'sharedRead') {
-      if (!accessEnabled || !canaryFamilies.has(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      if (!accessEnabled || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       const result = await readAuthorizedStory(repo, ctx, event, {sharedEditEnabled:options.sharedEditEnabled === true,copyReceiveEnabled:options.copyReceiveEnabled === true});
       result.capabilities.requestInvitation = options.invitationsEnabled === true && result.capabilities.requestInvitation;
       return result;
     }
     if (action === 'copyReceive') {
-      if (!accessEnabled || options.copyReceiveEnabled !== true || !canaryFamilies.has(ctx.familyId) || !canaryFamilies.has(event.sourceFamilyId)) throw accessError('STORY_ACCESS_DISABLED');
+      if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.sourceFamilyId)) throw accessError('STORY_ACCESS_DISABLED');
       const input={sourceFamilyId:event.sourceFamilyId,sourceStoryId:event.sourceStoryId,sourceRevisionId:event.sourceRevisionId,
         chapterIds:event.chapterIds,requestId:event.requestId,target:event.target};
       try{return await receiveTextCopy(repo,ctx,input,{now:options.now});}
@@ -71,25 +74,25 @@ function createStoryService(repo, options = {}) {
       }
     }
     if (action === 'copyAppendOwn') {
-      if (!accessEnabled || options.copyReceiveEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return appendOwnExperience(repo,ctx,{storyId:event.storyId,revisionId:event.revisionId,expectedVersion:event.expectedVersion,
         chapterId:event.chapterId,text:event.text,requestId:event.requestId},{now:options.now});
     }
     if (action === 'copyReturnOwn') {
-      if (!accessEnabled || options.copyReceiveEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return sendOwnReturn(repo,ctx,{storyId:event.storyId,revisionId:event.revisionId,expectedVersion:event.expectedVersion,
         chapterId:event.chapterId,requestId:event.requestId},{now:options.now});
     }
     if (action === 'copyReturns') {
-      if (!accessEnabled || options.copyReceiveEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return listReturns(repo,ctx);
     }
     if (action === 'copyReturnDecision') {
-      if (!accessEnabled || options.copyReceiveEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return decideReturn(repo,ctx,{returnId:event.returnId,decision:event.decision,requestId:event.requestId},{now:options.now});
     }
     if (action === 'sharedEdit') {
-      if (!accessEnabled || options.sharedEditEnabled !== true || !canaryFamilies.has(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      if (!accessEnabled || options.sharedEditEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return editAuthorizedChapter(repo,ctx,{familyId:event.familyId,storyId:event.storyId,chapterId:event.chapterId,
         revisionId:event.revisionId,expectedVersion:event.expectedVersion,requestId:event.requestId,title:event.title,textBlocks:event.textBlocks},
       {approve:options.approveSharedEdit});

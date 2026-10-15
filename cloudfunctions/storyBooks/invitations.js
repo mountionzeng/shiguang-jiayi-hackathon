@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { assertCurrentIdentity, assertSpaceOwner, identityError, FAMILY_ID } = require('./identity');
 const { evaluateStoryAccess, grantIdFor } = require('./access');
+const { ADMISSIONS, isRolledOut } = require('./rollout');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const ID = /^[a-f0-9]{64}$/;
 const TOKEN = /^[a-f0-9]{48}$/;
@@ -44,9 +45,17 @@ async function sourceCheck(tx, inv, story, space, now) {
     if (grant?.version !== inv.parentGrantVersion || !evaluateStoryAccess({principalId:inv.creatorPrincipalId,ownerPrincipalId:space.principalId,story,grant,action:'forward',chapterIds:inv.chapterIds,nowMs:now})) fail();
   }
 }
+const NAME_BAD = /[\u0000-\u001f\u202a-\u202e\u2066-\u2069]/;
+const DEFAULT_INVITEE = '亲友';
+function inviteeName(value) {
+  if (value === undefined) return DEFAULT_INVITEE;
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > 30 || NAME_BAD.test(value)) fail();
+  return value.trim();
+}
 const ownStatus = (inv, principalId) => {
   const applicant = inv.applicants.find(item => item.principalId === principalId);
   return { status: inv.status === 'revoked' ? 'revoked' : applicant?.status || 'unrequested', expiresAtMs: inv.expiresAtMs,
+    inviteeName: inv.inviteeName || DEFAULT_INVITEE,
     ...(applicant ? { applicantId: applicant.id, verificationCode: applicant.verificationCode } : {}),
     ...(inv.status === 'approved' && inv.recipientPrincipalId === principalId ? {familyId:inv.familyId,storyId:inv.storyId} : {}) };
 };
@@ -55,7 +64,10 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
   const canary = new Set(sharedReadFamilyIds);
   return async (ctx, input) => repo.transaction(async tx => {
     await assertCurrentIdentity(tx, ctx);
-    if (!canary.has(ctx.familyId)) fail('STORY_ACCESS_DISABLED');
+    // 看邀请、接受邀请只凭一份有效邀请通行（邀请所属的主人家庭仍必须在名单里，见下方
+    // inv.familyId 检查）。其余动作要求调用者自己在名单里，或已被邀请接纳。
+    const byInvitation = input.action === 'inviteGet' || input.action === 'inviteAccept';
+    if (!byInvitation && !await isRolledOut(tx, canary, ctx.familyId)) fail('STORY_ACCESS_DISABLED');
     const time = now();
     if (!Number.isFinite(time)) fail();
     const action = input.action;
@@ -109,13 +121,13 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
       await rate(tx,ctx.principalId,time);
       const token = crypto.randomBytes(24).toString('hex'), id = digest(token);
       const inv = {familyId:story.familyId,storyId:story.id,ownerPrincipalId:space.principalId,creatorPrincipalId:ctx.principalId,
-        chapterIds:[...input.chapterIds],permissions,status:'pending',expiresAtMs:time+TTL,applicants:[],
+        chapterIds:[...input.chapterIds],permissions,inviteeName:inviteeName(input.inviteeName),status:'pending',expiresAtMs:time+TTL,applicants:[],
         ...(parentGrantVersion ? {parentGrantVersion} : {})};
       await tx.set('story_invitations',id,inv);
       await tx.set('story_invite_indexes',directoryId,{ids:[...retained,id]});
       return {invitationId:id,token,expiresAtMs:inv.expiresAtMs};
     }
-    const byToken = action === 'inviteGet' || action === 'inviteApply';
+    const byToken = action === 'inviteGet' || action === 'inviteApply' || action === 'inviteAccept';
     if (byToken ? !TOKEN.test(input.token || '') : !ID.test(input.invitationId || '')) fail();
     const id = byToken ? digest(input.token) : input.invitationId;
     const inv = await tx.get('story_invitations',id);
@@ -137,6 +149,31 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
     if (inv.status !== 'approved' && inv.expiresAtMs <= time) fail();
     await sourceCheck(tx,inv,story,space,time);
     if (action === 'inviteGet') return ownStatus(inv,ctx.principalId);
+    if (action === 'inviteAccept') {
+      if (ctx.principalId === inv.ownerPrincipalId) fail();
+      const previous = inv.applicants.find(a => a.principalId === ctx.principalId);
+      if (previous?.status === 'rejected') fail();
+      if (inv.status === 'approved' && inv.recipientPrincipalId !== ctx.principalId) fail();
+      if (inv.status === 'approved') return { ...ownStatus(inv, ctx.principalId), displayName: previous?.displayName || inv.inviteeName || DEFAULT_INVITEE };
+      // 第一个点开并接受的微信成为这位家人；之后别的微信拿到链接也无法再绑定。
+      const recipient = await tx.get('story_principals', ctx.principalId);
+      if (recipient?.status !== 'active') fail();
+      const chapters = await currentChapters(tx, story);
+      if (inv.chapterIds.some(chapterId => !chapters.some(c => c.id === chapterId))) fail();
+      const gid = grantIdFor(inv.familyId, inv.storyId, ctx.principalId), earlier = await tx.get('story_grants', gid);
+      if (earlier?.status === 'active') fail(); // 不静默替换或放大已有授权。
+      await rate(tx, ctx.principalId, time);
+      await tx.set('story_grants', gid, { familyId:inv.familyId, storyId:inv.storyId, principalId:ctx.principalId,
+        ownerPrincipalId:inv.ownerPrincipalId, status:'active', version:(earlier?.version || 0) + 1,
+        scope:{ type:'chapters', chapterIds:inv.chapterIds }, permissions:inv.permissions, invitationId:id });
+      const displayName = inv.inviteeName || DEFAULT_INVITEE;
+      inv.applicants = [{ id:crypto.randomBytes(12).toString('hex'), principalId:ctx.principalId, displayName, verificationCode:'', status:'approved' }];
+      inv.status = 'approved'; inv.recipientPrincipalId = ctx.principalId; inv.acceptedAtMs = time;
+      await tx.set('story_invitations', id, inv);
+      await tx.set(ADMISSIONS, recipient.familyId, { familyId:recipient.familyId, principalId:ctx.principalId,
+        status:'active', sourceFamilyId:inv.familyId, invitationId:id, createdAtMs:time });
+      return { ...ownStatus(inv, ctx.principalId), displayName };
+    }
     if (action === 'inviteApply') {
       const previous = inv.applicants.find(a=>a.principalId===ctx.principalId);
       if (previous?.status === 'rejected' || (inv.status === 'approved' && inv.recipientPrincipalId !== ctx.principalId)) fail();
