@@ -33,13 +33,9 @@ async function setup() {
 async function invite(f) {
   const created = await f.call('owner', 'inviteCreate', {
     familyId: 'family_owner', storyId: 'story-a', chapterIds: ['chapter-three'],
-    permissions: { read: true, forward: false, copy: true },
+    permissions: { read: true, forward: false, copy: true }, inviteeName: '小岚',
   });
-  const applied = await f.call('friend', 'inviteApply', { token: created.token, displayName: '小岚' });
-  await f.call('owner', 'inviteDecide', {
-    familyId: 'family_owner', storyId: 'story-a', invitationId: created.invitationId,
-    applicantId: applied.applicantId, decision: 'approve', verificationCode: applied.verificationCode,
-  });
+  await f.call('friend', 'inviteAccept', { token: created.token });
   return created;
 }
 
@@ -158,4 +154,16 @@ test('取不到朋友称呼时回信署名退回「一位亲友」，不让发�
   assert.equal(sent.status, 'pending');
   const list = await f.call('owner', 'copyReturns');
   assert.equal(list.returns[0].senderName, '一位亲友');
+});
+
+test('回信带着这位家人在主人名单里的成员编号，记忆之家据此把信归到 ta 名下', async () => {
+  const f = await setup();
+  await invite(f);
+  await receiveCopy(f);
+  await appendAndReturn(f, '我记得你当时还带着一把蓝伞', 'member');
+  const list = await f.call('owner', 'copyReturns');
+  const memberId = list.returns[0].senderMemberId;
+  assert.match(memberId, /^wx_[a-f0-9]{24}$/);
+  const member = f.tables.get(`family_members:family_owner_${memberId}`);
+  assert.equal(member.name, '小岚');
 });

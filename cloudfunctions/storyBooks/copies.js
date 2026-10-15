@@ -45,6 +45,8 @@ function senderName(invitation,principalId){
   const name=invitation?.applicants?.find(item=>item.principalId===principalId)?.displayName;
   return typeof name==='string'&&name.trim()?name.trim().slice(0,30):FALLBACK_SENDER;
 }
+// 与 invitations.js 的 memberIdFor 同一个推导：邀请编号 -> 主人名单里这位家人的成员编号。
+const senderMemberId=invitationId=>typeof invitationId==='string' && /^[a-f0-9]{64}$/.test(invitationId)?'wx_'+invitationId.slice(0,24):'';
 function copyKeys(ctx,input){
   return {copyId:'copy-'+digest([ctx.principalId,input.sourceFamilyId,input.sourceStoryId,input.sourceRevisionId,input.chapterIds,'receive-text-v1']),
     requestId:'request-'+digest([ctx.principalId,input.requestId]),fingerprint:digest(input)};
@@ -128,7 +130,8 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
       const destinationChapterId='chapter-'+digest([copyId,chapter.id]).slice(0,40);
       receivedSources.push({copyId,sourceId,destinationChapterId,sourceFamilyId:input.sourceFamilyId,sourceStoryId:source.id,
         sourceRevisionId:sourceRevision.id,sourceChapterId:chapter.id,sourceOwnerPrincipalId:space.principalId,
-        senderName:senderName(sourceContext.invitation,ctx.principalId)});
+        senderName:senderName(sourceContext.invitation,ctx.principalId),
+        senderMemberId:senderMemberId(grant.invitationId)});
       base.chapters.push({id:destinationChapterId,title:chapter.title,memoryIds:[],
         content:chapter.content.map((block,index)=>({...(typeof block.text==='string'?{text:block.text}:{photoId:media.assets.find(asset=>asset.sourcePhotoId===block.photoId).photoId}),blockId:'block-'+digest([copyId,chapter.id,index]),sourceIds:[sourceId]}))});
     }
