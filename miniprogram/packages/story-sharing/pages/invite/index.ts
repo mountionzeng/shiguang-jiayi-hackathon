@@ -61,24 +61,25 @@ Page({
     catch(error){if(!this.hidden && epoch===this.epoch)this.setData({notice:error instanceof Error?error.message:'暂时没能加入，请稍后重试'});}
     finally{if(!this.hidden && epoch===this.epoch)this.setData({busy:false});}
   },
-  async decide(event:WechatMiniprogram.TouchEvent) {
+  /** 主人调整某位家人的权限或可读章节。每次都带上完整的目标状态，服务端据此整体替换。 */
+  async changeAccess(event:WechatMiniprogram.TouchEvent|WechatMiniprogram.CustomEvent) {
     if(this.data.busy || !this.data.available)return;
-    const {invitationId,applicantId,decision}=event.currentTarget.dataset;
-    if(decision!=='approve' && decision!=='reject')return;
-    const invitation=this.data.invitations.find(i=>i.invitationId===invitationId), applicant=invitation?.applicants.find(a=>a.applicantId===applicantId);
-    if(!applicant)return;
-    const epoch=this.epoch;this.setData({busy:true});
-    try {
-      const confirmation=await new Promise<WechatMiniprogram.ShowModalSuccessCallbackResult>((resolve,reject)=>wx.showModal({
-        title:decision==='approve'?'核对这位亲友':'拒绝这次申请？',
-        content:decision==='approve'?'请通过微信聊天或电话，向本人索取申请页上的 8 位核对码。称呼由申请人填写，不能单凭称呼认人。':'拒绝后，对方无法通过这份邀请重新申请。',
-        editable:decision==='approve',placeholderText:'输入亲友发来的核对码',confirmText:decision==='approve'?'确认授权':'拒绝申请',success:resolve,fail:reject}));
-      if(!confirmation.confirm || this.hidden || epoch!==this.epoch)return;
-      const code=decision==='approve'?(confirmation.content || '').trim():applicant.verificationCode;
-      if(code!==applicant.verificationCode){this.setData({notice:'核对码不一致，没有发放权限。请再向本人确认。'});return;}
-      await storySharing.decide(this.familyId,this.storyId,invitationId,applicantId,decision,code);
-      if(!this.hidden && epoch===this.epoch){this.setData({busy:false});await this.refresh();}
-    }catch(error){if(!this.hidden && epoch===this.epoch)this.setData({notice:error instanceof Error?error.message:'操作未完成，请刷新后重试'});}
+    const dataset=(event.currentTarget as {dataset:Record<string,unknown>}).dataset;
+    const invitationId=String(dataset.invitationId || ''),field=String(dataset.field || '');
+    const invitation=this.data.invitations.find(item=>item.invitationId===invitationId);
+    const member=invitation?.member;if(!invitation || !member?.active)return;
+    const chapterId=String(dataset.chapterId || '');
+    const next={read:true as const,edit:member.permissions.edit===true,copy:member.permissions.copy===true};
+    let chapterIds=member.chapterIds;
+    if(field==='edit' || field==='copy')next[field]=Boolean((event as WechatMiniprogram.CustomEvent<{value:boolean}>).detail?.value);
+    else if(field==='chapter'){
+      chapterIds=member.chapterIds.includes(chapterId)?member.chapterIds.filter(id=>id!==chapterId):[...member.chapterIds,chapterId];
+      if(!chapterIds.length){this.setData({notice:'至少要留一个章节；不想再分享请用“撤销”。'});return;}
+    }else return;
+    const epoch=this.epoch;this.setData({busy:true,notice:''});
+    try{await storySharing.setAccess(this.familyId,this.storyId,invitationId,next,chapterIds);
+      if(!this.hidden && epoch===this.epoch){this.setData({busy:false,notice:member.name+' 的权限已更新，马上生效。'});await this.refresh();}}
+    catch(error){if(!this.hidden && epoch===this.epoch)this.setData({notice:error instanceof Error?error.message:'没能更新，请刷新后重试'});}
     finally{if(!this.hidden && epoch===this.epoch)this.setData({busy:false});}
   },
   async revoke(event:WechatMiniprogram.TouchEvent) {

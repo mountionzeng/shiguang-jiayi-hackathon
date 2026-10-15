@@ -29,19 +29,18 @@
       <view class="caption">{{memory.senderName || '一位亲友'}} · {{memory.status === 'pending' ? '等你在书里决定是否采用' : memory.status === 'accepted' ? '已收进原故事' : '已选择不收'}}</view>
       <view class="share-excerpt serif" wx:for="{{memory.blocks}}" wx:key="blockId" wx:for-item="block">{{block.text}}</view>
     </view>
-    <view class="section-title serif">申请与已授权亲友</view>
-    <view class="intro" wx:if="{{!invitations.length}}">还没有邀请。发出后，点下方刷新查看申请。</view>
+    <view class="section-title serif">已加入的家人</view>
+    <view class="intro" wx:if="{{!invitations.length}}">还没有邀请。发出后，家人点开就会加入，这里能随时调整 ta 能看哪几章、能做什么。</view>
     <view class="invitation" wx:for="{{invitations}}" wx:key="invitationId" wx:for-item="inv">
-      <view class="permission"><text>{{inv.chapterIds.length}} 个章节 · {{inv.label}}</text><button class="small danger" wx:if="{{inv.status !== 'revoked'}}" disabled="{{busy}}" data-invitation-id="{{inv.invitationId}}" bindtap="revoke">撤销</button></view>
-      <view class="caption">{{inv.permissions.edit ? '可以阅读和改写' : '仅可阅读'}}{{inv.permissions.copy ? ' · 可以收入自己的故事' : ''}}{{inv.permissions.forward ? ' · 可以申请再邀请' : ''}}</view>
-      <view class="applicant" wx:for="{{inv.applicants}}" wx:key="applicantId" wx:for-item="person">
-        <view>{{person.displayName}}</view>
-        <view class="caption">{{person.status === 'approved' ? '已授权' : person.status === 'rejected' ? '未通过' : '称呼由申请人填写，请核对本人'}}</view>
-        <view class="actions" wx:if="{{person.status === 'pending' && inv.status === 'pending'}}">
-          <button class="secondary" disabled="{{busy}}" data-invitation-id="{{inv.invitationId}}" data-applicant-id="{{person.applicantId}}" data-decision="reject" bindtap="decide">拒绝</button>
-          <button class="primary" disabled="{{busy}}" data-invitation-id="{{inv.invitationId}}" data-applicant-id="{{person.applicantId}}" data-decision="approve" bindtap="decide">核对并允许</button>
-        </view>
-      </view>
+      <view class="permission"><text>{{inv.member ? inv.member.name : '等待加入'}} · {{inv.chapterIds.length}} 个章节 · {{inv.label}}</text><button class="small danger" wx:if="{{inv.status !== 'revoked'}}" disabled="{{busy}}" data-invitation-id="{{inv.invitationId}}" bindtap="revoke">撤销</button></view>
+      <block wx:if="{{inv.member && inv.member.active}}">
+        <view class="caption">可以读的章节，点一下开关</view>
+        <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id" wx:for-item="chapter" wx:if="{{inv.chapterIds.indexOf(chapter.id) >= 0}}">
+          <switch checked="{{inv.member.chapterIds.indexOf(chapter.id) >= 0}}" disabled="{{busy}}" data-invitation-id="{{inv.invitationId}}" data-field="chapter" data-chapter-id="{{chapter.id}}" bindchange="changeAccess" color="#4f7f6b"/><text>{{chapter.title || '未命名章节'}}</text>
+        </label>
+        <view class="permission" wx:if="{{editAvailable}}"><text>可以改写</text><switch checked="{{inv.member.permissions.edit}}" disabled="{{busy}}" data-invitation-id="{{inv.invitationId}}" data-field="edit" bindchange="changeAccess" color="#4f7f6b"/></view>
+        <view class="permission" wx:if="{{copyAvailable}}"><text>可以收进自己的故事、回信</text><switch checked="{{inv.member.permissions.copy}}" disabled="{{busy}}" data-invitation-id="{{inv.invitationId}}" data-field="copy" bindchange="changeAccess" color="#4f7f6b"/></view>
+      </block>
     </view>
   </block>
   <block wx:if="{{available && recipient && status}}">
