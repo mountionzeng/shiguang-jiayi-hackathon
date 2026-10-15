@@ -32,8 +32,9 @@ Page({
     notice: '', title: '', coverUrl: '', coverNotice: '',
     sourceKind: 'story' as 'story' | 'memory',
     coverCandidates: [] as ShareCoverCandidate[], selectedCoverImageIds: [] as string[],
-    textImageCountOptions: Array.from({ length: 12 }, (_, index) => String(index + 1)),
-    targetTextImageCount: 1,
+    // 0 = 自动：按字号自然分页。默认自动，避免整本书一进来就因张数不匹配而失败。
+    textImageCountOptions: ['自动', ...Array.from({ length: 12 }, (_, index) => String(index + 1))],
+    targetTextImageCount: 0,
     scope: 'chapters' as SendScope, chapters: [] as Array<SendChapter & { checked: boolean }>,
     textChapterIndex: 0, selectedText: '', editorReady: false,
     selectedCount: 0, characterCount: 0, preview: false, previewChapters: [] as SendChapter[],
@@ -43,7 +44,8 @@ Page({
   snapshot: undefined as SendSnapshot | undefined,
   memorySource: undefined as MemoryExportSource | undefined,
   editor: undefined as WechatMiniprogram.EditorContext | undefined,
-  epoch: 0, hidden: true, editorSeed: 0,
+  epoch: 0, hidden: true, editorSeed: 0, genEpoch: 0,
+  regenerateTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   exportSelection: undefined as BookExportSelection | undefined,
   descriptor: undefined as BookExportDescriptor | undefined,
   renderTask: undefined as Promise<string[]> | undefined,
@@ -65,6 +67,7 @@ Page({
     void (this.returningFromCover ? this.refreshAfterCover() : (this.expectedMemory ? this.refreshMemory() : this.refresh()));
   },
   onHide() {
+    clearTimeout(this.regenerateTimer);
     this.hidden = true; this.epoch++; this.editorSeed++; this.snapshot = undefined; this.memorySource = undefined; this.resetImages();
     this.editor?.clear();
     this.editor = undefined;
@@ -244,6 +247,7 @@ Page({
       if (this.hidden || epoch !== this.epoch) return;
       if (fresh.accountScope !== snapshot.accountScope || JSON.stringify(fresh) !== JSON.stringify(snapshot)) throw new Error('书稿或账号已有变化，请回到目录重新进入发送');
       this.setData({ preview: true, previewChapters: selected });
+      this.autoGenerate();
     } catch (error) {
       if (!this.hidden && epoch === this.epoch) {
         this.snapshot = undefined; this.editorSeed++; this.editor?.clear(); this.editor = undefined;
@@ -264,6 +268,7 @@ Page({
       if (JSON.stringify(fresh.source) !== JSON.stringify(source)) throw new Error('这段记忆已有变化，请重新进入发送');
       const selected = [this.memoryChapter(source)];
       this.setData({ preview: true, previewChapters: selected, selectedCount: 1, characterCount: selected[0].characterCount });
+      this.autoGenerate();
     } catch (error) {
       if (!this.hidden && epoch === this.epoch) {
         this.memorySource = undefined; this.resetImages();
@@ -283,41 +288,60 @@ Page({
   async checkExportCapability(epoch: number) {
     try {
       const available = await bookExportApi.available(this.data.sourceKind);
-      if (!this.hidden && epoch === this.epoch) this.setData({ exportAvailable: available, capabilityKnown: true });
+      if (!this.hidden && epoch === this.epoch) { this.setData({ exportAvailable: available, capabilityKnown: true }); this.autoGenerate(); }
     } catch {
       if (!this.hidden && epoch === this.epoch) this.setData({ exportAvailable: false, capabilityKnown: true, notice: '暂时无法确认图片导出是否可用，请稍后重新加载' });
     }
   },
+  /** 进入预览或改选封面/排版后，自动排出接收者会看到的最终图片。 */
+  autoGenerate() {
+    clearTimeout(this.regenerateTimer);
+    this.regenerateTimer = setTimeout(() => {
+      if (!this.hidden && this.data.preview && this.data.exportAvailable && !this.data.imagePaths.length && !this.busy()) void this.generateImages();
+    }, 300);
+  },
+  /** 生成中改选封面/排版：停掉本次生成，让人可以马上换选项。 */
+  stopGeneration() {
+    if (!this.data.exportBusy) return;
+    this.genEpoch++;
+    this.setData({ exportBusy: false, renderProgress: '' });
+  },
+  /** 相册保存、分享和内容核对期间不能改；生成中可以改，改了就停止本次生成。 */
+  lockedForChoice() { return this.data.checking || this.data.albumSaving || this.data.sharingIndex >= 0; },
   resetImages() {
     removeImageFiles(this.data.imagePaths);
     this.exportSelection = undefined; this.descriptor = undefined;
     this.setData({ imagePaths: [], savedIndices: [], renderProgress: '', coverImageCount: 0 });
   },
   chooseShareCovers(event: WechatMiniprogram.CustomEvent<{ value: string[] }>) {
-    if (this.busy()) return;
+    if (this.lockedForChoice()) return;
+    this.stopGeneration();
     const selected = event.detail.value;
     const ids = selected.slice(0, 6);
     this.resetImages();
-    this.setData({ selectedCoverImageIds: ids, notice: selected.length > 6 ? '本次最多选择 6 张封面' : '' });
+    this.setData({ selectedCoverImageIds: ids, notice: selected.length > 6 ? '本次最多选择 6 张封面' : '' }); this.autoGenerate();
   },
   chooseTextImageCount(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
-    if (this.busy()) return;
-    const count = Number(event.detail.value) + 1;
-    if (!Number.isSafeInteger(count) || count < 1 || count > 12) return;
+    if (this.lockedForChoice()) return;
+    this.stopGeneration();
+    const count = Number(event.detail.value);
+    if (!Number.isSafeInteger(count) || count < 0 || count > 12) return;
     this.resetImages();
-    this.setData({ targetTextImageCount: count, notice: '' });
+    this.setData({ targetTextImageCount: count, notice: '' }); this.autoGenerate();
   },
   chooseLayout(event: WechatMiniprogram.TouchEvent) {
-    if (this.busy()) return;
+    if (this.lockedForChoice()) return;
+    this.stopGeneration();
     const layout = event.currentTarget.dataset.layout as ImageLayoutMode;
     if (layout !== 'pages' && layout !== 'long') return;
-    this.resetImages(); this.setData({ layout, notice: '' });
+    this.resetImages(); this.setData({ layout, notice: '' }); this.autoGenerate();
   },
   chooseFont(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
-    if (this.busy()) return;
+    if (this.lockedForChoice()) return;
+    this.stopGeneration();
     const fontSize = [28, 32, 36][Number(event.detail.value)] as ImageFontSize;
     if (!fontSize) return;
-    this.resetImages(); this.setData({ fontSize, notice: '' });
+    this.resetImages(); this.setData({ fontSize, notice: '' }); this.autoGenerate();
   },
   async verifySnapshot(snapshot: SendSnapshot) {
     try {
@@ -351,8 +375,8 @@ Page({
     if (this.busy() || !this.data.preview || !this.data.exportAvailable) return;
     const source = this.memorySource, snapshot = this.snapshot;
     if (!snapshot && !source) return;
-    const epoch = this.epoch;
-    const active = () => !this.hidden && this.epoch === epoch;
+    const epoch = this.epoch, gen = ++this.genEpoch;
+    const active = () => !this.hidden && this.epoch === epoch && this.genEpoch === gen;
     this.resetImages(); this.setData({ exportBusy: true, notice: '', renderProgress: '正在核对导出权限…' });
     let paths: string[] = [];
     try {
@@ -392,7 +416,7 @@ Page({
       if (checked.descriptor.id !== material.descriptor.id) throw new Error('预览已变化，请重新生成');
       this.descriptor = material.descriptor; this.exportSelection = selection;
       this.setData({ imagePaths: paths, savedIndices: [], coverImageCount: source ? material.descriptor.photoIds?.length || 0 : Math.max(1, material.descriptor.coverImageIds?.length || 0),
-        notice: '请检查下面的全部图片，再保存到相册。' });
+        notice: '这就是对方会收到的样子。满意的话可以直接发送或保存。' });
     } catch (error) {
       removeImageFiles(paths);
       if (active()) this.setData({ notice: error instanceof Error ? error.message : '图片生成失败，请重试' });
