@@ -68,7 +68,6 @@ Page({
     invitation: null as FamilyInvitation | null,
     invitationAvatarText: "忆",
     posterPath: "",
-    codeReady: false,
     albumSaving: false,
     errorMessage: "",
   },
@@ -242,7 +241,6 @@ Page({
         invitationAvatarText: firstCharacter(result.invitation.inviteeName),
       });
       const codeResult = await createFamilyInvitationCode(result.invitation.token, environmentVersion());
-      this.setData({ codeReady: true });
       const codePath = await writeBase64Image(codeResult.codeBase64);
       const posterPath = await this.drawPoster(result.invitation, codePath);
       this.setData({ posterPath, step: "ready" });
@@ -402,10 +400,6 @@ Page({
 
   openRoom(familyId: string) {
     wx.redirectTo({ url: `/pages/room/room?familyId=${encodeURIComponent(familyId)}` });
-  },
-
-  goBack() {
-    wx.navigateBack({ fail: () => wx.reLaunch({ url: "/pages/index/index" }) });
   },
 
   onShareAppMessage() {
