@@ -95,7 +95,7 @@
       <button class="chapter-row" wx:for="{{chapterRows}}" wx:key="id" data-id="{{item.id}}" bindtap="openChapter">
         <text class="chapter-number">{{item.label}}</text>
         <view class="chapter-copy">
-          <text class="chapter-name serif">{{item.title || '还没起名字'}}</text>
+          <text class="chapter-name serif">{{item.title || '还没起名字'}}<text wx:if="{{item.hasReturn}}" class="chapter-return-mark" aria-label="有新的回信"> · 有回信</text></text>
           <text class="chapter-meta">{{item.memoryCount}} 段记忆 · {{item.photoCount}} 张图片</text>
         </view>
         <text class="chapter-arrow" aria-hidden="true">›</text>
@@ -132,6 +132,17 @@
       <button wx:if="{{!protectedCopy}}" class="xiaoyi-entry" catchtouchstart="openXiaoyi" disabled="{{saving || generating || pickingPhoto || !editorReady}}" aria-label="小忆">
         <image class="xiaoyi-entry-avatar" src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFill" aria-hidden="true" />
       </button>
+    </view>
+    <view class="return-letters" wx:if="{{chapterReturns.length}}">
+      <view class="pending-title">朋友的回信 <text>不采用也不会改动你的书</text></view>
+      <view class="pending-card" wx:for="{{chapterReturns}}" wx:key="returnId">
+        <view class="pending-label">{{item.senderName}} 回信</view>
+        <view class="pending-text serif" selectable>{{item.text}}</view>
+        <view class="pending-actions">
+          <button class="pending-btn pending-accept" data-id="{{item.returnId}}" data-decision="accept" bindtap="decideChapterReturn" disabled="{{decidingReturn}}">采用</button>
+          <button class="pending-btn" data-id="{{item.returnId}}" data-decision="reject" bindtap="decideChapterReturn" disabled="{{decidingReturn}}">不采用</button>
+        </view>
+      </view>
     </view>
     <view class="pending-edits" wx:if="{{chapterPendingEdits.length}}">
       <view class="pending-title">待确认修改 <text>{{chapterPendingCount ? '还有 ' + chapterPendingCount + ' 处' : '都已选择'}}</text></view>

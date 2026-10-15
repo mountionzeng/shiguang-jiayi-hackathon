@@ -1,11 +1,10 @@
 import {storySharing,Invitation,InviteStatus,sharingHome,invitationPath,sharedReadPath} from '../../../../services/storySharing';
-import {storyCopies,StoryReturn,copyRequestId} from '../../../../services/storyCopies';
+import {storyCopies,StoryReturn} from '../../../../services/storyCopies';
 const statusLabel=(status:string)=>({pending:'等待主人确认',approved:'已获准阅读',rejected:'申请未通过',revoked:'已撤销',expired:'已过期',unrequested:'等待申请'}[status] || '暂不可用');
 Page({
   data:{recipient:false,available:false,loading:false,busy:false,title:'',notice:'',displayName:'',forward:false,edit:false,editAvailable:false,copy:false,copyAvailable:false,shareReady:false,
     chapters:[] as Array<{id:string;title:string;checked:boolean}>,invitations:[] as Array<Invitation & {label:string}>,returns:[] as StoryReturn[],status:null as InviteStatus|null,statusText:''},
   storyId:'',familyId:'',token:'',shareToken:'',epoch:0,hidden:false,
-  returnDecisionRequests:{} as Record<string,string>,
   onLoad(options:{storyId?:string;token?:string}={}) {
     this.storyId=options.storyId || '';this.token=options.token || '';
     this.setData({recipient:Boolean(this.token)});wx.hideShareMenu();
@@ -85,18 +84,6 @@ Page({
       if(!this.hidden && epoch===this.epoch){this.shareToken='';this.setData({shareReady:false,busy:false});await this.refresh();}
     }catch(error){if(!this.hidden && epoch===this.epoch)this.setData({notice:error instanceof Error?error.message:'撤销失败，请重试'});}
     finally{if(!this.hidden && epoch===this.epoch)this.setData({busy:false});}
-  },
-  async decideReturn(event:WechatMiniprogram.TouchEvent){
-    if(this.data.busy)return;const {returnId,decision}=event.currentTarget.dataset;if(decision!=='accept'&&decision!=='reject')return;
-    const item=this.data.returns.find(value=>value.returnId===returnId);if(!item||item.status!=='pending')return;
-    const confirmed=await new Promise<boolean>(resolve=>wx.showModal({title:decision==='accept'?'收进原故事？':'不收这段补充？',
-      content:decision==='accept'?'会在原章节末尾生成一个新版本，旧版本仍会保留。':'原故事不会改变，对方已保存的故事也不受影响。',
-      confirmText:decision==='accept'?'收下':'不收',success:r=>resolve(r.confirm),fail:()=>resolve(false)}));if(!confirmed)return;
-    const key=returnId+':'+decision;if(!this.returnDecisionRequests[key])this.returnDecisionRequests[key]=copyRequestId().replace(/^receive-/,"decision-");
-    const epoch=this.epoch;this.setData({busy:true,notice:''});
-    try{await storyCopies.decideReturn({returnId,decision,requestId:this.returnDecisionRequests[key]});delete this.returnDecisionRequests[key];if(!this.hidden&&epoch===this.epoch){this.setData({busy:false});await this.refresh();}}
-    catch(error){if(!this.hidden&&epoch===this.epoch)this.setData({notice:error instanceof Error?error.message:'操作未确认，请重试'});}
-    finally{if(!this.hidden&&epoch===this.epoch)this.setData({busy:false});}
   },
   openStory(){const s=this.data.status;if(s?.status==='approved' && s.familyId && s.storyId)wx.navigateTo({url:sharedReadPath(s.familyId,s.storyId)});},
   onShareAppMessage(){return this.shareToken && this.data.shareReady?{...sharingHome,title:'邀请你阅读一段故事',path:invitationPath(this.shareToken)}:sharingHome;},

@@ -23,14 +23,10 @@
     <button class="primary" bindtap="create" loading="{{busy}}" disabled="{{busy || loading || !chapters.length}}">生成阅读邀请</button>
     <button wx:if="{{shareReady}}" class="primary" open-type="share">把邀请发给亲友</button>
     <view class="caption" wx:if="{{shareReady}}">邀请链接不含书名和正文。离开后不保留链接；可撤销旧邀请再生成。</view>
-    <view class="section-title serif" wx:if="{{returns.length}}">亲友发回的记忆</view>
+    <view class="section-title serif" wx:if="{{returns.length}}">亲友发回的回信</view>
     <view class="invitation" wx:for="{{returns}}" wx:key="returnId" wx:for-item="memory">
+      <view class="caption">{{memory.senderName || '一位亲友'}} · {{memory.status === 'pending' ? '等你在书里决定是否采用' : memory.status === 'accepted' ? '已收进原故事' : '已选择不收'}}</view>
       <view class="share-excerpt serif" wx:for="{{memory.blocks}}" wx:key="blockId" wx:for-item="block">{{block.text}}</view>
-      <view class="caption">{{memory.status === 'pending' ? '等待你决定是否收进原故事' : memory.status === 'accepted' ? '已收进原故事' : '已选择不收'}}</view>
-      <view class="actions" wx:if="{{memory.status === 'pending'}}">
-        <button class="secondary" disabled="{{busy}}" data-return-id="{{memory.returnId}}" data-decision="reject" bindtap="decideReturn">不收</button>
-        <button class="primary" disabled="{{busy}}" data-return-id="{{memory.returnId}}" data-decision="accept" bindtap="decideReturn">收进原故事</button>
-      </view>
     </view>
     <view class="section-title serif">申请与已授权亲友</view>
     <view class="intro" wx:if="{{!invitations.length}}">还没有邀请。发出后，点下方刷新查看申请。</view>

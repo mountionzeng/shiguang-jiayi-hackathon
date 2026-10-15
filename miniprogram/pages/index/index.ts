@@ -1,4 +1,5 @@
 import {dailyQuestionAvailable, dailyQuestionCache, generateDailyQuestion} from "../../services/dailyQuestion";
+import {homeReturnNotice, loadPendingReturns} from "../../services/storyReturnsInbox";
 import {hasAiConsent} from "../../services/aiConsent";
 import { storyCoverApi } from "../../services/storyCoverService";
 import { bookCoverKey, renderBookCover } from "../../services/bookFrameColor";
@@ -335,6 +336,8 @@ Page({
     recommendedStoryTitle: "",
     recommendedDimension: "",
     hasRecommendedQuestion: false,
+    returnNotice: "",
+    returnNoticeChapterId: "",
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
   },
@@ -449,7 +452,26 @@ Page({
 
     this.preloadBookCovers(activeBookIndex);
     void this.updateDailyQuestion();
+    void this.updateReturnNotice(coverRefreshId, activeBook?.storyId ?? "", activeBook?.storyTitle || currentStoryTitle);
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
+  },
+
+  /** 朋友的回信：只显示一行提示，失败或没有回信就什么都不显示。 */
+  async updateReturnNotice(refreshId: number, storyId: string, storyTitle: string) {
+    if (!storyId) { this.setData({returnNotice: "", returnNoticeChapterId: ""}); return; }
+    const notice = homeReturnNotice(await loadPendingReturns(), storyId, storyTitle);
+    if (refreshId !== this.coverRefreshId) return;
+    this.setData({
+      returnNotice: notice ? notice.text + (notice.extra > 0 ? `，还有 ${notice.extra} 封` : "") : "",
+      returnNoticeChapterId: notice?.chapterId ?? "",
+    });
+  },
+
+  openReturnNotice() {
+    const storyId = this.data.storyId;
+    if (!storyId) return;
+    const chapter = this.data.returnNoticeChapterId;
+    wx.navigateTo({url: "/pages/book/book?storyId=" + encodeURIComponent(storyId) + (chapter ? "&chapterId=" + encodeURIComponent(chapter) : "")});
   },
 
   retryHomeLoad() {
