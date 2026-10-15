@@ -52,6 +52,14 @@ function inviteeName(value) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > 30 || NAME_BAD.test(value)) fail();
   return value.trim();
 }
+/* 主人管理页里一位已加入的家人：当前生效的章节和每项权限（以授权记录为准，不是邀请时的快照）。 */
+async function memberView(tx, inv) {
+  const grant = await tx.get('story_grants', grantIdFor(inv.familyId, inv.storyId, inv.recipientPrincipalId));
+  const active = grant?.status === 'active';
+  return { name:inv.applicants.find(a => a.principalId === inv.recipientPrincipalId)?.displayName || inv.inviteeName || DEFAULT_INVITEE,
+    active, chapterIds:active && grant.scope?.type === 'chapters' ? grant.scope.chapterIds : [],
+    permissions:active ? grant.permissions : { read:false, edit:false, copy:false, forward:false, publish:false } };
+}
 const ownStatus = (inv, principalId) => {
   const applicant = inv.applicants.find(item => item.principalId === principalId);
   return { status: inv.status === 'revoked' ? 'revoked' : applicant?.status || 'unrequested', expiresAtMs: inv.expiresAtMs,
@@ -88,7 +96,8 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
           if (!inv || inv.familyId !== story.familyId || inv.storyId !== story.id) fail();
           invitations.push({ invitationId:id, status:inv.status === 'pending' && inv.expiresAtMs <= time ? 'expired' : inv.status,
             expiresAtMs:inv.expiresAtMs, chapterIds:inv.chapterIds, permissions:inv.permissions,
-            applicants:inv.applicants.map(a=>({applicantId:a.id,displayName:a.displayName,verificationCode:a.verificationCode,status:a.status})) });
+            applicants:inv.applicants.map(a=>({applicantId:a.id,displayName:a.displayName,verificationCode:a.verificationCode,status:a.status})),
+            ...(inv.status === 'approved' ? { member:await memberView(tx, inv) } : {}) });
         }
         return { story:{id:story.id,title:story.title}, chapters:chapters.map(c=>({id:c.id,title:c.title})), invitations };
       }
@@ -133,6 +142,24 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
     const inv = await tx.get('story_invitations',id);
     if (!inv || !canary.has(inv.familyId) || !Array.isArray(inv.applicants) || inv.applicants.length > 8) fail();
     if (!byToken && (input.familyId !== inv.familyId || input.storyId !== inv.storyId || ctx.principalId !== inv.ownerPrincipalId)) fail();
+    // 主人随时调整某位家人对某几章的权限。范围不能超出这份邀请最初的章节；
+    // 改写、收入副本仍受各自服务端开关约束；授权版本号每次 +1，旧缓存据此失效。
+    if (action === 'inviteSetAccess') {
+      await assertSpaceOwner(tx,ctx);
+      if (ctx.familyId !== inv.familyId || inv.status !== 'approved' || !inv.recipientPrincipalId) fail();
+      const next = input.permissions;
+      if (!next || next.read !== true || Object.keys(next).some(key=>!['read','edit','copy'].includes(key)) ||
+          Object.values(next).some(value=>typeof value !== 'boolean')) fail();
+      if (next.edit && sharedEditEnabled !== true) fail('STORY_ACCESS_NOT_READY');
+      if (next.copy && copyReceiveEnabled !== true) fail('STORY_ACCESS_NOT_READY');
+      const scope = input.chapterIds === undefined ? inv.chapterIds : input.chapterIds;
+      if (!chapterIds(scope) || scope.some(chapterId => !inv.chapterIds.includes(chapterId))) fail();
+      const gid = grantIdFor(inv.familyId, inv.storyId, inv.recipientPrincipalId), grant = await tx.get('story_grants', gid);
+      if (grant?.status !== 'active' || grant.invitationId !== id) fail();
+      await tx.set('story_grants', gid, { ...grant, version:grant.version + 1, scope:{ type:'chapters', chapterIds:[...scope] },
+        permissions:{ read:true, forward:false, edit:next.edit === true, copy:next.copy === true, publish:false } });
+      return { ok:true };
+    }
     // Revocation remains available after source deletion/expiry; it never reads the manuscript.
     if (action === 'inviteRevoke') {
       await assertSpaceOwner(tx,ctx);

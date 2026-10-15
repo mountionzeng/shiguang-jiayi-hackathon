@@ -132,3 +132,78 @@ test('接受后得到的是章节授权，权限由邀请决定，朋友自己�
   assert.equal(read.capabilities.copy, false);
   assert.equal(read.capabilities.sharedEdit, false);
 });
+
+async function joined(f, input = {}) {
+  const inv = await f.invite(input);
+  await f.call('friend', 'inviteAccept', { token: inv.token });
+  return inv;
+}
+const access = (inv, extra = {}) => ({ familyId: 'family_owner', storyId: 'story-a', invitationId: inv.invitationId, ...extra });
+
+test('主人的管理页能看到每位家人当前生效的章节和权限', async () => {
+  const f = await setup();
+  const inv = await joined(f);
+  const managed = await f.call('owner', 'inviteManage', { familyId: 'family_owner', storyId: 'story-a' });
+  const member = managed.invitations.find(item => item.invitationId === inv.invitationId).member;
+  assert.equal(member.name, '小岚');
+  assert.equal(member.active, true);
+  assert.deepEqual(member.chapterIds, ['chapter-three']);
+  assert.equal(member.permissions.copy, true);
+});
+
+test('主人改权限立刻生效：关掉收入，朋友就不能再收；打开改写，朋友才能改', async () => {
+  const f = await setup();
+  const inv = await joined(f);
+  let read = await f.call('friend', 'sharedRead', { familyId: 'family_owner', storyId: 'story-a' });
+  assert.equal(read.capabilities.copy, true);
+  assert.equal(read.capabilities.sharedEdit, false);
+
+  await f.call('owner', 'inviteSetAccess', access(inv, { permissions: { read: true, copy: false, edit: true } }));
+  read = await f.call('friend', 'sharedRead', { familyId: 'family_owner', storyId: 'story-a' });
+  assert.equal(read.capabilities.copy, false);
+  assert.equal(read.capabilities.sharedEdit, true);
+
+  const grant = [...f.tables].find(([key]) => key.startsWith('story_grants:'))[1];
+  assert.equal(grant.version, 2, '每次调整授权版本号加一');
+  assert.equal(grant.permissions.forward, false);
+  assert.equal(grant.permissions.publish, false);
+});
+
+test('主人可以收窄到更少的章节，但不能扩大到邀请之外', async () => {
+  const f = await setup();
+  const inv = await joined(f, { chapterIds: ['chapter-one', 'chapter-three'] });
+  await f.call('owner', 'inviteSetAccess', access(inv, { chapterIds: ['chapter-three'], permissions: { read: true, copy: false, edit: false } }));
+  const read = await f.call('friend', 'sharedRead', { familyId: 'family_owner', storyId: 'story-a' });
+  assert.deepEqual(read.chapters.map(c => c.id), ['chapter-three']);
+  await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { chapterIds: ['chapter-two'], permissions: { read: true } })), { code: 'STORY_FORBIDDEN' });
+});
+
+test('只有主人能改权限；朋友不能改自己的，也不能改别人的', async () => {
+  const f = await setup();
+  const inv = await joined(f);
+  await assert.rejects(f.call('friend', 'inviteSetAccess', access(inv, { permissions: { read: true, copy: true, edit: true } })), { code: 'STORY_FORBIDDEN' });
+  await assert.rejects(f.call('other', 'inviteSetAccess', access(inv, { permissions: { read: true, edit: true } })), { code: 'STORY_ACCESS_DISABLED' });
+});
+
+test('改权限不能越过服务端开关，也不能夹带转发或发布', async () => {
+  const f = await setup({ sharedEditEnabled: false });
+  const inv = await joined(f);
+  await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { permissions: { read: true, edit: true } })), { code: 'STORY_ACCESS_NOT_READY' });
+  await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { permissions: { read: true, publish: true } })), { code: 'STORY_FORBIDDEN' });
+  await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { permissions: { read: true, forward: true } })), { code: 'STORY_FORBIDDEN' });
+  await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { permissions: { read: false } })), { code: 'STORY_FORBIDDEN' });
+});
+
+test('撤销之后不能再通过改权限把授权复活', async () => {
+  const f = await setup();
+  const inv = await joined(f);
+  await f.call('owner', 'inviteRevoke', access(inv));
+  await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { permissions: { read: true, copy: true } })), { code: 'STORY_FORBIDDEN' });
+  await assert.rejects(f.call('friend', 'sharedRead', { familyId: 'family_owner', storyId: 'story-a' }), { code: 'STORY_FORBIDDEN' });
+});
+
+test('还没有人加入的邀请不能改权限', async () => {
+  const f = await setup();
+  const inv = await f.invite();
+  await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { permissions: { read: true, copy: true } })), { code: 'STORY_FORBIDDEN' });
+});
