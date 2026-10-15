@@ -7,6 +7,7 @@ const { isRolledOut } = require('./rollout');
 const { readStoryMedia } = require('./media');
 const { shareExcerpt } = require('./excerpts');
 const { editAuthorizedChapter } = require('./collaboration');
+const { listChapterChanges } = require('./changes');
 const { receiveTextCopy, appendOwnExperience } = require('./copies');
 const { receiveMediaCopy } = require('./copyMedia');
 const { sendOwnReturn, listReturns, decideReturn } = require('./returns');
@@ -90,6 +91,10 @@ function createStoryService(repo, options = {}) {
     if (action === 'copyReturnDecision') {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return decideReturn(repo,ctx,{returnId:event.returnId,decision:event.decision,requestId:event.requestId},{now:options.now});
+    }
+    if (action === 'chapterChanges') {
+      if (!accessEnabled || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      return listChapterChanges(repo,ctx,{familyId:event.familyId,storyId:event.storyId,chapterId:event.chapterId});
     }
     if (action === 'sharedEdit') {
       if (!accessEnabled || options.sharedEditEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
