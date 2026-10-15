@@ -3551,3 +3551,49 @@ test("读取章节改动失败时安静地什么都不显示", async context => 
   await callPage(page, "loadChapterChanges");
   assert.deepEqual(page.data.chapterChanges, []);
 });
+
+function roomLetter(overrides: Record<string, unknown> = {}) {
+  return { ...returnLetter(), senderMemberId: "wx_" + "a".repeat(24), ...overrides };
+}
+
+test("记忆之家：家人的回信归到 ta 名下，点「你」看全部，没有回信时什么都不显示", async context => {
+  const state = createInitialRoomState();
+  state.members = [...state.members, { id: "wx_" + "a".repeat(24), name: "小岚", relation: "家人", avatarText: "小", role: "contributor", kind: "person" } as any];
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("room"));
+  (globalThis as any).wx.cloud = { callFunction: async () => ({ result: { returns: [roomLetter()] } }) };
+  const { invalidatePendingReturns } = await import("../miniprogram/services/storyReturnsInbox");
+  invalidatePendingReturns();
+  await callPage(page, "refresh", state);
+  const people = page.data.people as any[];
+  assert.equal(people.find(person => person.name === "小岚").letters, 1);
+  assert.equal(people.find(person => person.id === "me").letters, 1);
+  assert.deepEqual((page.data.letters as any[]).map(item => item.where), ["小岚 · 回信给你的书"]);
+
+  page.setData({ activeId: "wx_" + "a".repeat(24) });
+  await callPage(page, "refresh", state);
+  assert.deepEqual((page.data.letters as any[]).map(item => item.text), ["我记得你当时还带着一把蓝伞"]);
+  assert.equal((page.data.letters as any[])[0].where, "回信给你的书");
+
+  callPage(page, "openLetter", { currentTarget: { dataset: { id: returnLetter().returnId } } });
+  assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-a&chapterId=chapter-three");
+
+  invalidatePendingReturns();
+  (globalThis as any).wx.cloud = { callFunction: async () => { throw new Error("网络断了"); } };
+  await callPage(page, "refresh", state);
+  assert.deepEqual(page.data.letters, []);
+  invalidatePendingReturns();
+});
+
+test("记忆之家：被邀请的家人自己看房间时不读回信", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("room"));
+  let calls = 0;
+  (globalThis as any).wx.cloud = { callFunction: async () => { calls++; return { result: { returns: [roomLetter()] } }; } };
+  page.setData({ sharedFamilyId: "family_shared" });
+  await callPage(page, "refresh", storage.roomState());
+  assert.equal(calls, 0);
+  assert.deepEqual(page.data.letters, []);
+});
