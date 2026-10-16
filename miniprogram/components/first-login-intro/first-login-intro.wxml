@@ -1,0 +1,18 @@
+<view wx:if="{{visible}}" class="intro-mask" catchtap="keepOpen" catchtouchmove="keepOpen">
+  <view class="intro-card" role="dialog" aria-label="{{content.title}}" catchtap="keepOpen">
+    <view wx:if="{{content.invite}}" class="intro-invite">
+      <text class="intro-invite-heading serif">{{content.invite.heading}}</text>
+      <text wx:if="{{content.invite.message}}" class="intro-invite-message">“{{content.invite.message}}”</text>
+      <text class="intro-invite-detail">{{content.invite.detail}}</text>
+    </view>
+    <text class="intro-title serif">{{content.title}}</text>
+    <text class="intro-lead">{{content.lead}}</text>
+    <view class="intro-points">
+      <view wx:for="{{content.points}}" wx:key="*this" class="intro-point">
+        <text class="intro-dot">·</text>
+        <text class="intro-point-text">{{item}}</text>
+      </view>
+    </view>
+    <button class="intro-button" bindtap="dismiss" hover-class="none" aria-label="{{content.button}}">{{content.button}}</button>
+  </view>
+</view>

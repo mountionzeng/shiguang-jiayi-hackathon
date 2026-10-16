@@ -16,28 +16,12 @@ const {
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
-const COLLECTIONS = ["user_accounts", "family_invitations", "family_access"];
-
 function errorMessage(error) {
   return String(error && error.errMsg ? error.errMsg : error);
 }
 
-function isExisting(error) {
-  return /already exists|ResourceExist|COLLECTION_(ALREADY_)?EXIST|Table exist/i.test(errorMessage(error));
-}
-
 function isMissing(error) {
   return /does not exist|not found|cannot find document|Table not exist/i.test(errorMessage(error));
-}
-
-async function ensureCollections() {
-  for (const name of COLLECTIONS) {
-    try {
-      await db.createCollection(name);
-    } catch (error) {
-      if (!isExisting(error)) throw error;
-    }
-  }
 }
 
 function identity() {

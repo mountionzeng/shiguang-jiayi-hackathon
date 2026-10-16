@@ -13,6 +13,7 @@ import { memoryPlacements } from "../../services/manuscript";
 import { loadSharedFamilyRoom } from "../../services/familyInviteService";
 import { logLoadError } from "../../services/loadErrorLog";
 import { bookmarkDateParts } from "../../services/memoryDates";
+import { loadPendingReturns, PendingReturn, senderLabel } from "../../services/storyReturnsInbox";
 
 interface RoomLoadOptions { familyId?: string; }
 
@@ -37,6 +38,16 @@ interface PersonTab {
   relation: string;
   avatarText: string;
   count: number;
+  /** 这位家人有几封等你决定的回信；0 时界面上什么都不显示。 */
+  letters: number;
+}
+
+/** 某位家人发回的、等主人决定要不要放进书里的回信。 */
+interface LetterRow {
+  returnId: string;
+  text: string;
+  dateLabel: string;
+  where: string;
 }
 
 interface MemoryRow {
@@ -66,6 +77,7 @@ Page({
   roomSnapshot: undefined as FamilyRoomState | undefined,
   loadSequence: 0,
   onUnload() { this.loadSequence++; },
+  lettersById: new Map<string, PendingReturn>(),
   data: {
     people: [] as PersonTab[],
     activeId: ME,
@@ -81,6 +93,7 @@ Page({
     viewerRole: "" as FamilyMember["role"] | "",
     sharedFamilyId: "",
     canInvite: true,
+    letters: [] as LetterRow[],
   },
 
   onLoad(options: RoomLoadOptions = {}) {
@@ -112,17 +125,26 @@ Page({
       viewerRole = viewer?.role ?? "";
     }
     if (sequence !== this.loadSequence) return;
+    // Staged memories must paint immediately; only the authoritative refresh reads letters.
+    const returns: PendingReturn[] = this.data.sharedFamilyId || preview ? [] : await loadPendingReturns();
+    if (sequence !== this.loadSequence) return;
     this.roomSnapshot = this.data.sharedFamilyId ? undefined : currentState;
+    const lettersBy = new Map<string, PendingReturn[]>();
+    returns.forEach(item => {
+      const id = (item as PendingReturn & { senderMemberId?: string }).senderMemberId || "";
+      if (id) lettersBy.set(id, [...(lettersBy.get(id) ?? []), item]);
+    });
     const pool = memoryPool(currentState.contributions);
     const placements = memoryPlacements(currentState);
     const people: PersonTab[] = [
-      { id: ME, name: "你", relation: "全部记忆", avatarText: "我", count: pool.length },
+      { id: ME, name: "你", relation: "全部记忆", avatarText: "我", count: pool.length, letters: returns.length },
       ...currentState.members.filter((member) => isActiveMember(member) && !isSelf(member)).map((member) => ({
         id: member.id,
         name: member.name,
         relation: member.relation,
         avatarText: member.avatarText,
         count: memoriesWith(pool, member.id).length,
+        letters: (lettersBy.get(member.id) ?? []).length,
       })),
     ];
     const active = people.find((person) => person.id === this.data.activeId) ?? people[0];
@@ -146,10 +168,19 @@ Page({
         };
       });
 
+    this.lettersById = new Map(returns.map(item => [item.returnId, item]));
+    const shownLetters = active.id === ME ? returns : (lettersBy.get(active.id) ?? []);
+    const letters: LetterRow[] = shownLetters.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(item => ({
+      returnId: item.returnId,
+      text: item.blocks.map(block => block.text).join("\n\n"),
+      dateLabel: formatDate(item.createdAt),
+      where: (active.id === ME ? senderLabel(item) + " · " : "") + "回信给你的书",
+    }));
     this.setData({
       people,
       loading: false,
       loadingDetails: preview,
+      letters,
       activeId: active.id,
       activeName: active.name,
       memories,
@@ -171,6 +202,12 @@ Page({
   openMemory(event: { currentTarget: { dataset: { id: string } } }) {
     stageRoomStateForArchive(event.currentTarget.dataset.id, this.data.loadingDetails ? undefined : this.roomSnapshot);
     wx.navigateTo({ url: "/pages/archive/archive?id=" + encodeURIComponent(event.currentTarget.dataset.id) });
+  },
+
+  openLetter(event: { currentTarget: { dataset: { id: string } } }) {
+    const item = this.lettersById.get(event.currentTarget.dataset.id);
+    if (!item) return;
+    wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(item.sourceStoryId) + "&chapterId=" + encodeURIComponent(item.sourceChapterId) });
   },
 
   openPeople() {

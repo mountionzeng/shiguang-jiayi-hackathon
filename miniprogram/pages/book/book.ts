@@ -29,8 +29,9 @@ import { measurePerformance, startPerformanceMeasure } from '../../services/perf
 import { activeStory, linkStoryMemories, storyAiContext, storySourceFingerprint, updateStoryBook } from "../../services/storyBooks";
 import { loadCurrentStoryId, saveCurrentStoryId } from "../../services/storySelection";
 import { audioCreatePath } from "../../services/storyAudioService";
-import { storySharing } from "../../services/storySharing";
+import { storySharing, ChapterChange } from "../../services/storySharing";
 import { copyRequestId, storyCopies } from "../../services/storyCopies";
+import { chapterIdsWithReturns, invalidatePendingReturns, loadPendingReturns, PendingReturn, returnsForChapter, senderLabel } from "../../services/storyReturnsInbox";
 import {
   askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
   resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
@@ -91,7 +92,7 @@ Page({
     previewBlocks: [] as Array<{ text?: string; path?: string }>,
     // "contents" lists the chapters; "chapter" edits one of them. Empty until the first load.
     view: "" as "" | "contents" | "chapter",
-    chapterRows: [] as Array<{ id: string; label: string; title: string; memoryCount: number; photoCount: number }>,
+    chapterRows: [] as Array<{ id: string; label: string; title: string; memoryCount: number; photoCount: number; hasReturn: boolean }>,
     swipeOpenChapterId: "", draggingChapterId: "",
     chapterLabelText: "", chapterAiLabelText: "", editChapterTitle: "",
     unassigned: [] as MemoryRow[], chapterMemories: [] as MemoryRow[],
@@ -103,6 +104,8 @@ Page({
     shareText: "", shareRecipientIds: [] as string[], sharingExcerpt: false,
     shareRecipients: [] as Array<{ id: string; name: string; relation: string; checked: boolean }>,
     protectedCopy: false, appendOwnText: "", appendingOwn: false, returningOwn: false,
+    chapterReturns: [] as Array<{ returnId: string; senderName: string; text: string }>, decidingReturn: false,
+    chapterChanges: [] as Array<{ revisionId: string; by: string; when: string; titleChange: string; blocks: Array<{ index: number; before: string; after: string }> }>, changesOpen: false,
     ...initialXiaoyiPanelData(),
     chapterPendingEdits: [] as PendingEditRow[], chapterPendingCount: 0,
   },
@@ -129,6 +132,10 @@ Page({
   chapterOpenId: 0,
   excerptRequestId: "",
   appendOwnRequestId: "",
+  pendingReturns: [] as PendingReturn[],
+  chapterChangeCache: {} as Record<string, ChapterChange[]>,
+  ownFamilyId: "",
+  returnDecisionRequests: {} as Record<string, string>,
   returnOwnRequestId: "",
   memories: [] as MemoryContribution[],
   photoPaths: {} as Record<string, string>,
@@ -172,6 +179,9 @@ Page({
     this.requestedMemoryIds = (options.memoryIds || "").split(",").filter(Boolean);
     if (options.chapterId) { this.activeChapterId = options.chapterId; this.setData({ view: "chapter" }); }
     this.unloaded = false;
+    // 非 data 字段挂在页面定义上，每次打开都从干净状态开始，避免串到上一次的书。
+    this.chapterChangeCache = {};
+    this.ownFamilyId = "";
     const window = wx.getWindowInfo();
     this.fullWindowHeight = window.windowHeight;
     this.windowWidth = window.windowWidth;
@@ -424,6 +434,8 @@ Page({
       wx.enableAlertBeforeUnload({message:"本机草稿已保留，尚未确认同步到故事。"});
     }
     this.seedEditor();
+    void this.loadReturns(refreshId);
+    void this.loadChapterChanges();
     if (this.openOrganizeOnLoad || this.requestedMemoryIds.length) {
       this.openOrganizeOnLoad = false;
       this.showOrganize();
@@ -519,6 +531,7 @@ Page({
     const known = new Map(this.memories.map(memory => [memory.id, memory]));
     const visibleChapters = this.visibleChapters();
     const active = visibleChapters.find(chapter => chapter.id === this.activeChapterId);
+    const returned = this.story ? chapterIdsWithReturns(this.pendingReturns, this.story.id) : new Set<string>();
     const stories = new Map<string, number>();
     this.memories.forEach(memory => {
       const title = contributionStoryTitle(memory);
@@ -529,7 +542,13 @@ Page({
       chapterRows: visibleChapters.map((chapter, index) => ({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
         memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: imageCount(chapter.content),
+        hasReturn: returned.has(chapter.id),
       })),
+      chapterReturns: this.story && active
+        ? returnsForChapter(this.pendingReturns, this.story.id, active.id).map(item => ({
+          returnId: item.returnId, senderName: senderLabel(item), text: item.blocks.map(block => block.text).join("\n\n"),
+        }))
+        : [],
       // 最近讲的记忆排在最前面。
       unassigned: unassignedMemoryIds(visibleChapters, this.memories.map(memory => memory.id)).map(id => memoryRow(known.get(id)!))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
@@ -776,8 +795,9 @@ Page({
     resetXiaoyiPanel.call(this);
     this.xiaoyiContextCapturedText = "";
     this.loadActiveChapter();
-    this.setData({ openingChapter: null, view: "chapter", panel: "", moreOpen: false, editChapterTitle: this.chapterTitleBuffer, ...this.chapterData() });
+    this.setData({ openingChapter: null, view: "chapter", panel: "", moreOpen: false, editChapterTitle: this.chapterTitleBuffer, ...this.chapterData(), chapterChanges: [], changesOpen: false });
     this.seedEditor();
+    void this.loadChapterChanges();
   },
   startChapterSwipe(event: WechatMiniprogram.TouchEvent) {
     if (this.data.protectedCopy || this.chapterDrag) return;
@@ -1363,6 +1383,60 @@ Page({
         : "；本机备份也失败，请勿退出，先复制正文。")});
       return false;
     } finally { this.setData({saving:false}); }
+  },
+  /** 朋友的回信：后台读取，失败当作没有；读到后只补一次目录标注和本章回信。 */
+  async loadReturns(refreshId: number) {
+    const story = this.story;
+    if (!story || story.sourcePolicyRequired === true) { if (this.pendingReturns.length) { this.pendingReturns = []; this.setData(this.chapterData()); } return; }
+    const returns = await loadPendingReturns();
+    if (this.unloaded || refreshId !== this.refreshId || this.story?.id !== story.id) return;
+    const changed = returns.length !== this.pendingReturns.length || returns.some((item, index) => item.returnId !== this.pendingReturns[index]?.returnId);
+    this.pendingReturns = returns;
+    if (changed) this.setData(this.chapterData());
+  },
+  /** 谁改了本章的哪几段：只有自己的书、且本章有人改过时才去读，失败就不显示。 */
+  async loadChapterChanges() {
+    const story = this.story, chapterId = this.activeChapterId;
+    if (!story || story.sourcePolicyRequired === true || !chapterId) { this.setData({ chapterChanges: [], changesOpen: false }); return; }
+    const key = story.id + ":" + chapterId + ":" + story.currentRevisionId;
+    let changes = this.chapterChangeCache[key];
+    if (!changes) {
+      try {
+        const familyId = this.ownFamilyId || (await storySharing.capabilities()).familyId || "";
+        if (!familyId) return;
+        this.ownFamilyId = familyId;
+        changes = (await storySharing.chapterChanges(familyId, story.id, chapterId)).changes;
+      } catch { changes = []; }
+      this.chapterChangeCache[key] = changes;
+    }
+    if (this.unloaded || this.activeChapterId !== chapterId || this.story?.id !== story.id ||
+        this.story?.currentRevisionId !== story.currentRevisionId) return;
+    this.setData({ changesOpen: false, chapterChanges: changes.map(change => ({
+      revisionId: change.revisionId, by: change.by, when: change.savedAt.slice(0, 10),
+      titleChange: change.title ? "标题：" + change.title.before + " → " + change.title.after : "", blocks: change.blocks,
+    })) });
+  },
+  toggleChanges() { this.setData({ changesOpen: !this.data.changesOpen }); },
+  /** 收下或不要一封回信。收下会在本章末尾生成新版本，旧版本仍保留。 */
+  async decideChapterReturn(event: { currentTarget: { dataset: { id: string; decision: string } } }) {
+    const { id, decision } = event.currentTarget.dataset;
+    if (this.data.decidingReturn || (decision !== "accept" && decision !== "reject")) return;
+    const item = this.pendingReturns.find(value => value.returnId === id);
+    if (!item) return;
+    const key = id + ":" + decision;
+    if (!this.returnDecisionRequests[key]) this.returnDecisionRequests[key] = copyRequestId().replace(/^receive-/, "decision-");
+    this.setData({ decidingReturn: true, saveNotice: "" });
+    try {
+      await storyCopies.decideReturn({ returnId: id, decision, requestId: this.returnDecisionRequests[key] });
+      delete this.returnDecisionRequests[key];
+      invalidatePendingReturns();
+      this.pendingReturns = this.pendingReturns.filter(value => value.returnId !== id);
+      this.setData({ saveNotice: decision === "accept" ? senderLabel(item) + "的回信已收进本章末尾" : "已选择不收这封回信" });
+      if (decision === "accept") await this.refresh();
+      else this.setData(this.chapterData());
+    } catch (error) {
+      this.setData({ saveNotice: (error instanceof Error ? error.message : "操作没有完成") + "，可以直接重试" });
+    } finally { this.setData({ decidingReturn: false }); }
   },
   openAppendOwn() {
     if (!this.data.protectedCopy || this.data.view !== "chapter" || !this.activeChapterId) return;

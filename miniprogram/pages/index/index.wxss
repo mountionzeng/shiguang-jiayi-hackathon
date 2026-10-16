@@ -1282,3 +1282,20 @@
 .home-load-state { margin: 28rpx 36rpx; color: #587a69; font-size: 26rpx; text-align: center; }
 .home-retry { display: inline-block; margin: 16rpx 0; padding: 0 28rpx; color: #4f7f6b; background: #eaf1ed; font-size: 26rpx; border-radius: 32rpx; }
 .home-retry::after { border: 0; }
+
+/* 朋友的回信：一行提示，放在每日一问卡片上方，不抢卡片的视觉重心。 */
+.return-notice {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin: 0 0 16rpx;
+  padding: 18rpx 24rpx;
+  border: 1rpx solid rgba(176, 130, 57, 0.28);
+  border-radius: 18rpx;
+  background: var(--apricot-soft);
+  color: var(--ink);
+}
+.return-notice:active { opacity: 0.85; }
+.return-notice-dot { flex: none; width: 12rpx; height: 12rpx; border-radius: 50%; background: var(--apricot); }
+.return-notice-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 27rpx; }
+.return-notice-go { flex: none; font-size: 24rpx; color: var(--apricot); }

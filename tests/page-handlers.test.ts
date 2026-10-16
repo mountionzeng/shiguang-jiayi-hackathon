@@ -6,6 +6,7 @@ import {
   appendAiRevision,
   memoryAiRevisions,
   memoryOriginalSpokenText,
+  memoryPool,
   createContribution,
   FamilyRoomState,
 } from "../miniprogram/domain/biography";
@@ -3504,4 +3505,242 @@ test('unsaved connection reflections prevent navigation and survive closing the 
  callPage(page,'onConnectionReflection',{detail:{value:'不要丢掉这段新想法'}});assert.equal(callPage(page,'canLeaveEditor'),false);
  callPage(page,'closePanel');assert.equal(page.data.connectionReflection,'不要丢掉这段新想法');
  callPage(page,'onConnectionReflection',{detail:{value:''}});assert.equal(callPage(page,'canLeaveEditor'),true);
+});
+
+function returnLetter(overrides: Record<string, unknown> = {}) {
+  return {
+    returnId: "return-" + "a".repeat(64), status: "pending", sourceStoryId: "story-a", sourceChapterId: "chapter-three",
+    senderName: "小岚", blocks: [{ blockId: "block-" + "b".repeat(64), text: "我记得你当时还带着一把蓝伞" }],
+    createdAt: "2026-10-15T08:00:00.000Z", decidedAt: "", resultRevisionId: "", ...overrides,
+  };
+}
+
+async function bookWithChapters(context: { after: (fn: () => void) => void }, sourcePolicyRequired = false) {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  (page as any).story = { id: "story-a", title: "外婆家的夏天", version: 3, currentRevisionId: "revision-a", sourcePolicyRequired };
+  (page as any).chapters = [
+    { id: "chapter-one", title: "不公开", memoryIds: [], content: [{ text: "没有分享的秘密" }] },
+    { id: "chapter-three", title: "井水西瓜", memoryIds: [], content: [{ text: "井水里的西瓜很凉。" }] },
+  ];
+  (page as any).memories = [];
+  (page as any).activeChapterId = "chapter-three";
+  return { page, storage };
+}
+
+test("目录只在有回信的章节上加极简标注，章节里列出回信和署名", async context => {
+  const { page } = await bookWithChapters(context);
+  (page as any).pendingReturns = [returnLetter()];
+  const data = (page as any).chapterData();
+  assert.deepEqual(data.chapterRows.map((row: any) => [row.id, row.hasReturn]), [["chapter-one", false], ["chapter-three", true]]);
+  assert.deepEqual(data.chapterReturns.map((item: any) => [item.senderName, item.text]), [["小岚", "我记得你当时还带着一把蓝伞"]]);
+  (page as any).activeChapterId = "chapter-one";
+  assert.deepEqual((page as any).chapterData().chapterReturns, [], "别的章节不显示这封回信");
+});
+
+test("没有回信时目录和章节与原来完全一样", async context => {
+  const { page } = await bookWithChapters(context);
+  const data = (page as any).chapterData();
+  assert.equal(data.chapterRows.some((row: any) => row.hasReturn), false);
+  assert.deepEqual(data.chapterReturns, []);
+});
+
+test("亲友的副本不读取回信，也不显示回信标注", async context => {
+  const { page } = await bookWithChapters(context, true);
+  (page as any).pendingReturns = [returnLetter()];
+  let cloudCalls = 0;
+  (globalThis as any).wx.cloud = { callFunction: async () => { cloudCalls++; return { result: { returns: [returnLetter()] } }; } };
+  await (page as any).loadReturns((page as any).refreshId);
+  assert.equal(cloudCalls, 0, "副本里没有「回信」这回事，不打云函数");
+  assert.deepEqual((page as any).pendingReturns, []);
+});
+
+test("不采用一封回信：只发出决定，书稿不重新读取，回信从本章消失", async context => {
+  const { page } = await bookWithChapters(context);
+  (page as any).pendingReturns = [returnLetter()];
+  const calls: any[] = [];
+  (globalThis as any).wx.cloud = { callFunction: async ({ data }: any) => { calls.push(data); return { result: { ok: true, status: "rejected", revisionId: "", alreadyDecided: false } }; } };
+  let refreshes = 0;
+  (page as any).refresh = async () => { refreshes++; };
+  await callPage(page, "decideChapterReturn", { currentTarget: { dataset: { id: returnLetter().returnId, decision: "reject" } } });
+  assert.equal(calls[0].action, "copyReturnDecision");
+  assert.equal(calls[0].decision, "reject");
+  assert.equal(refreshes, 0);
+  assert.deepEqual((page as any).pendingReturns, []);
+  assert.deepEqual(page.data.chapterReturns, []);
+  assert.equal(page.data.decidingReturn, false);
+});
+
+test("采用一封回信：写入后重新读取书稿，署名出现在提示里；失败时回信保留可重试", async context => {
+  const { page } = await bookWithChapters(context);
+  (page as any).pendingReturns = [returnLetter()];
+  let fail = true;
+  const requestIds: string[] = [];
+  (globalThis as any).wx.cloud = { callFunction: async ({ data }: any) => {
+    requestIds.push(data.requestId);
+    if (fail) throw new Error("网络断了");
+    return { result: { ok: true, status: "accepted", revisionId: "revision-new", alreadyDecided: false } };
+  } };
+  let refreshes = 0;
+  (page as any).refresh = async () => { refreshes++; };
+  const event = { currentTarget: { dataset: { id: returnLetter().returnId, decision: "accept" } } };
+
+  await callPage(page, "decideChapterReturn", event);
+  assert.equal((page as any).pendingReturns.length, 1, "失败时回信还在");
+  assert.match(String(page.data.saveNotice), /网络断了.*重试/);
+  assert.equal(page.data.decidingReturn, false);
+
+  fail = false;
+  await callPage(page, "decideChapterReturn", event);
+  assert.equal(requestIds[0], requestIds[1], "重试沿用同一个请求号，不会重复收录");
+  assert.equal(refreshes, 1, "采用后重新读取书稿");
+  assert.match(String(page.data.saveNotice), /小岚的回信已收进本章末尾/);
+  assert.deepEqual((page as any).pendingReturns, []);
+});
+
+test("首页点开回信提示，直接进入有回信的那一章", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("index"));
+  page.setData({ storyId: "story-a", returnNoticeChapterId: "chapter-three" });
+  callPage(page, "openReturnNotice");
+  assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-a&chapterId=chapter-three");
+  page.setData({ returnNoticeChapterId: "" });
+  callPage(page, "openReturnNotice");
+  assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-a");
+});
+
+test("章节里能看到家人改了哪几段，只在自己的书里读，副本和失败都不显示", async context => {
+  const { page } = await bookWithChapters(context);
+  const calls: any[] = [];
+  const change = { revisionId: "revision-collab-1", by: "小岚", savedAt: "2026-10-15T09:30:00.000Z", blocks: [{ index: 0, before: "井水里的西瓜很凉。", after: "井水里的西瓜很凉，很甜。" }] };
+  (globalThis as any).wx.cloud = { callFunction: async ({ data }: any) => {
+    calls.push(data.action);
+    if (data.action === "capabilities") return { result: { familyId: "family_owner" } };
+    return { result: { changes: [change] } };
+  } };
+  await callPage(page, "loadChapterChanges");
+  assert.deepEqual(calls, ["capabilities", "chapterChanges"]);
+  assert.deepEqual((page.data.chapterChanges as any[]).map(item => [item.by, item.when]), [["小岚", "2026-10-15"]]);
+  assert.equal(page.data.changesOpen, false, "默认收起，不抢正文");
+  callPage(page, "toggleChanges");
+  assert.equal(page.data.changesOpen, true);
+
+  await callPage(page, "loadChapterChanges");
+  assert.equal(calls.length, 2, "同一章同一版本只读一次");
+
+  (page as any).story = { id: "story-a", title: "x", version: 3, currentRevisionId: "revision-a", sourcePolicyRequired: true };
+  await callPage(page, "loadChapterChanges");
+  assert.deepEqual(page.data.chapterChanges, [], "亲友副本里没有这回事");
+  assert.equal(calls.length, 2);
+});
+
+test("读取章节改动失败时安静地什么都不显示", async context => {
+  const { page } = await bookWithChapters(context);
+  callPage(page, "onLoad", {});
+  (globalThis as any).wx.cloud = { callFunction: async () => { throw new Error("网络断了"); } };
+  await callPage(page, "loadChapterChanges");
+  assert.deepEqual(page.data.chapterChanges, []);
+});
+
+function roomLetter(overrides: Record<string, unknown> = {}) {
+  return { ...returnLetter(), senderMemberId: "wx_" + "a".repeat(24), ...overrides };
+}
+
+test("记忆之家：家人的回信归到 ta 名下，点「你」看全部，没有回信时什么都不显示", async context => {
+  const state = createInitialRoomState();
+  state.members = [...state.members, { id: "wx_" + "a".repeat(24), name: "小岚", relation: "家人", avatarText: "小", role: "contributor", kind: "person" } as any];
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("room"));
+  (globalThis as any).wx.cloud = { callFunction: async () => ({ result: { returns: [roomLetter()] } }) };
+  const { invalidatePendingReturns } = await import("../miniprogram/services/storyReturnsInbox");
+  invalidatePendingReturns();
+  await callPage(page, "refresh", state);
+  const people = page.data.people as any[];
+  assert.equal(people.find(person => person.name === "小岚").letters, 1);
+  assert.equal(people.find(person => person.id === "me").letters, 1);
+  assert.deepEqual((page.data.letters as any[]).map(item => item.where), ["小岚 · 回信给你的书"]);
+
+  page.setData({ activeId: "wx_" + "a".repeat(24) });
+  await callPage(page, "refresh", state);
+  assert.deepEqual((page.data.letters as any[]).map(item => item.text), ["我记得你当时还带着一把蓝伞"]);
+  assert.equal((page.data.letters as any[])[0].where, "回信给你的书");
+
+  callPage(page, "openLetter", { currentTarget: { dataset: { id: returnLetter().returnId } } });
+  assert.equal(last(storage.navigations), "/pages/book/book?storyId=story-a&chapterId=chapter-three");
+
+  invalidatePendingReturns();
+  (globalThis as any).wx.cloud = { callFunction: async () => { throw new Error("网络断了"); } };
+  await callPage(page, "refresh", state);
+  assert.deepEqual(page.data.letters, []);
+  invalidatePendingReturns();
+});
+
+test("记忆之家：被邀请的家人自己看房间时不读回信", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("room"));
+  let calls = 0;
+  (globalThis as any).wx.cloud = { callFunction: async () => { calls++; return { result: { returns: [roomLetter()] } }; } };
+  page.setData({ sharedFamilyId: "family_shared" });
+  await callPage(page, "refresh", storage.roomState());
+  assert.equal(calls, 0);
+  assert.deepEqual(page.data.letters, []);
+});
+
+test("整合后记忆之家缓存首屏不等待回信，权威刷新再显示回信", async context => {
+  const state = createInitialRoomState();
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const { invalidatePendingReturns } = await import("../miniprogram/services/storyReturnsInbox");
+  invalidatePendingReturns();
+  context.after(invalidatePendingReturns);
+  const page = instantiate(await pageDefinition("room"));
+  let calls = 0;
+  (wx as any).cloud = { callFunction: async () => {
+    calls++;
+    return { result: { returns: [roomLetter()] } };
+  } };
+  await callPage(page, "refresh", state, true);
+  assert.equal(calls, 0, "缓存首屏不发出回信请求");
+  assert.equal(page.data.loading, false);
+  assert.equal(page.data.loadingDetails, true);
+  assert.equal((page.data.people as any[])[0].count, memoryPool(state.contributions).length);
+  await callPage(page, "refresh", state);
+  assert.equal(calls, 1);
+  assert.equal(page.data.loadingDetails, false);
+  assert.equal((page.data.letters as any[]).length, 1);
+});
+
+test("整合后回信迟到不能在记忆之家卸载后改写页面或快照", async context => {
+  const state = createInitialRoomState();
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const { invalidatePendingReturns } = await import("../miniprogram/services/storyReturnsInbox");
+  invalidatePendingReturns();
+  context.after(invalidatePendingReturns);
+  const page = instantiate(await pageDefinition("room"));
+  let resolve!: (value: unknown) => void;
+  (wx as any).cloud = { callFunction: () => new Promise(done => { resolve = done; }) };
+  const pending = callPage(page, "refresh", state);
+  assert.equal(typeof resolve, "function");
+  callPage(page, "onUnload");
+  resolve({ result: { returns: [roomLetter()] } });
+  await pending;
+  assert.deepEqual(page.data.people, []);
+  assert.deepEqual(page.data.letters, []);
+  assert.equal(page.roomSnapshot, undefined);
+});
+
+test("目录切换章节会读取本章改动，等待期间不显示上一章历史", async context => {
+  const { page } = await bookWithChapters(context);
+  page.setData({ chapterChanges: [{ revisionId: "old", by: "旧作者" }], changesOpen: true });
+  const chapters: string[] = [];
+  page.loadChapterChanges = async () => { chapters.push(String(page.activeChapterId)); };
+  await callPage(page, "openChapter", { currentTarget: { dataset: { id: "chapter-one" } } });
+  assert.deepEqual(chapters, ["chapter-one"]);
+  assert.deepEqual(page.data.chapterChanges, []);
+  assert.equal(page.data.changesOpen, false);
 });

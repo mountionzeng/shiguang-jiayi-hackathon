@@ -154,6 +154,11 @@
           aria-label="换一个推荐问题"
         >{{dailyLoading ? '正在更新…' : '换一个问题'}}</button>
       </view>
+      <view wx:if="{{returnNotice}}" class="return-notice" bindtap="openReturnNotice" role="button" aria-label="{{returnNotice}}，点开查看">
+        <view class="return-notice-dot" aria-hidden="true"></view>
+        <view class="return-notice-text serif">{{returnNotice}}</view>
+        <view class="return-notice-go" aria-hidden="true">看看 ›</view>
+      </view>
       <generation-status wx:if="{{dailyLoading}}" text="正在读你的故事，想一个新问题…" />
       <view wx:elif="{{dailyStatus}}" class="daily-status">{{dailyStatus}}</view>
       <view
@@ -266,4 +271,5 @@
 </scroll-view>
 
 <story-switcher bind:openfamily="openMemoryHome" current="home" bind:openpersonal="openPersonalStories"></story-switcher>
+<first-login-intro></first-login-intro>
 <canvas type="2d" id="book-frame-canvas" class="book-frame-canvas" aria-hidden="true"></canvas>

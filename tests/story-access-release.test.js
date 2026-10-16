@@ -13,7 +13,7 @@ test('every identity/grant collection is bootstrapped and has client-deny rules'
   const manifest = json('deploy/wechat-cloud.manifest.json');
   const rules = json('deploy/story-sharing/database.rules.json');
   const { CORE_COLLECTIONS } = require('../cloudfunctions/ensureCloudCollections/bootstrap');
-  for (const name of ['story_principals', 'story_identity_aliases', 'story_principal_spaces', 'story_grants', 'story_invitations', 'story_invite_indexes', 'story_invite_rates', 'story_source_policies', 'story_copies', 'story_excerpt_operations', 'story_collaboration_operations', 'story_copy_requests', 'story_copy_edits', 'story_returns', 'story_return_indexes', 'story_desktop_grants', 'story_desktop_nonces', 'story_desktop_operations', 'story_copy_media', 'story_copy_assets']) {
+  for (const name of ['story_principals', 'story_identity_aliases', 'story_principal_spaces', 'story_grants', 'story_invitations', 'story_invite_indexes', 'story_invite_rates', 'story_rollout_admissions', 'story_source_policies', 'story_copies', 'story_excerpt_operations', 'story_collaboration_operations', 'story_copy_requests', 'story_copy_edits', 'story_returns', 'story_return_indexes', 'story_desktop_grants', 'story_desktop_nonces', 'story_desktop_operations', 'story_copy_media', 'story_copy_assets']) {
     assert.ok(CORE_COLLECTIONS.includes(name), name);
     assert.ok(manifest.collections[name], name);
     assert.deepEqual(rules.collections[name], { read: false, write: false });

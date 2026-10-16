@@ -397,6 +397,7 @@
     ],
     "story_invite_indexes": [],
     "story_invite_rates": [],
+    "story_rollout_admissions": [],
     "story_migration_items": [
       "family_resolved_id: familyId, resolvedStoryId, _id"
     ],

@@ -55,12 +55,109 @@ test('shared editor keeps an uncertain save under the server-provided account sc
 test('owner creates a scoped invite once and sharing never uses a manuscript screenshot',async()=>{
   const prior=(globalThis as any).wx;const calls:any[]=[];let resolve:((r:any)=>void)|undefined;
   (globalThis as any).wx={cloud:{callFunction:({data}:any)=>{calls.push(data);return new Promise(r=>resolve=r);}},hideShareMenu:()=>{}};
-  try {const p=instance(invite);p.onLoad({storyId:'story-a'});p.familyId='family_owner';p.data.available=true;p.data.title='私密题名';p.data.chapters=[{id:'chapter-three',title:'私密章',checked:true},{id:'chapter-one',checked:false}];const one=p.create(),two=p.create();assert.equal(calls.length,1);assert.deepEqual(calls[0].chapterIds,['chapter-three']);resolve?.({result:{token:'a'.repeat(48),invitationId:'b'.repeat(64)}});await Promise.all([one,two]);const message=p.onShareAppMessage();assert.equal(message.imageUrl,'/assets/illustrations/story-book-cover.png');assert.equal(JSON.stringify(message).includes('私密'),false);p.onHide();assert.equal(p.onShareAppMessage().path,'/pages/index/index');}
+  try {const p=instance(invite);p.onLoad({storyId:'story-a'});p.familyId='family_owner';p.data.available=true;p.data.title='私密题名';p.data.inviteeName='小岚';p.data.chapters=[{id:'chapter-three',title:'私密章',checked:true},{id:'chapter-one',checked:false}];const one=p.create(),two=p.create();assert.equal(calls.length,1);assert.deepEqual(calls[0].chapterIds,['chapter-three']);resolve?.({result:{token:'a'.repeat(48),invitationId:'b'.repeat(64)}});await Promise.all([one,two]);const message=p.onShareAppMessage();assert.equal(message.imageUrl,'/assets/illustrations/story-book-cover.png');assert.equal(JSON.stringify(message).includes('私密'),false);p.onHide();assert.equal(p.onShareAppMessage().path,'/pages/index/index');}
   finally{(globalThis as any).wx=prior;}
 });
-test('wrong applicant verification code cannot send an approval request',async()=>{
-  const prior=(globalThis as any).wx;let calls=0;
-  (globalThis as any).wx={cloud:{callFunction:async()=>{calls++;}},showModal:({success}:any)=>success({confirm:true,content:'wrong'}),hideShareMenu:()=>{}};
-  try{const p=instance(invite);p.onLoad({storyId:'story-a'});p.data.available=true;p.data.invitations=[{invitationId:'invite-a',applicants:[{applicantId:'person-a',verificationCode:'12345678'}]}];await p.decide({currentTarget:{dataset:{invitationId:'invite-a',applicantId:'person-a',decision:'approve'}}});assert.equal(calls,0);assert.match(p.data.notice,/不一致/);assert.equal(p.data.busy,false);}
+
+test('creating an invite requires a name for the family member and sends it to the server',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);return {result:{token:'t'.repeat(48),invitationId:'i'.repeat(64)}};}},hideShareMenu:()=>{}};
+  try{const p=instance(invite);p.onLoad({storyId:'story-a'});p.familyId='family_owner';p.data.available=true;p.data.chapters=[{id:'chapter-three',title:'章',checked:true}];
+    await p.create();assert.equal(calls.length,0,'no name, no cloud call');assert.match(String(p.data.notice),/称呼/);
+    p.data.inviteeName='小岚';await p.create();assert.equal(calls[0].inviteeName,'小岚');}
+  finally{(globalThis as any).wx=prior;}
+});
+test('a friend joins with one tap and lands on the shared chapters, no name form and no code',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];const navigations:string[]=[];
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);
+    return {result:data.action==='inviteGet'?{status:'unrequested',expiresAtMs:1,inviteeName:'小岚'}:{status:'approved',expiresAtMs:1,familyId:'family_owner',storyId:'story-a',displayName:'小岚'}};}},
+    redirectTo:({url}:any)=>navigations.push(url),hideShareMenu:()=>{}};
+  try{const p=instance(invite);p.onLoad({token:'a'.repeat(48)});p.hidden=false;await p.refresh();
+    assert.equal(p.data.status.inviteeName,'小岚');assert.deepEqual(calls.map(c=>c.action),['inviteGet'],'recipient side never needs the owner capability call');
+    await p.accept();assert.deepEqual(calls.map(c=>c.action),['inviteGet','inviteAccept']);
+    assert.equal(navigations[0],'/packages/story-sharing/pages/read/index?familyId=family_owner&storyId=story-a');
+    assert.equal(JSON.stringify(calls).includes('displayName'),false,'the friend never types a name');}
+  finally{(globalThis as any).wx=prior;}
+});
+
+test('owner changes a family member access with the full target state, and keeps at least one chapter',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);return {result:{ok:true}};}},hideShareMenu:()=>{}};
+  try{const p=instance(invite);p.onLoad({storyId:'story-a'});p.familyId='family_owner';p.hidden=false;p.data.available=true;p.refresh=async()=>{};
+    p.data.invitations=[{invitationId:'invite-a',member:{name:'小岚',active:true,chapterIds:['chapter-one','chapter-three'],permissions:{read:true,edit:false,copy:true}}}];
+    await p.changeAccess({currentTarget:{dataset:{invitationId:'invite-a',field:'edit'}},detail:{value:true}});
+    assert.deepEqual(calls[0].permissions,{read:true,edit:true,copy:true});assert.equal(calls[0].chapterIds.length,2);
+    await p.changeAccess({currentTarget:{dataset:{invitationId:'invite-a',field:'chapter',chapterId:'chapter-one'}}});
+    assert.deepEqual(calls[1].chapterIds,['chapter-three']);
+    p.data.invitations=[{invitationId:'invite-a',member:{name:'小岚',active:true,chapterIds:['chapter-three'],permissions:{read:true,edit:false,copy:true}}}];
+    await p.changeAccess({currentTarget:{dataset:{invitationId:'invite-a',field:'chapter',chapterId:'chapter-three'}}});
+    assert.equal(calls.length,2,'removing the last chapter never reaches the server');assert.match(String(p.data.notice),/至少要留一个章节/);}
+  finally{(globalThis as any).wx=prior;}
+});
+
+test('the owner can pick or type a relation, leaving it empty sends none, and a duplicate person is reported as is',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];let exists=false;
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);
+    return exists?{result:{error:'STORY_BOOK_ERROR',code:'STORY_INVITEE_EXISTS',message:'这个人已经存在，不需要再邀请一次'}}:{result:{token:'t'.repeat(48),invitationId:'i'.repeat(64)}};}},hideShareMenu:()=>{}};
+  try{const p=instance(invite);p.onLoad({storyId:'story-a'});p.familyId='family_owner';p.data.available=true;p.data.inviteeName='小岚';p.data.chapters=[{id:'chapter-three',title:'章',checked:true}];
+    await p.create();assert.equal(calls[0].relation,undefined,'no relation chosen, the server defaults to 家人');
+    p.chooseRelation({currentTarget:{dataset:{value:'朋友'}}});assert.equal(p.data.relation,'朋友');
+    p.chooseRelation({currentTarget:{dataset:{value:'朋友'}}});assert.equal(p.data.relation,'','tapping again clears it');
+    p.chooseRelation({currentTarget:{dataset:{value:'朋友'}}});await p.create();assert.equal(calls[1].relation,'朋友');
+    exists=true;await p.create();assert.match(String(p.data.notice),/已经存在/);assert.equal(p.data.shareReady,false);}
+  finally{(globalThis as any).wx=prior;}
+});
+
+function readerWith(calls:any[],opts:{duplicates?:number}={}){
+  let duplicates=opts.duplicates ?? 0;
+  const navigations:string[]=[];
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);
+    if(data.action==='copyReceive' && duplicates-- > 0)return {result:{error:'STORY_BOOK_ERROR',code:'DUPLICATE_TITLE',message:'已有同名故事，请换一个名称'}};
+    return {result:{ok:true,storyId:data.target?.storyId,revisionId:'revision-new',alreadyReceived:false}};}},
+    reLaunch:({url}:any)=>navigations.push(url),redirectTo:({url}:any)=>navigations.push(url),navigateTo:({url}:any)=>navigations.push(url),hideShareMenu:()=>{},setStorageSync:()=>{}};
+  return navigations;
+}
+async function reader(){
+  // 页面模块只会执行一次：沿用前面测试捕获的定义，否则单独运行时再捕获。
+  read=read || await capture('../miniprogram/packages/story-sharing/pages/read/index');const p=instance(read);
+  p.onLoad({familyId:'family_owner',storyId:'story-a'});p.hidden=false;p.revisionId='revision-a';p.epoch=0;
+  p.data.title='外婆家的夏天';p.data.canCopy=true;p.data.chapters=[{id:'chapter-three',title:'井水西瓜',content:[],textBlocks:[]},{id:'chapter-five',title:'院子',content:[],textBlocks:[]}];
+  return p;
+}
+test('keep: one tap saves every shared chapter as the friend\'s own new story and goes home',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];const navigations=readerWith(calls);
+  try{const p=await reader();await p.keep({currentTarget:{dataset:{intent:'keep'}}});
+    assert.equal(calls.length,1);const input=calls[0];
+    assert.deepEqual(input.chapterIds,['chapter-three','chapter-five']);assert.equal(input.target.mode,'new');assert.equal(input.target.title,'外婆家的夏天');
+    assert.equal(input.sourceRevisionId,'revision-a');assert.equal(JSON.stringify(input).includes('井水里'),false,'only references are sent, never text');
+    assert.deepEqual(navigations,['/pages/index/index']);}
+  finally{(globalThis as any).wx=prior;}
+});
+test('expand: same one tap, then opens the first chapter of the new story for writing',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];const navigations=readerWith(calls);
+  try{const p=await reader();await p.keep({currentTarget:{dataset:{intent:'expand'}}});
+    assert.match(navigations[0],/^\/pages\/book\/book\?storyId=story-[^&]+&chapterId=chapter-three$/);}
+  finally{(globalThis as any).wx=prior;}
+});
+test('keep: a title clash with the friend\'s own book retries with a number, never loses the request',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];readerWith(calls,{duplicates:1});
+  try{const p=await reader();await p.keep({currentTarget:{dataset:{intent:'keep'}}});
+    assert.deepEqual(calls.map(c=>c.target.title),['外婆家的夏天','外婆家的夏天·2']);
+    assert.notEqual(calls[0].requestId,calls[1].requestId,'a clash is a different request');}
+  finally{(globalThis as any).wx=prior;}
+});
+test('keep: a failure keeps the same request and story id so a retry cannot duplicate',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data);if(calls.length===1)throw new Error('网络断了');return {result:{ok:true,storyId:data.target.storyId}};}},
+    reLaunch:()=>{},hideShareMenu:()=>{},setStorageSync:()=>{}};
+  try{const p=await reader();await p.keep({currentTarget:{dataset:{intent:'keep'}}});
+    assert.match(String(p.data.notice),/网络断了.*不会重复添加/);
+    await p.keep({currentTarget:{dataset:{intent:'keep'}}});
+    assert.equal(calls[0].requestId,calls[1].requestId);assert.equal(calls[0].target.storyId,calls[1].target.storyId);}
+  finally{(globalThis as any).wx=prior;}
+});
+test('keep does nothing when copying is not allowed',async()=>{
+  const prior=(globalThis as any).wx;const calls:any[]=[];readerWith(calls);
+  try{const p=await reader();p.data.canCopy=false;await p.keep({currentTarget:{dataset:{intent:'keep'}}});assert.equal(calls.length,0);}
   finally{(globalThis as any).wx=prior;}
 });

@@ -32,9 +32,18 @@
         </view>
         <text class="filter-name">{{item.name}}</text>
         <text class="filter-count">{{item.count}}</text>
+        <view class="filter-letter-dot" wx:if="{{item.letters}}" aria-label="有新的回信"></view>
       </view>
     </view>
   </scroll-view>
+
+  <view class="letters" wx:if="{{letters.length}}">
+    <view class="letters-title serif">等你决定的回信</view>
+    <view class="letter" wx:for="{{letters}}" wx:key="returnId" data-id="{{item.returnId}}" bindtap="openLetter" role="button" aria-label="打开这封回信">
+      <view class="letter-text serif">{{item.text}}</view>
+      <view class="letter-foot"><text>{{item.where}}</text><text>{{item.dateLabel}} · 在书里决定 ›</text></view>
+    </view>
+  </view>
 
   <view class="timeline" wx:if="{{hasMemories}}">
     <view class="tl-item" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="openMemory">

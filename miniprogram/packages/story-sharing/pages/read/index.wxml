@@ -16,7 +16,9 @@
       <button wx:if="{{canEdit}}" class="secondary" data-id="{{chapter.id}}" bindtap="beginEdit" disabled="{{busy || loading || editChapterId}}">编辑这一章</button>
     </block>
   </view>
-  <button wx:if="{{canCopy}}" class="primary" bindtap="receiveCopy" disabled="{{busy || loading || editChapterId}}">放进我的故事里</button>
+  <view class="caption" wx:if="{{canCopy && chapters.length}}">读完可以留下来：它会成为你自己的一本书，你写的内容只在你的书里，不会直接出现在对方的书中。</view>
+  <button wx:if="{{canCopy && chapters.length}}" class="primary" data-intent="keep" bindtap="keep" loading="{{busy}}" disabled="{{busy || loading || editChapterId}}">保留下来</button>
+  <button wx:if="{{canCopy && chapters.length}}" class="secondary" data-intent="expand" bindtap="keep" disabled="{{busy || loading || editChapterId}}">在此基础上扩写</button>
   <button wx:if="{{canInvite}}" class="primary" bindtap="createInvitation" disabled="{{busy || loading}}" loading="{{busy}}">申请再邀请一位亲友</button>
   <button wx:if="{{shareReady}}" class="primary" open-type="share">发送新的阅读邀请</button>
   <button class="secondary refresh" bindtap="refresh" disabled="{{loading || busy}}">重新核对并刷新</button>
