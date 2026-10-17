@@ -97,6 +97,25 @@ test('保存失败保留编辑页与正文，不启动任何发送', async () =>
   assert.equal(calls, 0); assert.equal(page.bodyBuffer, '尚未保存的完整正文'); assert.equal(page.data.editing, true);
 });
 
+test('发送给家人等待保存后打开图文预览，亲友权限仍有独立入口', async () => {
+  const page = await bookPage();
+  let saved!: (success: boolean) => void;
+  page.finishEditing = () => new Promise<boolean>(resolve => { saved = resolve; });
+  const urls: string[] = [];
+  (globalThis as any).wx = { navigateTo: ({ url, success }: any) => { urls.push(url); success?.(); } };
+  const pending = page.chooseSend(sendEvent('family'));
+  await page.chooseSend(sendEvent('family'));
+  assert.deepEqual(urls, []);
+  page.data.savedRevisionId = 'revision-after'; page.story.version = 4;
+  saved(true); await pending;
+  assert.deepEqual(urls, ['/packages/story-sharing/pages/social/index?storyId=story-test&revisionId=revision-after&version=4&destination=family']);
+  assert.equal(page.data.preparingSend, false);
+  page.canLeaveEditor = () => true;
+  page.data.storyId = 'story-test';
+  page.selectTool({ currentTarget: { dataset: { action: 'invite' } } });
+  assert.equal(urls[1], '/packages/story-sharing/pages/invite/index?storyId=story-test');
+});
+
 test('离页或切章后到达的保存回执不再跳转', async () => {
   const page = await bookPage(); let saved!: (value: boolean) => void, calls = 0;
   page.finishEditing = () => new Promise(resolve => { saved = resolve; });
@@ -126,6 +145,18 @@ async function socialPage() {
   page.data.chapters = page.snapshot.chapters.map((c: any) => ({ ...c, checked: false }));
   return page;
 }
+
+test('家人图文预览保留来源版本，普通社交与记忆入口沿用默认目的地', async () => {
+  (globalThis as any).wx = { hideShareMenu() {} };
+  const family = await socialPage();
+  family.onLoad({ storyId: 'story-test', revisionId: 'revision-after', version: '4', destination: 'family' });
+  assert.equal(family.data.destination, 'family');
+  assert.deepEqual(family.expected, { storyId: 'story-test', revisionId: 'revision-after', version: 4 });
+  const other = await socialPage();
+  other.onLoad({ memoryId: 'memory-one' });
+  assert.equal(other.data.destination, 'social');
+  assert.deepEqual(other.expectedMemory, { memoryId: 'memory-one' });
+});
 
 test('切换章节后晚到的原生选区不能污染新章选择', async () => {
   const page = await socialPage(); let complete!: (result: any) => void;

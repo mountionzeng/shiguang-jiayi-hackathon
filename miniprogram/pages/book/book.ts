@@ -939,9 +939,10 @@ Page({
       if (!story || story.sourcePolicyRequired || !this.data.savedRevisionId || !Number.isSafeInteger(story.version) || (story.version || 0) < 1) {
         this.setData({ saveNotice: '请从书架打开已保存的自有故事，再准备发送' }); return;
       }
-      const base = '/packages/story-sharing/pages/' + ({ family: 'invite', social: 'social', card: 'card' } as const)[destination] + '/index';
-      const url = base + '?storyId=' + encodeURIComponent(story.id) + (destination === 'social'
-        ? '&revisionId=' + encodeURIComponent(this.data.savedRevisionId) + '&version=' + story.version : '');
+      const base = '/packages/story-sharing/pages/' + ({ family: 'social', social: 'social', card: 'card' } as const)[destination] + '/index';
+      const url = base + '?storyId=' + encodeURIComponent(story.id) + (destination !== 'card'
+        ? '&revisionId=' + encodeURIComponent(this.data.savedRevisionId) + '&version=' + story.version : '')
+        + (destination === 'family' ? '&destination=family' : '');
       await new Promise<void>((resolve, reject) => wx.navigateTo({ url, success: () => resolve(), fail: reject }));
     } catch {
       if (!this.unloaded && epoch === this.sendEpoch) this.setData({ saveNotice: '发送页面暂未打开，请重试。已有书稿不受影响。' });

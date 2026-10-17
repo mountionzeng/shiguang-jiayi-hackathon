@@ -31,6 +31,7 @@ Page({
     imagePaths: [] as string[], savedIndices: [] as number[], renderProgress: '', coverImageCount: 0,
     notice: '', title: '', coverUrl: '', coverNotice: '',
     sourceKind: 'story' as 'story' | 'memory',
+    destination: 'social' as 'family' | 'social',
     coverCandidates: [] as ShareCoverCandidate[], selectedCoverImageIds: [] as string[],
     // 0 = 自动：按字号自然分页。默认自动，避免整本书一进来就因张数不匹配而失败。
     textImageCountOptions: ['自动', ...Array.from({ length: 12 }, (_, index) => String(index + 1))],
@@ -51,7 +52,8 @@ Page({
   renderTask: undefined as Promise<string[]> | undefined,
   returningFromCover: false,
   albumSaveTimeoutMs: 15000,
-  onLoad(options: { storyId?: string; revisionId?: string; version?: string; memoryId?: string } = {}) {
+  onLoad(options: { storyId?: string; revisionId?: string; version?: string; memoryId?: string; destination?: string } = {}) {
+    this.setData({ destination: options.destination === 'family' ? 'family' : 'social' });
     const version = Number(options.version);
     if (options.memoryId) {
       this.expectedMemory = { memoryId: options.memoryId, ...(options.revisionId ? { revisionId: options.revisionId } : {}) };

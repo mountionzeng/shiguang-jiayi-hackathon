@@ -1,6 +1,7 @@
 <view class="sharing-page social-page">
-  <view class="eyebrow">发送到社交媒体</view>
+  <view class="eyebrow">{{destination === 'family' ? '发送给家人' : '发送到社交媒体'}}</view>
   <view class="heading serif">{{preview ? '看看这次分享的内容' : '想分享多少，由你决定'}}</view>
+  <view class="intro" wx:if="{{destination === 'family'}}">先选内容，生成图片和文字的预览，确认后再发给朋友家人。</view>
   <view class="intro" wx:if="{{loading}}">正在读取已保存的书稿…</view>
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <block wx:if="{{title}}">

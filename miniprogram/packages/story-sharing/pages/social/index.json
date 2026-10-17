@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "发送到社交媒体",
+  "navigationBarTitleText": "图文分享",
   "disableScroll": false,
   "usingComponents": {
     "generation-status": "/components/generation-status/generation-status"
