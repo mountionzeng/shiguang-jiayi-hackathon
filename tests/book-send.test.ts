@@ -158,6 +158,101 @@ test('家人图文预览保留来源版本，普通社交与记忆入口沿用�
   assert.deepEqual(other.expectedMemory, { memoryId: 'memory-one' });
 });
 
+async function familyCardPage() {
+  const page = await socialPage();
+  Object.assign(page.data, { destination: 'family', preview: true, scope: 'chapters', familyInviteAvailable: true,
+    inviteeName: '小岚', imagePaths: ['rendered-cover'], familyCardImageUrl: 'https://approved-cover' });
+  page.data.chapters[1].checked = true;
+  page.exportSelection = { storyId: 'story-test' }; page.descriptor = { id: 'export-one', chapters: [page.snapshot.chapters[1]] };
+  page.verifySnapshot = async () => {};
+  return page;
+}
+
+test('图文卡片只邀请已选章节，允许自己的副本与回信，不授予改原稿权限', async () => {
+  const page = await familyCardPage();
+  const { storySharing, sharingHome } = await import('../miniprogram/services/storySharing');
+  const { bookExportApi } = await import('../miniprogram/services/bookExport');
+  const originals = { capabilities: storySharing.capabilities, create: storySharing.create, material: bookExportApi.material };
+  const calls: unknown[][] = [];
+  storySharing.capabilities = async () => ({ invitations: true, copy: true, sharedEdit: false, familyId: 'family-owner' });
+  storySharing.create = async (...args: any[]) => { calls.push(args); return { token: 'a'.repeat(48), invitationId: 'invite-one' }; };
+  bookExportApi.material = async () => ({ descriptor: page.descriptor, coverUrl: 'https://approved-cover-refreshed' });
+  try {
+    assert.deepEqual(page.onShareAppMessage(), sharingHome);
+    await page.prepareFamilyInvitation();
+    assert.deepEqual(calls, [['family-owner', 'story-test', ['chapter-two'], false, false, true, '小岚']]);
+    assert.deepEqual(page.onShareAppMessage(), { title: '全书', imageUrl: 'https://approved-cover-refreshed',
+      path: '/packages/story-sharing/pages/invite/index?token=' + 'a'.repeat(48) });
+    await page.prepareFamilyInvitation();
+    assert.equal(calls.length, 1, '已准备好的邀请不重复创建');
+    page.enterInviteeName({ detail: { value: '另一位朋友' } });
+    assert.equal(page.data.familyShareReady, false);
+    assert.deepEqual(page.onShareAppMessage(), sharingHome);
+  } finally { Object.assign(storySharing, { capabilities: originals.capabilities, create: originals.create }); bookExportApi.material = originals.material; }
+});
+
+test('邀请或收入权限未开时不创建卡片，不绕过云端门禁', async () => {
+  const { storySharing, sharingHome } = await import('../miniprogram/services/storySharing');
+  const originalCaps = storySharing.capabilities, originalCreate = storySharing.create;
+  let created = 0;
+  storySharing.create = async () => { created++; throw new Error('must not create'); };
+  try {
+    for (const disabled of ['invitations', 'copy']) {
+      const page = await familyCardPage();
+      storySharing.capabilities = async () => ({ invitations: disabled !== 'invitations', copy: disabled !== 'copy', sharedEdit: false, familyId: 'family-owner' });
+      await page.prepareFamilyInvitation();
+      assert.equal(created, 0); assert.equal(page.data.familyShareReady, false);
+      assert.match(page.data.familyInviteNotice, /尚未开放/);
+      assert.deepEqual(page.onShareAppMessage(), sharingHome);
+    }
+  } finally { storySharing.capabilities = originalCaps; storySharing.create = originalCreate; }
+});
+
+test('一段文字不能暗中变成整章阅读邀请', async () => {
+  const page = await familyCardPage();
+  page.data.scope = 'text'; page.data.selectedText = '原文';
+  page.verifySnapshot = async () => { throw new Error('should not verify'); };
+  await page.prepareFamilyInvitation();
+  assert.equal(page.data.familyShareReady, false);
+  assert.match(page.data.familyInviteNotice, /整章/);
+  page.data.scope = 'chapters';
+  page.chooseScope({ currentTarget: { dataset: { scope: 'text' } } });
+  assert.equal(page.data.scope, 'chapters');
+});
+
+test('预览后选择漂移或版本核对失败，均不能生成邀请', async () => {
+  const page = await familyCardPage();
+  page.data.chapters[0].checked = true;
+  await page.prepareFamilyInvitation();
+  assert.match(page.data.familyInviteNotice, /与预览不一致/);
+  assert.equal(page.data.familyShareReady, false);
+  page.data.chapters[0].checked = false;
+  page.verifySnapshot = async () => { throw new Error('书稿版本已经更新'); };
+  await page.prepareFamilyInvitation();
+  assert.match(page.data.familyInviteNotice, /版本已经更新/);
+  assert.equal(page.data.invitationBusy, false); assert.equal(page.data.familyShareReady, false);
+});
+
+test('离页后晚到的邀请不能恢复私人卡片，重复点击不会重复创建', async () => {
+  const page = await familyCardPage();
+  const { storySharing, sharingHome } = await import('../miniprogram/services/storySharing');
+  const { bookExportApi } = await import('../miniprogram/services/bookExport');
+  const originals = { capabilities: storySharing.capabilities, create: storySharing.create, material: bookExportApi.material };
+  let complete!: (value: any) => void, started!: () => void, calls = 0;
+  const created = new Promise<void>(resolve => { started = resolve; });
+  storySharing.capabilities = async () => ({ invitations: true, copy: true, sharedEdit: false, familyId: 'family-owner' });
+  storySharing.create = () => { calls++; started(); return new Promise(resolve => { complete = resolve; }); };
+  bookExportApi.material = async () => ({ descriptor: page.descriptor, coverUrl: 'https://approved-cover' });
+  (globalThis as any).wx = { getFileSystemManager: () => ({ unlink() {} }) };
+  try {
+    const pending = page.prepareFamilyInvitation(); await created;
+    await page.prepareFamilyInvitation(); assert.equal(calls, 1);
+    page.onHide(); complete({ token: 'a'.repeat(48), invitationId: 'invite-one' }); await pending;
+    assert.equal(page.data.familyShareReady, false); assert.equal(page.data.inviteeName, '');
+    assert.deepEqual(page.onShareAppMessage(), sharingHome);
+  } finally { Object.assign(storySharing, { capabilities: originals.capabilities, create: originals.create }); bookExportApi.material = originals.material; }
+});
+
 test('切换章节后晚到的原生选区不能污染新章选择', async () => {
   const page = await socialPage(); let complete!: (result: any) => void;
   page.data.editorReady = true;

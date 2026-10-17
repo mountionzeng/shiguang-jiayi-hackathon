@@ -1,7 +1,8 @@
 <view class="sharing-page social-page">
   <view class="eyebrow">{{destination === 'family' ? '发送给家人' : '发送到社交媒体'}}</view>
   <view class="heading serif">{{preview ? '看看这次分享的内容' : '想分享多少，由你决定'}}</view>
-  <view class="intro" wx:if="{{destination === 'family'}}">先选内容，生成图片和文字的预览，确认后再发给朋友家人。</view>
+  <view class="intro" wx:if="{{destination === 'family'}}">先预览，再把带图片和标题的小程序卡片发给亲友。ta 点开接受邀请后读文章，可以保留下来，或在自己的故事里继续补充。</view>
+  <view class="notice" wx:if="{{destination === 'family' && familyInviteNotice}}">{{familyInviteNotice}}</view>
   <view class="intro" wx:if="{{loading}}">正在读取已保存的书稿…</view>
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <block wx:if="{{title}}">
@@ -17,7 +18,7 @@
       <view class="scope-options" wx:if="{{sourceKind === 'story'}}">
         <button class="scope {{scope === 'book' ? 'selected' : ''}}" data-scope="book" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">整本书</button>
         <button class="scope {{scope === 'chapters' ? 'selected' : ''}}" data-scope="chapters" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">选择章节</button>
-        <button class="scope {{scope === 'text' ? 'selected' : ''}}" data-scope="text" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">选择文字</button>
+        <button wx:if="{{destination !== 'family'}}" class="scope {{scope === 'text' ? 'selected' : ''}}" data-scope="text" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">选择文字</button>
       </view>
       <view class="caption" wx:if="{{sourceKind === 'story' && scope === 'book'}}">包含这本书全部 {{chapters.length}} 章的文字。封面之外的照片不自动加入。</view>
       <checkbox-group wx:if="{{sourceKind === 'story' && scope === 'chapters'}}" bindchange="chooseChapters">
@@ -41,14 +42,24 @@
         <button class="cover-model-action" bindtap="makeCover" disabled="{{exportBusy || albumSaving}}">先制作 AI 封面</button>
       </view>
       <block wx:if="{{imagePaths.length}}">
-        <view class="section-title serif">对方会收到这 {{imagePaths.length}} 张图片</view>
+        <view wx:if="{{destination === 'family'}}" class="family-invitation">
+          <view class="section-title serif">微信里收到的卡片</view>
+          <view class="family-share-card"><view class="family-card-title">{{title}}</view><image src="{{familyCardImageUrl}}" mode="aspectFill" /><view class="caption">拾光家忆 · 点开读故事</view></view>
+          <view class="caption">卡片展示上面的标题和图片；点开可读本次选中的 {{selectedCount}} 章，显示最新已保存版本。亲友可以收入自己的故事、补充并回信，不能直接修改你的原稿。</view>
+          <input class="family-invite-name" value="{{inviteeName}}" maxlength="30" bindinput="enterInviteeName" disabled="{{invitationBusy}}" placeholder="怎么称呼这位亲友，例如：小岚" aria-label="亲友的称呼" />
+          <view class="caption">这份邀请供一位亲友使用，24 小时内有效；请直接发给 ta。</view>
+          <button wx:if="{{!familyShareReady}}" class="primary" bindtap="prepareFamilyInvitation" loading="{{invitationBusy}}" disabled="{{!familyInviteAvailable || invitationBusy || exportBusy || albumSaving || sharingIndex >= 0}}">{{invitationBusy ? '正在准备邀请…' : '确认预览，准备邀请'}}</button>
+          <button wx:else class="primary" open-type="share">把卡片发给这位亲友</button>
+          <view class="caption">已发出的邀请可在书稿“更多 → 亲友阅读与权限”中管理和撤销。</view>
+        </view>
+        <view class="section-title serif">{{destination === 'family' ? '核对这次分享的图文' : '对方会收到这 ' + imagePaths.length + ' 张图片'}}</view>
         <view class="export-image" wx:for="{{imagePaths}}" wx:key="*this">
           <view class="caption">{{index < coverImageCount ? (sourceKind === 'memory' ? '记忆配图 ' + (index + 1) : coverImageCount > 1 ? '封面 ' + (index + 1) : '封面') : '文字图 ' + (index - coverImageCount + 1)}}</view>
           <image src="{{item}}" mode="widthFix" />
-          <button class="share-image-action" data-index="{{index}}" bindtap="shareImage" loading="{{sharingIndex === index}}" disabled="{{sharingIndex >= 0 || albumSaving || exportBusy}}">发这张图片</button>
+          <button wx:if="{{destination !== 'family'}}" class="share-image-action" data-index="{{index}}" bindtap="shareImage" loading="{{sharingIndex === index}}" disabled="{{sharingIndex >= 0 || albumSaving || exportBusy}}">发这张图片</button>
         </view>
         <button class="primary" bindtap="saveImages" loading="{{albumSaving}}" disabled="{{albumSaving || exportBusy || sharingIndex >= 0 || savedIndices.length === imagePaths.length}}">{{savedIndices.length === imagePaths.length ? '已全部保存' : savedIndices.length ? '继续保存剩余图片' : '保存全部图片到相册'}}</button>
-        <view class="caption">{{savedIndices.length ? '已保存 ' + savedIndices.length + ' 张。' : ''}}可以逐张直接发送，也可以保存全部图片后一起发布。</view>
+        <view class="caption">{{savedIndices.length ? '已保存 ' + savedIndices.length + ' 张。' : ''}}{{destination === 'family' ? '保存的图片不带邀请入口；让亲友进入阅读，请使用上方的卡片。' : '可以逐张直接发送，也可以保存全部图片后一起发布。'}}</view>
       </block>
       <view class="intro" wx:if="{{!imagePaths.length && exportBusy}}">正在排出对方会看到的样子：文字、封面和每章底图…</view>
       <view class="section-title serif">想调整的话</view>

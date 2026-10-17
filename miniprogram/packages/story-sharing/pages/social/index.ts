@@ -4,7 +4,7 @@ import { storyCoverApi, ShareCoverCandidate } from '../../../../services/storyCo
 import { bookExportApi, bookExportSelection, memoryBookExportSelection, BookExportSelection, BookExportDescriptor } from '../../../../services/bookExport';
 import { renderBookImages, removeImageFiles } from '../../../../services/bookImageRenderer';
 import { ImageLayoutMode, ImageFontSize } from '../../../../services/bookImageLayout';
-import { sharingHome } from '../../../../services/storySharing';
+import { sharingHome, storySharing, invitationPath } from '../../../../services/storySharing';
 import { memoryExportApi, MemoryExportSource } from '../../../../services/memoryExport';
 
 const saveImageToAlbum = (filePath: string, timeoutMs = 15000) => new Promise<void>((resolve, reject) => {
@@ -32,6 +32,8 @@ Page({
     notice: '', title: '', coverUrl: '', coverNotice: '',
     sourceKind: 'story' as 'story' | 'memory',
     destination: 'social' as 'family' | 'social',
+    inviteeName: '', invitationBusy: false, familyInviteAvailable: false, familyInviteNotice: '',
+    familyCardImageUrl: '', familyShareReady: false,
     coverCandidates: [] as ShareCoverCandidate[], selectedCoverImageIds: [] as string[],
     // 0 = 自动：按字号自然分页。默认自动，避免整本书一进来就因张数不匹配而失败。
     textImageCountOptions: ['自动', ...Array.from({ length: 12 }, (_, index) => String(index + 1))],
@@ -51,6 +53,7 @@ Page({
   descriptor: undefined as BookExportDescriptor | undefined,
   renderTask: undefined as Promise<string[]> | undefined,
   returningFromCover: false,
+  familyShare: undefined as { title: string; imageUrl: string; path: string } | undefined,
   albumSaveTimeoutMs: 15000,
   onLoad(options: { storyId?: string; revisionId?: string; version?: string; memoryId?: string; destination?: string } = {}) {
     this.setData({ destination: options.destination === 'family' ? 'family' : 'social' });
@@ -74,6 +77,7 @@ Page({
     this.editor?.clear();
     this.editor = undefined;
     this.setData({ loading: false, checking: false, exportBusy: false, albumSaving: false, sharingIndex: -1, exportAvailable: false, capabilityKnown: false, title: '', coverUrl: '', coverNotice: '', sourceKind: 'story',
+      inviteeName: '', invitationBusy: false, familyInviteAvailable: false, familyInviteNotice: '',
       coverCandidates: [], selectedCoverImageIds: [], coverImageCount: 0, chapters: [], selectedText: '',
       editorReady: false, preview: false, previewChapters: [], selectedCount: 0, characterCount: 0 });
   },
@@ -91,6 +95,7 @@ Page({
       this.setData({ title: snapshot.title, chapters: snapshot.chapters.map(chapter => ({ ...chapter, checked: false })) });
       this.updateSelection(); this.seedEditor();
       void this.checkExportCapability(epoch);
+      if (this.data.destination === 'family') void this.checkFamilyInvitationCapability(epoch);
       void this.loadShareCoverCandidates(snapshot, epoch);
       // Cover arrival updates only the image. It must never reset the selected text.
       if (snapshot.coverImageId) void this.resolveCover(snapshot, epoch);
@@ -173,12 +178,14 @@ Page({
     if (this.data.loading || this.busy()) return;
     const scope = event.currentTarget.dataset.scope as SendScope;
     if (!['book', 'chapters', 'text'].includes(scope)) return;
+    if (this.data.destination === 'family' && scope === 'text') return;
     this.resetImages();
     this.setData({ scope, preview: false, previewChapters: [], notice: '' }); this.updateSelection();
   },
   chooseChapters(event: WechatMiniprogram.CustomEvent<{ value: string[] }>) {
     if (this.busy()) return;
     const ids = new Set(event.detail.value);
+    this.resetImages();
     this.setData({ chapters: this.data.chapters.map(chapter => ({ ...chapter, checked: ids.has(chapter.id) })) });
     this.updateSelection();
   },
@@ -286,7 +293,66 @@ Page({
     this.resetImages();
     this.setData({ includeMemoryPhotos: !this.data.includeMemoryPhotos });
   },
-  busy() { return this.data.checking || this.data.exportBusy || this.data.albumSaving || this.data.sharingIndex >= 0; },
+  busy(): boolean { return this.data.checking || this.data.exportBusy || this.data.albumSaving || this.data.sharingIndex >= 0 || this.data.invitationBusy; },
+  async checkFamilyInvitationCapability(epoch: number) {
+    try {
+      const caps = await storySharing.capabilities();
+      if (this.hidden || this.epoch !== epoch) return;
+      const available = !!caps.familyId && caps.invitations === true && caps.copy === true;
+      this.setData({ familyInviteAvailable: available, familyInviteNotice: available ? '' : '阅读邀请和收入自己的故事尚未开放。目前可以查看卡片预览，暂不能发出可加入的邀请。' });
+    } catch {
+      if (!this.hidden && this.epoch === epoch) this.setData({ familyInviteAvailable: false, familyInviteNotice: '暂时无法确认邀请是否可用，请重新进入。' });
+    }
+  },
+  clearFamilyInvitation() {
+    this.familyShare = undefined;
+    this.setData({ familyShareReady: false });
+  },
+  enterInviteeName(event: WechatMiniprogram.Input) {
+    if (this.data.invitationBusy) return;
+    this.clearFamilyInvitation();
+    this.setData({ inviteeName: event.detail.value });
+  },
+  async prepareFamilyInvitation() {
+    if (this.hidden || this.busy() || this.data.familyShareReady || this.data.destination !== 'family' || !this.data.preview || !this.snapshot || !this.descriptor || !this.exportSelection || !this.data.imagePaths.length) return;
+    if (this.data.scope === 'text') {
+      this.setData({ familyInviteNotice: '阅读邀请按整章授权，请重新选择整章；选段图片可以从发送到社交媒体进入。' }); return;
+    }
+    const name = this.data.inviteeName.trim();
+    if (!name) { this.setData({ familyInviteNotice: '请写下怎么称呼这位朋友或家人。' }); return; }
+    const epoch = this.epoch, snapshot = this.snapshot, descriptor = this.descriptor, selection = this.exportSelection;
+    const chapters = this.selected();
+    if (descriptor.chapters.length !== chapters.length || descriptor.chapters.some((chapter, index) => chapter.id !== chapters[index].id || chapter.text !== chapters[index].text)) {
+      this.setData({ familyInviteNotice: '所选章节与预览不一致，请重新生成图文预览。' }); return;
+    }
+    const chapterIds = descriptor.chapters.map(chapter => chapter.id);
+    if (!chapterIds.length) return;
+    const active = () => !this.hidden && this.epoch === epoch && this.snapshot === snapshot;
+    this.clearFamilyInvitation();
+    this.setData({ invitationBusy: true, familyInviteNotice: '正在核对内容和邀请权限…' });
+    let creating = false;
+    try {
+      await this.verifySnapshot(snapshot); if (!active()) return;
+      const caps = await storySharing.capabilities(); if (!active()) return;
+      if (!caps.invitations || !caps.copy || !caps.familyId) {
+        this.setData({ familyInviteAvailable: false });
+        throw new Error('阅读邀请和收入自己的故事尚未开放，暂不能发出可加入的邀请。');
+      }
+      const material = await bookExportApi.material(selection, descriptor.id); if (!active()) return;
+      if (material.descriptor.id !== descriptor.id) throw new Error('图文预览已失效，请重新生成。');
+      await this.verifySnapshot(snapshot); if (!active()) return;
+      creating = true;
+      const invitation = await storySharing.create(caps.familyId, snapshot.storyId, chapterIds, false, false, true, name);
+      if (!active()) return;
+      const imageUrl = material.coverUrls?.[0] || material.coverUrl || sharingHome.imageUrl;
+      this.familyShare = { title: snapshot.title, imageUrl, path: invitationPath(invitation.token) };
+      this.setData({ familyShareReady: true, familyCardImageUrl: imageUrl,
+        familyInviteNotice: '邀请已准备好，24 小时内有效。点下方按钮，在微信里选择这位亲友。' });
+    } catch (error) {
+      if (!this.hidden && this.epoch === epoch) this.setData({ familyInviteNotice: (error instanceof Error ? error.message : '暂时无法准备邀请。')
+        + (creating ? ' 若结果未确认，请到“亲友阅读与权限”查看，避免重复生成。' : '') });
+    } finally { if (!this.hidden && this.epoch === epoch) this.setData({ invitationBusy: false }); }
+  },
   async checkExportCapability(epoch: number) {
     try {
       const available = await bookExportApi.available(this.data.sourceKind);
@@ -309,11 +375,12 @@ Page({
     this.setData({ exportBusy: false, renderProgress: '' });
   },
   /** 相册保存、分享和内容核对期间不能改；生成中可以改，改了就停止本次生成。 */
-  lockedForChoice() { return this.data.checking || this.data.albumSaving || this.data.sharingIndex >= 0; },
+  lockedForChoice() { return this.data.checking || this.data.albumSaving || this.data.sharingIndex >= 0 || this.data.invitationBusy; },
   resetImages() {
+    this.clearFamilyInvitation();
     removeImageFiles(this.data.imagePaths);
     this.exportSelection = undefined; this.descriptor = undefined;
-    this.setData({ imagePaths: [], savedIndices: [], renderProgress: '', coverImageCount: 0 });
+    this.setData({ imagePaths: [], savedIndices: [], renderProgress: '', coverImageCount: 0, familyCardImageUrl: '' });
   },
   chooseShareCovers(event: WechatMiniprogram.CustomEvent<{ value: string[] }>) {
     if (this.lockedForChoice()) return;
@@ -418,7 +485,8 @@ Page({
       if (checked.descriptor.id !== material.descriptor.id) throw new Error('预览已变化，请重新生成');
       this.descriptor = material.descriptor; this.exportSelection = selection;
       this.setData({ imagePaths: paths, savedIndices: [], coverImageCount: source ? material.descriptor.photoIds?.length || 0 : Math.max(1, material.descriptor.coverImageIds?.length || 0),
-        notice: '这就是对方会收到的样子。满意的话可以直接发送或保存。' });
+        familyCardImageUrl: snapshot ? checked.coverUrls?.[0] || checked.coverUrl || sharingHome.imageUrl : '',
+        notice: this.data.destination === 'family' ? '预览已生成。确认卡片和章节后，再准备阅读邀请。' : '这就是对方会收到的样子。满意的话可以直接发送或保存。' });
     } catch (error) {
       removeImageFiles(paths);
       if (active()) this.setData({ notice: error instanceof Error ? error.message : '图片生成失败，请重试' });
@@ -488,5 +556,8 @@ Page({
   },
   backToSelection() { if (!this.busy()) { this.resetImages(); this.setData({ preview: false, previewChapters: [] }); } },
   goBack() { if (!this.busy()) wx.navigateBack(); },
-  onShareAppMessage() { return sharingHome; },
+  onShareAppMessage(): { title: string; imageUrl: string; path: string } {
+    return !this.hidden && this.data.destination === 'family' && this.data.familyShareReady && this.data.preview
+      && this.snapshot && this.data.imagePaths.length && this.familyShare ? this.familyShare : sharingHome;
+  },
 });

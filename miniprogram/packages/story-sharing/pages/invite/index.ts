@@ -50,7 +50,7 @@ Page({
     try {
       const result=await storySharing.create(this.familyId,this.storyId,ids,this.data.forward,this.data.editAvailable && this.data.edit,this.data.copyAvailable && this.data.copy,this.data.inviteeName.trim() || undefined,this.data.relation.trim() || undefined);
       if(this.hidden || epoch!==this.epoch)return;
-      this.shareToken=result.token;this.setData({shareReady:true,notice:'邀请已生成，24 小时内可申请。发给亲友后，请回到这里刷新并确认申请。'});
+      this.shareToken=result.token;this.setData({shareReady:true,notice:'邀请已生成，24 小时内有效。亲友点开后可一键加入；这份邀请供一位亲友使用。'});
     }catch(error){if(!this.hidden && epoch===this.epoch)this.setData({notice:error instanceof Error?error.message:'生成失败；请刷新查看是否已创建，避免重复生成'});}
     finally{if(!this.hidden && epoch===this.epoch)this.setData({busy:false});}
   },

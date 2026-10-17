@@ -1,7 +1,7 @@
 <view class="sharing-page">
   <view class="eyebrow">拾光家忆 · 获准阅读的原稿</view>
   <view class="heading serif">{{title || '亲友的故事'}}</view>
-  <view class="intro">这里显示主人当前保存的版本，不是你的个人副本。图片和保存副本尚未开放；只有主人明确授权时才能编辑。</view>
+  <view class="intro">这里是亲友分享给你的章节，显示最新已保存的文字。{{canCopy ? '读完可以保留下来，或收进自己的故事继续补充；你的补充不会直接改动对方的原稿。' : '目前仅供阅读，收入自己的故事需要对方授权并开放相应功能。'}}</view>
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <view class="intro" wx:if="{{loading}}">正在核对权限并读取章节…</view>
   <view class="reading-chapter" wx:for="{{chapters}}" wx:key="id" wx:for-item="chapter">
