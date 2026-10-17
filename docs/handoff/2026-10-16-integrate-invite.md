@@ -1,5 +1,7 @@
 # 2026-10-16 邀请共创与完整主线整合
 
+> 2026-10-18 最新状态：用户已批准部署并改由本任务在控制台创建集合。`story_rollout_admissions` 已建、客户端全部拒绝；仅 `storyBooks` 从 `afc0ee1` 部署，回读 29/29 文件完全一致。四开关未修改，实际邀请仍未开放。部署后图文重试成功，新界面二维码 00:59:07 生成；详情见 [部署交接](2026-10-18-storybooks-deployment.md)。下文“未部署/待批准/集合待建”等保留为此前历史记录，以此更新为准。
+
 ## 做了什么（附提交号）
 
 2026-10-17 完成续办：无损资源压缩提交 **`fbdc4a24ad4ee3421769621172f819f3e2f51f44`**；压缩后 `npm run check` 再次类型通过、1291/1291 测试通过。二维码于 **2026-10-17 14:00:14（北京时间）** 从干净 `fbdc4a2` 生成，约 14:30 失效。微信上传确认主包 2,077,205 字节（约 2029 KB），低于 2048 KB。原输出 `/private/tmp/shiguang-preview-qr.jpg`，留存 `/private/tmp/shiguang-integrate-invite-20261017-evidence/preview-fbdc4a2.jpg`，记录在 preview-manifest.json / preview-3.log。源码下载与二维码完成后已恢复 Wi-Fi DNS 为原值 `198.18.0.2`，前后文件 cmp 一致，代理未改。
