@@ -258,6 +258,38 @@ test('一本书的人物只来自本书素材、主角和邀请；没有章节�
   await assert.rejects(f.call('friend','inviteManage',{storyId:'story-a',includePeople:true}),{code:'STORY_ACCESS_DISABLED'});
 });
 
+test('多份素材的人物读取兼容云端单事务串行限制，只查询人物元数据并隔离其他书和已删除素材', async () => {
+  const f=await setup();addMember(f,'小岚');addMember(f,'作者','朋友','author');addMember(f,'其他书的人','朋友','unrelated');
+  const story=f.tables.get('stories:family_owner_story-a');
+  story.memoryIds=['memory-one','memory-two','memory-deleted'];
+  f.tables.set('memories:family_owner_memory-one',{familyId:'family_owner',relatedMemberIds:['member-manual'],text:'素材正文不应读取'});
+  f.tables.set('memories:family_owner_memory-two',{familyId:'family_owner',frontendContributionId:'memory-two',authorMemberId:'author'});
+  f.tables.set('memories:family_owner_memory-deleted',{familyId:'family_owner',relatedMemberIds:['unrelated'],deletedAt:'2026-10-18'});
+  f.tables.set('memories:family_owner_other-book',{familyId:'family_owner',relatedMemberIds:['unrelated']});
+  f.tables.set('memories:family_other_memory-one',{familyId:'family_other',relatedMemberIds:['unrelated']});
+  const transaction=f.repo.transaction;
+  f.repo.transaction=fn=>transaction(tx=>{
+    let busy=false;
+    return fn({...tx,get:async(...args)=>{
+      assert.equal(busy,false,'ResourceUnavailable.TransactionBusy');busy=true;
+      try { await new Promise(resolve=>setImmediate(resolve));return await tx.get(...args); }
+      finally { busy=false; }
+    }});
+  });
+  const all=f.repo.all;let memoryQueries=0;
+  f.repo.all=async(table,familyId,fields)=>{
+    if(table==='memories'){
+      memoryQueries++;assert.equal(familyId,'family_owner');
+      assert.deepEqual(Object.keys(fields).sort(),['authorMemberId','deletedAt','familyId','frontendContributionId','id','relatedMemberIds','sourceRecordId']);
+      return (await all(table,familyId)).map(row=>Object.fromEntries(Object.entries(row).filter(([key])=>key==='_id'||fields[key])));
+    }
+    return all(table,familyId,fields);
+  };
+  const managed=await f.call('owner','inviteManage',{storyId:'story-a',includePeople:true});
+  assert.deepEqual(managed.people.map(p=>p.id),['member-manual','author']);
+  assert.equal(memoryQueries,1);assert.equal(JSON.stringify(managed).includes('素材正文'),false);
+});
+
 test('接受后主人可明确改选当前章节；未选择的章节不自动开放，越权和无效章节仍拒绝', async () => {
   const f=await setup({sharedEditEnabled:false});const inv=await joined(f);
   await f.call('owner','inviteSetAccess',access(inv,{chapterIds:['chapter-one'],permissions:{read:true,copy:false,edit:false}}));

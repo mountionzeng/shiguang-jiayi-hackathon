@@ -1,11 +1,19 @@
 // A person mentioned in a book is not an authenticated reader. Only explicit
 // member IDs and invitation records link the two; display names never do.
-async function bookPeople(tx, story, invitations, members) {
+async function bookPeople(repo, story, invitations, members) {
   const ids = new Set(story.protagonistMemberIds || []);
   if (story.legacy?.memberId) ids.add(story.legacy.memberId);
-  const memories = await Promise.all((story.memoryIds || []).map(id => tx.get('memories', `${story.familyId}_${id}`)));
+  const memoryIds = new Set(story.memoryIds || []);
+  // Display metadata only, after the caller's owner check. CloudBase transactions
+  // cannot run document reads concurrently; avoid N full manuscript reads too.
+  const memories = memoryIds.size ? await repo.all('memories', story.familyId, {
+    familyId:true,frontendContributionId:true,id:true,sourceRecordId:true,
+    authorMemberId:true,relatedMemberIds:true,deletedAt:true,
+  }) : [];
   for (const memory of memories) {
     if (!memory || memory.familyId !== story.familyId || memory.deletedAt) continue;
+    const id = memory.frontendContributionId || memory.id || memory.sourceRecordId?.replace(/^src_/,'')?.replace(memory.familyId+'_','') || memory._id?.replace(memory.familyId+'_','');
+    if (!memoryIds.has(id)) continue;
     if (memory.authorMemberId) ids.add(memory.authorMemberId);
     for (const id of memory.relatedMemberIds || []) ids.add(id);
   }

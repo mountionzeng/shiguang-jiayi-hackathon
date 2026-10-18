@@ -125,7 +125,7 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
         }
         return { story:{id:story.id,title:story.title}, chapters:chapters.map(c=>({id:c.id,title:c.title})), invitations,
           ...(input.includePeople === true ? {bookPeople:true,familyId:story.familyId,copyAvailable:copyReceiveEnabled === true,
-            ...await bookPeople(tx,story,invitations,await repo.all('family_members',story.familyId,
+            ...await bookPeople(repo,story,invitations,await repo.all('family_members',story.familyId,
               {familyId:true,memberId:true,id:true,name:true,relation:true,avatarText:true,role:true,deletedAt:true}))} : {}) };
       }
       if (!chapterIds(input.chapterIds) || !input.permissions || input.permissions.read !== true ||
