@@ -1,3 +1,4 @@
+import { measurePerformance } from './performanceLog';
 export interface Applicant { applicantId:string; displayName:string; verificationCode:string; status:string }
 export interface InvitedMember { name:string; active:boolean; chapterIds:string[]; permissions:{read:boolean;edit?:boolean;copy?:boolean} }
 export interface Invitation { invitationId:string; status:string; expiresAtMs:number; chapterIds:string[]; permissions:{read:boolean;forward:boolean;edit?:boolean;copy?:boolean}; applicants:Applicant[]; member?:InvitedMember }
@@ -19,9 +20,9 @@ async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> 
   return result as T;
 }
 export const storySharing = {
-  capabilities:()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string}>('capabilities'),
+  capabilities:()=>measurePerformance('invite.capabilities',()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string}>('capabilities')),
   manage:(familyId:string,storyId:string)=>call<ManagedStory>('inviteManage',{familyId,storyId}),
-  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string,relation?:string)=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{}),...(relation?{relation}:{})}),
+  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string,relation?:string)=>measurePerformance('invite.create',()=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{}),...(relation?{relation}:{})})),
   status:(token:string)=>call<InviteStatus>('inviteGet',{token}),
   accept:(token:string)=>call<InviteStatus>('inviteAccept',{token}),
   revoke:(familyId:string,storyId:string,invitationId:string)=>call('inviteRevoke',{familyId,storyId,invitationId}),

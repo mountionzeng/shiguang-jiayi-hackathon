@@ -341,15 +341,28 @@ Page({
     const active = () => !this.hidden && this.epoch === epoch && this.snapshot === snapshot;
     this.clearFamilyInvitation();
     this.setData({ invitationBusy: true, familyInviteNotice: '正在核对内容和邀请权限…' });
+    const finish = startPerformanceMeasure('invite.prepare');
+    let outcome: 'ok' | 'error' = 'error';
     let creating = false;
     try {
-      await this.verifySnapshot(snapshot); if (!active()) return;
-      const caps = await storySharing.capabilities(); if (!active()) return;
+      // Each read independently authorizes on the server. Keep the final
+      // account/version check after all reads, and drain failures before unlocking
+      // retry so a late verifier cannot clear a subsequent attempt's snapshot.
+      const [verified, capabilityResult, materialResult] = await Promise.allSettled([
+        this.verifySnapshot(snapshot),
+        storySharing.capabilities(),
+        bookExportApi.material(selection, descriptor.id),
+      ]);
+      if (verified.status === 'rejected') throw verified.reason;
+      if (!active()) return;
+      if (capabilityResult.status === 'rejected') throw capabilityResult.reason;
+      const caps = capabilityResult.value;
       if (!caps.invitations || !caps.copy || !caps.familyId) {
         this.setData({ familyInviteAvailable: false });
         throw new Error('阅读邀请和收入自己的故事尚未开放，暂不能发出可加入的邀请。');
       }
-      const material = await bookExportApi.material(selection, descriptor.id); if (!active()) return;
+      if (materialResult.status === 'rejected') throw materialResult.reason;
+      const material = materialResult.value;
       if (material.descriptor.id !== descriptor.id) throw new Error('图文预览已失效，请重新生成。');
       await this.verifySnapshot(snapshot); if (!active()) return;
       creating = true;
@@ -359,10 +372,11 @@ Page({
       this.familyShare = { title: snapshot.title, imageUrl, path: invitationPath(invitation.token) };
       this.setData({ familyShareReady: true, familyCardImageUrl: imageUrl,
         familyInviteNotice: '邀请已准备好，24 小时内有效。点下方按钮，在微信里选择这位亲友。' });
+      outcome = 'ok';
     } catch (error) {
       if (!this.hidden && this.epoch === epoch) this.setData({ familyInviteNotice: (error instanceof Error ? error.message : '暂时无法准备邀请。')
         + (creating ? ' 若结果未确认，请到“亲友阅读与权限”查看，避免重复生成。' : '') });
-    } finally { if (!this.hidden && this.epoch === epoch) this.setData({ invitationBusy: false }); }
+    } finally { finish(outcome); if (!this.hidden && this.epoch === epoch) this.setData({ invitationBusy: false }); }
   },
   async checkExportCapability(epoch: number) {
     try {

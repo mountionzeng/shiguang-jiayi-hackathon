@@ -264,6 +264,102 @@ test('图文卡片只邀请已选章节，允许自己的副本与回信，不�
   } finally { Object.assign(storySharing, { capabilities: originals.capabilities, create: originals.create }); bookExportApi.material = originals.material; }
 });
 
+test('邀请核对与素材并行，但全部通过且末次账号版本核对完成才创建', async () => {
+  const page = await familyCardPage();
+  const { storySharing } = await import('../miniprogram/services/storySharing');
+  const { bookExportApi } = await import('../miniprogram/services/bookExport');
+  const originals = { capabilities: storySharing.capabilities, create: storySharing.create, material: bookExportApi.material };
+  let releaseFirst!: () => void, releaseLast!: () => void, releaseMaterial!: (value: any) => void, releaseCaps!: () => void;
+  const first = new Promise<void>(resolve => { releaseFirst = resolve; });
+  const last = new Promise<void>(resolve => { releaseLast = resolve; });
+  const material = new Promise<any>(resolve => { releaseMaterial = resolve; });
+  const capsReady = new Promise<void>(resolve => { releaseCaps = resolve; });
+  const events: string[] = [];
+  let verifies = 0;
+  page.verifySnapshot = () => { events.push('verify-' + ++verifies); return verifies === 1 ? first : last; };
+  storySharing.capabilities = async () => { events.push('caps'); await capsReady; return { invitations: true, copy: true, sharedEdit: false, familyId: 'family-owner' }; };
+  bookExportApi.material = () => { events.push('material'); return material; };
+  storySharing.create = async () => { events.push('create'); return { token: 'a'.repeat(48), invitationId: 'invite-one' }; };
+  const pending = page.prepareFamilyInvitation();
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual([...events], ['verify-1', 'caps', 'material'], '身份版本读取期间应同时准备已授权素材');
+    releaseMaterial({ descriptor: page.descriptor, coverUrl: 'https://approved-cover' });
+    releaseFirst();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(verifies, 1); assert.equal(events.includes('create'), false);
+    releaseCaps();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(verifies, 2); assert.equal(events.includes('create'), false);
+    releaseLast(); await pending;
+    assert.equal(events.filter(event => event === 'create').length, 1);
+    assert.equal(page.data.familyShareReady, true);
+  } finally {
+    releaseFirst(); releaseLast(); releaseCaps(); releaseMaterial({ descriptor: page.descriptor, coverUrl: '' }); await pending;
+    Object.assign(storySharing, { capabilities: originals.capabilities, create: originals.create }); bookExportApi.material = originals.material;
+  }
+});
+
+test('邀请并行检查失败仍等待另一支收尾，防止重试与晚到的校验相互覆盖', async () => {
+  const page = await familyCardPage();
+  const { storySharing } = await import('../miniprogram/services/storySharing');
+  const { bookExportApi } = await import('../miniprogram/services/bookExport');
+  const originals = { capabilities: storySharing.capabilities, create: storySharing.create, material: bookExportApi.material };
+  let release!: () => void, verifies = 0, materials = 0, created = 0;
+  const verification = new Promise<void>(resolve => { release = resolve; });
+  page.verifySnapshot = () => { verifies++; return verification; };
+  storySharing.capabilities = async () => ({ invitations: true, copy: true, sharedEdit: false, familyId: 'family-owner' });
+  bookExportApi.material = async () => { materials++; throw new Error('素材审核未通过'); };
+  storySharing.create = async () => { created++; throw new Error('must not create'); };
+  const pending = page.prepareFamilyInvitation();
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(materials, 1); assert.equal(page.data.invitationBusy, true);
+    await page.prepareFamilyInvitation();
+    assert.equal(verifies, 1); assert.equal(materials, 1);
+    release(); await pending;
+    assert.equal(created, 0); assert.equal(page.data.familyShareReady, false);
+    assert.equal(page.data.invitationBusy, false);
+    assert.match(page.data.familyInviteNotice, /素材审核未通过/);
+  } finally {
+    release(); await pending;
+    Object.assign(storySharing, { capabilities: originals.capabilities, create: originals.create }); bookExportApi.material = originals.material;
+  }
+});
+
+test('邀请初次或末次版本核对失败、校验中离页，均不创建邀请', async () => {
+  const { storySharing, sharingHome } = await import('../miniprogram/services/storySharing');
+  const { bookExportApi } = await import('../miniprogram/services/bookExport');
+  const originals = { capabilities: storySharing.capabilities, create: storySharing.create, material: bookExportApi.material };
+  const previousWx = (globalThis as any).wx;
+  (globalThis as any).wx = { getFileSystemManager: () => ({ unlink() {} }) };
+  let created = 0;
+  storySharing.capabilities = async () => ({ invitations: true, copy: true, sharedEdit: false, familyId: 'family-owner' });
+  storySharing.create = async () => { created++; throw new Error('must not create'); };
+  try {
+    for (const failAt of ['first', 'last', 'hide']) {
+      const page = await familyCardPage();
+      const descriptor = page.descriptor;
+      let verifies = 0;
+      page.verifySnapshot = async () => {
+        verifies++;
+        if ((failAt === 'first' && verifies === 1) || (failAt === 'last' && verifies === 2)) throw new Error('账号或书稿已改变');
+      };
+      bookExportApi.material = async () => {
+        if (failAt === 'hide') page.onHide();
+        return { descriptor, coverUrl: 'https://approved-cover' };
+      };
+      await page.prepareFamilyInvitation();
+      assert.equal(created, 0); assert.equal(page.data.familyShareReady, false);
+      assert.deepEqual(page.onShareAppMessage(), sharingHome);
+      if (failAt !== 'hide') assert.match(page.data.familyInviteNotice, /账号或书稿已改变/);
+    }
+  } finally {
+    Object.assign(storySharing, { capabilities: originals.capabilities, create: originals.create }); bookExportApi.material = originals.material;
+    (globalThis as any).wx = previousWx;
+  }
+});
+
 test('邀请或收入权限未开时不创建卡片，不绕过云端门禁', async () => {
   const { storySharing, sharingHome } = await import('../miniprogram/services/storySharing');
   const originalCaps = storySharing.capabilities, originalCreate = storySharing.create;
