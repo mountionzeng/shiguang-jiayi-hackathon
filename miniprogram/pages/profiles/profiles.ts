@@ -144,6 +144,7 @@ Page({
         this.data.editMemberId,
         this.data.editNameInput,
         this.data.editRelationInput,
+        { view: "home" },
       );
       if (!this.pageActive) return;
       this.setData({ editMemberId: "", editNameInput: "", editRelationInput: "" });
@@ -162,7 +163,7 @@ Page({
     if (relation === "自己") { wx.showToast({ title: "你自己就是主笔，不用再加", icon: "none" }); return; }
     this.setData({ adding: true });
     try {
-      const state = await addFamilyMemberRemoteFirst(name, relation, "person");
+      const state = await addFamilyMemberRemoteFirst(name, relation, "person", { view: "home" });
       if (!this.pageActive) return;
       wx.showToast({ title: `${name} 已加进来`, icon: "none" });
       this.setData({ nameInput: "", relationInput: "" });
@@ -178,7 +179,7 @@ Page({
     if (!name) { wx.showToast({ title: "请写这本书写的是谁", icon: "none" }); return; }
     this.setData({ adding: true });
     try {
-      const state = await addFamilyMemberRemoteFirst(name, this.data.relationInput.trim() || "自己", "recording-profile");
+      const state = await addFamilyMemberRemoteFirst(name, this.data.relationInput.trim() || "自己", "recording-profile", { view: "home" });
       const book = state.members[state.members.length - 1];
       if (book) saveCurrentMemberIdLocal(book.id);
       wx.showToast({ title: `已新建${name}的人生之书`, icon: "none" });
@@ -193,11 +194,11 @@ Page({
     if (this.data.busyId || this.data.adding || this.data.savingEdit) return;
     const { id } = event.currentTarget.dataset;
     try {
-      const state = await loadRoomStateRemoteFirst();
+      const state = await loadRoomStateRemoteFirst({ view: "home" });
       const member = state.members.find(item => item.id === id && isActiveMember(item));
       if (!member) throw new Error("没有找到，请刷新后重试");
       this.setData({ busyId: id });
-      const next = await deleteMemberWithConfirm(member, state);
+      const next = await deleteMemberWithConfirm(member, state, { view: "home" });
       if (next) await this.refresh(next);
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : "删除没有完成，请重试", icon: "none" });
@@ -209,7 +210,7 @@ Page({
     const { id } = event.currentTarget.dataset;
     this.setData({ busyId: id });
     try {
-      const next = await restoreMemberRemoteFirst(id);
+      const next = await restoreMemberRemoteFirst(id, { view: "home" });
       wx.showToast({ title: "已恢复", icon: "none" });
       await this.refresh(next);
     } catch (error) {

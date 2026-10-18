@@ -15,6 +15,7 @@ function deleteMessage(member: FamilyMember): string {
 export function deleteMemberWithConfirm(
   member: FamilyMember,
   _state: FamilyRoomState,
+  options: { view?: "home" } = {},
 ): Promise<FamilyRoomState | undefined> {
   return new Promise((resolve) => wx.showModal({
     title: `删除「${member.name}」？`,
@@ -25,7 +26,7 @@ export function deleteMemberWithConfirm(
       if (!result.confirm) { resolve(undefined); return; }
       wx.showLoading({ title: "正在删除", mask: true });
       try {
-        const next = await deleteMemberRemoteFirst(member.id);
+        const next = await deleteMemberRemoteFirst(member.id, options);
         wx.hideLoading();
         wx.showToast({ title: "已放进最近删除", icon: "none" });
         resolve(next);

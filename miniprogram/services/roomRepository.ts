@@ -173,9 +173,10 @@ export async function addFamilyMemberRemoteFirst(
   name: string,
   relation: string,
   kind?: FamilyMember["kind"],
+  options: { view?: "home" } = {},
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    return await addCloudFamilyMember(name, relation, kind);
+    return await addCloudFamilyMember(name, relation, kind, options);
   }
 
   return addFamilyMember(name, relation, loadRoomState(), kind);
@@ -319,8 +320,8 @@ export async function classifyMemberRemoteFirst(memberId: string, kind: MemberKi
 }
 
 /** Soft delete; safe to retry. The current profile is refused. */
-export async function deleteMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) return await deleteCloudMember(memberId);
+export async function deleteMemberRemoteFirst(memberId: string, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await deleteCloudMember(memberId, undefined, options);
   return deleteMember(memberId);
 }
 
@@ -334,8 +335,8 @@ export async function saveRoomProfileRemoteFirst(
   return next;
 }
 
-export async function restoreMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) return await restoreCloudMember(memberId);
+export async function restoreMemberRemoteFirst(memberId: string, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await restoreCloudMember(memberId, options);
   return restoreMember(memberId);
 }
 
@@ -343,8 +344,9 @@ export async function updateMemberRemoteFirst(
   memberId: string,
   name: string,
   relation: string,
+  options: { view?: "home" } = {},
 ): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) return await updateCloudMember(memberId, name, relation);
+  if (shouldUseCloudDatabase()) return await updateCloudMember(memberId, name, relation, options);
   return updateMember(memberId, name, relation);
 }
 

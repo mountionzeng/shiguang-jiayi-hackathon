@@ -722,9 +722,10 @@ export async function addCloudFamilyMember(
   name: string,
   relation: string,
   kind?: FamilyMember["kind"],
+  options: { view?: "home" } = {},
 ): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
-  const state = await loadCloudRoomState();
+  const state = await loadCloudRoomState(options);
   const trimmedName = name.trim();
   const trimmedRelation = relation.trim() || "家人";
   if (!trimmedName) {
@@ -755,7 +756,7 @@ export async function addCloudFamilyMember(
     name: member.name,
     relation: member.relation,
     kind: member.kind ?? "recording-profile",
-  })) return loadCloudRoomState();
+  })) return loadCloudRoomState(options);
   await saveMembers(familyId, [member]);
   return {
     ...state,
@@ -975,10 +976,10 @@ export async function classifyCloudMember(memberId: string, kind: MemberKind): P
   return changeCloudMember((state) => planClassify(state, memberId, kind, loadCurrentMember(state).id));
 }
 
-export async function deleteCloudMember(memberId: string, now = new Date()): Promise<FamilyRoomState> {
+export async function deleteCloudMember(memberId: string, now = new Date(), options: { view?: "home" } = {}): Promise<FamilyRoomState> {
   // 先走服务端：云函数创建的人物文档没有客户端 _openid，客户端直写会被权限挡掉，
   // 界面上看得见却永远删不掉。服务端不支持时才退回本地改法。
-  if (await callStoryMemberAction("memberDelete", { memberId })) return loadCloudRoomState();
+  if (await callStoryMemberAction("memberDelete", { memberId })) return loadCloudRoomState(options);
   return changeCloudMember((state) => planDelete(state, memberId, loadCurrentMember(state).id, now));
 }
 
@@ -995,17 +996,19 @@ export async function updateCloudRoomProfile(
   return loadCloudRoomState();
 }
 
-export async function restoreCloudMember(memberId: string): Promise<FamilyRoomState> {
-  if (await callStoryMemberAction("memberRestore", { memberId })) return loadCloudRoomState();
+export async function restoreCloudMember(memberId: string, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
+  if (await callStoryMemberAction("memberRestore", { memberId })) return loadCloudRoomState(options);
   return changeCloudMember((state) => planRestore(state, memberId));
 }
 
-export async function updateCloudMember(memberId: string, name: string, relation: string): Promise<FamilyRoomState> {
+export async function updateCloudMember(memberId: string, name: string, relation: string, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
-  const state = await loadCloudRoomState();
+  const state = await loadCloudRoomState(options);
   const change = planUpdateMember(state, memberId, name, relation);
   if (!change) return state;
-  if (await callStoryMemberAction("memberUpdate", { memberId, name, relation })) return loadCloudRoomState();
+  if (await callStoryMemberAction("memberUpdate", { memberId, name, relation })) return loadCloudRoomState(options);
+  // Legacy writes update attribution too, so keep their complete-state safety path.
+  if (options.view) return changeCloudMember(latest => planUpdateMember(latest, memberId, name, relation));
   await saveContributionsInBatches(familyId, change.contributions);
   await saveMembers(familyId, [change.member]);
   return applyMemberChange(state, change);
