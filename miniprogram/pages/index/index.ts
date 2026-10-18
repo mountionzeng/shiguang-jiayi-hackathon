@@ -29,6 +29,7 @@ import {
   stageRoomStateForStories,
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
+import { stageBookPeople } from "../../services/bookPeopleEntry";
 import { bookmarkDateParts } from "../../services/memoryDates";
 import { loadCurrentStoryId, loadCurrentStoryTitle, saveCurrentStoryId, saveCurrentStoryTitle } from "../../services/storySelection";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -681,10 +682,11 @@ Page({
     wx.reLaunch({ url: "/pages/stories/stories" });
   },
 
-  /** 人都在记忆之家：先看人，再看和这个人有关的记忆。 */
+  /** 人物名单与正在查看的书绑定，授权由云端重新确认。 */
   openPeople() {
-    stageRoomStateForRoom(this.roomSnapshot);
-    wx.navigateTo({ url: "/pages/room/room" });
+    if(!this.data.storyId){stageRoomStateForRoom(this.roomSnapshot);wx.navigateTo({url:'/pages/room/room'});return;}
+    stageBookPeople(this.roomSnapshot,this.data.storyId);
+    wx.navigateTo({ url: "/packages/story-sharing/pages/people/index?storyId="+encodeURIComponent(this.data.storyId) });
   },
 
   openMemoryHome() {

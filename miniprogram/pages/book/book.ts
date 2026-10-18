@@ -998,6 +998,7 @@ Page({
       case "images": this.openImages(); break;
       case "audio": this.openAudioStory(); break;
       case "invite": if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/invite/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
+      case "people": if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/people/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
       case "share-card": if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/card/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
       case "mode": void this.switchWritingMode(); break;
     }

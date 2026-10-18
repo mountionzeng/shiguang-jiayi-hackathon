@@ -57,6 +57,7 @@
       <button class="more-option more-danger" data-action="delete-chapter" bindtap="selectTool">删除本章</button>
     </block>
     <block wx:else>
+      <button wx:if="{{storyId}}" class="more-option" data-action="people" bindtap="selectTool">书中人物与权限<text>›</text></button>
       <button wx:if="{{draft}}" class="more-option" data-action="history" bindtap="selectTool">历史版本<text>›</text></button>
       <block wx:if="{{protectedCopy && storyId && savedRevisionId && !editing}}">
         <button class="more-option" data-action="invite" bindtap="selectTool">亲友阅读与权限<text>›</text></button>

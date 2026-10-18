@@ -61,7 +61,8 @@ function createStoryService(repo, options = {}) {
         if (options.copyReceiveEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
         return prepareInvitation(repo,ctx,event,invitations,options);
       }
-      return invitations(ctx, event);
+      return invitations(ctx, event.action === 'inviteManage' && event.includePeople === true
+        ? {...event,familyId:ctx.familyId} : event);
     }
     if (action === 'sharedMedia') {
       if (!accessEnabled || options.sharedMediaEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');

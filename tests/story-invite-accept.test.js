@@ -169,13 +169,104 @@ test('主人改权限立刻生效：关掉收入，朋友就不能再收；打�
   assert.equal(grant.permissions.publish, false);
 });
 
-test('主人可以收窄到更少的章节，但不能扩大到邀请之外', async () => {
+test('主人可以收窄到更少的章节，但不能选择不存在的章节', async () => {
   const f = await setup();
   const inv = await joined(f, { chapterIds: ['chapter-one', 'chapter-three'] });
   await f.call('owner', 'inviteSetAccess', access(inv, { chapterIds: ['chapter-three'], permissions: { read: true, copy: false, edit: false } }));
   const read = await f.call('friend', 'sharedRead', { familyId: 'family_owner', storyId: 'story-a' });
   assert.deepEqual(read.chapters.map(c => c.id), ['chapter-three']);
   await assert.rejects(f.call('owner', 'inviteSetAccess', access(inv, { chapterIds: ['chapter-two'], permissions: { read: true } })), { code: 'STORY_FORBIDDEN' });
+});
+
+test('人物管理按编号关联：已有资料可以邀请，改名不重复建人，接受前没有权限', async () => {
+  const f=await setup({sharedEditEnabled:false});
+  addMember(f,'小岚','同学');
+  const inv=await f.invite({targetMemberId:'member-manual',inviteeName:'伪造称呼'});
+  assert.equal((await f.call('friend','inviteGet',{token:inv.token})).inviteeName,'小岚');
+  assert.equal([...f.tables].some(([key])=>key.startsWith('story_grants:')),false);
+  await f.call('owner','memberUpdate',{memberId:'member-manual',name:'岚姐',relation:'朋友'});
+  await f.call('friend','inviteAccept',{token:inv.token});
+  const people=[...f.tables].filter(([key])=>key.startsWith('family_members:family_owner_'));
+  assert.equal(people.length,1);assert.equal(people[0][1].name,'岚姐');
+  assert.equal(people[0][1].accountId,[...f.tables].find(([key,row])=>key.startsWith('user_accounts:') && row.wxOpenId==='friend')[1].accountId);
+  const managed=await f.call('owner','inviteManage',{storyId:'story-a',includePeople:true});
+  assert.equal(managed.bookPeople,true);assert.equal(managed.people[0].id,'member-manual');
+  assert.equal(managed.people[0].name,'岚姐');assert.equal(managed.invitations[0].memberId,'member-manual');
+  assert.equal(JSON.stringify(managed).includes('井水里的西瓜很凉'),false);
+  const read=await f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'});
+  assert.deepEqual(read.chapters.map(ch=>ch.id),['chapter-three']);assert.equal(read.capabilities.sharedEdit,false);
+});
+
+test('已绑定人物撤销后再邀请仍只认本人，另一微信不能抢绑，也不能走旧审批绕过', async () => {
+  const f=await setup({sharedReadFamilyIds:['family_owner','family_other']});addMember(f,'小岚');
+  const first=await f.invite({targetMemberId:'member-manual'});
+  await f.call('friend','inviteAccept',{token:first.token});
+  await f.call('owner','inviteRevoke',access(first));
+  const next=await f.invite({targetMemberId:'member-manual'});
+  await assert.rejects(f.call('other','inviteAccept',{token:next.token}),{code:'STORY_FORBIDDEN'});
+  await assert.rejects(f.call('other','inviteApply',{token:next.token,displayName:'小岚'}),{code:'STORY_FORBIDDEN'});
+  assert.equal((await f.call('friend','inviteAccept',{token:next.token})).status,'approved');
+  assert.equal([...f.tables].filter(([key])=>key.startsWith('family_members:family_owner_')).length,1);
+});
+
+test('人物关联拒绝别家、已删除、主笔及未知编号，发邀请者不能凭名字替代编号', async () => {
+  const f=await setup();addMember(f,'小岚');
+  await assert.rejects(f.invite(),{code:'STORY_INVITEE_EXISTS'});
+  for(const memberId of ['missing','../member-manual'])await assert.rejects(f.invite({targetMemberId:memberId}),{code:'STORY_FORBIDDEN'});
+  const target=f.tables.get('family_members:family_owner_member-manual');
+  for(const patch of [{familyId:'family_other'},{deletedAt:'2026-10-18'},{role:'owner'}]){
+    f.tables.set('family_members:family_owner_member-manual',{...target,...patch});
+    await assert.rejects(f.invite({targetMemberId:'member-manual'}),{code:'STORY_FORBIDDEN'});
+  }
+});
+
+test('同一人物改名后仍不能重复邀请；同一人物在另一书中由已绑定的微信接受', async () => {
+  const f=await setup();addMember(f,'小岚');
+  const first=await f.invite({targetMemberId:'member-manual'});
+  await f.call('owner','memberUpdate',{memberId:'member-manual',name:'岚姐',relation:'朋友'});
+  await assert.rejects(f.invite({targetMemberId:'member-manual'}),{code:'STORY_INVITEE_EXISTS'});
+  await f.call('friend','inviteAccept',{token:first.token});
+  const story=structuredClone(f.tables.get('stories:family_owner_story-a'));story.id='story-b';story.currentRevisionId='revision-b';
+  f.tables.set('stories:family_owner_story-b',story);
+  const revision=structuredClone(f.tables.get('biography_drafts:family_owner_revision-a'));
+  revision.storyId='story-b';revision.revision.storyId='story-b';revision.revision.id='revision-b';
+  f.tables.set('biography_drafts:family_owner_revision-b',revision);
+  const next=await f.invite({storyId:'story-b',targetMemberId:'member-manual'});
+  await assert.rejects(f.call('other','inviteAccept',{token:next.token}),{code:'STORY_FORBIDDEN'});
+  await f.call('friend','inviteAccept',{token:next.token});
+  assert.equal([...f.tables].filter(([key])=>key.startsWith('family_members:family_owner_')).length,1);
+  assert.equal([...f.tables].filter(([key,row])=>key.startsWith('story_grants:') && row.status==='active').length,2);
+});
+
+test('管理页不把另一份邀请的有效授权显示成这份邀请的权限',async()=>{
+  const f=await setup();const inv=await joined(f);
+  const grant=[...f.tables].find(([key])=>key.startsWith('story_grants:'));
+  f.tables.set(grant[0],{...grant[1],invitationId:'f'.repeat(64)});
+  const managed=await f.call('owner','inviteManage',{familyId:'family_owner',storyId:'story-a'});
+  assert.equal(managed.invitations[0].member.active,false);assert.deepEqual(managed.invitations[0].member.chapterIds,[]);
+  await assert.rejects(f.call('owner','inviteSetAccess',access(inv,{permissions:{read:true}})),{code:'STORY_FORBIDDEN'});
+});
+
+test('一本书的人物只来自本书素材、主角和邀请；没有章节时仍能查看资料', async () => {
+  const f=await setup();addMember(f,'小岚');addMember(f,'其他书的人','朋友','unrelated');
+  const story=f.tables.get('stories:family_owner_story-a');story.memoryIds=['memory-one'];story.currentRevisionId='';
+  f.tables.set('memories:family_owner_memory-one',{familyId:'family_owner',relatedMemberIds:['member-manual'],text:'不返回的素材正文'});
+  const managed=await f.call('owner','inviteManage',{storyId:'story-a',includePeople:true,familyId:'family_other'});
+  assert.equal(managed.familyId,'family_owner');assert.deepEqual(managed.people.map(p=>p.id),['member-manual']);
+  assert.deepEqual(managed.chapters,[]);assert.equal(JSON.stringify(managed).includes('素材正文'),false);
+  await assert.rejects(f.invite({targetMemberId:'member-manual'}),{code:'STORY_FORBIDDEN'});
+  await assert.rejects(f.call('friend','inviteManage',{storyId:'story-a',includePeople:true}),{code:'STORY_ACCESS_DISABLED'});
+});
+
+test('接受后主人可明确改选当前章节；未选择的章节不自动开放，越权和无效章节仍拒绝', async () => {
+  const f=await setup({sharedEditEnabled:false});const inv=await joined(f);
+  await f.call('owner','inviteSetAccess',access(inv,{chapterIds:['chapter-one'],permissions:{read:true,copy:false,edit:false}}));
+  const read=await f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'});
+  assert.deepEqual(read.chapters.map(ch=>ch.id),['chapter-one']);assert.equal(read.capabilities.copy,false);
+  await assert.rejects(f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a',chapterIds:['chapter-three']}),{code:'STORY_FORBIDDEN'});
+  await assert.rejects(f.call('owner','inviteSetAccess',access(inv,{chapterIds:['chapter-missing'],permissions:{read:true}})),{code:'STORY_FORBIDDEN'});
+  await assert.rejects(f.call('owner','inviteSetAccess',access(inv,{chapterIds:['chapter-three'],permissions:{read:true,edit:true}})),{code:'STORY_ACCESS_NOT_READY'});
+  await assert.rejects(f.call('friend','inviteSetAccess',access(inv,{chapterIds:['chapter-three'],permissions:{read:true}})),{code:'STORY_FORBIDDEN'});
 });
 
 test('只有主人能改权限；朋友不能改自己的，也不能改别人的', async () => {
