@@ -50,7 +50,7 @@
           <view class="caption">这份邀请供一位亲友使用，24 小时内有效；请直接发给 ta。</view>
           <button wx:if="{{!familyShareReady}}" class="primary" bindtap="prepareFamilyInvitation" loading="{{invitationBusy}}" disabled="{{!familyInviteAvailable || invitationBusy || exportBusy || albumSaving || sharingIndex >= 0}}">{{invitationBusy ? '正在准备邀请…' : '确认预览，准备邀请'}}</button>
           <button wx:else class="primary" open-type="share">把卡片发给这位亲友</button>
-          <view class="caption">已发出的邀请可在书稿“更多 → 亲友阅读与权限”中管理和撤销。</view>
+          <view class="caption">已发出的邀请可在书稿“发送 → 亲友阅读与权限”中管理和撤销。</view>
         </view>
         <view class="section-title serif">{{destination === 'family' ? '核对这次分享的图文' : '对方会收到这 ' + imagePaths.length + ' 张图片'}}</view>
         <view class="export-image" wx:for="{{imagePaths}}" wx:key="*this">
