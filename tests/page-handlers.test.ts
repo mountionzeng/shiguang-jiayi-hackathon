@@ -172,6 +172,35 @@ function last<T>(items: T[]): T | undefined {
   return items[items.length - 1];
 }
 
+test('普通页面首屏只读取当前内容，回忆正文与人物不等待书稿历史', async context => {
+  const initial = createInitialRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const previousApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true } });
+  context.after(() => { (globalThis as any).getApp = previousApp; });
+  const requests: any[] = [];
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    if (name === 'getOpenId') return { result: { openid: 'performance-owner' } };
+    if (name !== 'storyBooks') throw new Error('Fixture has no photo or account details');
+    requests.push(data);
+    assert.equal(data.action, 'state');
+    assert.equal(data.view, 'home', '首屏不得请求所有书稿历史');
+    return { result: { ...initial, roomStateVersion: 1, personalDrafts: {}, personalDraftSourceFingerprints: {}, manuscriptRevisions: [], stories: [], deletedStories: [] } };
+  } };
+  for (const name of ['recall', 'profiles', 'me', 'interview'] as const) {
+    requests.length = 0;
+    const page = instantiate(await pageDefinition(name));
+    if (name === 'profiles') page.pageActive = true;
+    await callPage(page, name === 'interview' ? 'onLoad' : 'refresh');
+    assert.equal(requests.length, 1, name + ' should need one current-state request');
+    if (name === 'recall') assert.equal((page.data.items as any[]).length, memoryPool(initial.contributions).length);
+    if (name === 'profiles') assert.ok((page.data.people as any[]).length > 0);
+    if (name === 'me') assert.equal(page.data.memberName, initial.members.find(member => member.role === 'owner')?.name);
+    if (name === 'interview') assert.ok((page.data.messages as any[]).length > 0);
+  }
+});
+
 test("every registered page enables WeChat friend sharing without exposing story text", () => {
   const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as { pages: string[] };
   app.pages.forEach((pagePath) => {

@@ -1,9 +1,10 @@
 import { exploreMemoryConnection, MemoryConnection } from "../../services/memoryConnections";
 import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft } from "../../services/chapterDraft";
+import { SendSnapshot, snapshotFromState, stageSendSnapshot } from "../../services/bookSend";
 import { storyCoverApi } from "../../services/storyCoverService";
 import { logServiceFailure, SavedRefreshError } from '../../services/serviceFailure';
 import {
-  accountOwner, BiographyDraft, buildLocalChapterDraft, contributionStoryTitle, createContribution, isActiveMember, isRecordingProfile, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution, Story,
+  accountOwner, BiographyDraft, buildLocalChapterDraft, contributionStoryTitle, createContribution, FamilyRoomState, isActiveMember, isRecordingProfile, ManuscriptChapter, ManuscriptContent, ManuscriptRevision, MemoryContribution, Story,
   memoryAiLabel, memorySegmentCount, memoryPool, personalBookSourceFingerprint,
 } from "../../domain/biography";
 import {
@@ -154,6 +155,8 @@ Page({
   revisionId: "",
   sourceFingerprint: "",
   story: undefined as Story | undefined,
+  sendSnapshot: undefined as SendSnapshot | undefined,
+  sendAccountScope: "",
   pendingSave: undefined as ManuscriptRevision | undefined,
   connectionEpoch: 0,
   connectionDraft: undefined as MemoryContribution | undefined,
@@ -173,6 +176,8 @@ Page({
   xiaoyiConversation: [] as InterviewTurn[],
   xiaoyiContextCapturedText: "",
   onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string } = {}) {
+    this.sendSnapshot = undefined;
+    this.sendAccountScope = "";
     this.openOrganizeOnLoad = options.memoryIds !== undefined;
     this.requestedMemberId = options.memberId || "";
     this.requestedStoryKey = options.storyId || loadCurrentStoryId();
@@ -363,6 +368,8 @@ Page({
     this.revisionId = current.revisionId;
     this.sourceFingerprint = current.sourceFingerprint;
     this.story = backup && !acknowledged && story ? {...story, version:backup.storyVersion} : story;
+    this.sendAccountScope = draftScope;
+    this.rememberSendSnapshot(state);
     this.chapters = chapters;
     this.memories = qualified;
     this.organizeMemories = available;
@@ -932,6 +939,14 @@ Page({
     this.setData({ sendOpen: !this.data.sendOpen, moreOpen: false });
   },
   closeSend() { this.setData({ sendOpen: false }); },
+  rememberSendSnapshot(state: FamilyRoomState) {
+    this.sendSnapshot = undefined;
+    const story = this.story;
+    if (!story || !Number.isSafeInteger(story.version) || !story.currentRevisionId || !this.sendAccountScope) return;
+    try {
+      this.sendSnapshot = snapshotFromState(state, { storyId: story.id, revisionId: story.currentRevisionId, version: story.version! }, this.sendAccountScope);
+    } catch { /* Unsaved, protected or mismatched manuscripts use the normal fresh read. */ }
+  },
   async chooseSend(event: WechatMiniprogram.TouchEvent) {
     const destination = event.currentTarget.dataset.destination as 'family' | 'social' | 'card';
     if (destination !== 'family' && destination !== 'social' && destination !== 'card') return;
@@ -949,8 +964,10 @@ Page({
       const url = base + '?storyId=' + encodeURIComponent(story.id) + (destination !== 'card'
         ? '&revisionId=' + encodeURIComponent(this.data.savedRevisionId) + '&version=' + story.version : '')
         + (destination === 'family' ? '&destination=family' : '');
+      stageSendSnapshot(destination !== 'card' ? this.sendSnapshot : undefined);
       await new Promise<void>((resolve, reject) => wx.navigateTo({ url, success: () => resolve(), fail: reject }));
     } catch {
+      stageSendSnapshot(undefined);
       if (!this.unloaded && epoch === this.sendEpoch) this.setData({ saveNotice: '发送页面暂未打开，请重试。已有书稿不受影响。' });
     } finally {
       if (!this.unloaded) this.setData({ preparingSend: false });
@@ -1371,6 +1388,7 @@ Page({
       if (current.revisionId !== pending.id) throw new Error("故事已有更新版本，本机草稿已保留，请先核对新版");
       this.revisionId = current.revisionId;
       this.story = this.data.storyId ? activeStory(state,this.data.storyId) : undefined;
+      this.rememberSendSnapshot(state);
       this.chapters = chaptersOf(current.draft!, current.sourceFingerprint);
       this.pendingSave = undefined;
       const unchanged = sequence === this.editSequence && JSON.stringify(draft) === JSON.stringify(pending.draft);

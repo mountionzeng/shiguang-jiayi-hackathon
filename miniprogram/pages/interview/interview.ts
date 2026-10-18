@@ -233,7 +233,7 @@ Page({
     try {
     const sharedFamilyId = decodeQueryValue(options.familyId);
     const shared = sharedFamilyId ? await loadSharedFamilyRoom(sharedFamilyId) : undefined;
-    const state = shared?.state ?? await loadRoomStateRemoteFirst();
+    const state = shared?.state ?? await loadRoomStateRemoteFirst({ view: "home" });
     const member = shared
       ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
       : authorFor(state, await loadCurrentMemberRemoteFirst(state));

@@ -93,7 +93,7 @@ Page({
 
   async refresh(state?: FamilyRoomState, generation?: number) {
     const requestedGeneration = generation ?? ++this.refreshGeneration;
-    const currentState = state ?? await loadRoomStateRemoteFirst();
+    const currentState = state ?? await loadRoomStateRemoteFirst({ view: "home" });
     const current = await loadCurrentMemberRemoteFirst(currentState);
     // People belong to a book; with no book yet, start one first.
     const view = this.requestedNewBook || !currentState.members.some(isRecordingProfile) ? "new-book" : "people";

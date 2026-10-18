@@ -3,7 +3,7 @@
   <view class="heading serif">{{preview ? '看看这次分享的内容' : '想分享多少，由你决定'}}</view>
   <view class="intro" wx:if="{{destination === 'family'}}">先预览，再把带图片和标题的小程序卡片发给亲友。ta 点开接受邀请后读文章，可以保留下来，或在自己的故事里继续补充。</view>
   <view class="notice" wx:if="{{destination === 'family' && familyInviteNotice}}">{{familyInviteNotice}}</view>
-  <view class="intro" wx:if="{{loading}}">正在读取已保存的书稿…</view>
+  <view class="intro" wx:if="{{loading}}">{{title ? '正在核对最新保存版本…' : '正在读取已保存的书稿…'}}</view>
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <block wx:if="{{title}}">
     <view class="cover-summary">
@@ -16,23 +16,23 @@
       <view class="reading-chapter" wx:if="{{sourceKind === 'memory'}}" wx:for="{{chapters}}" wx:key="id"><view class="section-title serif">{{item.title}}</view><text class="paragraph" selectable>{{item.text}}</text></view>
       <button class="secondary" wx:if="{{sourceKind === 'memory' && memoryPhotoCount}}" bindtap="toggleMemoryPhotos" disabled="{{checking || exportBusy || albumSaving}}">{{includeMemoryPhotos ? '✓ 包含这段记忆的' : '不包含'}} {{memoryPhotoCount}} 张配图</button>
       <view class="scope-options" wx:if="{{sourceKind === 'story'}}">
-        <button class="scope {{scope === 'book' ? 'selected' : ''}}" data-scope="book" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">整本书</button>
-        <button class="scope {{scope === 'chapters' ? 'selected' : ''}}" data-scope="chapters" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">选择章节</button>
-        <button wx:if="{{destination !== 'family'}}" class="scope {{scope === 'text' ? 'selected' : ''}}" data-scope="text" bindtap="chooseScope" disabled="{{checking || exportBusy || albumSaving}}">选择文字</button>
+        <button class="scope {{scope === 'book' ? 'selected' : ''}}" data-scope="book" bindtap="chooseScope" disabled="{{loading || checking || exportBusy || albumSaving}}">整本书</button>
+        <button class="scope {{scope === 'chapters' ? 'selected' : ''}}" data-scope="chapters" bindtap="chooseScope" disabled="{{loading || checking || exportBusy || albumSaving}}">选择章节</button>
+        <button wx:if="{{destination !== 'family'}}" class="scope {{scope === 'text' ? 'selected' : ''}}" data-scope="text" bindtap="chooseScope" disabled="{{loading || checking || exportBusy || albumSaving}}">选择文字</button>
       </view>
       <view class="caption" wx:if="{{sourceKind === 'story' && scope === 'book'}}">包含这本书全部 {{chapters.length}} 章的文字。封面之外的照片不自动加入。</view>
       <checkbox-group wx:if="{{sourceKind === 'story' && scope === 'chapters'}}" bindchange="chooseChapters">
-        <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{checking || exportBusy || albumSaving}}" color="#4f7f6b" /><view><view>{{item.title}}</view><view class="caption">{{item.characterCount}} 字</view></view></label>
+        <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{loading || checking || exportBusy || albumSaving}}" color="#4f7f6b" /><view><view>{{item.title}}</view><view class="caption">{{item.characterCount}} 字</view></view></label>
       </checkbox-group>
       <view hidden="{{sourceKind !== 'story' || scope !== 'text'}}">
-        <picker range="{{chapters}}" range-key="title" value="{{textChapterIndex}}" bindchange="chooseTextChapter" disabled="{{checking || exportBusy || albumSaving}}"><view class="chapter-picker">{{chapters[textChapterIndex].title || '暂无章节'}}　⌄</view></picker>
+        <picker range="{{chapters}}" range-key="title" value="{{textChapterIndex}}" bindchange="chooseTextChapter" disabled="{{loading || checking || exportBusy || albumSaving}}"><view class="chapter-picker">{{chapters[textChapterIndex].title || '暂无章节'}}　⌄</view></picker>
         <view class="caption">长按下方原文选择文字，再点“使用选中文字”。</view>
         <editor id="send-text-source" class="text-source" read-only bindready="onEditorReady" />
         <button class="secondary" catchtouchstart="captureSelection" disabled="{{!editorReady || checking}}">使用选中文字</button>
         <view class="selected-excerpt" wx:if="{{selectedText}}"><view class="caption">已选文字</view><text selectable>{{selectedText}}</text></view>
       </view>
       <view class="caption selection-count">已选 {{selectedCount}} {{sourceKind === 'memory' ? '段记忆' : scope === 'text' ? '段' : '章'}} · {{characterCount}} 字</view>
-      <button class="primary" bindtap="previewSelection" disabled="{{checking || !characterCount}}" loading="{{checking}}">{{checking ? '正在核对内容' : '看看对方收到的样子'}}</button>
+      <button class="primary" bindtap="previewSelection" disabled="{{loading || checking || !characterCount}}" loading="{{checking}}">{{checking ? '正在核对内容' : '看看对方收到的样子'}}</button>
     </view>
     <view wx:if="{{preview}}">
       <view class="preview-controls"><view class="caption">{{selectedCount}} {{sourceKind === 'memory' ? '段记忆' : scope === 'text' ? '段' : '章'}} · {{characterCount}} 字</view><button class="reselect" bindtap="backToSelection">重新选择</button></view>

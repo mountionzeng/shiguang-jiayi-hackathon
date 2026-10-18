@@ -1,5 +1,6 @@
-import { measurePerformance } from '../../../../services/performanceLog';
-import { loadSendSnapshot, selectSendText, SendChapter, SendScope, SendSnapshot, SendVersion } from '../../../../services/bookSend';
+import { measurePerformance, startPerformanceMeasure } from '../../../../services/performanceLog';
+import { loadSendSnapshot, selectSendText, SendChapter, SendScope, SendSnapshot, SendVersion, takeStagedSendSnapshot } from '../../../../services/bookSend';
+import { cachedAccountScope } from '../../../../services/cloudRoomStorage';
 import { storyCoverApi, ShareCoverCandidate } from '../../../../services/storyCoverService';
 import { bookExportApi, bookExportSelection, memoryBookExportSelection, BookExportSelection, BookExportDescriptor } from '../../../../services/bookExport';
 import { renderBookImages, removeImageFiles } from '../../../../services/bookImageRenderer';
@@ -84,15 +85,25 @@ Page({
   onUnload() { this.onHide(); this.editor = undefined; this.expected = undefined; this.expectedMemory = undefined; },
   async refresh() {
     const epoch = ++this.epoch;
+    const finishDisplay = startPerformanceMeasure('book.send-display');
     this.snapshot = undefined; this.resetImages();
     this.setData({ loading: true, exportAvailable: false, capabilityKnown: false, notice: '', title: '', sourceKind: 'story', chapters: [], coverUrl: '', coverNotice: '', selectedText: '',
       selectedCount: 0, characterCount: 0, preview: false, previewChapters: [], editorReady: false, textChapterIndex: 0 });
     try {
       if (!this.expected) throw new Error('请从书稿目录的“发送”重新进入');
+      const staged = takeStagedSendSnapshot(this.expected, cachedAccountScope());
+      // Paint the text just seen in the owner page, but keep all actions blocked
+      // until both identity checks and the current saved-version read succeed.
+      if (staged) this.setData({ title: staged.title, chapters: staged.chapters.map(chapter => ({ ...chapter, checked: false })) }, () => {
+        if (!this.hidden && epoch === this.epoch) finishDisplay('ok', { route: 'local' });
+      });
       const snapshot = await loadSendSnapshot(this.expected);
       if (this.hidden || epoch !== this.epoch) return;
+      if (staged && snapshot.accountScope !== staged.accountScope) throw new Error('账号已切换，请重新进入发送');
       this.snapshot = snapshot;
-      this.setData({ title: snapshot.title, chapters: snapshot.chapters.map(chapter => ({ ...chapter, checked: false })) });
+      this.setData({ title: snapshot.title, chapters: snapshot.chapters.map(chapter => ({ ...chapter, checked: false })) }, () => {
+        if (!staged && !this.hidden && epoch === this.epoch) finishDisplay('ok', { route: 'cloud' });
+      });
       this.updateSelection(); this.seedEditor();
       void this.checkExportCapability(epoch);
       if (this.data.destination === 'family') void this.checkFamilyInvitationCapability(epoch);
@@ -100,7 +111,7 @@ Page({
       // Cover arrival updates only the image. It must never reset the selected text.
       if (snapshot.coverImageId) void this.resolveCover(snapshot, epoch);
     } catch (error) {
-      if (!this.hidden && epoch === this.epoch) this.setData({ notice: error instanceof Error ? error.message : '书稿暂时无法读取，请重试' });
+      if (!this.hidden && epoch === this.epoch) this.setData({ title: '', chapters: [], notice: error instanceof Error ? error.message : '书稿暂时无法读取，请重试' });
     } finally {
       if (!this.hidden && epoch === this.epoch) this.setData({ loading: false });
     }
@@ -183,14 +194,14 @@ Page({
     this.setData({ scope, preview: false, previewChapters: [], notice: '' }); this.updateSelection();
   },
   chooseChapters(event: WechatMiniprogram.CustomEvent<{ value: string[] }>) {
-    if (this.busy()) return;
+    if (this.data.loading || this.busy()) return;
     const ids = new Set(event.detail.value);
     this.resetImages();
     this.setData({ chapters: this.data.chapters.map(chapter => ({ ...chapter, checked: ids.has(chapter.id) })) });
     this.updateSelection();
   },
   chooseTextChapter(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
-    if (this.busy()) return;
+    if (this.data.loading || this.busy()) return;
     const index = Number(event.detail.value);
     if (!Number.isInteger(index) || !this.data.chapters[index]) return;
     this.setData({ textChapterIndex: index, selectedText: '' }); this.updateSelection(); this.seedEditor();

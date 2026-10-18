@@ -57,7 +57,7 @@ Page({
   },
 
   async refresh(state?: FamilyRoomState) {
-    const currentState = state ?? await loadRoomStateRemoteFirst();
+    const currentState = state ?? await loadRoomStateRemoteFirst({ view: "home" });
     const viewer = await loadCurrentMemberRemoteFirst(currentState);
     const isElder = viewer.role === "elder";
     const familyContributions = currentState.contributions.filter(

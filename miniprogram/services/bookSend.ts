@@ -3,6 +3,7 @@ import { chaptersOf, chapterLabel } from './chapters';
 import { currentManuscript } from './manuscript';
 import { chapterDraftScope } from './chapterDraft';
 import { loadRoomStateRemoteFirst } from './roomRepository';
+import { measurePerformance } from './performanceLog';
 
 export type SendScope = 'book' | 'chapters' | 'text';
 export interface SendVersion { storyId: string; revisionId: string; version: number }
@@ -14,6 +15,22 @@ export interface SendSnapshot extends SendVersion {
   chapters: SendChapter[];
 }
 export interface SendSelection { scope: SendScope; chapterIds: string[]; textChapterId: string; text: string }
+
+let stagedSend: { snapshot: SendSnapshot; at: number } | undefined;
+
+/** One navigation from an already visible owner manuscript, never an export grant. */
+export function stageSendSnapshot(snapshot: SendSnapshot | undefined, now = Date.now()): void {
+  stagedSend = snapshot ? { snapshot: { ...snapshot, chapters: snapshot.chapters.map(chapter => ({ ...chapter })) }, at: now } : undefined;
+}
+
+export function takeStagedSendSnapshot(expected: SendVersion, accountScope: string | undefined, now = Date.now()): SendSnapshot | undefined {
+  const staged = stagedSend;
+  stagedSend = undefined;
+  if (!staged || !accountScope || staged.snapshot.accountScope !== accountScope || now < staged.at || now - staged.at > 30000) return;
+  const snapshot = staged.snapshot;
+  if (snapshot.storyId !== expected.storyId || snapshot.revisionId !== expected.revisionId || snapshot.version !== expected.version) return;
+  return snapshot;
+}
 
 /** Private owner preparation only; this is not an authorization to publish sources. */
 export function snapshotFromState(state: FamilyRoomState, expected: SendVersion, accountScope: string): SendSnapshot {
@@ -35,9 +52,11 @@ export function snapshotFromState(state: FamilyRoomState, expected: SendVersion,
 }
 
 export async function loadSendSnapshot(expected: SendVersion): Promise<SendSnapshot> {
-  const before = await chapterDraftScope();
-  const state = await loadRoomStateRemoteFirst();
-  if (before !== await chapterDraftScope()) throw new Error('账号已切换，请重新进入发送');
+  const before = await measurePerformance('book.identity', chapterDraftScope);
+  // Sending needs the saved current revision, never every historical draft.
+  // Keep both identity checks and the exact revision/version comparison below.
+  const state = await loadRoomStateRemoteFirst({ view: 'home' });
+  if (before !== await measurePerformance('book.identity', chapterDraftScope)) throw new Error('账号已切换，请重新进入发送');
   return snapshotFromState(state, expected, before);
 }
 

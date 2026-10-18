@@ -114,7 +114,7 @@ Page({
   async refresh(imagesOnly = false) {
     if (imagesOnly && (this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId)) return;
     const refreshId = ++this.refreshId;
-    const state = imagesOnly && this.roomState ? this.roomState : await loadRoomStateRemoteFirst();
+    const state = imagesOnly && this.roomState ? this.roomState : await loadRoomStateRemoteFirst({ view: "home" });
     if (this.requestedMemoryId) {
       const memory = memoryPool(state.contributions).find(item => item.id === this.requestedMemoryId);
       if (!memory) throw new Error('这段记忆已不可用，请返回记忆列表');

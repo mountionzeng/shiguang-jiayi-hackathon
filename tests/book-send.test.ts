@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { snapshotFromState, selectSendText, SendSelection } from '../miniprogram/services/bookSend';
+import { loadSendSnapshot, snapshotFromState, selectSendText, SendSelection, stageSendSnapshot, takeStagedSendSnapshot } from '../miniprogram/services/bookSend';
 import { createDemoRoomStateForTests } from './fixtures';
 import { makeRevision } from '../miniprogram/services/manuscript';
 import { draftWithChapters } from '../miniprogram/services/chapters';
@@ -19,6 +19,33 @@ function fixture() {
   return { state, expected: { storyId: 'story-test', revisionId: revision.id, version: 3 } };
 }
 const selection: SendSelection = { scope: 'book', chapterIds: [], textChapterId: '', text: '' };
+
+test('发送只读当前版本，历史版本不阻塞正文，读取前后仍核对账号', async () => {
+  const { state, expected } = fixture();
+  const previousWx = (globalThis as any).wx;
+  const previousApp = (globalThis as any).getApp;
+  const reads: any[] = [];
+  let account = 'owner';
+  let switchDuringRead = false;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true } });
+  (globalThis as any).wx = { cloud: { callFunction: async ({ name, data }: any) => {
+    if (name === 'getOpenId') return { result: { openid: account } };
+    reads.push(data);
+    assert.equal(data.view, 'home', '发送正文不得下载全部历史版本');
+    if (switchDuringRead) account = 'other-owner';
+    return { result: { ...state, roomStateVersion: 1, personalDrafts: {}, personalDraftSourceFingerprints: {}, deletedStories: [] } };
+  } } };
+  try {
+    const snapshot = await loadSendSnapshot(expected);
+    assert.equal(snapshot.chapters[1].text, '第二章全文，不可丢失。');
+    assert.equal(reads.length, 1);
+    switchDuringRead = true;
+    await assert.rejects(loadSendSnapshot(expected), /账号已切换/);
+  } finally {
+    (globalThis as any).wx = previousWx;
+    (globalThis as any).getApp = previousApp;
+  }
+});
 
 test('整书预览保留完整正文和空行，不自动加入私密照片', () => {
   const { state, expected } = fixture();
@@ -56,6 +83,19 @@ test('版本更新、删除和受保护副本不能进入发送快照', () => {
   assert.throws(() => snapshotFromState(state, expected, 'a'), /副本/);
   state.stories![0].sourcePolicyRequired = false; state.stories![0].deletedAt = 'today';
   assert.throws(() => snapshotFromState(state, expected, 'a'), /无法读取/);
+});
+
+test('刚看过的发送文字只交接一次，账号、版本或时效不符即丢弃', () => {
+  const { state, expected } = fixture();
+  const snapshot = snapshotFromState(state, expected, 'account-a');
+  stageSendSnapshot(snapshot, 1000);
+  assert.deepEqual(takeStagedSendSnapshot(expected, 'account-a', 1001), snapshot);
+  assert.equal(takeStagedSendSnapshot(expected, 'account-a', 1002), undefined);
+  for (const [version, scope, now] of [[expected, 'other', 1001], [{ ...expected, version: 4 }, 'account-a', 1001], [expected, 'account-a', 31001]] as const) {
+    stageSendSnapshot(snapshot, 1000);
+    assert.equal(takeStagedSendSnapshot(version, scope, now), undefined);
+    assert.equal(takeStagedSendSnapshot(expected, 'account-a', 1002), undefined);
+  }
 });
 
 type PageDefinition = Record<string, any>;
@@ -145,6 +185,39 @@ async function socialPage() {
   page.data.chapters = page.snapshot.chapters.map((c: any) => ({ ...c, checked: false }));
   return page;
 }
+
+test('分享先显示刚看过的文字，云端核对期间不能发送，核对失败清空文字', async () => {
+  const page = await socialPage();
+  const previousWx = (globalThis as any).wx;
+  const previousApp = (globalThis as any).getApp;
+  let rejectIdentity!: (error: Error) => void;
+  (globalThis as any).getApp = () => ({ globalData: { cloudReady: true } });
+  (globalThis as any).wx = { cloud: { callFunction: async () => ({ result: { openid: 'owner' } }) } };
+  const { cachedAccountScope, currentFamilyId } = await import('../miniprogram/services/cloudRoomStorage');
+  await currentFamilyId();
+  (globalThis as any).wx.cloud.callFunction = () => new Promise((_resolve, reject) => { rejectIdentity = reject; });
+  const staged = { ...page.snapshot, accountScope: cachedAccountScope()! };
+  stageSendSnapshot(staged);
+  try {
+    const pending = page.refresh();
+    assert.equal(page.data.title, staged.title);
+    assert.equal(page.data.chapters[1].text, '第二章全文，不可丢失。');
+    assert.equal(page.data.loading, true);
+    assert.equal(page.snapshot, undefined, 'display handoff is not a verified export snapshot');
+    assert.equal(page.data.exportAvailable, false);
+    await page.previewSelection();
+    assert.equal(page.data.preview, false);
+    rejectIdentity(new Error('身份核对失败'));
+    await pending;
+    assert.equal(page.data.title, '');
+    assert.deepEqual(page.data.chapters, []);
+    assert.equal(page.data.loading, false);
+    assert.match(page.data.notice, /身份核对失败/);
+  } finally {
+    (globalThis as any).wx = previousWx;
+    (globalThis as any).getApp = previousApp;
+  }
+});
 
 test('家人图文预览保留来源版本，普通社交与记忆入口沿用默认目的地', async () => {
   (globalThis as any).wx = { hideShareMenu() {} };

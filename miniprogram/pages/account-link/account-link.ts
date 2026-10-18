@@ -19,7 +19,7 @@ Page({
     if (this.data.busy) return;
     this.setData({ busy: true, loadError: "" });
     try {
-      const state = await loadRoomStateRemoteFirst();
+      const state = await loadRoomStateRemoteFirst({ view: "home" });
       this.setData({ stories: desktopStoryOptions(state) });
     } catch {
       this.setData({ loadError: "故事暂时没有加载成功，请重试。" });
