@@ -1,5 +1,6 @@
 import { BookExportMaterial } from './bookExport';
 import { ImageLayoutMode, ImageFontSize, IMAGE_WIDTH, PAGE_HEIGHT, TEXT_WIDTH, layoutTextImages, wrapImageText } from './bookImageLayout';
+import { measurePerformance } from './performanceLog';
 
 export function removeImageFiles(paths: string[]) {
   for (const filePath of paths) wx.getFileSystemManager().unlink({ filePath, fail: () => undefined });
@@ -32,6 +33,19 @@ function drawImageCover(ctx: any, image: any,
   ctx.drawImage(image, (imageWidth - sourceWidth) / 2, (imageHeight - sourceHeight) / 2,
     sourceWidth, sourceHeight, x, y, width, height);
 }
+class ImageReadFailure extends Error {}
+async function readImage(src:string,label:string,assertActive:()=>void): Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult> {
+  const read=()=>measurePerformance('book.image-download',()=>timed<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve,reject)=>
+    wx.getImageInfo({src,success:resolve,fail:()=>reject(new ImageReadFailure(label+'失败，请检查网络后重试'))}),label));
+  try {return await read();}
+  catch(error) {
+    assertActive();
+    // Retry only after a completed remote read failure. A timeout can leave its
+    // native request running, so never start an overlapping retry in that case.
+    if (!(error instanceof ImageReadFailure) || !/^https:\/\//.test(src)) throw error;
+    return read();
+  }
+}
 export async function renderBookImages(material: BookExportMaterial, mode: ImageLayoutMode, fontSize: ImageFontSize,
   page: WechatMiniprogram.Page.TrivialInstance, isActive: () => boolean, progress: (done: number, total: number) => void): Promise<string[]> {
   const assertActive = () => { if (!isActive()) throw new Error('已停止本次图片生成'); };
@@ -57,8 +71,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
     if (memoryExport && coverUrls.length !== (descriptor.photoIds?.length || 0)) throw new Error('记忆配图不完整，请重新生成');
     const covers = [];
     for (const url of coverUrls) {
-      const cover = await timed<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve, reject) => wx.getImageInfo({
-        src: url || '/assets/illustrations/story-book-cover.png', success: resolve, fail: reject }), '读取封面');
+      const cover = await readImage(url || '/assets/illustrations/story-book-cover.png','读取封面',assertActive);
       const coverImage = canvas.createImage();
       await timed<void>((resolve, reject) => {
         coverImage.onload = () => resolve();
@@ -73,9 +86,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
     const backdropImages = new Map<string, { info: WechatMiniprogram.GetImageInfoSuccessCallbackResult; image: any }>();
     for (const [chapterId, url] of Object.entries(material.backdropUrls || {})) {
       if (!url) continue;
-      const info = await timed<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve, reject) => wx.getImageInfo({
-        src: url, success: resolve, fail: reject,
-      }), '读取章节底图');
+      const info = await readImage(url,'读取章节底图',assertActive);
       const image = canvas.createImage();
       await timed<void>((resolve, reject) => {
         image.onload = () => resolve();

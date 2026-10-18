@@ -1,7 +1,7 @@
 type Operation = 'room.request' | 'story.request' | 'story.save' | 'memory.save' | 'memory.moderate' | 'memory.source-write' | 'memory.record-write' | 'memory.invalidate' | 'room.load' | 'room.cloud' | 'room.identity' | 'room.state' | 'story.shelf'
   | 'ai.memory-connection' | 'ai.interview' | 'ai.daily-question' | 'ai.organize' | 'ai.biography' | 'image.submit' | 'image.status' | 'image.list' | 'image.other'
-  | 'book.export-preview' | 'book.export-material' | 'book.export-render' | 'book.send-display'
-  | 'invite.prepare' | 'invite.capabilities' | 'invite.create'
+  | 'book.export-preview' | 'book.export-material' | 'book.export-render' | 'book.send-display' | 'book.image-download'
+  | 'invite.prepare' | 'invite.capabilities' | 'invite.create' | 'book.history' | 'book.revision'
   | 'book.refresh' | 'book.identity' | 'book.photos' | 'book.images' | 'book.cover-cache' | 'book.cover-render';
 
 export interface PerformanceMetrics {

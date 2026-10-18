@@ -20,7 +20,9 @@ async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> 
   return result as T;
 }
 export const storySharing = {
-  capabilities:()=>measurePerformance('invite.capabilities',()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string}>('capabilities')),
+  capabilities:()=>measurePerformance('invite.capabilities',()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string;preparedInvitation?:boolean}>('capabilities')),
+  prepare:(selection:import('./bookExport').StoryBookExportSelection,descriptorId:string,expectedAccountScope:string,inviteeName:string)=>
+    measurePerformance('invite.create',()=>call<{token:string;invitationId:string;descriptorId:string;imageUrl:string}>('invitePrepare',{selection:{...selection,descriptorId},expectedAccountScope,inviteeName})),
   manage:(familyId:string,storyId:string)=>call<ManagedStory>('inviteManage',{familyId,storyId}),
   create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string,relation?:string)=>measurePerformance('invite.create',()=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{}),...(relation?{relation}:{})})),
   status:(token:string)=>call<InviteStatus>('inviteGet',{token}),

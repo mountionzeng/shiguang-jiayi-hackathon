@@ -27,7 +27,7 @@ import {
 import { chapterInsertionPoints, ChapterInsertionPoint, insertChapterText } from "../../services/chapterInsertion";
 import { logLoadError } from "../../services/loadErrorLog";
 import { measurePerformance, startPerformanceMeasure } from '../../services/performanceLog';
-import { activeStory, linkStoryMemories, storyAiContext, storySourceFingerprint, updateStoryBook } from "../../services/storyBooks";
+import { activeStory, linkStoryMemories, loadStoryHistory, loadStoryRevision, StoryHistoryEntry, storyAiContext, storySourceFingerprint, updateStoryBook } from "../../services/storyBooks";
 import { loadCurrentStoryId, saveCurrentStoryId } from "../../services/storySelection";
 import { audioCreatePath } from "../../services/storyAudioService";
 import { storySharing, ChapterChange } from "../../services/storySharing";
@@ -85,7 +85,7 @@ Page({
     sourceCount: 0, draft: null as BiographyDraft | null,
     loading: true, generating: false, saving: false, confirmingOrganize: false, isCloudDraft: false, modeLabel: "", modeNote: "",
     stale: false, showSources: false, editing: false, editTitle: "", editBody: "",
-    history: [] as ManuscriptRevision[], historyLoading: false, showHistory: false,
+    history: [] as Array<StoryHistoryEntry | ManuscriptRevision>, historyLoading: false, revisionLoading: false, showHistory: false,
     previewVersion: null as ManuscriptRevision | null,
     loadError: "", storageLabel: "", versionName: "", saveNotice: "",
     keyboardHeight: 0, viewportHeight: 0, panel: "", moreOpen: false, moreSection: "", editorKeys: [0], pickingPhoto: false, editorReady: false,
@@ -150,6 +150,7 @@ Page({
   windowWidth: 0,
   refreshId: 0,
   historyRequestId: 0,
+  revisionRequestId: 0,
   loadingId: 0,
   keyboardListener: undefined as ((event: { height: number }) => void) | undefined,
   revisionId: "",
@@ -884,16 +885,17 @@ Page({
   },
   toggleHistory() {
     if (!this.canLeaveEditor()) return;
-    this.setData({ panel: "history", showHistory: true, previewVersion: null });
+    this.setData({ panel: "history", showHistory: true, previewVersion: null, revisionLoading: false });
     void this.loadHistory();
   },
   async loadHistory() {
     const requestId = ++this.historyRequestId;
     this.setData({ historyLoading: true });
     try {
-      const state = await loadRoomStateRemoteFirst();
+      const history = this.data.storyId ? await loadStoryHistory(this.data.storyId)
+        : manuscriptHistory(await loadRoomStateRemoteFirst(), this.data.memberId);
       if (this.unloaded || requestId !== this.historyRequestId || this.data.panel !== "history") return;
-      this.setData({ history: manuscriptHistory(state, this.data.storyId || this.data.memberId), historyLoading: false });
+      this.setData({ history, historyLoading: false });
     } catch (error) {
       if (this.unloaded || requestId !== this.historyRequestId) return;
       this.setData({ historyLoading: false, saveNotice: error instanceof Error ? error.message : "历史版本暂时加载失败，请重试" });
@@ -1597,8 +1599,20 @@ Page({
     if (await this.persist(this.data.draft, this.sourceFingerprint, "version", name)) this.setData({ versionName: "", panel: "" });
   },
   async previewHistory(event: { currentTarget: { dataset: { id: string } } }) {
-    const version = this.data.history.find(item => item.id === event.currentTarget.dataset.id);
-    if (!version) return;
+    const entry = this.data.history.find(item => item.id === event.currentTarget.dataset.id);
+    if (!entry) return;
+    const requestId=++this.revisionRequestId, historyRequestId=this.historyRequestId, storyId=this.data.storyId;
+    this.setData({previewVersion:null,previewBlocks:[],revisionLoading:true});
+    let version: ManuscriptRevision;
+    try {
+      version = 'draft' in entry ? entry : await loadStoryRevision(storyId,entry.id);
+    } catch (error) {
+      if (!this.unloaded && requestId===this.revisionRequestId && historyRequestId===this.historyRequestId && this.data.panel==='history')
+        this.setData({revisionLoading:false,saveNotice:error instanceof Error ? error.message : '这一版暂时加载失败，请重试'});
+      return;
+    }
+    if (this.unloaded || requestId!==this.revisionRequestId || historyRequestId!==this.historyRequestId || this.data.panel!=='history' || storyId!==this.data.storyId) return;
+    this.setData({revisionLoading:false});
     this.setData({ previewVersion: version, previewBlocks: [] });
     const previewBlocks = await Promise.all((version.draft.content ?? version.draft.paragraphs.map(text => ({ text }))).map(async item => {
       if (typeof item.text === "string") return { text: item.text };

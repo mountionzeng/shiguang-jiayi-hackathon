@@ -82,7 +82,7 @@ const ownStatus = (inv, principalId) => {
 
 function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEnabled = false, copyReceiveEnabled = false, now = Date.now } = {}) {
   const canary = new Set(sharedReadFamilyIds);
-  return async (ctx, input) => repo.transaction(async tx => {
+  return async (ctx, input, verifyCreate) => repo.transaction(async tx => {
     await assertCurrentIdentity(tx, ctx);
     // 看邀请、接受邀请只凭一份有效邀请通行（邀请所属的主人家庭仍必须在名单里，见下方
     // inv.familyId 检查）。其余动作要求调用者自己在名单里，或已被邀请接纳。
@@ -133,6 +133,8 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
       if (story.sourcePolicyRequired === true) fail('STORY_ACCESS_NOT_READY');
       const chapters = await currentChapters(tx, story);
       if (input.chapterIds.some(id=>!chapters.some(c=>c.id===id))) fail();
+      // Optional server-only preparation guard runs inside the write transaction.
+      if (verifyCreate) await verifyCreate(tx,story);
       const retained = [];
       for (const id of directory.ids) {
         const old = await tx.get('story_invitations', id);

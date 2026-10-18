@@ -7,6 +7,28 @@ const { grantIdFor } = require('../cloudfunctions/storyBooks/access');
 const { previewBookExport, exportBookImages } = require('../cloudfunctions/storyBooks/bookExports');
 const { createStoryService } = require('../cloudfunctions/storyBooks/service');
 const approve = async () => true;
+test('prepared invitation keeps moderation, account scope and transactional version checks in one request',async()=>{
+  const f=await setup();
+  const {descriptor}=await previewBookExport(f.repo,f.owner,f.input,{approve});
+  const options={accessEnabled:true,rulesReady:true,invitationsEnabled:true,copyReceiveEnabled:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner'],approveShareCard:approve};
+  const input={action:'invitePrepare',selection:{...f.input,descriptorId:descriptor.id},expectedAccountScope:JSON.stringify(['owner','family_owner']),inviteeName:'Test'};
+  const context={APPID:'wx-original',OPENID:'owner'};
+  const result=await createStoryService(f.repo,options)(context,input);
+  assert.match(result.token,/^[a-f0-9]{48}$/);
+  assert.equal(result.descriptorId,descriptor.id);
+  const inv=f.tables.get('story_invitations:'+result.invitationId);
+  assert.deepEqual(inv.chapterIds,['chapter-one','chapter-two']);
+  assert.deepEqual(inv.permissions,{read:true,copy:true,edit:false,forward:false,publish:false});
+  const count=()=>[...f.tables.keys()].filter(k=>k.startsWith('story_invitations:')).length;
+  await assert.rejects(createStoryService(f.repo,{...options,approveShareCard:async()=>false})(context,{...input,inviteeName:'Rejected'}),{code:'CONTENT_REJECTED'});
+  await assert.rejects(createStoryService(f.repo,options)(context,{...input,expectedAccountScope:JSON.stringify(['other','family_owner'])}));
+  await assert.rejects(createStoryService(f.repo,{...options,copyReceiveEnabled:false})(context,input));
+  const transaction=f.repo.transaction;
+  let transactions=0;
+  f.repo.transaction=fn=>transaction(tx=>{if(++transactions===2)f.tables.get('stories:family_owner_story-book').version++;return fn(tx);});
+  await assert.rejects(createStoryService(f.repo,options)(context,{...input,inviteeName:'Changed'}),{code:'VERSION_CONFLICT'});
+  assert.equal(count(),1);
+});
 async function setup(text = '原文🌿\n\n完整正文') {
   const f = fixture(); f.account('owner'); f.account('reader');
   const identity = OPENID => resolveStoryIdentity(f.repo, { APPID: 'wx-original', OPENID }, { bootstrapAppId: 'wx-original' });

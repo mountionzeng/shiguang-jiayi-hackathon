@@ -241,6 +241,31 @@ async function familyCardPage() {
   return page;
 }
 
+test('支持新版服务时邀请只调用一次服务器，失败不降级重建，离页不留下可分享卡片',async()=>{
+  const {storySharing}=await import('../miniprogram/services/storySharing');
+  const original=storySharing.prepare;
+  try {
+    for (const mode of ['ok','error','hide']) {
+      const page=await familyCardPage();page.preparedInvitationAvailable=true;
+      page.verifySnapshot=async()=>{throw new Error('新版不应再次下载完整快照');};
+      let calls=0;
+      storySharing.prepare=async(selection,id,scope,name)=>{
+        calls++;
+        assert.equal(selection,page.exportSelection);assert.equal(id,page.descriptor.id);
+        assert.equal(scope,page.snapshot.accountScope);assert.equal(name,'小岚');
+        if(mode==='error')throw new Error('未确认');
+        if(mode==='hide'){page.hidden=true;page.epoch++;}
+        return {token:'token',invitationId:'id',descriptorId:id,imageUrl:'https://approved-cover'};
+      };
+      await page.prepareFamilyInvitation();
+      assert.equal(calls,1);
+      assert.equal(page.data.familyShareReady,mode==='ok');
+      if(mode==='ok')assert.match(page.familyShare.path,/token=token/);
+      if(mode==='error')assert.match(page.data.familyInviteNotice,/避免重复生成/);
+    }
+  } finally {storySharing.prepare=original;}
+});
+
 test('图文卡片只邀请已选章节，允许自己的副本与回信，不授予改原稿权限', async () => {
   const page = await familyCardPage();
   const { storySharing, sharingHome } = await import('../miniprogram/services/storySharing');

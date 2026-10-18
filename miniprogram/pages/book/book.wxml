@@ -259,6 +259,7 @@
         <button class="version-row" wx:for="{{history}}" wx:key="id" data-id="{{item.id}}" bindtap="previewHistory">
           <text>{{item.label}}</text><text class="version-date">{{item.savedAt}}</text>
         </button>
+        <view wx:if="{{revisionLoading}}" class="panel-note">正在读取这一版正文…</view>
         <view wx:if="{{previewVersion}}">
           <view class="panel-title serif">{{previewVersion.draft.title}}</view>
           <view class="chapter-para serif" wx:for="{{previewBlocks}}" wx:key="index">

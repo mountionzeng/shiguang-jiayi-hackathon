@@ -309,6 +309,7 @@ Page({
     try {
       const caps = await storySharing.capabilities();
       if (this.hidden || this.epoch !== epoch) return;
+      this.preparedInvitationAvailable = caps.preparedInvitation === true;
       const available = !!caps.familyId && caps.invitations === true && caps.copy === true;
       this.setData({ familyInviteAvailable: available, familyInviteNotice: available ? '' : '阅读邀请和收入自己的故事尚未开放。目前可以查看卡片预览，暂不能发出可加入的邀请。' });
     } catch {
@@ -319,6 +320,7 @@ Page({
     this.familyShare = undefined;
     this.setData({ familyShareReady: false });
   },
+  preparedInvitationAvailable: false,
   enterInviteeName(event: WechatMiniprogram.Input) {
     if (this.data.invitationBusy) return;
     this.clearFamilyInvitation();
@@ -345,6 +347,18 @@ Page({
     let outcome: 'ok' | 'error' = 'error';
     let creating = false;
     try {
+      if (this.preparedInvitationAvailable && !('memoryId' in selection)) {
+        creating = true;
+        const invitation=await storySharing.prepare(selection,descriptor.id,snapshot.accountScope,name);
+        if (!active()) return;
+        if (invitation.descriptorId!==descriptor.id) throw new Error('图文预览已失效，请重新生成。');
+        const imageUrl=invitation.imageUrl || sharingHome.imageUrl;
+        this.familyShare={title:snapshot.title,imageUrl,path:invitationPath(invitation.token)};
+        this.setData({familyShareReady:true,familyCardImageUrl:imageUrl,
+          familyInviteNotice:'邀请已准备好，24 小时内有效。点下方按钮，在微信里选择这位亲友。'});
+        outcome='ok';
+        return;
+      }
       // Each read independently authorizes on the server. Keep the final
       // account/version check after all reads, and drain failures before unlocking
       // retry so a late verifier cannot clear a subsequent attempt's snapshot.

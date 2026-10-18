@@ -6,6 +6,26 @@ import { saveRoomState } from './roomStorage';
 import { roomStateFromStoryResponse } from './cloudRoomStorage';
 import { newStoryId } from './storyRecords';
 import { classifyServiceFailure, logServiceFailure, SavedRefreshError } from './serviceFailure';
+import { readStoryState } from './storyStateTransport';
+
+export type StoryHistoryEntry = Pick<ManuscriptRevision,'id'|'storyId'|'kind'|'label'|'savedAt'>;
+export async function loadStoryHistory(storyId:string): Promise<StoryHistoryEntry[]> {
+  return measurePerformance('book.history',async()=>{
+  if (usesCloudStorage() && (await call('capabilities')).ownerHistory === true) {
+    const result=await readStoryState(data=>call('history',{...data,storyId})) as {history:StoryHistoryEntry[]};
+    if (!Array.isArray(result.history)) throw new Error('历史版本暂时加载失败，请重试');
+    return result.history;
+  }
+  return core.history(await loadRoomStateRemoteFirst(),storyId);
+  });
+}
+export async function loadStoryRevision(storyId:string,revisionId:string): Promise<ManuscriptRevision> {
+  return measurePerformance('book.revision',async()=>{
+  const result=await readStoryState(data=>call('revision',{...data,storyId,revisionId})) as {revision:ManuscriptRevision};
+  if (result.revision?.id!==revisionId || result.revision.storyId!==storyId || !result.revision.draft) throw new Error('这一版暂时加载失败，请重试');
+  return result.revision;
+  });
+}
 
 export { activeStory, current as currentStoryManuscript, history as storyManuscriptHistory, fingerprint as storySourceFingerprint } from '../domain/storyBookCore';
 export const operationId = () => 'op-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);

@@ -15,6 +15,20 @@ function runtime(options: {path: string; width: number; height: number} | ((text
   const page:any={setData:(_:any,done:()=>void)=>done(),createSelectorQuery:()=>{const query:any={select:()=>query,fields:()=>query,exec:(done:any)=>done([{node:canvas}])};return query;}};
   return {wx,page,files,removed,drawn,images,requested};
 }
+test('remote image download retries once without restarting rendering, and stops on repeated failure or leaving',async()=>{
+  const remote={...material,coverUrl:'https://media.example/approved.jpg'};
+  for(const mode of ['recover','fail','leave']) {
+    const f=runtime();let calls=0,active=true;
+    f.wx.getImageInfo=({success,fail}:any)=>{
+      calls++;
+      if(calls===1 || mode==='fail') {if(mode==='leave')active=false;fail({errMsg:'getImageInfo:fail TLS'});}
+      else success({path:'local-cover',width:600,height:800});
+    };
+    const rendering=renderBookImages(remote,'pages',32,f.page,()=>active,()=>{});
+    if(mode==='recover'){assert.ok((await rendering).length>1);assert.equal(calls,2);}
+    else {await assert.rejects(rendering,mode==='leave'?/已停止/:/读取封面/);assert.equal(calls,mode==='leave'?1:2);assert.deepEqual(f.files,[]);}
+  }
+});
 test('renderer exports cover plus complete text pages at requested dimensions',async()=>{
   const f=runtime(),progress:number[]=[];
   const paths=await renderBookImages(material,'pages',32,f.page,()=>true,done=>progress.push(done));

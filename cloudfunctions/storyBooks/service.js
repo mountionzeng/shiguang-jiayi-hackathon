@@ -15,6 +15,8 @@ const { listShareCardSource, previewShareCard, exportShareCard } = require('./ex
 const { previewBookExport, exportBookImages } = require('./bookExports');
 const { memoryExportSource } = require('./memoryExports');
 const { encodeStateResponse } = require('./stateTransport');
+const { readHistory } = require('./history');
+const { prepareInvitation } = require('./prepareInvitation');
 
 function accessError(code) {
   return Object.assign(new Error(code === 'STORY_ACCESS_NOT_READY' ? '故事权限服务尚未准备好' : '故事共享尚未开放'), { code });
@@ -49,12 +51,16 @@ function createStoryService(repo, options = {}) {
         // Owner-only book image export is locally rendered and resolves the
         // trusted WeChat identity again before preview, save, and share. It is
         // independent from both the public share-card and shared-read rollouts.
-        bookExport: true,
+        bookExport: true, ownerHistory: true, preparedInvitation: true,
         memoryBookExport: true,
         shareCard: options.shareCardEnabled === true && inRollout, forward: false, publish: false };
     }
     if (action.startsWith('invite')) {
       if (!accessEnabled || options.invitationsEnabled !== true) throw accessError('STORY_ACCESS_DISABLED');
+      if (action === 'invitePrepare') {
+        if (options.copyReceiveEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+        return prepareInvitation(repo,ctx,event,invitations,options);
+      }
       return invitations(ctx, event);
     }
     if (action === 'sharedMedia') {
@@ -172,6 +178,7 @@ function createStoryService(repo, options = {}) {
     const handlers = createHandlers(guardedRepo, options);
     let result;
     if (action === 'state') result = await measure('state.load',()=>handlers.state(ctx,{view:event.view}));
+    else if (action === 'history' || action === 'revision') result = await readHistory(guardedRepo,ctx,event);
     else if (action === 'migrate') result = await handlers.migrate(ctx);
     else if (action === 'context') result = await handlers.aiContext(ctx, event);
     else if (action === 'memberAdd') result = await handlers.memberAdd(ctx, event);
@@ -199,7 +206,7 @@ function createStoryService(repo, options = {}) {
     // Reads and already-acknowledged operations can return without a write
     // transaction. Do not release data if identity was revoked during the read.
     if (accessEnabled) await measure('state.authorize.after',()=>assertSpaceOwner(repo, ctx));
-    return action === 'state' ? encodeStateResponse(result, event) : result;
+    return ['state','history','revision'].includes(action) ? encodeStateResponse(result, event) : result;
   }
   return async (context,event={}) => {
     const started = Date.now();
