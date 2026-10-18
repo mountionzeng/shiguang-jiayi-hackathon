@@ -12,7 +12,7 @@ function instance(source:Definition){const value:Definition={...source,data:stru
 test('share card is registered in the isolated sharing package and linked from the book',()=>{
   const app=JSON.parse(readFileSync('miniprogram/app.json','utf8'));
   assert.ok(app.subPackages.find((item:any)=>item.root==='packages/story-sharing').pages.includes('pages/card/index'));
-  assert.match(readFileSync('miniprogram/pages/book/book.wxml','utf8'),/data-action="share-card"/);
+  assert.match(readFileSync('miniprogram/pages/book/book.wxml','utf8'),/class="send-option" data-destination="card" bindtap="chooseSend">制作公开故事卡/);
 });
 
 test('old cloud versions show unavailable without submitting an unsupported action',async()=>{

@@ -470,3 +470,53 @@ test('记忆成品图直接发送也会重新核对记忆版本与导出权限',
     assert.deepEqual(shared, ['memory-image']); assert.deepEqual(page.data.imagePaths, []);
   } finally { bookExportApi.material = original; }
 });
+
+test('章节发送先保存当前章节，成功后打开同一图文预览入口', async () => {
+  const page = await bookPage();
+  page.data.view = 'chapter'; page.activeChapterId = 'chapter-one';
+  let saved!: (value: boolean) => void;
+  page.finishEditing = () => new Promise(resolve => { saved = resolve; });
+  const urls: string[] = [];
+  (globalThis as any).wx = { navigateTo: ({ url, success }: any) => { urls.push(url); success(); } };
+  const task = page.chooseSend(sendEvent('family'));
+  assert.equal(typeof saved, 'function');
+  assert.deepEqual(urls, []);
+  page.data.savedRevisionId = 'revision-chapter-saved'; page.story.version = 4;
+  saved(true); await task;
+  assert.deepEqual(urls, ['/packages/story-sharing/pages/social/index?storyId=story-test&revisionId=revision-chapter-saved&version=4&destination=family']);
+});
+
+test('章节发送等待期间切到另一章，不用迟到的保存回执跳转', async () => {
+  const page = await bookPage();
+  page.data.view = 'chapter'; page.activeChapterId = 'chapter-one';
+  let saved!: (value: boolean) => void;
+  page.finishEditing = () => new Promise(resolve => { saved = resolve; });
+  let calls = 0;
+  (globalThis as any).wx = { navigateTo: () => { calls++; } };
+  const task = page.chooseSend(sendEvent('social'));
+  assert.equal(typeof saved, 'function');
+  page.activeChapterId = 'chapter-two'; saved(true); await task;
+  assert.equal(calls, 0); assert.equal(page.data.preparingSend, false);
+});
+
+test('更多、发送与图片菜单互斥，选择工具后不留遮罩', async () => {
+  const page = await bookPage();
+  (globalThis as any).wx = { hideKeyboard() {} };
+  page.data.photoMenu = 'main';
+  page.showMore(); assert.equal(page.data.moreOpen, true); assert.equal(page.data.photoMenu, '');
+  page.toggleSend(); assert.equal(page.data.sendOpen, true); assert.equal(page.data.moreOpen, false);
+  page.canLeaveEditor = () => true; page.openImages = () => {};
+  page.data.photoMenu = 'main';
+  page.selectTool({ currentTarget: { dataset: { action: 'images' } } });
+  assert.equal(page.data.sendOpen, false); assert.equal(page.data.photoMenu, ''); assert.equal(page.data.moreOpen, false);
+});
+
+test('合并后的公开故事卡入口先保存再跳转，保存失败不跳转', async () => {
+  const page = await bookPage(), urls: string[] = [];
+  (globalThis as any).wx = { navigateTo: ({ url, success }: any) => { urls.push(url); success(); } };
+  page.finishEditing = async () => false;
+  await page.chooseSend(sendEvent('card')); assert.deepEqual(urls, []);
+  page.finishEditing = async () => true;
+  await page.chooseSend(sendEvent('card'));
+  assert.deepEqual(urls, ['/packages/story-sharing/pages/card/index?storyId=story-test']);
+});

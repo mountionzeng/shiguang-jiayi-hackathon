@@ -7,7 +7,6 @@ page { height: 100%; overflow: hidden; }
 /* Override WeChat v2 button default width and margins explicitly, not just min-width. */
 .writing-page .tool-button { flex: none; width: auto; max-width: 100%; min-width: 88rpx; height: 88rpx; min-height: 88rpx; margin: 0; padding: 0 12rpx; display: flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 29rpx; color: var(--jade); border-radius: 12rpx; }
 .writing-toolbar > .tool-button { width: 20%; flex: 0 0 20%; min-width: 0; }
-.writing-toolbar > .chapter-create-short { font-weight: 600; }
 .writing-page .tool-button[disabled] { color: var(--ink-soft); opacity: .55; background: transparent; }
 .save-button { font-weight: 600; }
 .writing-page { position: relative; }
@@ -16,7 +15,13 @@ page { height: 100%; overflow: hidden; }
 .send-menu { position: absolute; z-index: 9; top: 96rpx; right: 22%; width: 370rpx; padding: 8rpx 16rpx; border: 1rpx solid var(--line); border-radius: 16rpx; background: var(--paper-card); box-shadow: 0 12rpx 32rpx rgba(42,46,43,.14); }
 .send-menu .send-option { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 100rpx; padding: 20rpx 14rpx; margin: 0; font-size: 30rpx; color: var(--jade); text-align: left; }
 .send-option + .send-option { border-top: 1rpx solid var(--line); }
-.top-tools { flex: none; display: flex; flex-wrap: wrap; padding: 0 20rpx; background: var(--paper-sunk); border-bottom: 1rpx solid var(--line); }
+.more-menu { position: absolute; z-index: 9; top: 96rpx; right: 24rpx; width: 440rpx; max-width: 88%; max-height: 65%; box-sizing: border-box; padding: 8rpx 20rpx; border: 1rpx solid var(--line); border-radius: 16rpx; background: var(--paper-card); box-shadow: 0 12rpx 32rpx rgba(42,46,43,.14); }
+.more-menu .more-option { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 92rpx; padding: 20rpx 12rpx; margin: 0; text-align: left; font-size: 29rpx; line-height: 1.5; color: var(--jade); }
+.more-option + .more-option { border-top: 1rpx solid var(--line); }
+.more-menu .more-back { color: var(--ink-soft); font-size: 26rpx; }
+.more-menu .more-danger { color: #a14e43; }
+.more-option text { color: var(--ink-soft); }
+
 .writing-fields { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 20rpx; padding: 24rpx 28rpx; padding-bottom: calc(24rpx + env(safe-area-inset-bottom)); }
 .writing-fields[hidden] { display: none; }
 .keyboard-open .writing-fields { padding-top: 12rpx; padding-bottom: 12rpx; gap: 12rpx; }

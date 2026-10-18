@@ -992,7 +992,7 @@ test("提交配图失败时把原因显示出来，按钮恢复可点", async co
   assert.equal(page.data.submitting, "");
 });
 
-test("书稿页「更多」里能打开这一章的配图，未保存的修改不能带过去", async context => {
+test("书稿页「图片」里的已有图片保留本章与全书入口，未保存的修改不能带过去", async context => {
   const env = installWx({ hideKeyboard: () => undefined }, stateWithBook());
   env.setApp(false);
   context.after(env.restore);
@@ -1012,8 +1012,8 @@ test("书稿页「更多」里能打开这一章的配图，未保存的修改�
   assert.equal(env.navigations.length, 2, "有未保存的修改时不跳转");
 
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
-  assert.match(markup, /data-action="images"[^>]*>.*给本章配图/);
-  assert.match(markup, /data-action="images"[^>]*>.*这本书的图/);
+  assert.match(markup, /class="photo-option" data-action="images" bindtap="selectTool">已有图片/);
+  assert.equal((markup.match(/data-action="images"/g) || []).length, 1, "本章与全书共用一个图片库入口");
   const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as { pages: string[] };
   assert.ok(app.pages.includes("pages/story-images/story-images"));
 });

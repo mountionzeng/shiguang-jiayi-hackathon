@@ -87,7 +87,7 @@ Page({
     history: [] as ManuscriptRevision[], historyLoading: false, showHistory: false,
     previewVersion: null as ManuscriptRevision | null,
     loadError: "", storageLabel: "", versionName: "", saveNotice: "",
-    keyboardHeight: 0, viewportHeight: 0, panel: "", moreOpen: false, editorKeys: [0], pickingPhoto: false, editorReady: false,
+    keyboardHeight: 0, viewportHeight: 0, panel: "", moreOpen: false, moreSection: "", editorKeys: [0], pickingPhoto: false, editorReady: false,
     storyImageSelected: false, refreshingStoryImage: false,
     previewBlocks: [] as Array<{ text?: string; path?: string }>,
     // "contents" lists the chapters; "chapter" edits one of them. Empty until the first load.
@@ -211,7 +211,7 @@ Page({
     this.pendingPhotoImportChapter = "";
     this.setData({ photoMenu: "", preparingPhoto: false });
     this.sendEpoch++;
-    this.setData({ sendOpen: false });
+    this.setData({ sendOpen: false, moreOpen: false, moreSection: "" });
     if (this.data.editing) {
       this.backupEdits();
       void this.saveEdits(true);
@@ -897,7 +897,12 @@ Page({
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
     this.closePhotoMenu();
-    this.setData({ moreOpen: !this.data.moreOpen, sendOpen: false });
+    this.setData({ moreOpen: !this.data.moreOpen, moreSection: "", sendOpen: false });
+  },
+  closeMore() { this.setData({ moreOpen: false, moreSection: "" }); },
+  showMoreMain() { this.setData({ moreSection: "" }); },
+  showChapterTools() {
+    if (!this.data.protectedCopy && this.data.view === "chapter" && this.canLeaveEditor()) this.setData({ moreSection: "chapter" });
   },
   deleteCurrentStory() {
     const story = this.story;
@@ -921,7 +926,7 @@ Page({
     });
   },
   toggleSend() {
-    if (this.data.protectedCopy || !this.data.draft || this.data.view !== 'contents' || this.data.panel || this.data.preparingSend || this.data.generating || this.data.pickingPhoto) return;
+    if (this.data.protectedCopy || !this.data.draft || !['contents', 'chapter'].includes(this.data.view) || this.data.panel || this.data.preparingSend || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
     this.closePhotoMenu();
     this.setData({ sendOpen: !this.data.sendOpen, moreOpen: false });
@@ -930,11 +935,12 @@ Page({
   async chooseSend(event: WechatMiniprogram.TouchEvent) {
     const destination = event.currentTarget.dataset.destination as 'family' | 'social' | 'card';
     if (destination !== 'family' && destination !== 'social' && destination !== 'card') return;
-    if (this.data.protectedCopy || this.data.preparingSend || !this.data.draft || this.data.view !== 'contents' || this.data.panel) return;
+    if (this.data.protectedCopy || this.data.preparingSend || !this.data.draft || !['contents', 'chapter'].includes(this.data.view) || this.data.panel) return;
+    const view = this.data.view, chapterId = this.activeChapterId;
     const epoch = ++this.sendEpoch;
     this.setData({ preparingSend: true, sendOpen: false });
     try {
-      if (!await this.finishEditing() || this.unloaded || epoch !== this.sendEpoch || this.data.view !== 'contents' || this.data.panel) return;
+      if (!await this.finishEditing() || this.unloaded || epoch !== this.sendEpoch || this.data.view !== view || (view === 'chapter' && this.activeChapterId !== chapterId) || this.data.panel) return;
       const story = this.story;
       if (!story || story.sourcePolicyRequired || !this.data.savedRevisionId || !Number.isSafeInteger(story.version) || (story.version || 0) < 1) {
         this.setData({ saveNotice: '请从书架打开已保存的自有故事，再准备发送' }); return;
@@ -952,7 +958,9 @@ Page({
   },
   selectTool(event: { currentTarget: { dataset: { action: string } } }) {
     if (this.data.saving || this.data.generating) return;
-    this.setData({ moreOpen: false });
+    this.closeMore();
+    this.closeSend();
+    this.closePhotoMenu();
     const action = event.currentTarget.dataset.action;
     if (action === "copy-draft") { this.copyCurrentDraft(); return; }
     if (action === "discard") { this.cancelEdit(); return; }
