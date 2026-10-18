@@ -12,6 +12,7 @@
 - 实测轻量人物页创建“轻量联调1018”、编辑关系、软删除、恢复后再次删除。最后两位虚构人物均进入最近删除，可恢复；原有的人物、邀请和正文未改动。
 - “岱”的历史摘要列表、单版正文预览、退出回目录已实测；无图片章节和含图片章节都已验证点击“目录”能返回。未执行历史恢复或书稿写入。
 - 社交图文页首次云调用报 no baseresponse，使用页面重试后成功，第一章生成 4 张预览图。家人图文卡片也已生成，填写虚构称呼“卡片联调1018未发送”后成功显示“把卡片发给这位亲友”；未发送，随后在书中人物页撤销，云端列表显示“邀请已撤销”，原有“萍”的待接受邀请保留。
+- 所有测试与清理结束后，从干净提交 `6576bb67eab2800ebfe44bfe4678831348f19dcc`（业务源码与 1918e01 一致）运行用户指定的 preview.sh，2026-10-18 19:12:29（Asia/Shanghai）成功返回 `QR=/private/tmp/shiguang-preview-qr.jpg`。归档为 `/private/tmp/shiguang-book-people-20261018/preview-6576bb6-191229.jpg`，SHA-256 `f40ef32c4d7f69e5857f89e231382b08385c0aeec1e1424a66d4c8b824102ad2`，约 19:42 失效。本条回执只改文档，不改变二维码中的业务代码。
 - 实测耗时：book.people 4675/4559/6096 ms；人物页 invite.create 5652 ms；图文卡片 invite.create 10149 ms、invite.prepare 10162 ms；book.history 6010 ms；book.revision 4365 ms；已有缓存的 book.refresh 30 ms，图片后台读取 4–6.7 秒。旧人物新增前后的状态读取为 28050/21311 ms，优化后 6265/2315 ms，每次状态读取只有一个请求；这不包含写入耗时，也不是整段流程的 2 秒验收。
 
 证据目录：`/private/tmp/shiguang-book-people-20261018/`。部署回执 `deployment.log`、`deployment-transaction-fix.log`；源码 `cloud-fixed-6/`；逐文件核对 `source-readback-fixed.json`；测试 `check-transaction-fix.log`、`check-profile-fix.log`；界面 `people-fixed.png`、`people-invite-created.png`、`test-people-cleaned.png`、`social-preview.png`、`family-card-invite-ready.png`、`family-card-invite-revoked.png`；性能 `desktop-timings.txt`。临时目录可能被系统清理。
@@ -50,4 +51,4 @@
 | 图文小程序卡片准备邀请 | 通过 | 实际生成图片/标题卡片，准备后出现发送入口，未外发并已撤销 |
 | 第二微信与真机完整协作 | 需要用户做 | 接受、保留、扩写、回信、采用及布局 |
 | 所有加载 2 秒、保存性能 | 未通过 | 多项联网实测仍大于 2 秒 |
-| 新二维码 | 未通过 | 完成当前流程后生成 |
+| 新二维码 | 通过 | 6576bb6，19:12:29 成功；约 30 分钟有效，不代表双账号/真机验收完成 |
