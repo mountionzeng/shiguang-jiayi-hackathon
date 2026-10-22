@@ -1,5 +1,6 @@
 const core = require('./core');
 const { measurePerformance } = require('./performance');
+const { ownNamesByAccount } = require('./displayNames');
 const { assertLegacyWritable, protocolError } = require('./provenance');
 const docId = (familyId,id) => familyId+'_'+id;
 const MIGRATION_BATCH_SIZE=80;
@@ -13,10 +14,10 @@ const memberForClient = member => ({
   ...(typeof member.deletedAt==='string' && member.deletedAt ? {deletedAt:member.deletedAt} : {}),
 });
 const contributionId = memory => memory.frontendContributionId || memory.id || memory.sourceRecordId?.replace(/^src_/,'')?.replace(memory.familyId+'_','') || memory._id?.replace(memory.familyId+'_','');
-const contributionForClient = (memory,member) => ({
+const contributionForClient = (memory,member,ownName) => ({
   id:contributionId(memory),
   authorMemberId:memory.authorMemberId,
-  authorName:member?.name || memory.authorName,
+  authorName:ownName || member?.name || memory.authorName,
   relation:member?.relation || memory.relation,
   text:memory.text,
   title:memory.title,
@@ -328,18 +329,26 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       personalDraftSourceFingerprints:Object.fromEntries(drafts.filter(d=>d.draftType==='personal' && d.memberId).map(d=>[d.memberId,d.sourceFingerprint || ''])),
       manuscriptRevisions:drafts.filter(d=>d.revision).map(d=>d.revision),
       legacyPersonalDrafts:Object.fromEntries(drafts.filter(d=>d.draftType==='personal' && d.memberId && d.draft).map(d=>[d.memberId,d.draft])),legacyImages,legacyImageJobs};
+    // 仅供 state() 解析署名：成员 -> accountId。不可枚举，不会进入响应、复制或摘要。
+    Object.defineProperty(state,'memberAccountIds',{value:new Map(members.filter(member=>member.accountId).map(member=>[storedMemberId(member),member.accountId]))});
     if (family.storyBooks) state.storyMigration={...family.storyBooks,pending:pending.map(p=>p.item)};
     return state;
   }
   async function state(ctx,event={}) {
     const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true,home:['home','memories'].includes(event.view),keepMemoryHistory:event.view==='memories'});
     const membersById=new Map(loaded.members.map(member=>[member.id,member]));
+    // 投稿作者显示本人在「我的」里起的称呼；主人自己跳过。所有账号并行读取，失败时静默退回备注名。
+    const accountOf=memberId=>membersById.get(memberId)?.role==='owner' ? undefined : loaded.memberAccountIds?.get(memberId);
+    const authorAccounts=[...new Set(loaded.contributions.map(memory=>accountOf(memory.authorMemberId)).filter(Boolean))];
+    const ownNames=authorAccounts.length
+      ? await measurePerformance('state.query.self_names',()=>ownNamesByAccount(repo,authorAccounts))
+      : new Map();
     return {
       roomStateVersion:1,
       roomName:loaded.roomName,
       protagonistName:loaded.protagonistName,
       members:loaded.members,
-      contributions:loaded.contributions.map(memory=>contributionForClient(memory,membersById.get(memory.authorMemberId))),
+      contributions:loaded.contributions.map(memory=>contributionForClient(memory,membersById.get(memory.authorMemberId),ownNames.get(accountOf(memory.authorMemberId)))),
       draft:loaded.draft,
       draftSourceFingerprint:loaded.draftSourceFingerprint,
       personalDrafts:loaded.personalDrafts,

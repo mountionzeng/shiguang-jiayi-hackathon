@@ -172,11 +172,34 @@ function visibleMembersForAccess(members, access, ownerAccountId = "") {
   ));
 }
 
-function currentMemoryAttribution(memory, member) {
+// 署名顺序：本人称呼 -> 主人起的备注名（member.name）-> 写入时记下的名字。
+function currentMemoryAttribution(memory, member, ownName) {
   return {
-    authorName: member && member.name || memory.authorName,
+    authorName: ownName || member && member.name || memory.authorName,
     relation: member && member.relation || memory.relation,
   };
+}
+
+const OWN_NAME_BATCH_SIZE = 20;
+
+/*
+ * 按 accountId 批量读本人称呼。每批最多 20 个，各批与批内读取全部并行；
+ * 任何一次读取失败都静默跳过，调用方退回备注名，不能让房间加载失败。
+ * 只取 displayName 一个字段。
+ */
+async function loadOwnNames(readAccount, accountIds) {
+  const ids = [...new Set((accountIds || []).filter(id => typeof id === "string" && /^[0-9A-Za-z_-]{1,128}$/.test(id)))];
+  const names = new Map();
+  const groups = [];
+  for (let index = 0; index < ids.length; index += OWN_NAME_BATCH_SIZE) groups.push(ids.slice(index, index + OWN_NAME_BATCH_SIZE));
+  await Promise.all(groups.map(group => Promise.all(group.map(async id => {
+    try {
+      const account = await readAccount(id);
+      const name = account && typeof account.displayName === "string" ? account.displayName.trim() : "";
+      if (name) names.set(id, name);
+    } catch { /* 名字只用于显示 */ }
+  }))));
+  return names;
 }
 
 module.exports = {
@@ -187,6 +210,7 @@ module.exports = {
   assertInvitationUsable,
   avatarTextFor,
   currentMemoryAttribution,
+  loadOwnNames,
   expiresAtFrom,
   inviteToken,
   normalizeContributionInput,
