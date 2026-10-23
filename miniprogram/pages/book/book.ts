@@ -1,3 +1,4 @@
+import { linePosition, splitLines, type LinePosition } from "../../domain/lineModules";
 import { exploreMemoryConnection, MemoryConnection } from "../../services/memoryConnections";
 import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft } from "../../services/chapterDraft";
 import { SendSnapshot, snapshotFromState, stageSendSnapshot } from "../../services/bookSend";
@@ -179,6 +180,11 @@ Page({
   xiaoyiConversation: [] as InterviewTurn[],
   xiaoyiContextCapturedText: "",
   xiaoyiLineContext: "",
+  xiaoyiLinePosition: null as LinePosition | null,
+  xiaoyiCapturedKey: "",
+  xiaoyiCapturedSequence: -1,
+  xiaoyiCaptureId: 0,
+  xiaoyiCapturePending: undefined as Promise<void> | undefined,
   onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string } = {}) {
     this.sendSnapshot = undefined;
     this.sendAccountScope = "";
@@ -523,6 +529,11 @@ Page({
   },
   /** Point the editing buffers at the active chapter's saved text and name. */
   loadActiveChapter() {
+    this.xiaoyiCaptureId++;
+    this.xiaoyiContextCapturedText = "";
+    this.xiaoyiCapturedKey = "";
+    this.xiaoyiLineContext = "";
+    this.xiaoyiLinePosition = null;
     const active = this.chapters.find(chapter => chapter.id === this.activeChapterId);
     this.contentBuffer = active ? active.content.map(item => ({ ...item })) : [];
     this.chapterTitleBuffer = active?.title ?? "";
@@ -1028,62 +1039,77 @@ Page({
   openXiaoyi() {
     if (this.data.protectedCopy || this.data.view !== "chapter" || this.data.panel || this.data.saving || this.data.generating) return;
     this.setData({ xiaoyiOpen: true, moreOpen: false, xiaoyiStatus: "", xiaoyiContextPreview: "正在读取当前正文…" });
-    this.captureXiaoyiContext();
+    this.xiaoyiCapturePending = this.captureXiaoyiContext();
+    return this.xiaoyiCapturePending;
   },
-  closeXiaoyi: resetXiaoyiPanel,
-  captureXiaoyiContext() {
-    const useFallback = async () => {
-      await this.collectEditor().catch(() => undefined);
-      const text = (this.bodyBuffer || plainText(this.contentBuffer)).trim();
-      const preview = text ? (text.length > 120 ? text.slice(0, 120) + "…" : text) : "这一章还没有正文，小忆会先从你接下来要说的话问起。";
-      this.xiaoyiContextCapturedText = text;
-      this.setData({ xiaoyiContextPreview: preview });
-    };
-    if (!this.editorContext || !this.data.editorReady) { void useFallback(); return; }
+  closeXiaoyi() {
+    this.xiaoyiCaptureId++;
+    this.xiaoyiContextCapturedText = "";
     this.xiaoyiLineContext = "";
-    if (LINE_CONTEXT_CHAT_ENABLED) this.captureLineContext();
-    this.editorContext.getSelectionText({
-      success: result => {
-        const selected = String(result.text ?? "").trim();
-        if (selected) {
-          if (selected.length > 1000) {
-            wx.showToast({ title: "选中的内容有点长，请少选一些", icon: "none" });
-            this.xiaoyiContextCapturedText = "";
-            this.setData({ xiaoyiContextPreview: "请少选一些，再点小忆。" });
-            return;
-          }
-          this.xiaoyiContextCapturedText = selected;
-          this.setData({ xiaoyiContextPreview: selected.length > 120 ? selected.slice(0, 120) + "…" : selected });
-          return;
-        }
-        void useFallback();
-      },
-      fail: () => { void useFallback(); },
-    });
+    this.xiaoyiLinePosition = null;
+    resetXiaoyiPanel.call(this);
   },
-  /** 打开小忆时顺带判断停在哪一行：不发请求，也不要求用户多点一下。拿不到可靠位置就留空。 */
-  captureLineContext() {
-    const ctx = this.editorContext;
-    if (!ctx) return;
+  async captureXiaoyiContext() {
+    const captureId = ++this.xiaoyiCaptureId;
     const key = this.xiaoyiContextKey();
-    const apply = (index: number | null, plain: string) => {
-      if (key !== this.xiaoyiContextKey()) return;
-      this.xiaoyiLineContext = lineContextText(plain, index);
-    };
-    void this.collectEditor().then(() => {
-      const plain = this.bodyBuffer || plainText(this.contentBuffer);
-      const hasPhoto = imageCount(this.contentBuffer) > 0;
-      ctx.getSelectionText({
-        success: result => {
-          const selected = String(result.text ?? "").trim();
-          if (selected) { apply(lineIndexFromSelection(plain, selected), plain); return; }
-          // getSelection（基础库 3.7.11）给出光标下标；含照片时下标与纯文本对不上，不使用。
-          const withRange = ctx as unknown as { getSelection?: (o: { success: (r: { range?: { index?: number } }) => void }) => void };
-          if (hasPhoto || typeof withRange.getSelection !== "function") return;
-          withRange.getSelection({ success: r => apply(lineIndexFromRange(plain, Number(r.range?.index)), plain) });
-        },
-      });
-    }).catch(() => undefined);
+    this.xiaoyiCapturedKey = key;
+    const sequence = this.editSequence;
+    this.xiaoyiCapturedSequence = sequence;
+    const ctx = this.editorContext;
+    this.xiaoyiContextCapturedText = "";
+    this.xiaoyiLineContext = "";
+    this.xiaoyiLinePosition = null;
+    const current = () => captureId === this.xiaoyiCaptureId && key === this.xiaoyiContextKey()
+      && sequence === this.editSequence && ctx === this.editorContext
+      && !this.unloaded && this.data.xiaoyiOpen && this.data.view === "chapter";
+    let plain = this.bodyBuffer || plainText(this.contentBuffer);
+    let selected = "";
+    let index: number | null = null;
+    if (ctx && this.data.editorReady) {
+      // Snapshot native text/selection together. Never collect into a different chapter's buffers.
+      const [contents, selection, range] = await Promise.all([
+        new Promise<WechatMiniprogram.GetContentsSuccessCallbackResult | null>(resolve =>
+          typeof ctx.getContents === "function" ? ctx.getContents({ success: resolve, fail: () => resolve(null) }) : resolve(null)).catch(() => null),
+        new Promise<string>(resolve => ctx.getSelectionText({
+          success: result => resolve(String(result.text ?? "")), fail: () => resolve(""),
+        })).catch(() => ""),
+        LINE_CONTEXT_CHAT_ENABLED && typeof ctx.getSelection === "function"
+          ? new Promise<number | null>(resolve => ctx.getSelection({
+              success: result => resolve(result.range?.index ?? null), fail: () => resolve(null),
+            })).catch(() => null) : Promise.resolve(null),
+      ]);
+      if (!current()) return;
+      selected = selection.trim();
+      if (contents) {
+        // Use native text rather than concatenated text blocks: image offsets and newline offsets differ.
+        if (typeof contents.text === "string") plain = contents.text;
+        const ops = (contents.delta as { ops?: Array<{ insert?: unknown }> })?.ops;
+        const hasEmbed = !Array.isArray(ops) || ops.some(op => typeof op.insert !== "string");
+        if (LINE_CONTEXT_CHAT_ENABLED) {
+          if (typeof contents.text === "string" && !hasEmbed && range !== null && (!selected || plain.slice(range, range + selection.length) === selection)) {
+            index = lineIndexFromRange(plain, range);
+          } else if (selected) index = lineIndexFromSelection(plain, selected);
+        }
+      }
+    }
+    if (!current()) return;
+    if (selected.length > 1000) {
+      wx.showToast({ title: "选中的内容有点长，请少选一些", icon: "none" });
+      this.setData({ xiaoyiContextPreview: "请少选一些，再点小忆。" });
+      return;
+    }
+    const text = selected || plain.trim();
+    this.xiaoyiContextCapturedText = text;
+    if (LINE_CONTEXT_CHAT_ENABLED) {
+      this.xiaoyiLineContext = lineContextText(plain, index, this.chapters.map(chapter => chapter.title));
+      const lines = splitLines(plain);
+      const saved = this.chapters.find(chapter => chapter.id === this.activeChapterId)?.content.filter(item => item.text?.trim()) ?? [];
+      // Consume existing ids only when canonical one-line blocks exactly match the native snapshot.
+      // Unsaved/legacy positions are explicitly ephemeral; 04 owns persistence and reconciliation.
+      const matches = saved.length === lines.length && saved.every((item, i) => item.blockId && item.text === lines[i]);
+      this.xiaoyiLinePosition = linePosition(this.activeChapterId, lines.map((text, i) => ({ id: matches ? saved[i].blockId! : `snapshot-line-${i}`, text })), index);
+    }
+    this.setData({ xiaoyiContextPreview: text ? (text.length > 120 ? text.slice(0, 120) + "…" : text) : "这一章还没有正文，小忆会先从你接下来要说的话问起。" });
   },
   /** 就地小忆共享机制要读的场景参数：故事名与是否走客观记录模式。 */
   xiaoyiConfig(): XiaoyiConfig {
@@ -1096,17 +1122,34 @@ Page({
   },
   /** 就地小忆共享机制要读的当前文本：选区优先，否则当前章节正文。 */
   xiaoyiContextText() {
+    if (this.xiaoyiCapturedKey !== this.xiaoyiContextKey() || this.xiaoyiCapturedSequence !== this.editSequence) {
+      this.xiaoyiLineContext = "";
+      this.xiaoyiLinePosition = null;
+      return this.bodyBuffer || plainText(this.contentBuffer);
+    }
     const base = this.xiaoyiContextCapturedText || this.bodyBuffer || plainText(this.contentBuffer);
-    return LINE_CONTEXT_CHAT_ENABLED && this.xiaoyiLineContext ? this.xiaoyiLineContext + "\n" + base : base;
+    return LINE_CONTEXT_CHAT_ENABLED && this.xiaoyiLineContext ? this.xiaoyiLineContext : base;
   },
   xiaoyiContextKey() { return [this.data.storyId, this.data.memberId, this.activeChapterId].join(":"); },
   xiaoyiMessagesAppend,
-  askXiaoyiQuestion,
+  async askXiaoyiQuestion() {
+    const key = this.xiaoyiContextKey();
+    const captureId = this.xiaoyiCaptureId;
+    await this.xiaoyiCapturePending;
+    if (this.unloaded || !this.data.xiaoyiOpen || key !== this.xiaoyiContextKey() || captureId !== this.xiaoyiCaptureId) return;
+    return askXiaoyiQuestion.call(this);
+  },
   onXiaoyiAnswerInput,
   onXiaoyiDraftInput,
   onXiaoyiWritingInstruction,
   useXiaoyiOriginal,
-  organizeXiaoyiAnswer,
+  async organizeXiaoyiAnswer(event?: Parameters<typeof organizeXiaoyiAnswer>[0]) {
+    const key = this.xiaoyiContextKey();
+    const captureId = this.xiaoyiCaptureId;
+    await this.xiaoyiCapturePending;
+    if (this.unloaded || !this.data.xiaoyiOpen || key !== this.xiaoyiContextKey() || captureId !== this.xiaoyiCaptureId) return;
+    return organizeXiaoyiAnswer.call(this, event);
+  },
   useXiaoyiDraft,
   /** 就地小忆共享机制的落回目标：本章的待确认新增，接受后才写入正文。 */
   async xiaoyiLand(text: string, kind: XiaoyiLandKind): Promise<boolean> {

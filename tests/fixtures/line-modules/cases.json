@@ -190,6 +190,24 @@
    "text": "",
    "cursor": 0,
    "index": null
+  },
+  {
+   "name": "original CRLF offsets",
+   "text": "甲\r\n乙\r\n丙",
+   "cursor": 6,
+   "index": 2
+  },
+  {
+   "name": "repeated line by offset",
+   "text": "甲\n重复\n\n重复\n尾",
+   "cursor": 7,
+   "index": 2
+  },
+  {
+   "name": "invalid out of bounds cursor",
+   "text": "甲\n乙",
+   "cursor": 99,
+   "index": null
   }
  ],
  "trim": {

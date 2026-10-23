@@ -2898,7 +2898,7 @@ test("inline xiaoyi in a chapter reads selected text and creates a pending inser
   };
   page.setData({ editorReady: true, view: "chapter" });
 
-  callPage(page, "openXiaoyi");
+  await callPage(page, "openXiaoyi");
   assert.equal((page as any).xiaoyiContextCapturedText, "我妈在灶台前忙着");
   await callPage(page, "askXiaoyiQuestion", { currentTarget: { dataset: { mode: "ask" } } });
   assert.equal(calls.find(call => call.name === "chatInterview")?.data.answer, "我妈在灶台前忙着");
