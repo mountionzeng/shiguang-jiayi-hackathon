@@ -10,12 +10,12 @@ export const TEXT_WIDTH = 630;
 export type MeasureText = (text: string, fontSize: number) => number;
 
 /** Preserve every code point and explicit newline, including empty paragraphs. */
-export function wrapImageText(text: string, fontSize: number, measure: MeasureText): TextLine[] {
+export function wrapImageText(text: string, fontSize: number, measure: MeasureText, maxWidth = TEXT_WIDTH): TextLine[] {
   const lines: TextLine[] = [];
   let line = '';
   for (const character of Array.from(text)) {
     if (character === '\n') { lines.push({ text: line, newline: true }); line = ''; continue; }
-    if (line && measure(line + character, fontSize) > TEXT_WIDTH) { lines.push({ text: line, newline: false }); line = ''; }
+    if (line && measure(line + character, fontSize) > maxWidth) { lines.push({ text: line, newline: false }); line = ''; }
     line += character;
   }
   if (line || !lines.length) lines.push({ text: line, newline: false });

@@ -28,6 +28,8 @@ const dispatch=createStoryService(repo,{
   sharedEditEnabled:process.env.STORY_SHARED_EDIT_ENABLED==='true',
   copyReceiveEnabled:process.env.STORY_COPY_RECEIVE_ENABLED==='true',
   shareCardEnabled:process.env.STORY_SHARE_CARD_ENABLED==='true',
+  chapterPackageEnabled:process.env.CHAPTER_PACKAGE_ENABLED==='true',
+  approveChapterText:(text,openid,title)=>moderate(text,openid,title),
   copyStorage:createCopyStorage(cloud),
   approveExcerpt:(text,openid)=>moderate(text,openid,'故事选段'),
   approveSharedEdit:(text,openid)=>moderate(text,openid,'亲友编辑故事'),

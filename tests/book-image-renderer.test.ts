@@ -7,13 +7,13 @@ function runtime(options: {path: string; width: number; height: number} | ((text
   const imageInfo=typeof options==='function'?{path:'local-cover',width:600,height:800}:options;
   const measureWidth=typeof options==='function'?options:(text:string)=>Array.from(text).length*32;
   let currentSize=32;
-  const files:string[]=[],removed:string[]=[],drawn:string[]=[],images:any[][]=[],requested:string[]=[];let number=0;
-  const ctx:any=new Proxy({measureText:(text:string)=>({width:measureWidth(text,currentSize)}),fillText:(text:string)=>drawn.push(text),drawImage:(...args:any[])=>images.push(args),},{get:(target:any,key)=>target[key]||(()=>{}),set:(target:any,key,value)=>{if(key==='font')currentSize=Number(String(value).match(/^(\d+)/)?.[1]||32);target[key]=value;return true;}});
+  const files:string[]=[],removed:string[]=[],drawn:string[]=[],drawCalls:any[][]=[],images:any[][]=[],requested:string[]=[];let number=0;
+  const ctx:any=new Proxy({measureText:(text:string)=>({width:measureWidth(text,currentSize)}),fillText:(text:string,x:number,y:number)=>{drawn.push(text);drawCalls.push([text,x,y]);},drawImage:(...args:any[])=>images.push(args),},{get:(target:any,key)=>target[key]||(()=>{}),set:(target:any,key,value)=>{if(key==='font')currentSize=Number(String(value).match(/^(\d+)/)?.[1]||32);target[key]=value;return true;}});
   const wx:any={createCanvasContext:()=>ctx,getFileSystemManager:()=>({unlink:({filePath}:any)=>removed.push(filePath)}),getImageInfo:({src,success}:any)=>{requested.push(src);success(imageInfo);},canvasToTempFilePath:({success}:any)=>{const path='temp-'+(++number);files.push(path);success({tempFilePath:path});}};
   (globalThis as any).wx=wx;
   const canvas={getContext:()=>ctx,createImage:()=>{const image:any={};Object.defineProperty(image,'src',{set:()=>image.onload()});return image;}};
   const page:any={setData:(_:any,done:()=>void)=>done(),createSelectorQuery:()=>{const query:any={select:()=>query,fields:()=>query,exec:(done:any)=>done([{node:canvas}])};return query;}};
-  return {wx,page,files,removed,drawn,images,requested};
+  return {wx,page,files,removed,drawn,drawCalls,images,requested};
 }
 test('remote image download retries once without restarting rendering, and stops on repeated failure or leaving',async()=>{
   const remote={...material,coverUrl:'https://media.example/approved.jpg'};
@@ -42,6 +42,12 @@ test('renderer exports every selected cover before text pages',async()=>{
   assert.ok(paths.length>=4);
   assert.ok(f.drawn.includes('封面 1 / 2'));
   assert.ok(f.drawn.includes('封面 2 / 2'));
+});
+test('renderer draws complete text modules at their chapter-layout positions',async()=>{
+  const f=runtime();
+  const chapter={id:'chapter-one',title:'第一章',text:'排版文字',layout:{pages:[{label:'1',modules:[{text:'排版文字',rect:{x:90,y:120,width:700,height:100},fontSize:36,alignment:'start' as const}]}]}};
+  await renderBookImages({...material,descriptor:{...material.descriptor,chapters:[chapter]}},'pages',32,f.page,()=>true,()=>{});
+  assert.ok(f.drawCalls.some(([text,x,y])=>text==='排版文字'&&Math.abs(x-105)<0.001&&Math.abs(y-180)<0.001),JSON.stringify(f.drawCalls));
 });
 test('renderer refuses to fake the requested text image count',async()=>{
   const f=runtime(),targeted={...material,descriptor:{...material.descriptor,targetTextImageCount:1}};

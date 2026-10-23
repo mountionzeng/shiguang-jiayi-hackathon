@@ -66,6 +66,14 @@ function applyBlockEdits(base, edits, scope) {
       chapter.content.push({text:edit.text,blockId:blockId([scope.familyId,scope.storyId,scope.requestId,operationIndex]),sourceIds:[]});
     }
   });
+  // A merge retires the source block IDs. Remove only their layout references;
+  // the replacement block remains authoritative and falls back to auto layout.
+  for(const chapter of result.chapters){
+    if(!chapter.layout)continue;
+    const textIds=new Set(chapter.content.filter(block=>typeof block.text==='string').map(block=>block.blockId));
+    chapter.layout.pages=chapter.layout.pages.map(page=>({...page,modules:page.modules.filter(module=>module.kind!=='text'||module.bind.chapterTitle===true||textIds.has(module.bind.blockId))}));
+    if(chapter.layout.pages.every(page=>!page.modules.length))delete chapter.layout;
+  }
   Object.assign(result,core.flatten(result.chapters));validateProtected(result);
   return result;
 }

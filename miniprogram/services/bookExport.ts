@@ -18,7 +18,7 @@ export interface MemoryBookExportSelection {
 export type BookExportSelection = StoryBookExportSelection | MemoryBookExportSelection;
 export interface BookExportDescriptor {
   id: string; storyId?: string; revisionId: string | null; storyVersion?: number; title: string;
-  chapters: Array<Pick<SendChapter, 'id' | 'title' | 'text'> & { backdropImageId?: string }>; coverImageId: string; coverImageIds?: string[];
+  chapters: Array<Pick<SendChapter, 'id' | 'title' | 'text'> & { backdropImageId?: string; layout?: { pages: Array<{ label: string; modules: Array<{ text: string; rect: { x: number; y: number; width: number; height: number }; fontSize: number; alignment: 'start' | 'center' }> }> } }>; coverImageId: string; coverImageIds?: string[];
   targetTextImageCount?: number;
   containsAiText: boolean;
   sourceKind?: 'memory';

@@ -59,8 +59,8 @@ const SHA_K = [
 ];
 
 /** SHA-256 of a UTF-8 string as lowercase hex. */
-export function sha256Hex(text: string): string {
-  const bytes = utf8(text);
+export function sha256Bytes(value: ArrayBuffer | Uint8Array): string {
+  const bytes = Array.from(value instanceof ArrayBuffer ? new Uint8Array(value) : value);
   const bitLength = bytes.length * 8;
   bytes.push(0x80);
   while (bytes.length % 64 !== 56) bytes.push(0);
@@ -92,6 +92,9 @@ export function sha256Hex(text: string): string {
   }
   return h.map(value => value.toString(16).padStart(8, "0")).join("");
 }
+
+/** SHA-256 of UTF-8 text. */
+export function sha256Hex(text: string): string { return sha256Bytes(new Uint8Array(utf8(text))); }
 
 export const chapterPackageBlockId = (parts: readonly (string | number)[]) =>
   `block-${sha256Hex(JSON.stringify(parts))}`;
@@ -371,6 +374,8 @@ export type ToPackageOptions = {
   /** A layout and cover carried over from an earlier import (the mini-program makes none itself). */
   layout?: PackageLayout | null;
   coverPhotoId?: string | null;
+  assetIdByPhotoId?: Record<string, string>;
+  aiGeneratedByPhotoId?: Record<string, boolean>;
 };
 export type ToPackageResult = {
   package: ChapterPackage;
@@ -398,11 +403,12 @@ export function toChapterPackage(
     return id;
   };
   const addAsset = (photoId: string): string => {
-    const assetId = chapterPackageAssetId(photoId);
+    const assetId = options.assetIdByPhotoId?.[photoId] ?? chapterPackageAssetId(photoId);
+    if (!ASSET_ID.test(assetId)) fail("INVALID_SHAPE", "图片编号无效");
     if (!assets.has(assetId)) {
       const info = images[photoId];
       if (!info) fail("ASSET_INFO_MISSING", "缺少这张图片的尺寸或校验信息");
-      assets.set(assetId, { assetId, ...info, aiGenerated: info.aiGenerated || AI_PHOTO_ID.test(photoId) });
+      assets.set(assetId, { assetId, ...info, aiGenerated: info.aiGenerated || options.aiGeneratedByPhotoId?.[photoId] === true || AI_PHOTO_ID.test(photoId) });
       assetPhotos[assetId] = photoId;
     }
     return assetId;
@@ -420,6 +426,13 @@ export function toChapterPackage(
     });
   });
   const coverAssetId = options.coverPhotoId ? addAsset(options.coverPhotoId) : null;
+  const layoutAssets = options.layout ? [options.layout.settings.bodyTextureAssetId,
+    ...options.layout.pages.flatMap(page => page.modules.filter(module => module.kind === "image").map(module => module.assetId))].filter((id): id is string => Boolean(id)) : [];
+  for (const assetId of layoutAssets) {
+    if ([...assets.keys()].includes(assetId)) continue;
+    const photoId = Object.keys(images).find(id => (options.assetIdByPhotoId?.[id] ?? chapterPackageAssetId(id)) === assetId);
+    if (!photoId || addAsset(photoId) !== assetId) fail("ASSET_INFO_MISSING", "排版引用的图片没有可校验的原始文件");
+  }
   const pkgChapter: PackageChapter = {
     chapterId, title: chapter.title, containsAiText: chapter.containsAiText === true,
     cover: coverAssetId ? { assetId: coverAssetId } : null, blocks, layout: options.layout ?? null,
@@ -469,6 +482,8 @@ export function fromChapterPackage(input: unknown, options: FromPackageOptions =
   };
   const content: ManuscriptContent[] = found.blocks.map(b =>
     b.type === "text" ? { text: `${b.text}\n` } : { photoId: photoFor(b.assetId) });
+  // Include assets used only by cover/layout texture/image modules as well as body blocks.
+  for (const asset of pkg.assets) photoFor(asset.assetId);
   const placed = new Set<string>();
   for (const page of found.layout?.pages ?? [])
     for (const m of page.modules) if (m.kind === "text" && "blockId" in m.bind) placed.add(m.bind.blockId);
