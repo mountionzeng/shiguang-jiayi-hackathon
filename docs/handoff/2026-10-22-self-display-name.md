@@ -58,3 +58,14 @@
 - 是否修复风险 1（`familyInvite/index.js:204-213`）。
 - 何时、按什么顺序部署这三个云函数。
 - 真机验证安排：改名通过 / 被拒、B 在回信与房间里看到 A 的新称呼、B 家里 A 的备注不变。验证前需先按 `AGENTS.md` 在电脑端走完整流程再出二维码。
+
+## 部署记录（2026-10-23）
+
+- 用户 10-23 明确要求「现在部署 aaaba5f」。从本分支干净工作树用标准脚本部署：`node scripts/wechat-cloud-deploy.mjs --execute --env cloud1-d5ghzk30ve609f544 --only getOpenId --only storyBooks --only familyInvite`，10:08:16 开始。
+- 脚本返回「WeChat DevTools CLI reported a failure」（脚本隐藏原始输出）。随后逐个 `cloud functions info`：三个函数均 Active。
+- 用 CLI 重新下载三个函数，与 `aaaba5f` 源码逐文件比对（排除 node_modules、package-lock.json）：getOpenId 0 差异，familyInvite 0 差异；storyBooks 首次下载 ECONNRESET（TLS 断开），重试成功后 0 差异，`displayNames.js`、`returns.js`、`changes.js`、`flow.js` 逐一相同。结论：三个函数线上源码等于 `aaaba5f`；脚本报的失败最可能是同类网络中断，原文未保留。
+- 证据目录 `/private/tmp/shiguang-deploy-aaaba5f-101059/`（临时目录，可能被系统清理）。
+- 未改任何环境变量或开关，未合 main，未 push，未出二维码。
+- getOpenId 新增 `config.json` 的 `security.msgSecCheck` 权限是否已在线上生效，未单独核验；改名后若一直提示「暂时无法检查」，先查这个。
+- storyBooks 环境变量是否在部署后保持不变，由「开放微信发送给家人」会话只读核对。
+- 待真机验证：改名、被拒绝的称呼、回信/改动历史/投稿显示本人称呼。
