@@ -74,9 +74,12 @@ export async function loadSharedComputeBalance(): Promise<number> {
   return Number(result.availableMicros);
 }
 
-export function saveCurrentAccountName(displayName: string): Promise<ShiguangAccount> {
+export async function saveCurrentAccountName(displayName: string): Promise<ShiguangAccount> {
+  const normalized = displayName.trim().replace(/\s+/g, " ");
+  if (!normalized) throw new Error("请告诉我们怎么称呼你");
+  if (Array.from(normalized).length > 8) throw new Error("称呼最多 8 个字");
   pendingAccount = undefined;
-  return callAccount("updateProfile", displayName);
+  return callAccount("updateProfile", normalized);
 }
 
 export const accountServiceTest = { parseAccount };

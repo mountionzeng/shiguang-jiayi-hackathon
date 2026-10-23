@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { accountServiceTest, formatComputeBalance } from "../miniprogram/services/accountService";
+import { accountServiceTest, formatComputeBalance, saveCurrentAccountName } from "../miniprogram/services/accountService";
+
+test("空白或超长称呼在请求云端前给出输入提示，合法称呼仍交给云端审核", async context => {
+  const previousWx = (globalThis as any).wx;
+  const calls: Array<{ name: string; data: { action: string; displayName: string } }> = [];
+  (globalThis as any).wx = { cloud: { callFunction: async (request: typeof calls[number]) => {
+    calls.push(request);
+    return { result: { accountLinked: false, profileError: { message: "这个称呼暂时不能使用" } } };
+  } } };
+  context.after(() => { (globalThis as any).wx = previousWx; });
+  for (const name of ["", " \n\t "]) {
+    await assert.rejects(saveCurrentAccountName(name), /请告诉我们怎么称呼你/);
+  }
+  await assert.rejects(saveCurrentAccountName("一二三四五六七八九"), /称呼最多 8 个字/);
+  assert.equal(calls.length, 0);
+  await assert.rejects(saveCurrentAccountName("  小禾   同学  "), /这个称呼暂时不能使用/);
+  assert.deepEqual(calls, [{ name: "getOpenId", data: { action: "updateProfile", displayName: "小禾 同学" } }]);
+});
 
 test("账号服务只接受已完成服务端绑定的微信身份", () => {
   const account = accountServiceTest.parseAccount({
