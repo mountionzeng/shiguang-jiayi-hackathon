@@ -21,7 +21,14 @@
     {
       "root": "packages/story-sharing",
       "name": "story-sharing",
-      "pages": ["pages/invite/index", "pages/read/index", "pages/receive/index", "pages/card/index", "pages/social/index", "pages/people/index"]
+      "pages": [
+        "pages/invite/index",
+        "pages/read/index",
+        "pages/receive/index",
+        "pages/card/index",
+        "pages/social/index",
+        "pages/people/index"
+      ]
     },
     {
       "root": "packages/audio",
@@ -30,6 +37,13 @@
         "pages/create/create",
         "pages/voices/voices",
         "pages/player/player"
+      ]
+    },
+    {
+      "root": "packages/web-login",
+      "name": "web-login",
+      "pages": [
+        "pages/confirm/index"
       ]
     }
   ],

@@ -2,9 +2,9 @@
 
 | 项 | 值 |
 |---|---|
-| 约定版本 | **1.5.1** |
+| 约定版本 | **1.6.0** |
 | 状态 | 本地实现，默认关闭，待双端真实验收 |
-| 日期 | 2026-09-19 |
+| 日期 | 2026-10-23 |
 | 权威版本 | Drinking Time 仓库 `docs/integrations/shiguang-bridge-contract.md` |
 | 副本 | 拾光家忆仓库 `docs/integrations/drinking-time-bridge-contract.md`（必须与权威版本同版本号） |
 | 实现基线 | Drinking Time `9f7f9f4`（桥接口），拾光家忆 `d83f1ed`（云函数 `drinkingTimeBridge`） |
@@ -82,7 +82,7 @@
 POST {DRINKING_TIME_BRIDGE_BASE_URL}/desktop/pair/issue
 ```
 
-`/api/shiguang` 下只有这一个接口。其他路径和方法不属于本约定，行为未定义，不得依赖。
+`/api/shiguang` 下的桥接口为本节的 `/desktop/pair/issue`，以及 1.6.0 起的 `/web-login/confirm`（见 1.6 节）。其他路径和方法不属于本约定，行为未定义，不得依赖。
 
 ### 3.2 请求头
 
@@ -597,9 +597,44 @@ canonicalJson(正文)，单行，没有末尾换行：
 - 开关为权威端 `STORY_DESKTOP_ACCESS_ENABLED`、`STORY_SHARE_CARD_ENABLED` 和电脑端 `SHIGUANG_STORY_AUTHORITY_ENABLED`；密钥仅在服务端。云函数需 `security.msgSecCheck` 权限。
 - 本地测试与构建通过不代表部署完成。腾讯云账号/私有规则、HTTPS 路由、照片 CORS/TTL、两账号与真机验收仍是开放门槛。合法导出的图片无法远程追回。
 
+
+## 1.6 网页登录确认（默认关闭）
+
+网页显示 6 位码，用户在拾光家忆小程序「我的 → 登录电脑」输入并确认，网页随即登录到该微信主体对应的账号；已登录的网页用户也可用同一流程绑定微信。
+
+- 路径 `POST /web-login/confirm`，请求头、签名串、5 分钟时间窗和 MySQL nonce 防重放与 3.2、3.3 节完全相同，只把路径换为 `/web-login/confirm`。
+- 请求正文只允许三个字段，多余字段（例如 `userId`）按 `400 invalid_input` 拒绝：
+
+```json
+{ "subject": "shiguang:<64 位小写十六进制>", "code": "ABC234", "decision": "preview" }
+```
+
+- `subject` 由云函数从 `context.OPENID` 与 `APPID` 计算（第 6 节），云函数**不接受客户端传入的 subject 或 userId**。`decision` 取 `preview`（只查看是哪台电脑）、`confirm`、`deny`。
+- 成功响应：`preview` 返回 `{"outcome":"preview","clientHint":"Mac · Chrome","mode":"login"|"bind"}`；其他返回 `{"outcome":"confirmed"|"denied"|"merge_required"}`。`merge_required` 表示该微信已有自己的网页账号，本次没有绑定，也不做账号合并。
+- 错误：开关关闭或密钥不足 `503 bridge_not_configured`；验签失败 `401 invalid_bridge_signature`；重放 `401 replayed_request`；字段不合法 `400 invalid_input`；码不存在、已过期、已使用对外只有 `404 invalid_code`；限流 `429 rate_limited`；其他 `503 unavailable`。
+- 限流：同一 subject 每分钟 5 次、每小时 20 次，另有全局每分钟上限。
+- 网页侧请求有效期 120 秒，一次性；码、请求标识和浏览器验证值都只存带密钥的摘要。登录 cookie 只发给持有浏览器验证值的那个浏览器，会话属性与配对码登录一致。
+- 开关：网页 `WECHAT_SCAN_LOGIN_ENABLED`，云函数 `WEB_LOGIN_CONFIRM_ENABLED`，均默认关闭；复用现有桥接密钥与登录码摘要密钥。
+- 网页自身接口（不属于桥接口）：`POST /api/auth/wechat-scan/create`、`POST /api/auth/wechat-scan/poll`。
+- 小程序码出码（方案 A）本版本不包含，6 位码只是请求的展示形式，之后可替换展示方式而不改本节。
+
+### 1.6.0 测试向量 V2
+
+> 公开测试值，禁止配置到任何环境。密钥、APPID、OPENID、nonce 同 V1，路径 `/web-login/confirm`，timestamp `1789999200000`。
+
+正文：`{"subject":"shiguang:8bf5716e65f591b83c18b8e37ce6e4d2ed2985fac96c3d1dac30f85ea04451c1","code":"ABC234","decision":"confirm"}`
+
+| 输出 | 值 |
+|---|---|
+| 签名串 UTF-8 字节数 | `187` |
+| 签名串 SHA-256 | `cc4e564610ef759d039ba1dc12a74cba7c93ab0516920e9fe4f20e90fda46feb` |
+| signature | `fae8fa7340accaecfc87d8b8c8faf4fac7ed1288ca2f14228924e088975a38e2` |
+
+
 ## 变更记录
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| 1.6.0 | 2026-10-23 | 新增 `/web-login/confirm`：网页 6 位码登录确认与绑定微信（默认关闭，向后兼容）。签名测试向量 V1 不变，新增 V2。 |
 | 1.5.1 | 2026-09-19 | 电脑配对 nonce 改为 MySQL 原子领取，跨进程和重启后仍拒绝五分钟窗口内重放；`storyAccess` 只有在电脑权威地址、密钥和开关完整配置后才可落库。补充迁移先行、生产者最后开启和反向关闭的发布/回滚清单。 |
 | 1.0.0 | 2026-09-15 | 首版草案：如实记录 Drinking Time `9f7f9f4` 与拾光家忆 `d83f1ed` 的现有行为、已知缺口、待决定事项 D1 和提案 P1–P10；并入小程序端两轮核对：服务地址与挂载点、漏挂载点返回 200 首页及成功响应校验、标题与修订号的关系、`sourceKey` 跳变缺口、数组 `undefined`、云函数执行超时、云函数本地体积检查、小程序端实际上限 |
