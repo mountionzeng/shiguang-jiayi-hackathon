@@ -572,6 +572,31 @@ test("the interview cloud function returns one safe follow-up", async () => {
   }
 });
 
+test("the interview request carries the current-line rule only when a line is marked (mock model)", async () => {
+  const previousFetch = global.fetch;
+  const saved = ["CHAT_AI_API_KEY", "CHAT_AI_MODEL", "CHAT_AI_BASE_URL"].map(key => [key, process.env[key]]);
+  const requests = [];
+  process.env.CHAT_AI_API_KEY = "test-chat-key";
+  process.env.CHAT_AI_MODEL = "smart-chat-model";
+  process.env.CHAT_AI_BASE_URL = "https://chat-model.invalid/v1";
+  global.fetch = async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ dimension: "event", text: "这一行你想往哪个方向写？" }) } }] }) };
+  };
+  const base = { answer: "那年冬天我和外公在老屋门口等车。", askedDimensions: [], memberName: "林岚", storyTitle: "老屋门口", previousAnswers: [], conversation: [], memoryType: "memoir", replyIntent: "question" };
+  try {
+    await chatInterviewMain({ ...base, sourceText: "【用户停在第 2 行（共 3 行）：外公在等车】\n甲\n外公在等车\n丙" });
+    await chatInterviewMain({ ...base, sourceText: "甲\n外公在等车\n丙" });
+    assert.equal(requests.length, 2);
+    assert.match(requests[0].messages[0].content, /先问他想往哪个方向写，或给两三条思路；他回应之后再给改写/);
+    assert.match(requests[0].messages[1].content, /第 2 行（共 3 行）/);
+    assert.doesNotMatch(requests[1].messages[0].content, /先问他想往哪个方向写/);
+  } finally {
+    global.fetch = previousFetch;
+    for (const [key, value] of saved) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+});
+
 test("the interview history keeps both sides and tolerates old clients", () => {
   const conversation = chatInterviewTest.validateConversation([
     { role: "assistant", text: "当时有谁和你一起吗？" },

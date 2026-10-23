@@ -12,7 +12,7 @@
     </block>
     <block wx:else>
       <view class="section-title serif">{{chapter.title || '未命名章节'}}</view>
-      <text class="paragraph serif" wx:for="{{chapter.content}}" wx:key="index" wx:for-item="paragraph">{{paragraph.text}}</text>
+      <text class="paragraph serif" wx:for="{{readingLines[chapter.id]}}" wx:key="index" wx:for-item="paragraph">{{paragraph.text}}</text>
       <button wx:if="{{canEdit}}" class="secondary" data-id="{{chapter.id}}" bindtap="beginEdit" disabled="{{busy || loading || editChapterId}}">编辑这一章</button>
     </block>
   </view>

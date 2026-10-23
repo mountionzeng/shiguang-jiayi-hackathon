@@ -1,6 +1,8 @@
 import { exploreMemoryConnection, MemoryConnection } from "../../services/memoryConnections";
 import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft } from "../../services/chapterDraft";
 import { SendSnapshot, snapshotFromState, stageSendSnapshot } from "../../services/bookSend";
+import { LINE_CONTEXT_CHAT_ENABLED } from "../../config/runtime";
+import { displayLines, lineContextText, lineIndexFromRange, lineIndexFromSelection } from "../../services/lineContext";
 import { storyCoverApi } from "../../services/storyCoverService";
 import { logServiceFailure, SavedRefreshError } from '../../services/serviceFailure';
 import {
@@ -176,6 +178,7 @@ Page({
   xiaoyiAskedDimensions: [] as InterviewDimension[],
   xiaoyiConversation: [] as InterviewTurn[],
   xiaoyiContextCapturedText: "",
+  xiaoyiLineContext: "",
   onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string } = {}) {
     this.sendSnapshot = undefined;
     this.sendAccountScope = "";
@@ -1037,6 +1040,8 @@ Page({
       this.setData({ xiaoyiContextPreview: preview });
     };
     if (!this.editorContext || !this.data.editorReady) { void useFallback(); return; }
+    this.xiaoyiLineContext = "";
+    if (LINE_CONTEXT_CHAT_ENABLED) this.captureLineContext();
     this.editorContext.getSelectionText({
       success: result => {
         const selected = String(result.text ?? "").trim();
@@ -1056,6 +1061,30 @@ Page({
       fail: () => { void useFallback(); },
     });
   },
+  /** 打开小忆时顺带判断停在哪一行：不发请求，也不要求用户多点一下。拿不到可靠位置就留空。 */
+  captureLineContext() {
+    const ctx = this.editorContext;
+    if (!ctx) return;
+    const key = this.xiaoyiContextKey();
+    const apply = (index: number | null, plain: string) => {
+      if (key !== this.xiaoyiContextKey()) return;
+      this.xiaoyiLineContext = lineContextText(plain, index);
+    };
+    void this.collectEditor().then(() => {
+      const plain = this.bodyBuffer || plainText(this.contentBuffer);
+      const hasPhoto = imageCount(this.contentBuffer) > 0;
+      ctx.getSelectionText({
+        success: result => {
+          const selected = String(result.text ?? "").trim();
+          if (selected) { apply(lineIndexFromSelection(plain, selected), plain); return; }
+          // getSelection（基础库 3.7.11）给出光标下标；含照片时下标与纯文本对不上，不使用。
+          const withRange = ctx as unknown as { getSelection?: (o: { success: (r: { range?: { index?: number } }) => void }) => void };
+          if (hasPhoto || typeof withRange.getSelection !== "function") return;
+          withRange.getSelection({ success: r => apply(lineIndexFromRange(plain, Number(r.range?.index)), plain) });
+        },
+      });
+    }).catch(() => undefined);
+  },
   /** 就地小忆共享机制要读的场景参数：故事名与是否走客观记录模式。 */
   xiaoyiConfig(): XiaoyiConfig {
     return {
@@ -1067,7 +1096,8 @@ Page({
   },
   /** 就地小忆共享机制要读的当前文本：选区优先，否则当前章节正文。 */
   xiaoyiContextText() {
-    return this.xiaoyiContextCapturedText || this.bodyBuffer || plainText(this.contentBuffer);
+    const base = this.xiaoyiContextCapturedText || this.bodyBuffer || plainText(this.contentBuffer);
+    return LINE_CONTEXT_CHAT_ENABLED && this.xiaoyiLineContext ? this.xiaoyiLineContext + "\n" + base : base;
   },
   xiaoyiContextKey() { return [this.data.storyId, this.data.memberId, this.activeChapterId].join(":"); },
   xiaoyiMessagesAppend,
@@ -1616,14 +1646,14 @@ Page({
     this.setData({revisionLoading:false});
     this.setData({ previewVersion: version, previewBlocks: [] });
     const previewBlocks = await Promise.all((version.draft.content ?? version.draft.paragraphs.map(text => ({ text }))).map(async item => {
-      if (typeof item.text === "string") return { text: item.text };
+      if (typeof item.text === "string") return displayLines([item]);
       if (item.photoId && isStoryImageReference(item.photoId)) {
         const path = this.photoPaths[item.photoId];
-        return path ? { path } : { text: "〔AI 插图暂时无法读取〕" };
+        return [path ? { path } : { text: "〔AI 插图暂时无法读取〕" }];
       }
       const path = await readLocalPhoto(item.photoId!);
-      return path ? { path } : { text: "〔照片仅保存在原设备，本机不可用〕" };
-    }));
+      return [path ? { path } : { text: "〔照片仅保存在原设备，本机不可用〕" }];
+    })).then(groups => groups.flat());
     if (!this.unloaded && this.data.previewVersion?.id === version.id) this.setData({ previewBlocks });
   },
   restoreVersion() {

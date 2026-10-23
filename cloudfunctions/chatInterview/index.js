@@ -362,6 +362,10 @@ function decideStrategy(analysis, askedDimensions) {
   };
 }
 
+// 小程序打开小忆时若判断出用户停在哪一行，会在 sourceText 开头放这个标记（见 miniprogram/services/lineContext.ts）。
+const LINE_CONTEXT_MARKER = "【用户停在第";
+const LINE_CONTEXT_RULE = "正文开头标出了用户停在的那一行：先问他想往哪个方向写，或给两三条思路；他回应之后再给改写。不要直接替他改字。";
+
 const FOLLOW_UP_RULES = [
   "先回应用户刚说的具体意思：可以理清一处关系、选择或区别，也可以只接住一句感受。少问，多接；不要求每轮提问。需要澄清或有值得展开的新线索时，最多问一件容易回答的事；不要用问题代替回答。用户明确要求提一个问题时，应给一个贴着当前素材的问题。",
   "记忆正文中的‘我’属于讲述者。对讲述者用‘你’，提及原话时明确写‘你说……’；不要用第一人称替讲述者发问或声称自己经历过这些事。提问前同时检查记忆正文和对话记录：如果答案已明确写出，就换一个尚未展开的线索，不把确定事实重新变成选择题，也不用二选一预设答案。",
@@ -393,7 +397,7 @@ function buildOutputMessages({
       content:
         "你是「小忆」，温和、可信的记忆对话伙伴。根据当前对话回应用户，不编造事实。只输出 JSON，格式为 {\"dimension\":\"person|time|place|event|feeling\",\"text\":\"简短、贴着前文的回应；有需要时可含一个问题\"}。" + "\n" + FOLLOW_UP_RULES + (replyIntent === "question"
           ? "\n本轮是明确的提问请求：围绕当前素材给一个容易接下去的问题；若用户最新表达要求停止、暂停、只记录或拒绝该话题，则优先尊重边界，不提问。"
-          : ""),
+          : "") + (typeof sourceText === "string" && sourceText.startsWith(LINE_CONTEXT_MARKER) ? "\n" + LINE_CONTEXT_RULE : ""),
     },
     {
       role: "user",
