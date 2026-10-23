@@ -1,0 +1,42 @@
+{
+  "kind": "chapter-package",
+  "version": 2,
+  "packageId": "cp_fixture-0001",
+  "lineage": {
+    "rootPackageId": "cp_fixture-0001",
+    "parentPackageId": null
+  },
+  "createdAt": "2026-10-22T00:00:00.000Z",
+  "sender": {
+    "platform": "miniprogram",
+    "displayName": "小满"
+  },
+  "storyTitle": "外公和雨天",
+  "chapters": [
+    {
+      "chapterId": "chapter-childhood",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    }
+  ],
+  "assets": []
+}

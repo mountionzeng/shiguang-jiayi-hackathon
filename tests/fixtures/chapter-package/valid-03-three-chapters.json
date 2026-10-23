@@ -1,0 +1,70 @@
+{
+  "kind": "chapter-package",
+  "version": 1,
+  "packageId": "cp_fixture-0003",
+  "lineage": {
+    "rootPackageId": "cp_fixture-0003",
+    "parentPackageId": null
+  },
+  "createdAt": "2026-10-22T00:00:00.000Z",
+  "sender": {
+    "platform": "web",
+    "displayName": "本人"
+  },
+  "storyTitle": "一次远行",
+  "chapters": [
+    {
+      "chapterId": "chapter-one",
+      "title": "第一章",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-0bec4b01cba34fb86ada8ba29b007936541c389bf9ad8181e9e888bb57beef42",
+          "type": "text",
+          "text": "起点。"
+        },
+        {
+          "blockId": "block-3e17f319deddf0c954de5c35b4f87a54fbc6de06d1ebf1e299713390d8a7a7f3",
+          "type": "text",
+          "text": "出发。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-two",
+      "title": "第二章",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-d5b00de7156e098682d8c30b68cc7de6ba7be6d756d89609ca7811e8cc665c39",
+          "type": "text",
+          "text": "途中。"
+        },
+        {
+          "blockId": "block-d4584275bc587b4d4c2e048c65b05efa205a0ff974be88d8ec644d26993ce0d6",
+          "type": "text",
+          "text": "风很大。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-three",
+      "title": "第三章",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-fd12eda026f954f72c47e608495b908b4a8c76f89baefa44623211f744bb2284",
+          "type": "text",
+          "text": "到达。"
+        }
+      ],
+      "layout": null
+    }
+  ],
+  "assets": []
+}
