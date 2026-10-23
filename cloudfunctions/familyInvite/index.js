@@ -4,6 +4,7 @@ const {
   assertInvitationUsable,
   avatarTextFor,
   currentMemoryAttribution,
+  loadOwnNames,
   expiresAtFrom,
   inviteToken,
   normalizeContributionInput,
@@ -257,6 +258,15 @@ async function loadRoom(event, accountId) {
   const visibleMembers = visibleMembersForAccess(members, access, family.ownerAccountId);
   const visibleMemberIds = new Set(visibleMembers.map(member => member.memberId));
   const membersById = new Map(members.map(member => [member.memberId || member.id, member]));
+  // 投稿署名显示作者本人的称呼；主人自己跳过。一轮并行读取，失败时静默退回备注名。
+  const authorAccountId = authorMemberId => {
+    const author = membersById.get(authorMemberId);
+    return author && author.role !== "owner" ? author.accountId : undefined;
+  };
+  const ownNames = await loadOwnNames(
+    id => getDoc("user_accounts", id),
+    memories.map(memory => authorAccountId(memory.authorMemberId)).filter(Boolean),
+  );
 
   return {
     familyId,
@@ -276,7 +286,7 @@ async function loadRoom(event, accountId) {
       contributions: memories.map(memory => ({
         id: memory.frontendContributionId || memory._id,
         authorMemberId: memory.authorMemberId,
-        ...currentMemoryAttribution(memory, membersById.get(memory.authorMemberId)),
+        ...currentMemoryAttribution(memory, membersById.get(memory.authorMemberId), ownNames.get(authorAccountId(memory.authorMemberId))),
         text: memory.text,
         title: memory.title,
         summary: memory.summary,

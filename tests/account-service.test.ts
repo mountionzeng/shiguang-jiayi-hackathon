@@ -22,6 +22,18 @@ test("账号服务只接受已完成服务端绑定的微信身份", () => {
   assert.throws(() => accountServiceTest.parseAccount({ accountLinked: false }), /暂未关联/);
 });
 
+test("称呼被内容安全拒绝或检查不可用时，把服务端的原因原样告诉用户", () => {
+  assert.throws(
+    () => accountServiceTest.parseAccount({ accountLinked: false, profileError: { code: "PROFILE_NAME_REJECTED", message: "这个称呼暂时不能使用" } }),
+    /这个称呼暂时不能使用/,
+  );
+  assert.throws(
+    () => accountServiceTest.parseAccount({ accountLinked: false, profileError: { code: "PROFILE_CHECK_UNAVAILABLE", message: "暂时无法检查这个称呼，请稍后再试" } }),
+    /稍后再试/,
+  );
+  assert.throws(() => accountServiceTest.parseAccount({ accountLinked: false, profileError: {} }), /暂未关联/);
+});
+
 test("算力余额固定显示两位小数且不多显示不可用额度", () => {
   assert.equal(formatComputeBalance(10_000_000), "10.00 算力");
   assert.equal(formatComputeBalance(409_999), "0.40 算力");
