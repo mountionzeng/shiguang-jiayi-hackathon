@@ -305,7 +305,10 @@ Page({
       clearChapterDraft(localDraftKey, backup.token);
       backup = undefined;
     }
-    const conflict = !!backup && !acknowledged && backup.revisionId !== current.revisionId;
+    const conflict = !!backup && !acknowledged && (
+      backup.revisionId !== current.revisionId ||
+      (story && backup.storyVersion !== story.version)
+    );
     if (backup) {
       current = {draft:backup.draft, sourceFingerprint:backup.fingerprint, revisionId:acknowledged ? current.revisionId : backup.revisionId};
     }
@@ -315,7 +318,9 @@ Page({
     const derivedIntroduction = visibleChapters.map(chapter => plainText(chapter.content).trim()).filter(Boolean).join(" ").replace(/\s+/g, " ");
     this.introductionBuffer = current.draft?.introduction ?? (Array.from(derivedIntroduction).slice(0, 160).join("") + (Array.from(derivedIntroduction).length > 160 ? "…" : ""));
     let activeChapterId = backup?.chapterId || this.activeChapterId;
-    let view = backup?.view || this.data.view;
+    // A stale local draft remains recoverable, but must not trap a shelf visit
+    // in its last chapter. Let the owner choose from the retained book's contents.
+    let view = conflict ? "contents" : backup?.view || this.data.view;
     if (!visibleChapters.length) view = "contents";
     else if (!view) {
       view = visibleChapters.length === 1 ? "chapter" : "contents";
@@ -751,9 +756,9 @@ Page({
     }
   },
   retryLoad() { this.onShow(); },
-  canLeaveEditor() {
+  canLeaveEditor(allowLocalDraft = false) {
     if (this.data.connectionReflection.trim()) { wx.showToast({ title: "还有未保存的想法，请先保存或清空", icon: "none" }); return false; }
-    if (this.data.connectionSaving || this.data.editing || this.data.saving || this.data.generating || this.data.pickingPhoto || this.data.appendingOwn || this.collecting) {
+    if (this.data.connectionSaving || (this.data.editing && !allowLocalDraft) || this.data.saving || this.data.generating || this.data.pickingPhoto || this.data.appendingOwn || this.collecting) {
       wx.showToast({ title: this.data.editing ? "请先保存正文，或放弃修改" : "请稍等片刻", icon: "none" });
       return false;
     }
@@ -771,24 +776,38 @@ Page({
     if (this.data.view === "chapter") await this.backToContents();
     else await this.goHome();
   },
-  async finishEditing() {
+  async finishEditing(allowLocalDraft = false) {
     if (this.editSave) await this.editSave;
-    if (this.data.editing && !await this.saveEdits()) return false;
-    return this.canLeaveEditor();
+    if (this.data.editing && !await this.saveEdits()) {
+      if (!allowLocalDraft || !this.canLeaveEditor(true)) return false;
+      // Navigation may retain an unsynced draft, but it may not discard unread
+      // native input or bypass storage failure. Publishing still requires saving.
+      this.collecting = true;
+      try {
+        if (this.data.view === "chapter") await this.collectEditor();
+        if (this.editorError || !this.backupEdits()) return false;
+        this.chapters = chaptersOf(this.bufferedDraft()!, this.sourceFingerprint);
+      } catch {
+        this.setData({saveNotice:"无法读取完整正文，请留在本页重试保存或复制正文备份。"});
+        return false;
+      } finally { this.collecting = false; }
+    }
+    return this.canLeaveEditor(allowLocalDraft);
   },
   async backToContents() {
     if (this.data.openingChapter && this.data.loading) this.refreshId++;
     this.chapterOpenId++;
     this.pendingPhotoImportChapter = "";
-    if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
-    if (!this.canLeaveEditor()) return;
-    this.setData({ openingChapter: null, view: "contents", moreOpen: false, panel: "" });
+    if ((this.data.editing || this.editSave) && !await this.finishEditing(true)) return;
+    if (!this.canLeaveEditor(true)) return;
+    if (this.data.editing && !this.backupEdits("contents")) return;
+    this.setData({ openingChapter: null, view: "contents", moreOpen: false, panel: "", ...this.chapterData() });
   },
   async openChapter(event: { currentTarget: { dataset: { id: string } } }) {
     if (this.suppressChapterOpen) { this.suppressChapterOpen = false; return; }
     const openId = ++this.chapterOpenId;
-    if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
-    if (openId !== this.chapterOpenId || !this.canLeaveEditor()) return;
+    if ((this.data.editing || this.editSave) && !await this.finishEditing(true)) return;
+    if (openId !== this.chapterOpenId || !this.canLeaveEditor(true)) return;
     const id = event.currentTarget.dataset.id;
     if (this.pendingPhotoImportChapter && this.pendingPhotoImportChapter !== id) this.pendingPhotoImportChapter = "";
     const chapter = this.chapters.find(chapter => chapter.id === id);
@@ -800,7 +819,7 @@ Page({
       const panel = this.data.panel;
       await this.bookImagesReady;
       if (this.unloaded || refreshId !== this.refreshId || openId !== this.chapterOpenId ||
-          sequence !== this.editSequence || panel !== this.data.panel || !this.canLeaveEditor()) return;
+          sequence !== this.editSequence || panel !== this.data.panel || !this.canLeaveEditor(true)) return;
     }
     this.activeChapterId = id;
     resetXiaoyiPanel.call(this);
@@ -1253,7 +1272,7 @@ Page({
       : this.chapters;
     return draftWithChapters({...this.data.draft, title:this.titleBuffer, introduction:this.introductionBuffer}, chapters);
   },
-  backupEdits(): boolean {
+  backupEdits(view?: "chapter" | "contents"): boolean {
     if (this.data.protectedCopy) return false;
     try {
       const existing = this.localDraftKey ? readChapterDraft(this.localDraftKey) : undefined;
@@ -1261,7 +1280,7 @@ Page({
       const draft = this.bufferedDraft();
       if (!draft) return false;
       const backup = writeChapterDraft(this.localDraftKey, {
-        draft, chapterId:this.activeChapterId, view:this.data.view === "chapter" ? "chapter" : "contents",
+        draft, chapterId:this.activeChapterId, view:view ?? (this.data.view === "chapter" ? "chapter" : "contents"),
         revisionId:this.revisionId, storyVersion:this.story?.version, fingerprint:this.sourceFingerprint,
         ...(this.pendingSave ? {pendingSave:this.pendingSave} : {}),
         ...(this.editorError ? {editorError:this.editorError} : {}),
@@ -1422,9 +1441,11 @@ Page({
       this.revisionId = current.revisionId;
       this.story = this.data.storyId ? activeStory(state,this.data.storyId) : undefined;
       this.rememberSendSnapshot(state);
-      this.chapters = chaptersOf(current.draft!, current.sourceFingerprint);
       this.pendingSave = undefined;
       const unchanged = sequence === this.editSequence && JSON.stringify(draft) === JSON.stringify(pending.draft);
+      // A retried request can acknowledge an older snapshot. Keep the working
+      // book (including edits in other chapters) until the newer draft is saved.
+      this.chapters = chaptersOf(unchanged ? current.draft! : draft, current.sourceFingerprint);
       this.setData({draft:current.draft!, savedRevisionId:current.revisionId, history:manuscriptHistory(state,this.data.storyId || this.data.memberId), canUndo:false});
       if (unchanged) {
         clearChapterDraft(key,this.localDraftToken);
@@ -1974,8 +1995,10 @@ Page({
     wx.navigateTo({ url: audioCreatePath({ storyId: this.data.storyId, revisionId: this.data.savedRevisionId, chapterId: this.activeChapterId }) });
   },
   async goHome() {
-    if ((this.data.editing || this.editSave) && !await this.finishEditing()) return;
-    if (!this.canLeaveEditor()) return;
+    if ((this.data.editing || this.editSave) && !await this.finishEditing(true)) return;
+    if (!this.canLeaveEditor(true)) return;
+    if (this.data.editing && !this.backupEdits("contents")) return;
+    if (this.data.editing) this.setData({view:"contents"});
     const previous = typeof getCurrentPages === "function" ? getCurrentPages().slice(-2)[0] : undefined;
     if (previous && ["pages/index/index", "pages/stories/stories"].includes(previous.route)) {
       wx.navigateBack();

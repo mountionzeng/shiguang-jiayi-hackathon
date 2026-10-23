@@ -60,16 +60,29 @@ test('本机存储失败必须可见，不能显示已留存或静默退出', as
   await p.backToContents(); assert.equal(p.data.view,'chapter');
 });
 
-test('网络保存失败留在编辑页，重新进入恢复草稿后可重试', async () => {
+test('无法读取原生编辑器最新正文时不能把旧缓存当作完整草稿退出', async () => {
+  const {p,input,stored} = await setup(); input(p,'最后已知输入\n');
+  const before = structuredClone(stored.get('shiguang-family-room-v5').manuscriptRevisions);
+  p.editorContext = {getContents: ({fail}:any) => fail(Error('native read failed'))};
+  await p.onBack();
+  assert.equal(p.data.view,'chapter');
+  assert.equal(p.data.editing,true);
+  assert.match(p.data.saveNotice,/无法读取/);
+  assert.deepEqual(stored.get('shiguang-family-room-v5').manuscriptRevisions,before);
+});
+
+test('网络保存失败仍能回目录，重新进入保留草稿并可重试保存', async () => {
   const {p,page,input,stored} = await setup(); input(p,'断网前输入\n');
   const write = wx.setStorageSync;
   (wx as any).setStorageSync = (key:string,value:any) => {
     if (key === 'shiguang-family-room-v5') throw Error('模拟网络失败');
     write(key,value);
   };
-  await p.backToContents(); assert.equal(p.data.view,'chapter');
+  await p.backToContents(); assert.equal(p.data.view,'contents');
+  assert.equal(p.data.editing,true, 'local retention must not masquerade as a successful save');
   assert.match(p.data.saveNotice,/草稿已保留/);
   const reopened = page(); await reopened.refresh(); assert.equal(reopened.bodyBuffer,'断网前输入\n');
+  assert.equal(reopened.data.view,'contents');
   (wx as any).setStorageSync = write;
   await reopened.backToContents(); assert.equal(reopened.data.view,'contents');
   assert.equal(currentManuscript(stored.get('shiguang-family-room-v5'),'owner').draft!.chapters![0].content[0].text,'断网前输入\n');
@@ -85,6 +98,29 @@ test('保存过程中到达的新输入不会被保存回执覆盖，退出可�
   const reopened = page(); await reopened.refresh(); assert.equal(reopened.bodyBuffer.trim(),'先写的\n保存中继续输入');
 });
 
+test('断网后跨章编辑，旧保存请求恢复成功时不能抹掉另一章更新的本机文字', async () => {
+  const {p,input,stored} = await setup();
+  p.chapters.push({id:'chapter-b',title:'第二章',memoryIds:[],content:[{text:'第二章原文\n'}]});
+  const write=wx.setStorageSync;
+  (wx as any).setStorageSync=(key:string,value:any)=>{
+    if(key==='shiguang-family-room-v5') throw Error('offline');
+    write(key,value);
+  };
+  input(p,'第一次待重试的正文\n');
+  await p.saveEdits();
+  input(p,'第一章后续的新正文\n');
+  await p.backToContents();
+  await p.openChapter({currentTarget:{dataset:{id:'chapter-b'}}});
+  input(p,'第二章的新正文\n');
+  (wx as any).setStorageSync=write;
+  await p.saveEdits();
+  assert.equal(p.data.editing,true, 'acknowledging the older request must leave the newer draft pending');
+  assert.equal(p.chapters[0].content[0].text,'第一章后续的新正文\n');
+  await p.saveEdits();
+  const saved=currentManuscript(stored.get('shiguang-family-room-v5'),'owner');
+  assert.deepEqual(saved.draft!.chapters!.map(c=>c.content[0].text),['第一章后续的新正文\n','第二章的新正文\n']);
+});
+
 test('云端已有新版时保留本机正文，不覆盖新版', async () => {
   const {p,page,input,stored} = await setup(); input(p,'本机尚未提交\n');
   const state = stored.get('shiguang-family-room-v5');
@@ -95,8 +131,46 @@ test('云端已有新版时保留本机正文，不覆盖新版', async () => {
   const reopened = page(); await reopened.refresh();
   assert.match(reopened.data.saveNotice,/另有新版/);
   assert.equal(reopened.bodyBuffer,'本机尚未提交\n');
-  await reopened.backToContents(); assert.equal(reopened.data.view,'chapter');
+  assert.equal(reopened.data.view,'contents', 'a stale recovered draft must not force the user back into a chapter');
+  await reopened.openChapter({currentTarget:{dataset:{id:'chapter-a'}}});
+  assert.equal(reopened.data.view,'chapter');
+  await reopened.backToContents(); assert.equal(reopened.data.view,'contents');
+  const again = page(); await again.refresh();
+  assert.equal(again.bodyBuffer,'本机尚未提交\n');
   assert.equal(currentManuscript(stored.get('shiguang-family-room-v5'),'owner').revisionId,revision.id);
+});
+
+test('旧版本草稿可返回目录并切换章节，两章本机编辑都保留且不覆盖云端新版', async () => {
+  const {p,page,input,stored} = await setup();
+  p.chapters.push({id:'chapter-b',title:'第二章',memoryIds:[],content:[{text:'第二章原文\n'}]});
+  input(p,'第一章未同步\n');
+  const state = stored.get('shiguang-family-room-v5');
+  const remote = structuredClone(state.manuscriptRevisions[0].draft);
+  remote.chapters[0].content = [{text:'云端新正文\n'}];
+  const revision = makeRevision('owner',remote,'','draft','新版'); revision.savedAt='2099-01-01';
+  state.manuscriptRevisions.push(revision);
+  const remoteBefore = structuredClone(state.manuscriptRevisions);
+  await p.onBack();
+  assert.equal(p.data.view,'contents');
+  assert.equal(p.data.chapterRows.length,2);
+  assert.equal(p.data.editing,true);
+  await p.openChapter({currentTarget:{dataset:{id:'chapter-b'}}});
+  assert.equal(p.activeChapterId,'chapter-b');
+  input(p,'第二章也未同步\n');
+  await p.onBack();
+  assert.equal(p.data.view,'contents');
+  await p.openChapter({currentTarget:{dataset:{id:'chapter-a'}}});
+  assert.equal(p.bodyBuffer.trim(),'第一章未同步');
+  await p.onBack();
+  const reopened = page(); await reopened.refresh();
+  assert.equal(reopened.data.view,'contents');
+  assert.deepEqual(reopened.chapters.map((c:any)=>c.content[0].text),['第一章未同步\n','第二章也未同步\n']);
+  assert.deepEqual(stored.get('shiguang-family-room-v5').manuscriptRevisions,remoteBefore);
+  let home=''; (wx as any).reLaunch=({url}:any)=>{home=url;};
+  await reopened.goHome();
+  assert.equal(home,'/pages/index/index');
+  const afterHome=page(); await afterHome.refresh();
+  assert.deepEqual(afterHome.chapters,reopened.chapters);
 });
 
 test('明确放弃草稿后重开恢复保存版本', async () => {
@@ -104,6 +178,26 @@ test('明确放弃草稿后重开恢复保存版本', async () => {
   p.cancelEdit();
   const reopened = page(); await reopened.refresh(); assert.equal(reopened.bodyBuffer,'原文');
   assert.equal(reopened.data.editing,false);
+});
+
+test('故事版本变化但正文编号未变时，旧草稿也从目录恢复且保留版本护栏', async () => {
+  const {page,input,stored} = await setup();
+  const state = stored.get('shiguang-family-room-v5');
+  const revision = state.manuscriptRevisions[0]; revision.storyId='story-conflict';
+  state.storyMigration={version:1,status:'active',pending:[]};
+  state.stories=[{id:'story-conflict',familyId:'family-test',title:'测试书',bookTitle:'测试书',writingMode:'creative',
+    memoryIds:[],protagonistMemberIds:['owner'],version:1,currentRevisionId:revision.id,createdAt:'2026-10-22',updatedAt:'2026-10-22'}];
+  const p=page(); p.requestedStoryKey='story-conflict'; await p.refresh();
+  input(p,'故事版本冲突的本机正文\n');
+  state.stories[0].version=2;
+  const reopened=page(); reopened.requestedStoryKey='story-conflict'; await reopened.refresh();
+  assert.equal(reopened.data.view,'contents');
+  assert.match(reopened.data.saveNotice,/另有新版/);
+  assert.equal(reopened.bodyBuffer,'故事版本冲突的本机正文\n');
+  assert.equal(await reopened.saveEdits(),false);
+  assert.match(reopened.data.saveNotice,/故事已有更新/);
+  assert.equal(stored.get('shiguang-family-room-v5').stories[0].version,2);
+  assert.equal(currentManuscript(stored.get('shiguang-family-room-v5'),'story-conflict').revisionId,revision.id);
 });
 
 test('不同账号、故事的草稿键隔离，旧回执不能清掉新草稿', async () => {

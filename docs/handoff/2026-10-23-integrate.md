@@ -101,3 +101,13 @@
 ## 红线（沿用任务约定）
 
 不部署云函数（需要时由用户批准）；不开任何开关（`STORY_*`、`WEB_LOGIN_CONFIRM_ENABLED`、`LINE_CONTEXT_CHAT_ENABLED`、`CHAPTER_PACKAGE_ENABLED`）；不提交 `CLOUD_AI_RELEASE_READY=true`；不改 `sourceFingerprint`、`assertSpaceOwner`、重置护栏、内容安全；不碰 `/Users/yuandai/Documents/ChatGPT/DK—小程序`；不 reset/stash/clean；不合 main、不 push、不提交审核、不上传体验版。
+
+## Codex 接手增量：目录返回修复纳入（2026-10-23）
+
+- 用户明确确认开发者工具及云环境已空闲，并批准「目录返回」修复纳入本版。
+- 原补丁来自 `codex/integrate-invite-20261016@93fc0b9` 工作树的未提交差异；仅将 `miniprogram/pages/book/book.ts` 和 `tests/chapter-autosave.test.ts` 应用到本整合分支。原工作树的三个未提交文件保持原样，不在那里提交或清理。此补丁以后若在原分支提交，整合时须按 patch 等价处理，避免重复应用。
+- 新版保存失败时，只有目录、切章、回书架可以在完整读回编辑器且本机备份成功后继续；仍显示未同步，仍保留故事版本校验，发送与结构修改继续要求保存。
+- `npm run check`：类型检查通过，1,389 项测试全部通过，0 失败。`git diff --check` 通过。定向草稿测试 15 项覆盖冲突、断网、双章编辑、迟到回执、读取/存储失败及账号隔离。按用户工具映射在主线程逐项审查，没有启动子智能体；未发现需要追加修改的阻断项。
+- 本次重新下载了 9 个云函数。getOpenId（6 文件）、storyBooks（33）、familyInvite（4）与 aaaba5f 一致；drinkingTimeBridge（4）与 ba29150 一致。recordAiConsent（3）、organizeMemory（10）、generateBiography（7）、storyImages（19）也与当前本地一致。
+- **修正上文的出码判断：** chatInterview 12 个文件中仅 index.js 有差异，线上缺少当前行提示规则。虽 LINE_CONTEXT_CHAT_ENABLED=false 不触发该规则，但标准 release-evidence/preview 脚本仍要求源码完全一致，因此不能直接按「本次不用部署」出码。真实云快照已留存于本会话 work/cloud-snapshot-20261023-132547；仅在用户批准后部署该函数并重新下载核对。不得绕过门禁。
+- 电脑端实际验收、测试增量清理、真实模型验证及新二维码仍未完成；本次测试通过不能替代这些证据。
