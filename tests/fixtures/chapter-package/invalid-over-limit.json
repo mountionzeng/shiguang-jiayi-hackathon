@@ -1,0 +1,762 @@
+{
+  "kind": "chapter-package",
+  "version": 1,
+  "packageId": "cp_fixture-0001",
+  "lineage": {
+    "rootPackageId": "cp_fixture-0001",
+    "parentPackageId": null
+  },
+  "createdAt": "2026-10-22T00:00:00.000Z",
+  "sender": {
+    "platform": "miniprogram",
+    "displayName": "小满"
+  },
+  "storyTitle": "外公和雨天",
+  "chapters": [
+    {
+      "chapterId": "chapter-n0",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n1",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n2",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n3",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n4",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n5",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n6",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n7",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n8",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n9",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n10",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n11",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n12",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n13",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n14",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n15",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n16",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n17",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n18",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n19",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n20",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n21",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n22",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n23",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n24",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n25",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n26",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n27",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n28",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n29",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "chapterId": "chapter-n30",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": null
+    }
+  ],
+  "assets": []
+}
