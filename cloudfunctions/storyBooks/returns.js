@@ -2,6 +2,7 @@ const crypto=require('node:crypto');
 const core=require('./core');
 const {assertSpaceOwner,identityError}=require('./identity');
 const {applyBlockEdits,materializeOwnedDraft,protocolError}=require('./provenance');
+const {ownNamesByPrincipal}=require('./displayNames');
 const digest=value=>crypto.createHash('sha256').update(core.stable(value)).digest('hex');
 const docId=(family,id)=>`${family}_${id}`;
 const exact=(value,fields)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>fields.includes(key));
@@ -61,8 +62,11 @@ async function listReturns(repo,ctx){
   if(index&&(index.familyId!==ctx.familyId||index.principalId!==ctx.principalId||!Array.isArray(index.returnIds)||index.returnIds.length>200))throw protocolError();
   const rows=[];for(const id of index?.returnIds||[]){if(RETURN.test(id)){const row=await repo.get('story_returns',id);if(row)rows.push({_id:id,...row});}}
   await assertSpaceOwner(repo,ctx);
-  return {returns:rows.filter(row=>row.sourceOwnerPrincipalId===ctx.principalId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(row=>({
-    returnId:row._id,status:row.status,sourceStoryId:row.sourceStoryId,sourceChapterId:row.sourceChapterId,senderName:row.senderName||'一位亲友',senderMemberId:row.senderMemberId||'',blocks:row.blocks,createdAt:row.createdAt,
+  const final=rows.filter(row=>row.sourceOwnerPrincipalId===ctx.principalId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  // 署名用发送者本人的称呼；读不到时退回送出那一刻记下的备注名。只解析最终要返回的行。
+  const own=await ownNamesByPrincipal(repo,final.map(row=>row.senderPrincipalId));
+  return {returns:final.map(row=>({
+    returnId:row._id,status:row.status,sourceStoryId:row.sourceStoryId,sourceChapterId:row.sourceChapterId,senderName:own.get(row.senderPrincipalId)||row.senderName||'一位亲友',senderMemberId:row.senderMemberId||'',blocks:row.blocks,createdAt:row.createdAt,
     decidedAt:row.decidedAt||'',resultRevisionId:row.resultRevisionId||'',
   }))};
 }

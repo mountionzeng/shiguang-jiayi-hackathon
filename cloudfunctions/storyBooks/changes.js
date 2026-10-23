@@ -1,4 +1,5 @@
 const { assertSpaceOwner, identityError, FAMILY_ID } = require('./identity');
+const { ownNamesByPrincipal } = require('./displayNames');
 
 const STORY_ID = /^story-[a-z0-9-]{1,100}$/;
 const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
@@ -49,7 +50,7 @@ async function names(tx, familyId, storyId) {
 async function listChapterChanges(repo, ctx, input) {
   if (!input || !FAMILY_ID.test(input.familyId || '') || input.familyId !== ctx.familyId ||
       !STORY_ID.test(input.storyId || '') || !CHAPTER_ID.test(input.chapterId || '')) throw identityError();
-  return repo.transaction(async tx => {
+  const found = await repo.transaction(async tx => {
     await assertSpaceOwner(tx, ctx);
     const story = await tx.get('stories', `${ctx.familyId}_${input.storyId}`);
     if (!story || story.familyId !== ctx.familyId || story.id !== input.storyId || story.deletedAt) throw identityError();
@@ -70,7 +71,7 @@ async function listChapterChanges(repo, ctx, input) {
           const blocks = diffBlocks(textBlocks(before), textBlocks(after));
           const titleChanged = (before.title || '') !== (after.title || '');
           if (blocks.length || titleChanged) {
-            changes.push({ revisionId, by: who.get(revision.editedByPrincipalId) || '一位亲友', savedAt: revision.savedAt,
+            changes.push({ revisionId, by: who.get(revision.editedByPrincipalId) || '一位亲友', savedAt: revision.savedAt, editorPrincipalId: revision.editedByPrincipalId,
               ...(titleChanged ? { title: { before: clip(before.title || ''), after: clip(after.title || '') } } : {}), blocks });
           }
         }
@@ -79,6 +80,9 @@ async function listChapterChanges(repo, ctx, input) {
     }
     return { changes };
   });
+  // 名字只用来显示：事务结束后再并行查本人称呼，不放大事务冲突窗口；读不到就保留备注名。
+  const own = await ownNamesByPrincipal(repo, found.changes.map(change => change.editorPrincipalId));
+  return { changes: found.changes.map(({ editorPrincipalId, ...change }) => ({ ...change, by: own.get(editorPrincipalId) || change.by })) };
 }
 
 module.exports = { listChapterChanges, diffBlocks };
