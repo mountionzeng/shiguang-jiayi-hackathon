@@ -44,4 +44,26 @@ function issueDesktopResultShapeError(contentType, data) {
   if(snapshot===authority)return "bridge_unavailable";
   return null;
 }
-module.exports = { bridgeUrl, canonicalJson, issueDesktopResultShapeError, requestBody, signature, subjectFor };
+// 契约 1.6.0：网页登录确认。subject 只由 context 的 APPID/OPENID 计算，
+// event 里传入的 subject、userId 等一概忽略；只取 code 和 decision。
+const WEB_LOGIN_DECISIONS = ["preview", "confirm", "deny"];
+function webLoginBody(event, context, options = {}) {
+  const openid = String(context && context.OPENID || "").trim();
+  if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
+  const appid = String(context && context.APPID || options.appIdFallback || "").trim();
+  if (!appid) throw new Error("APPID_NOT_AVAILABLE");
+  const code = String(event && event.code || "").trim().toUpperCase().replace(/[\s-]/g, "");
+  const decision = String(event && event.decision || "");
+  if (!/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(code) || !WEB_LOGIN_DECISIONS.includes(decision)) throw new Error("invalid_input");
+  return { subject: subjectFor(appid, openid), code, decision };
+}
+function webLoginResultShapeError(contentType, data) {
+  if (!/^application\/json\b/i.test(String(contentType || ""))) return "bridge_unavailable";
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "bridge_unavailable";
+  if (data.outcome === "preview") {
+    if (typeof data.clientHint !== "string" || data.clientHint.length > 40 || !["login", "bind"].includes(data.mode)) return "bridge_unavailable";
+    return null;
+  }
+  return ["confirmed", "denied", "merge_required"].includes(data.outcome) ? null : "bridge_unavailable";
+}
+module.exports = { webLoginBody, webLoginResultShapeError, bridgeUrl, canonicalJson, issueDesktopResultShapeError, requestBody, signature, subjectFor };

@@ -1,7 +1,7 @@
 const cloud = require("wx-server-sdk");
 const https = require("node:https");
 const crypto = require("node:crypto");
-const { bridgeUrl, issueDesktopResultShapeError, signature } = require("./core");
+const { bridgeUrl, issueDesktopResultShapeError, signature, webLoginBody, webLoginResultShapeError } = require("./core");
 const { prepareDesktopBody } = require("./egress");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -14,8 +14,8 @@ function reader(target){
 }
 const repo={transaction:fn=>db.runTransaction(tx=>fn(reader(tx)))};
 
-const paths = { issueDesktop: "/desktop/pair/issue" };
-function post(baseUrl, path, body, secret) {
+const paths = { issueDesktop: "/desktop/pair/issue", confirmWebLogin: "/web-login/confirm" };
+function post(baseUrl, path, body, secret, shapeError = issueDesktopResultShapeError) {
   const timestamp = String(Date.now());
   const nonce = crypto.randomBytes(18).toString("base64url");
   const url = bridgeUrl(baseUrl, path);
@@ -44,8 +44,8 @@ function post(baseUrl, path, body, secret) {
         let data = {};
         try { data = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch {}
         if ((response.statusCode || 500) >= 200 && (response.statusCode || 500) < 300) {
-          const shapeError = issueDesktopResultShapeError(response.headers["content-type"], data);
-          shapeError ? finish(new Error(shapeError)) : finish(null, data);
+          const badShape = shapeError(response.headers["content-type"], data);
+          badShape ? finish(new Error(badShape)) : finish(null, data);
         } else finish(new Error(data.error || "bridge_unavailable"));
       });
       response.on("error", error => finish(error));
@@ -63,8 +63,16 @@ async function main(event = {}) {
   const secret = String(process.env.DRINKING_TIME_BRIDGE_SECRET || "");
   if (!/^https:\/\//.test(baseUrl) || secret.length < 32) throw new Error("bridge_not_configured");
   const action = String(event.action || "");
+  // 只告诉小程序入口要不要显示，不碰网络、不泄露任何配置值。
+  if (action === "webLoginEnabled") return { enabled: process.env.WEB_LOGIN_CONFIRM_ENABLED === "true" };
   const path = paths[action];
   if (!path) throw new Error("UNKNOWN_BRIDGE_ACTION");
+  if (action === "confirmWebLogin") {
+    // 默认关闭；开关只在云函数环境变量里，客户端无法打开。
+    if (process.env.WEB_LOGIN_CONFIRM_ENABLED !== "true") throw new Error("web_login_disabled");
+    const loginBody = webLoginBody(event, context, { appIdFallback: process.env.WECHAT_APP_ID });
+    return post(baseUrl, path, loginBody, secret, webLoginResultShapeError);
+  }
   const body = await prepareDesktopBody(repo, event, context, {
     bootstrapAppId: process.env.STORY_IDENTITY_BOOTSTRAP_APP_ID || process.env.WECHAT_APP_ID,
     authorityEnabled:process.env.STORY_DESKTOP_AUTHORITY_ENABLED==='true',

@@ -40,6 +40,8 @@ export interface DesktopTransferResult {
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
+  web_login_disabled: "电脑登录暂时没有开放",
+  invalid_code: "码无效或已过期",
   STORY_PROTOCOL_REQUIRED: "这本故事包含来源限制，暂时不能传到电脑",
   STORY_SAVE_REQUIRED: "请先在小程序保存书稿，再传到电脑",
   REVISION_CHANGED: "故事已更新，请刷新后重新传到电脑",
@@ -165,3 +167,34 @@ export async function createDesktopStoryCode(state: FamilyRoomState, key: string
 }
 
 export const drinkingTimeAccountTest = { fingerprint, friendlyBridgeError, transferResult };
+
+export interface WebLoginPreview {
+  clientHint: string;
+  mode: "login" | "bind";
+}
+export type WebLoginOutcome = "confirmed" | "denied" | "merge_required";
+
+/** 入口是否显示。开关只在云函数环境变量里；失败一律当作关闭。 */
+export async function webLoginEntryEnabled(): Promise<boolean> {
+  try {
+    const result = (await call("webLoginEnabled")) as { enabled?: unknown };
+    return result.enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 只传 code 和 decision；身份由云函数从微信上下文计算，这里没有任何身份参数。 */
+export async function previewWebLogin(code: string): Promise<WebLoginPreview> {
+  const result = (await call("confirmWebLogin", { code, decision: "preview" })) as Partial<WebLoginPreview> & { outcome?: string };
+  if (result.outcome !== "preview" || typeof result.clientHint !== "string" || (result.mode !== "login" && result.mode !== "bind")) {
+    throw new Error("暂时无法连接电脑端");
+  }
+  return { clientHint: result.clientHint, mode: result.mode };
+}
+
+export async function decideWebLogin(code: string, decision: "confirm" | "deny"): Promise<WebLoginOutcome> {
+  const result = (await call("confirmWebLogin", { code, decision })) as { outcome?: string };
+  if (result.outcome === "confirmed" || result.outcome === "denied" || result.outcome === "merge_required") return result.outcome;
+  throw new Error("暂时无法连接电脑端");
+}

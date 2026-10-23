@@ -1,3 +1,4 @@
+import { webLoginEntryEnabled } from "../../services/drinkingTimeAccount";
 import {
   accountOwner,
   contributionScope,
@@ -53,6 +54,7 @@ Page({
     checkingPhotoCount: 0,
     pendingPhotoCount: 0,
     deletingPhotos: false,
+    webLoginEnabled: false,
   },
 
   onShow() {
@@ -62,6 +64,7 @@ Page({
     clearInterval(this._computeTimer);
     void this.refreshCompute();
     void this.refreshTextCompute();
+    void webLoginEntryEnabled().then(enabled => this.setData({ webLoginEnabled: enabled }));
     this._computeTimer = setInterval(() => { void this.refreshCompute(); void this.refreshTextCompute(); }, 5000);
     void this.refresh().catch((error) => { logLoadError("me", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
   },
@@ -235,6 +238,7 @@ Page({
   openFamilyHome() {
     wx.navigateTo({ url: "/pages/room/room" });
   },
+  openWebLogin() { wx.navigateTo({ url: "/packages/web-login/pages/confirm/index" }); },
   openAccountLink() { wx.navigateTo({ url: "/pages/account-link/account-link" }); },
 
   openJoinedRoom(event: { currentTarget: { dataset: { id: string } } }) {

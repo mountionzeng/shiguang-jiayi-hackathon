@@ -1,0 +1,23 @@
+<view class="page">
+  <view class="title">登录电脑</view>
+  <block wx:if="{{step==='input'}}">
+    <view class="note">输入电脑网页上显示的 6 位码。只在你自己面前的电脑上输入。</view>
+    <input class="code-input" maxlength="8" value="{{code}}" bindinput="onInput" placeholder="6 位码" />
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+    <button class="primary" bindtap="lookup" disabled="{{busy || code.length < 6}}">下一步</button>
+  </block>
+  <block wx:elif="{{step==='confirm'}}">
+    <view class="card">
+      <view class="device">{{clientHint}}</view>
+      <view class="note">{{mode==='bind' ? '这台电脑想把你的微信绑定到它当前登录的账号。' : '这台电脑想用你的微信账号登录。'}}</view>
+      <view class="warn">请确认这台电脑就在你面前。不是你本人操作的，请点拒绝。</view>
+    </view>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+    <button class="primary" bindtap="decide" data-decision="confirm" disabled="{{busy}}">确认登录</button>
+    <button class="ghost" bindtap="decide" data-decision="deny" disabled="{{busy}}">拒绝</button>
+  </block>
+  <block wx:else>
+    <view class="card"><view class="note">{{resultText}}</view></view>
+    <button class="primary" bindtap="back">完成</button>
+  </block>
+</view>
