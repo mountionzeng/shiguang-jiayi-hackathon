@@ -59,9 +59,18 @@ const ERROR_MESSAGES: Record<string, string> = {
   unavailable: "电脑端暂时不可用",
 };
 
-function friendlyBridgeError(error: unknown): Error {
+const WEB_LOGIN_ERROR_MESSAGES: Record<string, string> = {
+  invalid_input: "码无效或已过期",
+  rate_limited: "尝试得太频繁了，请稍后再试",
+  replayed_request: "这次请求已经处理，请重新输入电脑上的码",
+};
+
+function friendlyBridgeError(error: unknown, action?: string): Error {
   const raw = error instanceof Error ? error.message : String(error ?? "");
   const code = Object.keys(ERROR_MESSAGES).find(key => raw.includes(key));
+  if (code && action === "confirmWebLogin" && WEB_LOGIN_ERROR_MESSAGES[code]) {
+    return new Error(WEB_LOGIN_ERROR_MESSAGES[code]);
+  }
   return new Error(code ? ERROR_MESSAGES[code] : "暂时无法连接电脑端");
 }
 
@@ -72,7 +81,7 @@ async function call(action: string, data: Record<string, unknown> = {}): Promise
     if (!response.result || typeof response.result !== "object") throw new Error("bridge_unavailable");
     return response.result;
   } catch (error) {
-    throw friendlyBridgeError(error);
+    throw friendlyBridgeError(error, action);
   }
 }
 

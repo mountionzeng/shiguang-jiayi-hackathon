@@ -58,18 +58,21 @@ function post(baseUrl, path, body, secret, shapeError = issueDesktopResultShapeE
 }
 
 async function main(event = {}) {
-  const context = cloud.getWXContext();
+  const action = String(event.action || "");
+  // 关闭态先返回，不依赖尚未配置的桥接服务，也不读取微信身份。
+  if (process.env.WEB_LOGIN_CONFIRM_ENABLED !== "true") {
+    if (action === "webLoginEnabled") return { enabled: false };
+    if (action === "confirmWebLogin") throw new Error("web_login_disabled");
+  }
   const baseUrl = String(process.env.DRINKING_TIME_BRIDGE_BASE_URL || "").trim();
   const secret = String(process.env.DRINKING_TIME_BRIDGE_SECRET || "");
   if (!/^https:\/\//.test(baseUrl) || secret.length < 32) throw new Error("bridge_not_configured");
-  const action = String(event.action || "");
   // 只告诉小程序入口要不要显示，不碰网络、不泄露任何配置值。
-  if (action === "webLoginEnabled") return { enabled: process.env.WEB_LOGIN_CONFIRM_ENABLED === "true" };
+  if (action === "webLoginEnabled") return { enabled: true };
   const path = paths[action];
   if (!path) throw new Error("UNKNOWN_BRIDGE_ACTION");
+  const context = cloud.getWXContext();
   if (action === "confirmWebLogin") {
-    // 默认关闭；开关只在云函数环境变量里，客户端无法打开。
-    if (process.env.WEB_LOGIN_CONFIRM_ENABLED !== "true") throw new Error("web_login_disabled");
     const loginBody = webLoginBody(event, context, { appIdFallback: process.env.WECHAT_APP_ID });
     return post(baseUrl, path, loginBody, secret, webLoginResultShapeError);
   }
