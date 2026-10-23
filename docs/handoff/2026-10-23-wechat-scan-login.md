@@ -39,3 +39,16 @@
 - 没有做端到端验证：没有部署、没有真机、没有连云环境。组件只有静态渲染测试，没在浏览器里看过。
 - 没有确认企业环境是否已部署 `drinkingTimeBridge`、环境变量是否配齐、正式站是否开启 `SHIGUANG_BRIDGE_ENABLED`。
 - 测试环境没有 jsdom，所以登录面板的轮询逻辑没有交互测试。
+
+## 部署记录（2026-10-23）
+
+状态：**已部署，Active，脚本验证通过，但线上源码未回读核实。** 不能写成部署成功。
+
+- 函数：只部署 `drinkingTimeBridge`，环境 `cloud1-d5ghzk30ve609f544`，AppID `wx86ae3e9d507ce52d`。没有部署 getOpenId、storyBooks、familyInvite 等其他云函数，没有设置任何环境变量，两个开关仍关闭。
+- 源码：`ba2915040ea93726c716ef5a0ea022bf1ff12a4c`，分支 `codex/wechat-scan-login-20261022`，包含 main `235932e`，工作树干净。
+- 命令：`node scripts/wechat-cloud-deploy.mjs --execute --env cloud1-d5ghzk30ve609f544 --only drinkingTimeBridge`。部署前干跑确认计划只含 `drinkingTimeBridge`。
+- 第一次执行报「CLI 报告失败」，输出被脚本隐藏，原因未知。第一次失败后下载到的云端代码只是 206 字节的 Hello World 示例，说明那次没有传上代码。
+- 第二次执行成功，脚本内 `info` 验证为 Active，时间 2026-10-23T03:52:06Z。
+- 部署后回读源码：共尝试 6 次下载，每次都下载到新空目录，全部 ECONNRESET，没有取得任何文件，所以没有做逐文件比对。没有重新部署。
+- **待办：** 网络恢复后补做比对。下载云端 `drinkingTimeBridge`，与 `cloudfunctions/drinkingTimeBridge` 逐文件比对，排除 `node_modules` 和 `package-lock.json`，确认 `core.js`、`egress.js`、`package.json` 都在、`index.js` 不是示例、文件数一致。比对一致之前，不要打开 `WEB_LOGIN_CONFIRM_ENABLED`。
+- 未做：没有上传小程序开发版，没有出二维码，没有真机验证。网页端发布记录见 drinking-time-local 的 `docs/qa/2026-10-23-wechat-scan-login-release.md`。
