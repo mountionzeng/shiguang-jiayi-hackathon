@@ -1,0 +1,79 @@
+{
+  "kind": "chapter-package",
+  "version": 1,
+  "packageId": "cp_fixture-0001",
+  "lineage": {
+    "rootPackageId": "cp_fixture-0001",
+    "parentPackageId": null
+  },
+  "createdAt": "2026-10-22T00:00:00.000Z",
+  "sender": {
+    "platform": "miniprogram",
+    "displayName": "小满"
+  },
+  "storyTitle": "外公和雨天",
+  "chapters": [
+    {
+      "chapterId": "chapter-childhood",
+      "title": "外公和雨天",
+      "containsAiText": false,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-11d9d6532aaaffbef0a0f2e953550fdfe4f9023f364b507be04fe1c130713df5",
+          "type": "text",
+          "text": "外公总在雨天煮姜茶。"
+        },
+        {
+          "blockId": "block-1d57db4abb3c28387107012482172ab39052601b4f55ec76701808f8dffafa86",
+          "type": "text",
+          "text": "我蹲在灶边看火。"
+        },
+        {
+          "blockId": "block-cb43430cc384aab130e047726d4b20dec048a03874d9cb49d402c597a6cf1027",
+          "type": "text",
+          "text": "他说，雨会停的。"
+        }
+      ],
+      "layout": {
+        "canvas": {
+          "width": 900,
+          "height": 1200
+        },
+        "settings": {
+          "fontId": "noto-serif-sc",
+          "style": "sage",
+          "texture": "paper",
+          "textureSeed": 1,
+          "includeCover": false,
+          "bodyTextureAssetId": null
+        },
+        "pages": [
+          {
+            "label": "正文",
+            "modules": [
+              {
+                "id": "paragraph-0",
+                "kind": "text",
+                "bind": {
+                  "blockId": "block-0000000000000000000000000000000000000000000000000000000000000000"
+                },
+                "rect": {
+                  "x": 45,
+                  "y": 96,
+                  "width": 810,
+                  "height": 60
+                },
+                "fontSize": 36,
+                "contentWidth": 810,
+                "contentHeight": 60,
+                "alignment": "start"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "assets": []
+}

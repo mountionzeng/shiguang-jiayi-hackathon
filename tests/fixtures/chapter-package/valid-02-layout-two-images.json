@@ -1,0 +1,196 @@
+{
+  "kind": "chapter-package",
+  "version": 1,
+  "packageId": "cp_fixture-0002",
+  "lineage": {
+    "rootPackageId": "cp_fixture-0002",
+    "parentPackageId": null
+  },
+  "createdAt": "2026-10-22T00:00:00.000Z",
+  "sender": {
+    "platform": "web",
+    "displayName": "阿远"
+  },
+  "storyTitle": "码头的清晨",
+  "chapters": [
+    {
+      "chapterId": "chapter-harbor",
+      "title": "码头的清晨",
+      "containsAiText": false,
+      "cover": {
+        "assetId": "asset-c91e1483fcac0a357c3150b576b487f4"
+      },
+      "blocks": [
+        {
+          "blockId": "block-771e50ea67575155461a370bf0bf6f406e5875d53470a8f053a95f4469b178e7",
+          "type": "text",
+          "text": "天刚亮，码头已经很吵。"
+        },
+        {
+          "blockId": "block-98bc72e784e43a0419da96536fbaa7822556e39574b20c7b85bd81e289ec595b",
+          "type": "image",
+          "assetId": "asset-e1553429625a880543f0874138f21730"
+        },
+        {
+          "blockId": "block-6bd5b3af51b97a34717fb7c280ec63257f09f0549b750f0dc73bda80189aaafb",
+          "type": "text",
+          "text": "母亲提着竹篮走在前面。"
+        },
+        {
+          "blockId": "block-84fe0528f8c3714cf388b91aabe433e5f410f9a28cd2b6f2cb75875cc675a2c7",
+          "type": "text",
+          "text": "我们坐上最早的船。"
+        }
+      ],
+      "layout": {
+        "canvas": {
+          "width": 900,
+          "height": 1200
+        },
+        "flowVersion": 1,
+        "settings": {
+          "fontId": "noto-serif-sc",
+          "style": "sage",
+          "texture": "paper",
+          "textureSeed": 7,
+          "includeCover": true,
+          "bodyTextureAssetId": null
+        },
+        "pages": [
+          {
+            "label": "封面",
+            "modules": [
+              {
+                "id": "cover-image",
+                "rect": {
+                  "x": 65,
+                  "y": 110,
+                  "width": 770,
+                  "height": 710
+                },
+                "kind": "image",
+                "assetId": "asset-c91e1483fcac0a357c3150b576b487f4",
+                "crop": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1,
+                  "height": 1
+                }
+              },
+              {
+                "id": "cover-title",
+                "rect": {
+                  "x": 63,
+                  "y": 840,
+                  "width": 774,
+                  "height": 228
+                },
+                "kind": "text",
+                "bind": {
+                  "chapterTitle": true
+                },
+                "fontSize": 60,
+                "contentWidth": 774,
+                "contentHeight": 228,
+                "alignment": "center"
+              }
+            ]
+          },
+          {
+            "label": "正文 · 插图",
+            "modules": [
+              {
+                "id": "paragraph-0",
+                "rect": {
+                  "x": 45,
+                  "y": 96,
+                  "width": 810,
+                  "height": 60
+                },
+                "kind": "text",
+                "bind": {
+                  "blockId": "block-771e50ea67575155461a370bf0bf6f406e5875d53470a8f053a95f4469b178e7"
+                },
+                "fontSize": 36,
+                "contentWidth": 810,
+                "contentHeight": 60,
+                "alignment": "start"
+              },
+              {
+                "id": "image-0",
+                "rect": {
+                  "x": 80,
+                  "y": 180,
+                  "width": 740,
+                  "height": 416.25
+                },
+                "kind": "image",
+                "assetId": "asset-e1553429625a880543f0874138f21730",
+                "crop": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1,
+                  "height": 1
+                }
+              },
+              {
+                "id": "paragraph-1",
+                "rect": {
+                  "x": 45,
+                  "y": 620,
+                  "width": 810,
+                  "height": 60
+                },
+                "kind": "text",
+                "bind": {
+                  "blockId": "block-6bd5b3af51b97a34717fb7c280ec63257f09f0549b750f0dc73bda80189aaafb"
+                },
+                "fontSize": 36,
+                "contentWidth": 810,
+                "contentHeight": 60,
+                "alignment": "start"
+              },
+              {
+                "id": "paragraph-2",
+                "rect": {
+                  "x": 45,
+                  "y": 700,
+                  "width": 810,
+                  "height": 60
+                },
+                "kind": "text",
+                "bind": {
+                  "blockId": "block-84fe0528f8c3714cf388b91aabe433e5f410f9a28cd2b6f2cb75875cc675a2c7"
+                },
+                "fontSize": 36,
+                "contentWidth": 810,
+                "contentHeight": 60,
+                "alignment": "start"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "assets": [
+    {
+      "assetId": "asset-c91e1483fcac0a357c3150b576b487f4",
+      "mime": "image/jpeg",
+      "bytes": 120000,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "width": 1200,
+      "height": 800,
+      "aiGenerated": false
+    },
+    {
+      "assetId": "asset-e1553429625a880543f0874138f21730",
+      "mime": "image/jpeg",
+      "bytes": 120000,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "width": 1200,
+      "height": 800,
+      "aiGenerated": false
+    }
+  ]
+}

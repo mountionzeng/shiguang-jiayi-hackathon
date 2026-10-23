@@ -7,6 +7,7 @@ function stable(value) {
   if (value && typeof value === 'object') return '{' + Object.keys(value).sort().filter(k => value[k] !== undefined).map(k => JSON.stringify(k) + ':' + stable(value[k])).join(',') + '}';
   return JSON.stringify(value);
 }
+function utf8Bytes(text) { let n = 0; for (const ch of text) { const c = ch.codePointAt(0); n += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4; } return n; }
 function hash(text) {
   let a = 2166136261, b = 5381;
   for (const char of text) { a = Math.imul(a ^ char.charCodeAt(0), 16777619); b = Math.imul(b, 33) ^ char.charCodeAt(0); }
@@ -49,7 +50,50 @@ function flatten(chapters) {
     const last = content[content.length - 1];
     if (typeof last.text !== 'string' || !last.text.endsWith('\n')) content.push({text:'\n'});
   });
-  return {content, paragraphs: content.map(i => i.text || '').join('').split(/\n\s*\n/).map(t => t.trim()).filter(Boolean)};
+  return {content, paragraphs: content.map(i => i.text || '').join('').split(/\n/).map(t => t.trim()).filter(Boolean)};
+}
+// Chapters remain authoritative. Accept only the two exact derived paragraph
+// formats; never reconcile mismatched content or mutate a stored revision.
+function matchesChapterText(draft) {
+  const flat = flatten(draft.chapters);
+  if (stable(flat.content) !== stable(draft.content)) return false;
+  if (stable(flat.paragraphs) === stable(draft.paragraphs)) return true;
+  const legacy = flat.content.map(item => item.text || '').join('').split(/\n\s*\n/).map(text => text.trim()).filter(Boolean);
+  return stable(legacy) === stable(draft.paragraphs);
+}
+// Stored layouts carry references and geometry only, never another body or URL.
+function validateChapterLayout(chapter) {
+  const layout=chapter.layout;
+  if(layout===undefined)return;
+  const check=condition=>{if(!condition)fail('章节排版无效','INVALID_INPUT');};
+  const fields=(value,names)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>names.includes(key));
+  const string=(value,max)=>typeof value==='string'&&value.length<=max;
+  const rect=value=>fields(value,['x','y','width','height'])&&['x','y','width','height'].every(key=>Number.isFinite(value[key]))&&value.width>0&&value.height>0;
+  check(fields(layout,['canvas','settings','pages','flowVersion']));
+  if(utf8Bytes(JSON.stringify(layout))>60000)fail('这一章的排版超过 60 KB 上限，请减少模块后重试','LAYOUT_TOO_LARGE');
+  check(fields(layout.canvas,['width','height'])&&layout.canvas.width===900&&layout.canvas.height===1200);
+  check(layout.flowVersion===undefined||layout.flowVersion===1);
+  const settings=layout.settings;
+  check(fields(settings,['fontId','style','texture','textureSeed','includeCover','bodyTextureAssetId']));
+  check(string(settings.fontId,80)&&string(settings.style,40)&&string(settings.texture,40)&&Number.isInteger(settings.textureSeed)&&settings.textureSeed>=0&&settings.textureSeed<=1000000000&&typeof settings.includeCover==='boolean');
+  const asset=id=>typeof id==='string'&&/^asset-[a-f0-9]{32}$/.test(id);
+  check(settings.bodyTextureAssetId===null||asset(settings.bodyTextureAssetId));
+  check(Array.isArray(layout.pages)&&layout.pages.length>=1&&layout.pages.length<=9);
+  const ids=new Set(),textIds=new Set(chapter.content.filter(b=>typeof b.text==='string').map(b=>b.blockId));
+  for(const page of layout.pages){
+    check(fields(page,['label','modules'])&&string(page.label,80)&&Array.isArray(page.modules)&&page.modules.length<=300);
+    for(const module of page.modules){
+      check(fields(module,module?.kind==='text'?['id','kind','bind','rect','positioned','fontSize','contentWidth','contentHeight','alignment','emphasis','backdrop']:['id','kind','assetId','rect','crop','positioned']));
+      check(typeof module.id==='string'&&/^[A-Za-z0-9_.:-]{1,120}$/.test(module.id)&&!ids.has(module.id)&&rect(module.rect));ids.add(module.id);
+      check(module.positioned===undefined||typeof module.positioned==='boolean');
+      if(module.kind==='text'){
+        check(fields(module.bind,['chapterTitle','blockId']));
+        check(module.bind.chapterTitle===true&&module.bind.blockId===undefined||module.bind.chapterTitle===undefined&&/^block-[a-f0-9]{64}$/.test(module.bind.blockId||'')&&textIds.has(module.bind.blockId));
+        check(Number.isFinite(module.fontSize)&&module.fontSize>=8&&module.fontSize<=240&&Number.isFinite(module.contentWidth)&&module.contentWidth>0&&Number.isFinite(module.contentHeight)&&module.contentHeight>0);
+        check(['start','center'].includes(module.alignment)&&(module.emphasis===undefined||['normal','bright'].includes(module.emphasis))&&(module.backdrop===undefined||typeof module.backdrop==='boolean'));
+      }else check(module.kind==='image'&&asset(module.assetId)&&rect(module.crop));
+    }
+  }
 }
 function validateDraft(draft, story) {
   if (!draft || typeof draft !== 'object') fail('书稿无效');
@@ -66,10 +110,11 @@ function validateDraft(draft, story) {
       else if (typeof item.photoId === 'string' && /^photo-[a-z0-9-]{1,120}$/.test(item.photoId) && item.text === undefined) pictures++;
       else fail('图片或正文引用无效');
     }
+    validateChapterLayout(c);
     if (c.backdropImageId && !/^family_[0-9A-Za-z_-]{1,120}_img_req-[0-9a-z-]{8,60}$/.test(c.backdropImageId)) fail('底图编号无效');
   }
   if (length > 20000 || pictures > 9) fail('书稿最多 20000 字、9 张正文图片');
-  if (stable(flatten(draft.chapters)) !== stable({content:draft.content, paragraphs:draft.paragraphs})) fail('章节和全文不一致');
+  if (!matchesChapterText(draft)) fail('章节和全文不一致');
 }
 function fingerprint(state, id) {
   const story = activeStory(state,id);
@@ -147,6 +192,7 @@ function apply(state, command, now = new Date().toISOString()) {
         pending.resolvedStoryId = story.id;
       }
       validateDraft(revision.draft,story);
+      Object.assign(revision.draft, flatten(revision.draft.chapters));
       revision.savedAt = now;
       revision.sourceFingerprint = fingerprint(next,story.id);
       next.manuscriptRevisions = [...(next.manuscriptRevisions || []),revision];
@@ -234,4 +280,4 @@ function migrate(state, familyId = '', now = new Date().toISOString()) {
   next.storyMigration = {version:1,status:'active',pending};
   return next;
 }
-module.exports = {STORY_ID,stable,hash,activeStory,history,current,flatten,validateDraft,fingerprint,isEmptyStoryCreate,apply,migrate};
+module.exports = {STORY_ID,stable,hash,activeStory,history,current,flatten,matchesChapterText,validateChapterLayout,validateDraft,fingerprint,isEmptyStoryCreate,apply,migrate};

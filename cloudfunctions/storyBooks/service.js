@@ -11,6 +11,7 @@ const { listChapterChanges } = require('./changes');
 const { receiveTextCopy, appendOwnExperience } = require('./copies');
 const { receiveMediaCopy } = require('./copyMedia');
 const { sendOwnReturn, listReturns, decideReturn } = require('./returns');
+const { importChapterPackage, reviseReceivedChapter } = require('./chapterPackage');
 const { listShareCardSource, previewShareCard, exportShareCard } = require('./exports');
 const { previewBookExport, exportBookImages } = require('./bookExports');
 const { memoryExportSource } = require('./memoryExports');
@@ -48,6 +49,7 @@ function createStoryService(repo, options = {}) {
         excerptShare: options.excerptSharingEnabled === true && inRollout,
         sharedEdit: options.sharedEditEnabled === true && inRollout,
         copy: options.copyReceiveEnabled === true && inRollout,
+        chapterPackage: options.chapterPackageEnabled === true && inRollout,
         // Owner-only book image export is locally rendered and resolves the
         // trusted WeChat identity again before preview, save, and share. It is
         // independent from both the public share-card and shared-read rollouts.
@@ -84,6 +86,27 @@ function createStoryService(repo, options = {}) {
         if(!options.copyStorage)throw accessError('STORY_ACCESS_NOT_READY');
         return receiveMediaCopy(repo,ctx,input,options.copyStorage,{nowMs:options.nowMs});
       }
+    }
+    if (action === 'chapterPackageImport') {
+      if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      // 图片只认已登记在本人名下、且审核通过的照片；审核未出结果按未通过处理。
+      const approveImage = async (c, photoId) => {
+        const photo = await repo.get('photos', `${c.familyId}__${photoId}`);
+        return !!photo && photo.familyId === c.familyId && photo.photoId === photoId && photo._openid === c.verifiedOpenid &&
+          !photo.deletedAt && !photo.sourcePolicyRequired && photo.sourceIds === undefined &&
+          photo.moderation?.ok === true && photo.moderation?.suggest === 'pass' &&
+          typeof photo.displayFileID === 'string' && photo.displayFileID.startsWith('cloud://') &&
+          photo.displayFileID.endsWith(`/user-photos/${c.familyId}/${photoId}/display.jpg`);
+      };
+      return importChapterPackage(repo,ctx,{requestId:event.requestId,target:event.target,chapter:event.chapter,layout:event.layout ?? null,
+        origin:event.origin,packageId:event.packageId,senderName:event.senderName,lineage:event.lineage,assets:event.assets,assetPhotos:event.assetPhotos,
+        coverAssetId:event.coverAssetId ?? null},{now:options.now,approveText:options.approveChapterText,approveImage});
+    }
+    if (action === 'chapterPackageRevise') {
+      if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      return reviseReceivedChapter(repo,ctx,{requestId:event.requestId,storyId:event.storyId,revisionId:event.revisionId,
+        expectedVersion:event.expectedVersion,chapterId:event.chapterId,edits:event.edits,layout:event.layout},
+      {now:options.now,approveText:options.approveChapterText});
     }
     if (action === 'copyAppendOwn') {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');

@@ -60,6 +60,29 @@ test('book export reconstructs complete text, chapter order, whitespace and exac
     await assert.rejects(previewBookExport(f.repo,f.owner,{...input,excerpt},{approve}),{code:'INVALID_INPUT'});
   await assert.rejects(previewBookExport(f.repo,f.owner,{...f.input,text:'伪造'},{approve}),{code:'INVALID_INPUT'});
 });
+test('book export resolves only complete text-only layouts from the authorized revision',async()=>{
+  const f=await setup('排版正文');
+  f.draft.chapters[0].content=[{text:'排版正文',blockId:'block-'+ 'a'.repeat(64),sourceIds:[]},{text:'结尾',blockId:'block-'+ 'b'.repeat(64),sourceIds:[]}];
+  f.draft.chapters[1].content=[{text:'第二章全文',blockId:'block-'+ 'c'.repeat(64),sourceIds:[]}];
+  f.draft.provenanceVersion=1;
+  f.draft.chapters[0].layout={canvas:{width:900,height:1200},settings:{fontId:'default',style:'plain',texture:'none',textureSeed:1,includeCover:false,bodyTextureAssetId:null},
+    pages:[{label:'1',modules:[{id:'text-1',kind:'text',bind:{blockId:f.draft.chapters[0].content[0].blockId},rect:{x:60,y:100,width:780,height:100},fontSize:32,contentWidth:780,contentHeight:100,alignment:'start'},
+      {id:'text-2',kind:'text',bind:{blockId:f.draft.chapters[0].content[1].blockId},rect:{x:60,y:240,width:780,height:100},fontSize:32,contentWidth:780,contentHeight:100,alignment:'start'}]}]};
+  Object.assign(f.draft,core.flatten(f.draft.chapters));
+  const {descriptor}=await previewBookExport(f.repo,f.owner,f.input,{approve});
+  assert.equal(descriptor.chapters[0].layout.pages[0].modules[0].text,'排版正文');
+  assert.equal(descriptor.chapters[0].layout.pages[0].modules[0].rect.y,100);
+  const excerpt=await previewBookExport(f.repo,f.owner,{...f.input,scope:'text',excerpt:{chapterId:'chapter-one',start:0,end:2}},{approve});
+  assert.equal(excerpt.descriptor.chapters[0].layout,undefined);
+  f.draft.chapters[0].layout.pages[0].modules.push({id:'image-1',kind:'image',assetId:'asset-'+ 'a'.repeat(32),rect:{x:1,y:1,width:10,height:10},crop:{x:0,y:0,width:1,height:1}});
+  const withImage=await previewBookExport(f.repo,f.owner,f.input,{approve});
+  assert.equal(withImage.descriptor.chapters[0].layout,undefined);
+  f.draft.chapters[0].layout.pages[0].modules.pop();
+  f.draft.chapters[0].content.push({text:'未排版正文',blockId:'block-'+ 'd'.repeat(64),sourceIds:[]});
+  Object.assign(f.draft,core.flatten(f.draft.chapters));
+  const withUnplaced=await previewBookExport(f.repo,f.owner,f.input,{approve});
+  assert.equal(withUnplaced.descriptor.chapters[0].layout,undefined);
+});
 test('export rejects missing/duplicate chapters, stale version and protected copies',async()=>{
   const f=await setup();
   for(const chapterIds of [[],['chapter-missing'],['chapter-one','chapter-one']])

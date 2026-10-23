@@ -6,6 +6,8 @@ export function activeStory(state: FamilyRoomState, id: string, includeDeleted?:
 export function history(state: FamilyRoomState, id: string): ManuscriptRevision[];
 export function current(state: FamilyRoomState, id: string): {draft?: BiographyDraft; revisionId: string; sourceFingerprint: string};
 export function flatten(chapters: ManuscriptChapter[]): Pick<BiographyDraft,'content'|'paragraphs'>;
+export function matchesChapterText(draft: BiographyDraft): boolean;
+export function validateChapterLayout(chapter: ManuscriptChapter): void;
 export function validateDraft(draft: BiographyDraft, story: Story): void;
 export function fingerprint(state: FamilyRoomState, id: string): string;
 export function apply(state: FamilyRoomState, command: Record<string, unknown>, now?: string): FamilyRoomState;

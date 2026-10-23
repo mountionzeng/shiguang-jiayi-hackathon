@@ -86,7 +86,25 @@ async function build(repo, ctx, input) {
         backdropImageId = chapter.backdropImageId;
         backdropFileIDs[chapter.id] = image.fileID;
       }
-      chapters.push({ id: chapter.id, title: chapter.title || '', text, ...(backdropImageId ? { backdropImageId } : {}) });
+      // Share only complete, text-only layouts. Excerpts and layouts with media,
+      // textures, or unplaced text keep the established automatic renderer.
+      let layout;
+      if (input.scope !== 'text' && chapter.layout && chapter.layout.settings.texture === 'none' && !chapter.layout.settings.bodyTextureAssetId &&
+        chapter.layout.settings.includeCover !== true && chapter.content.every(block => typeof block.text === 'string')) {
+        const blocks = new Map(chapter.content.map(block => [block.blockId, block.text]));
+        const seen = new Set();
+        const pages = chapter.layout.pages.map(page => ({ label: page.label, modules: page.modules.map(module => {
+          if (module.kind !== 'text') return null;
+          const value = module.bind.chapterTitle === true ? chapter.title || '' : blocks.get(module.bind.blockId);
+          if (value === undefined) return null;
+          if (module.bind.blockId) seen.add(module.bind.blockId);
+          return { text: value, rect: module.rect, fontSize: module.fontSize, alignment: module.alignment };
+        }) }));
+        if (pages.every(page => page.modules.every(Boolean)) && chapter.content.every(block => seen.has(block.blockId))) {
+          layout = { pages };
+        }
+      }
+      chapters.push({ id: chapter.id, title: chapter.title || '', text, ...(backdropImageId ? { backdropImageId } : {}), ...(layout ? { layout } : {}) });
       containsAiText ||= chapter.containsAiText === true || chapter.generationMode === 'cloud-ai' || draft.generationMode === 'cloud-ai';
     }
     const length = chapters.reduce((sum, c) => sum + Array.from(c.text).length, 0);
