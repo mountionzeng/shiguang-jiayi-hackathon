@@ -1,0 +1,243 @@
+{
+ "reconcile": [
+  {
+   "name": "in-line edit keeps id",
+   "prev": [
+    [
+     "a",
+     "今天下雨"
+    ],
+    [
+     "b",
+     "我去买菜"
+    ]
+   ],
+   "next": "今天下大雨\n我去买菜",
+   "expect": [
+    [
+     "a",
+     "今天下大雨"
+    ],
+    [
+     "b",
+     "我去买菜"
+    ]
+   ]
+  },
+  {
+   "name": "enter at end makes a new id",
+   "prev": [
+    [
+     "a",
+     "第一行"
+    ]
+   ],
+   "next": "第一行\n第二行",
+   "expect": [
+    [
+     "a",
+     "第一行"
+    ],
+    [
+     "new1",
+     "第二行"
+    ]
+   ]
+  },
+  {
+   "name": "insert in middle keeps neighbours",
+   "prev": [
+    [
+     "a",
+     "一"
+    ],
+    [
+     "b",
+     "三"
+    ]
+   ],
+   "next": "一\n二\n三",
+   "expect": [
+    [
+     "a",
+     "一"
+    ],
+    [
+     "new1",
+     "二"
+    ],
+    [
+     "b",
+     "三"
+    ]
+   ]
+  },
+  {
+   "name": "delete a line voids its id",
+   "prev": [
+    [
+     "a",
+     "一"
+    ],
+    [
+     "b",
+     "二"
+    ],
+    [
+     "c",
+     "三"
+    ]
+   ],
+   "next": "一\n三",
+   "expect": [
+    [
+     "a",
+     "一"
+    ],
+    [
+     "c",
+     "三"
+    ]
+   ]
+  },
+  {
+   "name": "blank lines are not modules",
+   "prev": [
+    [
+     "a",
+     "一"
+    ]
+   ],
+   "next": "一\n\n   \n",
+   "expect": [
+    [
+     "a",
+     "一"
+    ]
+   ]
+  },
+  {
+   "name": "paste many lines",
+   "prev": [
+    [
+     "a",
+     "开头"
+    ]
+   ],
+   "next": "开头\n甲\n乙\n丙",
+   "expect": [
+    [
+     "a",
+     "开头"
+    ],
+    [
+     "new1",
+     "甲"
+    ],
+    [
+     "new2",
+     "乙"
+    ],
+    [
+     "new3",
+     "丙"
+    ]
+   ]
+  },
+  {
+   "name": "crlf is a line break",
+   "prev": [],
+   "next": "甲\r\n乙",
+   "expect": [
+    [
+     "new1",
+     "甲"
+    ],
+    [
+     "new2",
+     "乙"
+    ]
+   ]
+  }
+ ],
+ "locate": [
+  {
+   "name": "cursor inside second line",
+   "text": "甲甲\n乙乙乙\n丙",
+   "cursor": 4,
+   "index": 1
+  },
+  {
+   "name": "cursor at end of first line",
+   "text": "甲甲\n乙乙乙",
+   "cursor": 2,
+   "index": 0
+  },
+  {
+   "name": "cursor on blank line uses previous",
+   "text": "甲\n\n乙",
+   "cursor": 2,
+   "index": 0
+  },
+  {
+   "name": "cursor before any text",
+   "text": "\n甲",
+   "cursor": 0,
+   "index": null
+  },
+  {
+   "name": "empty text",
+   "text": "",
+   "cursor": 0,
+   "index": null
+  }
+ ],
+ "trim": {
+  "lines": [
+   "l0",
+   "l1",
+   "l2",
+   "l3",
+   "l4",
+   "l5",
+   "l6"
+  ],
+  "index": 3,
+  "titles": [
+   "第一章",
+   "第二章"
+  ],
+  "budgets": [
+   {
+    "limit": 2,
+    "keep": [
+     "current"
+    ]
+   },
+   {
+    "limit": 10,
+    "keep": [
+     "current",
+     "near"
+    ]
+   },
+   {
+    "limit": 14,
+    "keep": [
+     "current",
+     "near",
+     "chapter"
+    ]
+   },
+   {
+    "limit": 200,
+    "keep": [
+     "current",
+     "near",
+     "chapter",
+     "titles"
+    ]
+   }
+  ]
+ }
+}

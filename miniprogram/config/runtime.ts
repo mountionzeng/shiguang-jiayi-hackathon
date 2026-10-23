@@ -27,3 +27,6 @@ export const BACKEND_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
 // Bump when the AI-consent disclosure text materially changes; existing users
 // must re-confirm before online AI runs again.
 export const AI_CONSENT_VERSION = 1;
+
+// 当前行对话上下文：默认关闭。只改变用户发起小忆聊天时附带的文字，不新增模型调用。
+export const LINE_CONTEXT_CHAT_ENABLED = false;
