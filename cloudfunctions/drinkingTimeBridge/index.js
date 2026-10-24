@@ -171,7 +171,16 @@ async function cacheDeliveryAssets(event, context, baseUrl, secret) {
     if (!uploaded.fileID) throw new Error("inbox_asset_store_failed");
     fileIDs[asset.assetId] = uploaded.fileID;
   }
-  return { assetFileIDs: fileIDs };
+  // Files created by a cloud function are not owned by the receiving client.
+  // Mint bounded read URLs here after verifying the delivery capabilities.
+  const temporary = assets.length ? await cloud.getTempFileURL({ fileList: Object.values(fileIDs) }) : { fileList: [] };
+  const assetUrls = {};
+  for (const asset of assets) {
+    const entry = temporary.fileList.find(item => item.fileID === fileIDs[asset.assetId]);
+    if (!entry?.tempFileURL || !entry.tempFileURL.startsWith("https://")) throw new Error("inbox_asset_url_unavailable");
+    assetUrls[asset.assetId] = entry.tempFileURL;
+  }
+  return { assetFileIDs: fileIDs, assetUrls };
 }
 
 async function main(event = {}) {

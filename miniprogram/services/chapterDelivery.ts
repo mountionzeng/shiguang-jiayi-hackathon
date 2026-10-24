@@ -144,9 +144,9 @@ export async function readChapterDelivery(deliveryId: string) {
   return result;
 }
 
-function readImports(): Record<string, { requestId: string; target: ImportTarget; kind?: "send" | "return"; package: ChapterPackage; imageUrls: Record<string, string>; assetFileIDs?: Record<string, string>; photoIds: Record<string, string> }> {
+function readImports(): Record<string, { requestId: string; target: ImportTarget; kind?: "send" | "return"; package: ChapterPackage; imageUrls: Record<string, string>; assetFileIDs?: Record<string, string>; assetUrls?: Record<string, string>; photoIds: Record<string, string> }> {
   const value: unknown = wx.getStorageSync(IMPORTS_KEY);
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, { requestId: string; target: ImportTarget; kind?: "send" | "return"; package: ChapterPackage; imageUrls: Record<string, string>; assetFileIDs?: Record<string, string>; photoIds: Record<string, string> }> : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, { requestId: string; target: ImportTarget; kind?: "send" | "return"; package: ChapterPackage; imageUrls: Record<string, string>; assetFileIDs?: Record<string, string>; assetUrls?: Record<string, string>; photoIds: Record<string, string> }> : {};
 }
 
 export async function importChapterDelivery(deliveryId: string, target: ImportTarget) {
@@ -166,16 +166,22 @@ export async function importChapterDelivery(deliveryId: string, target: ImportTa
     record.kind = (await readChapterDelivery(deliveryId)).delivery.kind;
     imported[deliveryId] = record; wx.setStorageSync(IMPORTS_KEY, imported);
   }
-  if (!record.assetFileIDs) {
-    const cached = await call<{ assetFileIDs: Record<string, string> }>("cacheChapterDeliveryAssets", {
+  if (!record.assetFileIDs || record.package.assets.some(asset => !record.photoIds[asset.assetId])) {
+    const fresh = await readChapterDelivery(deliveryId);
+    record.imageUrls = fresh.imageUrls;
+    const cached = await call<{ assetFileIDs: Record<string, string>; assetUrls: Record<string, string> }>("cacheChapterDeliveryAssets", {
       deliveryId, package: record.package, imageUrls: record.imageUrls,
     });
     record.assetFileIDs = cached.assetFileIDs;
+    record.assetUrls = cached.assetUrls;
     imported[deliveryId] = record; wx.setStorageSync(IMPORTS_KEY, imported);
   }
   for (const assetId of Object.keys(record.assetFileIDs)) {
     if (record.photoIds[assetId]) continue;
-    const downloaded = await wx.cloud.downloadFile({ fileID: record.assetFileIDs[assetId] });
+    const url = record.assetUrls?.[assetId];
+    if (!url?.startsWith("https://")) throw new Error("章节图片地址已失效，请重新领取");
+    const downloaded = await new Promise<WechatMiniprogram.DownloadFileSuccessCallbackResult>((resolve, reject) => wx.downloadFile({ url, success: resolve, fail: reject }));
+    if (downloaded.statusCode !== 200) throw new Error("章节图片读取失败，请重试");
     if (!downloaded.tempFilePath) throw new Error("章节图片暂时没有下载成功，请重试");
     const photoId = `photo-delivery-${Date.now().toString(36)}-${suffix()}`;
     enqueuePhotoUpload(photoId, downloaded.tempFilePath, "import");

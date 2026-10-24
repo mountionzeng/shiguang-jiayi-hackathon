@@ -24,6 +24,7 @@ async function harness(run) {
       database: () => ({ collection: table => ({ doc: () => ({ get: async () => ({ data: table === 'user_accounts' ? { primaryFamilyId: 'family_test' } : { _openid: context.OPENID, familyId: 'family_test', moderation: { suggest: 'pass' } } }) }) }) }),
       downloadFile: async () => ({ fileContent: bytes }),
       uploadFile: async () => ({ fileID: 'cloud://test/inbox/image.png' }),
+      getTempFileURL: async () => ({ fileList: [{ fileID: 'cloud://test/inbox/image.png', tempFileURL: 'https://test-storage.invalid/signed-image' }] }),
     };
     if (name === 'node:https') return { request(url, options, callback) {
       const request = new EventEmitter(); let body = '';
@@ -42,7 +43,7 @@ async function harness(run) {
             data = { ok: response.statusCode === 200 };
           } else if (url.pathname.endsWith('/inbox')) data = { items: [] };
           else data = { deliveryId: id, repeated: false, uploadTickets: [{ ...asset, path: `/api/chapter-delivery/media/${pkg.packageId}/${assetId}`, token: 'A'.repeat(43), expiresAt: new Date(Date.now() + 600000).toISOString() }] };
-          callback(response); response.emit('data', Buffer.from(JSON.stringify(data))); response.emit('end');
+          callback(response); response.emit('data', options.method === 'GET' ? bytes : Buffer.from(JSON.stringify(data))); response.emit('end');
         });
       }; return request;
     } };
@@ -81,4 +82,11 @@ test('disabled delivery rejects before network access', () => harness(async (mai
   process.env.CHAPTER_DELIVERY_ENABLED = 'false';
   await assert.rejects(main({ action: 'listChapterInbox' }), /chapter_delivery_disabled/);
   assert.equal(calls.length, 0);
+}));
+
+test('incoming cached images expose a server-authorized temporary read URL', () => harness(async main => {
+  const result = await main({ action: 'cacheChapterDeliveryAssets', deliveryId: id, package: pkg,
+    imageUrls: { [assetId]: `/api/chapter-delivery/media/download/${id}/${assetId}?e=123&token=test` } });
+  assert.equal(result.assetFileIDs[assetId], 'cloud://test/inbox/image.png');
+  assert.equal(result.assetUrls[assetId], 'https://test-storage.invalid/signed-image');
 }));
