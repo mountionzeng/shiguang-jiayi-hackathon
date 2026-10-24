@@ -22,9 +22,10 @@ export function textAiReadyForVersion(envVersion?: string): boolean {
 // provider, billing, moderation, and metadata path have been verified without
 // also exposing text or audio AI.
 export const CLOUD_IMAGE_AI_RELEASE_READY = true;
-// 章节包（导出、导入、发回）的客户端开关，默认关闭；云函数另有同名开关 CHAPTER_PACKAGE_ENABLED。
-// 与 STORY_ACCESS_ENABLED 等四个故事开关无关，不要为了测试顺手打开它们。
+// 章节包和章节投递开关默认关闭；云函数与网页服务端也必须分别配置。
+// 投递额外受 CHAPTER_PACKAGE_ENABLED 约束；与 STORY_ACCESS_ENABLED 等故事开关无关。
 export const CHAPTER_PACKAGE_ENABLED = false;
+export const CHAPTER_DELIVERY_ENABLED = false;
 export const BACKEND_API_ENABLED = false;
 export const BACKEND_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
 // Bump when the AI-consent disclosure text materially changes; existing users

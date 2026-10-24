@@ -4,7 +4,7 @@ import { readLocalPhoto } from "./bookImages";
 import { newStoryId } from "./storyRecords";
 import {
   assertPackageImageTotal, chapterPackageEnabled, chapterPackageImportAttempt, chapterPackageRequestId, chapterPackages,
-  exportChapterPackage, packageImageInfo, prepareImport, ImportTarget,
+  exportChapterPackage, exportChapterReturnPackage, packageImageInfo, prepareImport, ImportTarget,
 } from "./chapterPackageService";
 
 const LAST_PACKAGE_KEY = "chapterPackage.lastExport";
@@ -12,7 +12,7 @@ const LAST_PACKAGE_KEY = "chapterPackage.lastExport";
 const randomSuffix = () => Math.random().toString(36).slice(2, 12).padEnd(10, "0");
 export const newPackageId = () => `cp_${Date.now().toString(36)}${randomSuffix()}`;
 
-export interface ExportedChapter { package: ChapterPackage; packageId: string; cloudPath: string; fileID: string; assetFiles: Record<string, string> }
+export interface ExportedChapter { package: ChapterPackage; packageId: string; cloudPath: string; fileID: string; assetFiles: Record<string, string>; assetPhotos: Record<string, string> }
 
 function imageInfo(src: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => wx.getImageInfo({ src, success: result => resolve({ width: result.width, height: result.height }), fail: reject }));
@@ -44,7 +44,7 @@ type SavedPackage = {
 };
 
 /** Export one chapter. Source lineage is preserved locally when this chapter was imported from a package. */
-export async function exportChapterToCloud(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string): Promise<ExportedChapter> {
+export async function exportChapterToCloud(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, purpose: "copy" | "return" = "copy"): Promise<ExportedChapter> {
   if (!chapterPackageEnabled()) throw new Error("章节包功能暂未开放");
   const packageId = newPackageId();
   const photoIds = [...new Set([
@@ -64,7 +64,8 @@ export async function exportChapterToCloud(chapter: ManuscriptChapter, displayNa
       }));
     }
     assertPackageImageTotal(images);
-    const { package: pkg, assetPhotos } = exportChapterPackage({
+    const exporter = purpose === "return" ? exportChapterReturnPackage : exportChapterPackage;
+    const { package: pkg, assetPhotos } = exporter({
       chapter, images, packageId, displayName: displayName || "我", createdAt: new Date().toISOString(), storyTitle,
       layout: chapter.layout ?? null,
     });
@@ -78,7 +79,7 @@ export async function exportChapterToCloud(chapter: ManuscriptChapter, displayNa
     const record: SavedPackage = { packageId, fileID: uploaded.fileID, chapterId: chapter.id, ...(storyId ? { storyId } : {}) };
     wx.setStorageSync(LAST_PACKAGE_KEY, record);
     const assetFiles = Object.fromEntries(Object.entries(assetPhotos).map(([assetId, photoId]) => [assetId, imageFiles[photoId]]));
-    return { package: pkg, packageId, cloudPath, fileID: uploaded.fileID, assetFiles };
+    return { package: pkg, packageId, cloudPath, fileID: uploaded.fileID, assetFiles, assetPhotos };
   } catch (error) {
     removeStaged([...staged]);
     throw error;

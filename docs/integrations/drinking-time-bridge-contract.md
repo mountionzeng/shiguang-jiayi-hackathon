@@ -2,9 +2,9 @@
 
 | 项 | 值 |
 |---|---|
-| 约定版本 | **1.6.0** |
+| 约定版本 | **1.7.0** |
 | 状态 | 本地实现，默认关闭，待双端真实验收 |
-| 日期 | 2026-10-23 |
+| 日期 | 2026-10-24 |
 | 权威版本 | Drinking Time 仓库 `docs/integrations/shiguang-bridge-contract.md` |
 | 副本 | 拾光家忆仓库 `docs/integrations/drinking-time-bridge-contract.md`（必须与权威版本同版本号） |
 | 实现基线 | Drinking Time `9f7f9f4`（桥接口），拾光家忆 `d83f1ed`（云函数 `drinkingTimeBridge`） |
@@ -630,11 +630,58 @@ canonicalJson(正文)，单行，没有末尾换行：
 | 签名串 SHA-256 | `cc4e564610ef759d039ba1dc12a74cba7c93ab0516920e9fe4f20e90fda46feb` |
 | signature | `fae8fa7340accaecfc87d8b8c8faf4fac7ed1288ca2f14228924e088975a38e2` |
 
+## 1.7 章节投递、领取与发回（默认关闭）
+
+章节投递信箱唯一存放在 Drinking Time。网页使用登录态 tRPC；小程序只能经本节 HMAC 桥调用。小程序页面不得直接提交 `userId`、`subject`、收件账号或发送者署名：`subject` 由云函数根据可信 `APPID + OPENID` 推导，网页再解析到当前 `userId`。服务端覆盖章节包中的 sender 署名。
+
+### 1.7.1 签名和限制
+
+- 路径前缀为 `/api/shiguang`，下列完整路径均为 `POST`；每次请求都使用 3.2、3.3 的时间戳、nonce、HMAC 和持久防重放规则。
+- 请求和响应 JSON 上限均为 256 KiB。所有包先按 02 格式校验，单包图片清单沿用 02 的张数和字节上限。
+- 每个投递动作都要求 `CHAPTER_PACKAGE_ENABLED=true` 和 `CHAPTER_DELIVERY_ENABLED=true`；默认均关闭。缺少任一开关时返回 `503 bridge_not_configured`。
+- 新动作沿用 `invalid_bridge_signature`、`replayed_request`、`invalid_input`、`rate_limited`、`unavailable`。无权访问与不存在的 delivery 统一返回 `404 not_found`，避免枚举。
+- 发送人、收件人和根包作者都由服务端身份/记录推导；客户端不能指定网页账号 ID。
+
+### 1.7.2 投递操作
+
+请求都包含 `subject`。路径与额外字段、成功响应如下：
+
+| 路径 | 额外请求字段 | 成功响应 |
+|---|---|---|
+| `/chapter-delivery/contacts` | 无 | `{ "contacts": [{ "contactId", "displayName" }] }` |
+| `/chapter-delivery/send` | `package`, `recipientContactId`, `requestId`（UUID） | `{ "deliveryId", "uploadTickets", "repeated" }` |
+| `/chapter-delivery/create-claim-link` | `package`, `requestId`（UUID） | `{ "deliveryId", "claimUrl", "uploadTickets", "repeated" }` |
+| `/chapter-delivery/claim` | `token` | `{ "deliveryId" }` |
+| `/chapter-delivery/inbox` | 无 | `{ "items": [{ "deliveryId", "packageId", "kind", "status", "createdAt" }] }` |
+| `/chapter-delivery/read` | `deliveryId`（UUID） | `{ "delivery", "package", "imageUrls" }` |
+| `/chapter-delivery/resolve` | `deliveryId`（UUID）, `status`（`kept` / `appended` / `adopted` / `declined`） | `{ "status" }` |
+| `/chapter-delivery/return` | `package`, `requestId`（UUID） | `{ "deliveryId", "uploadTickets", "repeated" }` |
+
+- `contacts` 只列双方已建立的同家/同故事连接或既有互投关系；返回稳定不透明 `contactId`，不提供陌生账号搜索。`send` 必须提交该 `contactId`，并由服务端重新验证它仍属于当前账号的可投递联系人。
+- `requestId` 对同一发送账号幂等；相同编号不同正文/收件人返回冲突。每账号每日发送上限为 20 次（UTC 日历日）。
+- 领取 token 只存 SHA-256 摘要、七天过期、最多成功领取一次。领取后投递绑定当前 `subject` 对应账号；只有全部图片就绪的投递才出现在收件箱。
+- `read`、`resolve` 只允许当前收件账号访问。`resolve` 不能替代导入/采用：小程序须先完成 04 的审核和实际导入/采用，成功后才调用 `resolve`。失败时不改变投递状态；以 04 的 `requestId` 幂等重试，再重试 `resolve`。
+- `return` 只接受具有完整 `rootPackageId + parentPackageId` lineage 的包；服务端核对发送人确实收到并选择留下/加入父包，并把接收目标固定为根包原作者。受来源保护章节必须通过 04 的受约束修订/来源链能力生成发回包；不得剥除保护标记或绕过审核。没有可验证的授权链时拒绝发回。
+- 网页端采用候选时沿用 03 的导入和候选对照/采用流程；原章节、候选和来源引用均保持各自归属，不直接覆盖正文。
+
+### 1.7.3 图片传输
+
+- 图片字节不得进入签名 JSON。小程序端可把待发图片临时上传到 CloudBase；CloudBase `fileID` 只在客户端到 `drinkingTimeBridge` 的云函数调用内使用，不传给 Drinking Time。云函数必须先验证文件来自当前账号有权读取的 04 照片记录/来源，再取字节。
+- `/send`、`/create-claim-link`、`/return` 按包内 manifest 返回每项图片的 `{ assetId, path, token, mime, bytes, sha256, expiresAt }` upload ticket。`path` 仅为 Drinking Time 固定 `/api/chapter-delivery/media/{packageId}/{assetId}` 相对路径；云函数必须将它解析到 `DRINKING_TIME_BRIDGE_BASE_URL` 的 HTTPS origin，并拒绝任何 origin/路径偏离或重定向。Capability 有效期最多 15 分钟，只能用于匹配的包、资产和一次内容哈希。
+- 云函数下载源和网页图片读取均须使用 HTTPS、验证预期来源 host、限制响应字节并拒绝跨源重定向。不得接受任意 URL 或任意 fileID 作为代理下载目标。Drinking Time 校验 MIME、字节数和 SHA-256；图片未全部成功上传前不标记投递 ready。
+- `/read` 每次返回新的短时网页图片 URL。云函数校验可信网页媒体 host 后下载并转存 CloudBase，再通过 04 的照片上传队列登记为接收方自己的照片并完成审核；不得把签名临时 URL 或发送方 `photoId` 存入接收方章节。
+- 上传 ticket 失败可以用同一幂等请求重新读取状态并重试仍有效的 capability；过期 capability 只能由服务端为未完成资产重新签发。未完全上传的包不展示在收件箱。
+
+### 1.7.4 测试向量
+
+1.6.0 的 V1/V2 签名向量和登录行为保持不变。1.7.0 另需为每个新路径增加相同的服务端/云函数签名向量，并覆盖 nonce 重放、可信主体映射、联系人越权、重复请求、图片 source/destination host 校验、跨源重定向拒绝、领取竞态、失败图片重试、收件人隔离、实际导入成功后才决议、受保护章节发回权限、每日限额和双开关关闭。测试不得使用正式数据库代替隔离数据库验收。
+
 
 ## 变更记录
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| 1.7.0 | 2026-10-24 | 新增章节投递、一次性领取、收件、图片 capability 和受约束发回契约；默认关闭，新增桥签名向量与双端测试要求。 |
 | 1.6.0 | 2026-10-23 | 新增 `/web-login/confirm`：网页 6 位码登录确认与绑定微信（默认关闭，向后兼容）。签名测试向量 V1 不变，新增 V2。 |
 | 1.5.1 | 2026-09-19 | 电脑配对 nonce 改为 MySQL 原子领取，跨进程和重启后仍拒绝五分钟窗口内重放；`storyAccess` 只有在电脑权威地址、密钥和开关完整配置后才可落库。补充迁移先行、生产者最后开启和反向关闭的发布/回滚清单。 |
 | 1.0.0 | 2026-09-15 | 首版草案：如实记录 Drinking Time `9f7f9f4` 与拾光家忆 `d83f1ed` 的现有行为、已知缺口、待决定事项 D1 和提案 P1–P10；并入小程序端两轮核对：服务地址与挂载点、漏挂载点返回 200 首页及成功响应校验、标题与修订号的关系、`sourceKey` 跳变缺口、数组 `undefined`、云函数执行超时、云函数本地体积检查、小程序端实际上限 |

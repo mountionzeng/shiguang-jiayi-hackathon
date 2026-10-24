@@ -35,7 +35,9 @@ import { copyRequestId, storyCopies } from "../../services/storyCopies";
 import { CHAPTER_PACKAGE_ENABLED, envIsDevelop } from "../../services/chapterPackageGate";
 import { exportChapterToCloud, importLastExport } from "../../services/chapterPackageFlow";
 import { PackageLayout } from "../../domain/chapterPackage";
-import { chapterPackageRequestId, chapterPackages } from "../../services/chapterPackageService";
+import { chapterPackageRequestId, chapterPackages, type ImportTarget } from "../../services/chapterPackageService";
+import { createChapterClaimLink, declineChapterDelivery, importChapterDelivery, listChapterDeliveryContacts, listChapterDeliveryInbox, readChapterDelivery, returnChapter as returnChapterDelivery, sendChapter as sendChapterDelivery } from "../../services/chapterDelivery";
+import { CHAPTER_DELIVERY_ENABLED } from "../../config/runtime";
 import { chapterLayoutView, ChapterLayoutViewPage } from "../../services/chapterLayoutView";
 import { chapterIdsWithReturns, invalidatePendingReturns, loadPendingReturns, PendingReturn, returnsForChapter, senderLabel } from "../../services/storyReturnsInbox";
 import {
@@ -110,8 +112,8 @@ Page({
     backdropUrl: "",
     shareText: "", shareRecipientIds: [] as string[], sharingExcerpt: false,
     shareRecipients: [] as Array<{ id: string; name: string; relation: string; checked: boolean }>,
-    protectedCopy: false, chapterPackageOn: CHAPTER_PACKAGE_ENABLED, chapterPackageDev: CHAPTER_PACKAGE_ENABLED && envIsDevelop(), appendOwnText: "", appendingOwn: false, returningOwn: false,
-    protectedCanRevise: false, protectedRevisionRows: [] as Array<{blockId:string;text:string}>, protectedRevisionLayout: null as PackageLayout | null,
+    protectedCopy: false, chapterPackageOn: CHAPTER_PACKAGE_ENABLED, chapterDeliveryOn: CHAPTER_PACKAGE_ENABLED && CHAPTER_DELIVERY_ENABLED, chapterPackageDev: CHAPTER_PACKAGE_ENABLED && envIsDevelop(), appendOwnText: "", appendingOwn: false, returningOwn: false,
+    protectedCanRevise: false, protectedHasDeliveryLineage: false, protectedRevisionRows: [] as Array<{blockId:string;text:string}>, protectedRevisionLayout: null as PackageLayout | null,
     protectedLayoutRows: [] as Array<{pageIndex:number;moduleIndex:number;id:string;kind:string;x:number;y:number}>, protectedRevisionSaving: false,
     chapterReturns: [] as Array<{ returnId: string; senderName: string; text: string }>, decidingReturn: false,
     chapterChanges: [] as Array<{ revisionId: string; by: string; when: string; titleChange: string; blocks: Array<{ index: number; before: string; after: string }> }>, changesOpen: false,
@@ -557,6 +559,7 @@ Page({
     return {
       bookIntroduction: this.introductionBuffer,
       protectedCanRevise: Boolean(this.story?.sourcePolicyRequired === true && active?.content.some(item => typeof item.text === "string" && item.sourceIds?.length && item.blockId)),
+      protectedHasDeliveryLineage: Boolean(active?.packageLineage?.rootPackageId && active.packageLineage.receivedPackageId),
       chapterRows: visibleChapters.map((chapter, index) => ({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
         memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: imageCount(chapter.content),
@@ -1016,6 +1019,9 @@ Page({
       case "mode": void this.switchWritingMode(); break;
       case "package-chapter": void this.packageActiveChapter(); break;
       case "import-package": void this.importLastPackage(); break;
+      case "chapter-delivery-send": void this.openChapterDeliverySend(); break;
+      case "chapter-delivery-link": void this.openChapterDeliveryClaimLink(); break;
+      case "chapter-delivery-inbox": void this.openChapterDeliveryInbox(); break;
     }
   },
   /** Read the native editor selection before the button press makes it lose focus. */
@@ -1575,6 +1581,113 @@ Page({
       const result = await exportChapterToCloud(chapter, this.data.protagonistName, this.story?.title || "", this.data.storyId || undefined);
       this.setData({ saveNotice: "这一章已打包，章节包编号 " + result.packageId });
     } catch (error) { this.setData({ saveNotice: error instanceof Error ? error.message : "打包没有成功，请重试" }); }
+  },
+  activeChapterForDelivery() {
+    return this.chapters.find(item => item.id === this.activeChapterId);
+  },
+  async openChapterDeliverySend() {
+    if (!this.data.chapterDeliveryOn || this.data.protectedCopy || this.data.view !== "chapter" || this.data.editing || this.data.panel) return;
+    const chapter = this.activeChapterForDelivery();
+    if (!chapter) return;
+    try {
+      if (!await this.finishEditing()) return;
+      const { contacts } = await listChapterDeliveryContacts();
+      if (!contacts.length) { this.setData({ saveNotice: "还没有可投递的已连接亲友" }); return; }
+      const choice = await new Promise<number>((resolve, reject) => wx.showActionSheet({
+        itemList: contacts.map(item => item.displayName), success: result => resolve(result.tapIndex), fail: reject,
+      }));
+      const recipient = contacts[choice];
+      if (!recipient || !this.data.chapterDeliveryOn) return;
+      wx.showLoading({ title: "准备章节…", mask: true });
+      const result = await sendChapterDelivery(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined, recipient.contactId);
+      wx.hideLoading();
+      this.setData({ saveNotice: `已投递给${recipient.displayName}` });
+    } catch (error) {
+      wx.hideLoading();
+      const message = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg || "投递没有完成，请重试");
+      if (!/cancel/i.test(message)) this.setData({ saveNotice: message });
+    }
+  },
+  async openChapterDeliveryClaimLink() {
+    if (!this.data.chapterDeliveryOn || this.data.protectedCopy || this.data.view !== "chapter" || this.data.editing || this.data.panel) return;
+    const chapter = this.activeChapterForDelivery();
+    if (!chapter) return;
+    try {
+      if (!await this.finishEditing()) return;
+      wx.showLoading({ title: "准备领取链接…", mask: true });
+      const result = await createChapterClaimLink(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined);
+      wx.hideLoading();
+      if (!result.claimUrl) throw new Error("这条领取链接已被使用，或已失效");
+      await new Promise<void>((resolve, reject) => wx.setClipboardData({ data: result.claimUrl!, success: () => resolve(), fail: reject }));
+      this.setData({ saveNotice: "一次性领取链接已复制，可发给亲友" });
+    } catch (error) {
+      wx.hideLoading();
+      const message = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg || "领取链接没有创建成功，请重试");
+      if (!/cancel/i.test(message)) this.setData({ saveNotice: message });
+    }
+  },
+  async openChapterDeliveryInbox() {
+    if (!this.data.chapterDeliveryOn || this.data.panel || this.data.saving || this.data.generating) return;
+    try {
+      const { items } = await listChapterDeliveryInbox();
+      const pending = items.filter(item => item.status === "pending");
+      if (!pending.length) { this.setData({ saveNotice: "收件箱里还没有待处理的章节" }); return; }
+      const selected = await new Promise<number>((resolve, reject) => wx.showActionSheet({
+        itemList: pending.map(item => `${item.kind === "return" ? "发回" : "章节"} · ${new Date(item.createdAt).toLocaleDateString()} · ${item.deliveryId.slice(0, 8)}`),
+        success: result => resolve(result.tapIndex), fail: reject,
+      }));
+      const delivery = pending[selected];
+      if (!delivery) return;
+      const read = await readChapterDelivery(delivery.deliveryId);
+      const chapter = read.package.chapters[0];
+      const preview = chapter.blocks.flatMap(block => block.type === "text" ? [block.text] : []).join("").slice(0, 120);
+      const accepted = await new Promise<boolean>((resolve, reject) => wx.showModal({
+        title: `${read.package.sender.displayName} 发来的${delivery.kind === "return" ? "修改稿" : "章节"}`,
+        content: `${chapter.title || read.package.storyTitle}${preview ? `\n${preview}${preview.length >= 120 ? "…" : ""}` : ""}\n\n先通过审核再导入。原稿不会被覆盖。`,
+        confirmText: "选择处理", cancelText: "稍后处理", success: result => resolve(result.confirm), fail: reject,
+      }));
+      if (!accepted) return;
+      const canAppend = Boolean(this.story && this.data.storyId && this.story.currentRevisionId && Number.isSafeInteger(this.story.version));
+      const choices = ["留下成新故事", ...(canAppend ? ["加入当前故事"] : []), "不要这份"];
+      const mode = await new Promise<number>((resolve, reject) => wx.showActionSheet({ itemList: choices, success: result => resolve(result.tapIndex), fail: reject }));
+      if (mode === choices.length - 1) {
+        await declineChapterDelivery(delivery.deliveryId);
+        this.setData({ saveNotice: "已拒绝这份章节，原稿没有变化" });
+        return;
+      }
+      const target: ImportTarget = mode === 1 && canAppend ? {
+        mode: "append", storyId: this.data.storyId, expectedVersion: this.story!.version!, expectedRevisionId: this.story!.currentRevisionId!,
+      } : {
+        mode: "new", storyId: `story-delivery-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        title: chapter.title || "收到的章节",
+      };
+      wx.showLoading({ title: "审核并导入…", mask: true });
+      const result = await importChapterDelivery(delivery.deliveryId, target);
+      wx.hideLoading();
+      this.setData({ saveNotice: target.mode === "append" ? "章节已加入当前故事" : "章节已留下，正在打开新故事" });
+      if (target.mode === "append") await this.refresh();
+      else if (result.storyId) wx.redirectTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(result.storyId) });
+    } catch (error) {
+      wx.hideLoading();
+      const message = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg || "收件操作没有完成，请重试");
+      if (!/cancel/i.test(message)) this.setData({ saveNotice: message });
+    }
+  },
+  async returnChapterDelivery() {
+    if (!this.data.chapterDeliveryOn || !this.data.protectedCopy || !this.data.protectedHasDeliveryLineage || this.data.protectedRevisionSaving) return;
+    const chapter = this.activeChapterForDelivery();
+    if (!chapter) return;
+    const confirmed = await this.confirm("把修改后的章节发回原作者？", "只发回这份章节副本及受审核的修改。原文来源标记会保留，网页只会投递给根包作者。");
+    if (!confirmed) return;
+    try {
+      wx.showLoading({ title: "发送修改稿…", mask: true });
+      await returnChapterDelivery(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined);
+      wx.hideLoading();
+      this.setData({ saveNotice: "修改稿已发回原作者" });
+    } catch (error) {
+      wx.hideLoading();
+      this.setData({ saveNotice: error instanceof Error ? error.message : "修改稿没有发回，请重试" });
+    }
   },
   async importLastPackage() {
     if (!CHAPTER_PACKAGE_ENABLED || this.data.saving || this.data.generating || this.data.appendingOwn) return;

@@ -61,8 +61,19 @@ export interface ExportInput {
 /**
  * 把一章打成章节包。图片清单由本地真实文件字节构造，照片文件映射单独交给 06 传输。
  */
-export function exportChapterPackage(input: ExportInput): { package: ChapterPackage; blockIds: string[]; assetPhotos: Record<string, string> } {
-  if (input.chapter.content.some(item => item.sourceIds?.length)) throw new Error("这一章包含受来源权限保护的内容，暂不能导出章节包");
+function buildChapterPackage(input: ExportInput, allowProtectedReturn: boolean): { package: ChapterPackage; blockIds: string[]; assetPhotos: Record<string, string> } {
+  if (input.chapter.content.some(item => item.sourceIds?.length)) {
+    const lineage = input.chapter.packageLineage;
+    const digests = input.chapter.packageBlockDigests ?? {};
+    const sourceBlocks = input.chapter.content.filter(item => item.sourceIds?.length);
+    const safeReturn = allowProtectedReturn && Boolean(lineage?.rootPackageId && lineage.receivedPackageId) && sourceBlocks.every(item =>
+      typeof item.blockId === "string" && /^block-[a-f0-9]{64}$/.test(item.blockId) &&
+      item.sourceIds?.every(id => typeof id === "string" && id.length > 0 && id.length <= 160) &&
+      /^[a-f0-9]{64}$/.test(digests[item.blockId] ?? "") &&
+      /^block-[a-f0-9]{64}$/.test(input.chapter.packageSourceBlockIds?.[item.blockId] ?? "")
+    );
+    if (!safeReturn) throw new Error("这一章包含受来源权限保护的内容，暂不能导出章节包");
+  }
   if (input.chapter.backdropImageId) throw new Error("这一章含有底图，暂时还不能打包");
   assertLayoutFits(input.layout);
   const savedLineage = input.chapter.packageLineage;
@@ -82,6 +93,19 @@ export function exportChapterPackage(input: ExportInput): { package: ChapterPack
     { layout: input.layout ?? input.chapter.layout ?? null, ...(coverPhotoId ? { coverPhotoId } : {}), assetIdByPhotoId, aiGeneratedByPhotoId }
   );
   return { package: result.package, blockIds: result.blockIds, assetPhotos: result.assetPhotos };
+}
+
+export function exportChapterPackage(input: ExportInput) { return buildChapterPackage(input, false); }
+
+/**
+ * Return-only package export keeps the chapter's source markers untouched and
+ * requires the original imported-package lineage. Drinking Time rechecks that
+ * lineage and routes the package only to the root sender before it is stored.
+ */
+export function exportChapterReturnPackage(input: ExportInput) {
+  if (!input.chapter.packageLineage?.rootPackageId || !input.chapter.packageLineage.receivedPackageId)
+    throw new Error("这一章没有可验证的原始章节来源，不能发回");
+  return buildChapterPackage(input, true);
 }
 
 /** Build a v1 manifest only after checking actual bytes and image signature. */
