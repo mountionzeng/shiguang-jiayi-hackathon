@@ -146,7 +146,7 @@ async function uploadOutgoingAssets(event, context, baseUrl, secret, result) {
     if (target.origin !== origin || target.pathname !== ticket.path || !/^\/api\/chapter-delivery\/media\/[^/]+\/[^/]+$/.test(target.pathname) ||
       Date.parse(ticket.expiresAt) <= Date.now() || Date.parse(ticket.expiresAt) > Date.now() + 15 * 60 * 1000) throw new Error("upload_ticket_invalid");
     const uploaded = await requestBuffer(target, { method: "PUT", body: bytes, maxBytes: 16 * 1024, headers: {
-      authorization: `Bearer ${ticket.token}`, "content-type": asset.mime, "content-length": String(bytes.length),
+      origin, authorization: `Bearer ${ticket.token}`, "content-type": asset.mime, "content-length": String(bytes.length),
     } });
     let response; try { response = JSON.parse(uploaded.bytes.toString("utf8")); } catch {}
     if (!response?.ok) throw new Error("asset_upload_failed");
@@ -197,7 +197,8 @@ async function main(event = {}) {
   // 只告诉小程序入口要不要显示，不碰网络、不泄露任何配置值。
   if (action === "webLoginEnabled") return { enabled: true };
   const path = paths[action];
-  if (!path) throw new Error("UNKNOWN_BRIDGE_ACTION");
+  if (!path && !deliveryAction && !["stageChapterAssets", "cacheChapterDeliveryAssets"].includes(action))
+    throw new Error("UNKNOWN_BRIDGE_ACTION");
   const context = cloud.getWXContext();
   if (action === "stageChapterAssets") return stageChapterAssets(event, context, secret);
   if (action === "cacheChapterDeliveryAssets") return cacheDeliveryAssets(event, context, baseUrl, secret);
