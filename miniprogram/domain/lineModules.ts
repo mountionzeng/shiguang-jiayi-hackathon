@@ -1,6 +1,7 @@
 /**
  * Line modules: one non-empty line is one text module (chapter-package contract 1.0.0).
- * Pure functions only. No storage, no network. Mini-program copy of the web shared/lineModules.ts; both run against tests/fixtures/line-modules/cases.json.
+ * Pure functions only. No storage, no network. The mini-program keeps its own copy in
+ * miniprogram/domain/lineModules.ts; both run against tests/fixtures/line-modules/cases.json.
  */
 export type LineModule = { id: string; text: string };
 
@@ -38,6 +39,10 @@ export function reconcileLines(
 
 /** Index (among non-empty lines) of the line holding the cursor; a blank line belongs to the previous line. */
 export function locateLine(text: string, cursor: number): number | null {
+  if (!Number.isInteger(cursor) || cursor < 0 || cursor > text.length) return null;
+  // Native selection offsets refer to the original string, before CRLF normalization.
+  cursor = text.slice(0, cursor).replace(/\r\n?/g, "\n").length;
+  text = text.replace(/\r\n?/g, "\n");
   const raw = text.split("\n");
   let start = 0;
   let index = -1;
@@ -69,7 +74,7 @@ export function linePosition(
   modules: readonly LineModule[],
   index: number | null
 ): LinePosition | null {
-  if (index === null || index < 0 || index >= modules.length) return null;
+  if (index === null || !Number.isInteger(index) || index < 0 || index >= modules.length) return null;
   const m = modules[index];
   return {
     chapterId,
@@ -100,12 +105,12 @@ export function trimLineContext(input: {
 }): LineContext {
   const { lines, index, limit } = input;
   const len = (xs: readonly string[]) => xs.reduce((n, s) => n + s.length, 0);
-  const current = lines[index] ?? "";
+  const current = (lines[index] ?? "").slice(0, Math.max(0, limit));
   const before = lines.slice(Math.max(0, index - 2), index);
   const after = lines.slice(index + 1, index + 3);
   const titles = input.titles ?? [];
   const out: LineContext = { included: ["current"], current };
-  if (len([current]) > limit) return out;
+  if ((lines[index]?.length ?? 0) > limit) return out;
   const nearCost = len(before) + len(after) + current.length;
   if (nearCost > limit) return out;
   out.included.push("near");
@@ -118,4 +123,23 @@ export function trimLineContext(input: {
   out.included.push("titles");
   out.titles = [...titles];
   return out;
+}
+
+/** A bounded discussion excerpt, never a second stored manuscript. Higher priority text comes first. */
+export function lineContextExcerpt(input: {
+  lines: readonly string[];
+  index: number;
+  titles?: readonly string[];
+  limit: number;
+}): string {
+  const { lines, index, limit } = input;
+  if (!Number.isInteger(index) || index < 0 || index >= lines.length) return "";
+  const context = trimLineContext(input);
+  return [
+    `这一行：${context.current}`,
+    context.near?.before.length ? `前面：${context.near.before.join(" / ")}` : "",
+    context.near?.after.length ? `后面：${context.near.after.join(" / ")}` : "",
+    context.chapter ? `全文参考：\n${context.chapter.join("\n")}` : "",
+    context.titles?.length ? `全书目录：${context.titles.join(" / ")}` : "",
+  ].filter(Boolean).join("\n").slice(0, Math.max(0, limit));
 }

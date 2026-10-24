@@ -40,7 +40,7 @@ test("range index outside text is rejected", () => {
   assert.equal(lineIndexFromRange("甲\n乙", 99), null);
 });
 test("line context text names the line", () => {
-  assert.match(lineContextText("甲\n乙\n丙", 1), /第 2 行（共 3 行）：乙/);
+  assert.match(lineContextText("甲\n乙\n丙", 1), /第 2 行（共 3 行）】\n这一行：乙/);
   assert.equal(lineContextText("甲", null), "");
 });
 test("switch is off by default", () => {
