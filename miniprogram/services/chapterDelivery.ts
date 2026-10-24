@@ -27,6 +27,11 @@ type Outbox = {
   recipientContactId?: string;
 };
 
+export function deliveryResolutionAfterImport(kind: "send" | "return", mode: ImportTarget["mode"]): "kept" | "appended" | "adopted" {
+  if (kind === "return") return "adopted";
+  return mode === "append" ? "appended" : "kept";
+}
+
 function guarded() {
   if (!CHAPTER_DELIVERY_ENABLED || !chapterPackageEnabled()) throw new Error("章节投递暂未开放");
   if (!wx.cloud) throw new Error("当前版本暂不支持章节投递");
@@ -132,16 +137,16 @@ export async function returnChapter(chapter: ManuscriptChapter, displayName: str
 }
 
 export async function readChapterDelivery(deliveryId: string) {
-  const result = await call<{ delivery: { deliveryId: string; kind: string; status: string }; package: ChapterPackage; imageUrls: Record<string, string> }>("readChapterPackage", { deliveryId });
+  const result = await call<{ delivery: { deliveryId: string; kind: "send" | "return"; status: string }; package: ChapterPackage; imageUrls: Record<string, string> }>("readChapterPackage", { deliveryId });
   const reads = (wx.getStorageSync(READS_KEY) || {}) as Record<string, unknown>;
-  reads[deliveryId] = { package: result.package, imageUrls: result.imageUrls };
+  reads[deliveryId] = { package: result.package, imageUrls: result.imageUrls, kind: result.delivery.kind };
   wx.setStorageSync(READS_KEY, reads);
   return result;
 }
 
-function readImports(): Record<string, { requestId: string; target: ImportTarget; package: ChapterPackage; imageUrls: Record<string, string>; assetFileIDs?: Record<string, string>; photoIds: Record<string, string> }> {
+function readImports(): Record<string, { requestId: string; target: ImportTarget; kind?: "send" | "return"; package: ChapterPackage; imageUrls: Record<string, string>; assetFileIDs?: Record<string, string>; photoIds: Record<string, string> }> {
   const value: unknown = wx.getStorageSync(IMPORTS_KEY);
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, { requestId: string; target: ImportTarget; package: ChapterPackage; imageUrls: Record<string, string>; assetFileIDs?: Record<string, string>; photoIds: Record<string, string> }> : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, { requestId: string; target: ImportTarget; kind?: "send" | "return"; package: ChapterPackage; imageUrls: Record<string, string>; assetFileIDs?: Record<string, string>; photoIds: Record<string, string> }> : {};
 }
 
 export async function importChapterDelivery(deliveryId: string, target: ImportTarget) {
@@ -149,10 +154,16 @@ export async function importChapterDelivery(deliveryId: string, target: ImportTa
   const imported = readImports();
   let record = imported[deliveryId];
   if (!record) {
-    const reads = (wx.getStorageSync(READS_KEY) || {}) as Record<string, { package?: ChapterPackage; imageUrls?: Record<string, string> }>;
+    const reads = (wx.getStorageSync(READS_KEY) || {}) as Record<string, { package?: ChapterPackage; imageUrls?: Record<string, string>; kind?: "send" | "return" }>;
     const cached = reads[deliveryId];
-    const fetched = cached?.package && cached.imageUrls ? cached : await readChapterDelivery(deliveryId);
-    record = { requestId: requestId(), target, package: fetched.package!, imageUrls: fetched.imageUrls!, photoIds: {} };
+    const fetched = cached?.package && cached.imageUrls && cached.kind
+      ? cached
+      : await readChapterDelivery(deliveryId).then(result => ({ ...result, kind: result.delivery.kind }));
+    record = { requestId: requestId(), target, kind: fetched.kind, package: fetched.package!, imageUrls: fetched.imageUrls!, photoIds: {} };
+    imported[deliveryId] = record; wx.setStorageSync(IMPORTS_KEY, imported);
+  }
+  if (!record.kind) {
+    record.kind = (await readChapterDelivery(deliveryId)).delivery.kind;
     imported[deliveryId] = record; wx.setStorageSync(IMPORTS_KEY, imported);
   }
   if (!record.assetFileIDs) {
@@ -178,7 +189,7 @@ export async function importChapterDelivery(deliveryId: string, target: ImportTa
   const result = await chapterPackages.import(payload, record.target, record.requestId, origin);
   // 04's import endpoint writes the approved chapter directly. Resolve only
   // after its durable receipt; a retry reuses the same requestId and target.
-  const status = record.target.mode === "append" ? "appended" : "kept";
+  const status = deliveryResolutionAfterImport(record.kind ?? "send", record.target.mode);
   await call("resolveChapterDelivery", { deliveryId, status });
   delete imported[deliveryId]; wx.setStorageSync(IMPORTS_KEY, imported);
   return { ...result, target: record.target };

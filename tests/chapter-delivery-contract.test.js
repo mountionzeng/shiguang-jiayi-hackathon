@@ -31,6 +31,16 @@ test("1.7.0 投递结果形状拒绝指向任意 host 的媒体路径", () => {
   assert.equal(core.chapterDeliveryResultShapeError("application/json", result, "sendChapter"), null);
 });
 
+test("1.7.0 收件回包必须给出有效的投递种类以决定完成状态", () => {
+  const result = { delivery: { deliveryId: CLAIM_ID, kind: "return", status: "pending" }, package: PACKAGE, imageUrls: {} };
+  assert.equal(core.chapterDeliveryResultShapeError("application/json", result, "readChapterPackage"), null);
+  result.delivery.kind = "unknown";
+  assert.equal(core.chapterDeliveryResultShapeError("application/json", result, "readChapterPackage"), "bridge_unavailable");
+  result.delivery.kind = "return";
+  result.imageUrls = [];
+  assert.equal(core.chapterDeliveryResultShapeError("application/json", result, "readChapterPackage"), "bridge_unavailable");
+});
+
 test("canonical JSON 把数组里的 undefined 按传输结果规范化为 null", () => {
   assert.equal(core.canonicalJson([undefined, { gone: undefined }]), "[null,{}]");
 });

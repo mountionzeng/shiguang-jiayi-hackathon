@@ -108,7 +108,8 @@ function chapterDeliveryResultShapeError(contentType, data, action) {
     createChapterClaimLink: value => typeof value.deliveryId === "string" && (value.claimUrl === null || typeof value.claimUrl === "string") && Array.isArray(value.uploadTickets) && typeof value.repeated === "boolean",
     claimChapterPackage: value => typeof value.deliveryId === "string",
     listChapterInbox: value => Array.isArray(value.items),
-    readChapterPackage: value => Boolean(value.delivery && value.package && value.imageUrls && typeof value.imageUrls === "object"),
+    readChapterPackage: value => Boolean(value.delivery && ["send", "return"].includes(value.delivery.kind) && value.package &&
+      value.imageUrls && typeof value.imageUrls === "object" && !Array.isArray(value.imageUrls)),
     resolveChapterDelivery: value => ["kept", "appended", "adopted", "declined"].includes(value.status),
     returnChapter: value => typeof value.deliveryId === "string" && Array.isArray(value.uploadTickets) && typeof value.repeated === "boolean",
   }[action];
