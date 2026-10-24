@@ -85,7 +85,8 @@ function chapterDeliveryBody(action, event, context, options = {}) {
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
   if (!appid) throw new Error("APPID_NOT_AVAILABLE");
   // WeChat adds userInfo to cloud events. Ignore it; identity comes only from getWXContext.
-  if (Object.keys(event).some(key => !["action", "userInfo", ...contract.fields, "assetFileIDs", "assetPhotos"].includes(key))) throw new Error("invalid_input");
+  const unexpectedFields = Object.keys(event).filter(key => !["action", "userInfo", ...contract.fields, "assetFileIDs", "assetPhotos"].includes(key));
+  if (unexpectedFields.length) throw new Error("invalid_input: unexpected fields " + unexpectedFields.map(key => key.replace(/[^A-Za-z0-9_]/g, "?").slice(0,40)).slice(0,5).join(","));
   const body = { subject: subjectFor(appid, openid) };
   for (const key of contract.fields) {
     if (!(key in event)) throw new Error("invalid_input");
