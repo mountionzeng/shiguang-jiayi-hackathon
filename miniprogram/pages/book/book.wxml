@@ -57,6 +57,7 @@
       <button wx:if="{{chapterPackageOn}}" class="more-option" data-action="package-chapter" bindtap="selectTool">打包这一章</button>
       <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-send" bindtap="selectTool">投递给已连接亲友</button>
       <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-link" bindtap="selectTool">创建一次性领取链接</button>
+      <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-claim" bindtap="selectTool">接收网页故事</button>
       <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-inbox" bindtap="selectTool">章节投递收件箱</button>
       <button wx:if="{{chapterPackageDev}}" class="more-option" data-action="import-package" bindtap="selectTool">导入最近的章节包（开发版）</button>
       <button class="more-option" data-action="up" bindtap="selectTool">上移本章</button>
@@ -64,6 +65,7 @@
       <button class="more-option more-danger" data-action="delete-chapter" bindtap="selectTool">删除本章</button>
     </block>
     <block wx:else>
+      <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-claim" bindtap="selectTool">接收网页故事</button>
       <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-inbox" bindtap="selectTool">章节投递收件箱</button>
       <button wx:if="{{storyId}}" class="more-option" data-action="people" bindtap="selectTool">书中人物与权限<text>›</text></button>
       <button wx:if="{{draft}}" class="more-option" data-action="history" bindtap="selectTool">历史版本<text>›</text></button>

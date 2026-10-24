@@ -202,3 +202,10 @@ export async function declineChapterDelivery(deliveryId: string) {
 export async function claimChapterDelivery(token: string) {
   return call<{ deliveryId: string }>("claimChapterPackage", { token });
 }
+
+/** Accept only our public claim links; never navigate to a pasted URL. */
+export function chapterClaimToken(input: string): string {
+  const match = /^https:\/\/www\.drinkingtime\.top\/chapter\/claim\/([A-Za-z0-9_-]{43})$/.exec(input.trim());
+  if (!match) throw new Error("请粘贴网页生成的完整领取链接");
+  return match[1];
+}

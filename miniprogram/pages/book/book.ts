@@ -39,7 +39,7 @@ import { CHAPTER_PACKAGE_ENABLED, envIsDevelop } from "../../services/chapterPac
 import { exportChapterToCloud, importLastExport } from "../../services/chapterPackageFlow";
 import { PackageLayout } from "../../domain/chapterPackage";
 import { chapterPackageRequestId, chapterPackages, type ImportTarget } from "../../services/chapterPackageService";
-import { createChapterClaimLink, declineChapterDelivery, importChapterDelivery, listChapterDeliveryContacts, listChapterDeliveryInbox, readChapterDelivery, returnChapter as returnChapterDelivery, sendChapter as sendChapterDelivery } from "../../services/chapterDelivery";
+import { chapterClaimToken, claimChapterDelivery, createChapterClaimLink, declineChapterDelivery, importChapterDelivery, listChapterDeliveryContacts, listChapterDeliveryInbox, readChapterDelivery, returnChapter as returnChapterDelivery, sendChapter as sendChapterDelivery } from "../../services/chapterDelivery";
 import { CHAPTER_DELIVERY_ENABLED } from "../../config/runtime";
 import { chapterLayoutView, ChapterLayoutViewPage } from "../../services/chapterLayoutView";
 import { chapterIdsWithReturns, invalidatePendingReturns, loadPendingReturns, PendingReturn, returnsForChapter, senderLabel } from "../../services/storyReturnsInbox";
@@ -1054,6 +1054,7 @@ Page({
       case "import-package": void this.importLastPackage(); break;
       case "chapter-delivery-send": void this.openChapterDeliverySend(); break;
       case "chapter-delivery-link": void this.openChapterDeliveryClaimLink(); break;
+      case "chapter-delivery-claim": void this.openChapterDeliveryClaim(); break;
       case "chapter-delivery-inbox": void this.openChapterDeliveryInbox(); break;
     }
   },
@@ -1720,13 +1721,32 @@ Page({
       if (!/cancel/i.test(message)) this.setData({ saveNotice: message });
     }
   },
-  async openChapterDeliveryInbox() {
+  async openChapterDeliveryClaim() {
+    if (!this.data.chapterDeliveryOn || this.data.panel || this.data.saving || this.data.generating) return;
+    try {
+      const input = await new Promise<string | null>((resolve, reject) => wx.showModal({
+        title: "接收网页故事", editable: true, placeholderText: "粘贴网页的领取链接",
+        confirmText: "接收", success: result => resolve(result.confirm ? result.content || "" : null), fail: reject,
+      }));
+      if (input === null || !this.data.chapterDeliveryOn) return;
+      const token = chapterClaimToken(input);
+      wx.showLoading({ title: "接收故事…", mask: true });
+      const result = await claimChapterDelivery(token);
+      wx.hideLoading();
+      await this.openChapterDeliveryInbox(result.deliveryId);
+    } catch (error) {
+      wx.hideLoading();
+      const message = error instanceof Error ? error.message : "接收没有完成，请重试";
+      if (!/cancel/i.test(message)) this.setData({ saveNotice: message });
+    }
+  },
+  async openChapterDeliveryInbox(claimedDeliveryId?: string) {
     if (!this.data.chapterDeliveryOn || this.data.panel || this.data.saving || this.data.generating) return;
     try {
       const { items } = await listChapterDeliveryInbox();
       const pending = items.filter(item => item.status === "pending");
       if (!pending.length) { this.setData({ saveNotice: "收件箱里还没有待处理的章节" }); return; }
-      const selected = await new Promise<number>((resolve, reject) => wx.showActionSheet({
+      const selected = claimedDeliveryId ? pending.findIndex(item => item.deliveryId === claimedDeliveryId) : await new Promise<number>((resolve, reject) => wx.showActionSheet({
         itemList: pending.map(item => `${item.kind === "return" ? "发回" : "章节"} · ${new Date(item.createdAt).toLocaleDateString()} · ${item.deliveryId.slice(0, 8)}`),
         success: result => resolve(result.tapIndex), fail: reject,
       }));
