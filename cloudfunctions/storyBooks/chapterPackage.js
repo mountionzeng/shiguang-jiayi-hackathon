@@ -187,6 +187,7 @@ async function reviseReceivedChapter(repo,ctx,raw,{now=()=>new Date().toISOStrin
   const reviewTexts=[...input.edits.map(edit=>edit.text),...(input.layout?.pages||[]).map(page=>page.label)];
   if(reviewTexts.length&&await approveText(reviewTexts.join('\n'),ctx.verifiedOpenid,'章节修订')!==true)
     throw error('CONTENT_REJECTED','修改后的文字没有通过内容安全检测，没有保存');
+  await repo.ensureCollection?.('story_chapter_edits');
   const requestKey='chapter-edit-'+digest([ctx.principalId,input.requestId]),fingerprint=digest(input);
   return repo.transaction(async tx=>{
     await assertSpaceOwner(tx,ctx);

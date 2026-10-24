@@ -154,6 +154,21 @@ test('a protected original-text edit returns by stable package block and is adop
   assert.equal(f.tables.get('biography_drafts:family_owner_revision-source').revision,sourceBefore,'previous source revision remains immutable');
 });
 
+test('first chapter revision initializes its collection before opening a transaction',async()=>{
+  const f=await setup(),received=await importChapterPackage(f.repo,f.owner,f.input(),f.deps),copy=stored(f);
+  let ready=false;
+  f.repo.ensureCollection=async name=>{assert.equal(name,'story_chapter_edits');ready=true;};
+  const transaction=f.repo.transaction;
+  f.repo.transaction=fn=>{
+    assert.equal(ready,true,'collection must exist before a CloudBase transaction reads it');
+    return transaction(fn);
+  };
+  const saved=await reviseReceivedChapter(f.repo,f.owner,{requestId:'first-edit-001',storyId:copy.story.id,
+    revisionId:copy.story.currentRevisionId,expectedVersion:copy.story.version,chapterId:received.chapterId,
+    edits:[{blockId:B1,text:'首次修订'}]},{approveText:ok});
+  assert.equal(saved.alreadySaved,false);
+});
+
 test('protected source text and layout revisions preserve source receipts, block ids and old revisions',async()=>{
   const f=await setup(),received=await importChapterPackage(f.repo,f.owner,f.input(),f.deps),copy=stored(f);
   const before=structuredClone(copy.revision.draft.chapters[0]);
