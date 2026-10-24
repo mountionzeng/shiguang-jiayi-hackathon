@@ -1,5 +1,6 @@
 import { BiographyDraft, ChapterEdit, ChapterEditSource, ChapterEditStatus, ManuscriptChapter, ManuscriptContent, memorySegmentCount, memorySegments, MemoryContribution } from "../domain/biography";
 import { contentFromDelta, contentToDelta, validateContent } from "./bookImages";
+import { matchesChapterText, validateChapterLayout } from "../domain/storyBookCore";
 
 const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
 const DIGITS = "零一二三四五六七八九";
@@ -21,7 +22,10 @@ export function newChapterId() {
 }
 
 export function copyChapter(chapter: ManuscriptChapter): ManuscriptChapter {
-  return { ...chapter, memoryIds: [...chapter.memoryIds], content: chapter.content.map(item => ({ ...item })) };
+  return {
+    ...chapter, memoryIds: [...chapter.memoryIds], content: chapter.content.map(item => ({ ...item })),
+    ...(chapter.layout ? { layout: JSON.parse(JSON.stringify(chapter.layout)) } : {}),
+  };
 }
 
 /** Memory ids a version was built from, read from its source fingerprint. */
@@ -53,7 +57,7 @@ export function flattenChapters(chapters: ManuscriptChapter[]) {
     const last = content[content.length - 1];
     if (typeof last.text !== "string" || !last.text.endsWith("\n")) content.push({ text: "\n" });
   });
-  const paragraphs = content.map(item => item.text ?? "").join("").split(/\n\s*\n/).map(text => text.trim()).filter(Boolean);
+  const paragraphs = content.map(item => item.text ?? "").join("").split(/\n/).map(text => text.trim()).filter(Boolean);
   return { content, paragraphs };
 }
 
@@ -520,6 +524,7 @@ export function validateChapters(chapters: unknown) {
     if (!Array.isArray(chapter.memoryIds) || chapter.memoryIds.length > 500 ||
       !chapter.memoryIds.every(id => typeof id === "string" && id.length <= 120)) throw new Error("章节里的记忆列表无效");
     if (!Array.isArray(chapter.content)) throw new Error("图文内容格式无效");
+    validateChapterLayout(chapter);
     all.push(...chapter.content);
     if (chapter.pendingRevision !== undefined) validatePendingRevision(chapter.pendingRevision);
     if (chapter.containsAiText !== undefined && typeof chapter.containsAiText !== "boolean") throw new Error("章节标记无效");
@@ -539,8 +544,7 @@ export function validateManuscriptDraft(draft: BiographyDraft) {
   if (!draft.title.trim()) throw new Error("书稿标题不能为空");
   if (draft.title.length > 80) throw new Error("书稿标题最多 80 字");
   validateChapters(draft.chapters);
-  const flat = flattenChapters(draft.chapters);
-  if (JSON.stringify(flat.content) !== JSON.stringify(draft.content) || JSON.stringify(flat.paragraphs) !== JSON.stringify(draft.paragraphs)) {
+  if (!matchesChapterText(draft)) {
     throw new Error("章节和全文不一致，请重新打开书稿");
   }
 }

@@ -59,7 +59,19 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
   const ctx = canvas.getContext('2d');
   const measure = (text: string, size: number) => { ctx.font = size + 'px sans-serif'; return ctx.measureText(text).width; };
   const descriptor = material.descriptor;
-  const pages = layoutForTarget(descriptor.title, descriptor.chapters, mode, fontSize, descriptor.targetTextImageCount, measure);
+  const modulePages = mode === 'pages' && !descriptor.targetTextImageCount && descriptor.chapters.every(chapter => chapter.layout)
+    ? descriptor.chapters.flatMap(chapter => chapter.layout!.pages.map(page => ({ chapterId: chapter.id, modules: page.modules })))
+    : undefined;
+  // Reserve the existing header/footer bands while fitting the 900×1200 layout
+  // uniformly into the remaining page area.
+  const moduleScale = Math.min(IMAGE_WIDTH / 900, (PAGE_HEIGHT - 180) / 1200);
+  const moduleLeft = (IMAGE_WIDTH - 900 * moduleScale) / 2, moduleTop = (PAGE_HEIGHT - 1200 * moduleScale) / 2;
+  const fitsModulePages = !!modulePages?.length && modulePages.every(page => page.modules.every(module => {
+    const size = module.fontSize * moduleScale;
+    const lines = wrapImageText(module.text, size, measure, module.rect.width * moduleScale);
+    return lines.length * Math.ceil(size * 1.25) <= module.rect.height * moduleScale;
+  }));
+  const pages = fitsModulePages ? modulePages! : layoutForTarget(descriptor.title, descriptor.chapters, mode, fontSize, descriptor.targetTextImageCount, measure);
   const titleLines = wrapImageText(descriptor.title, 42, measure);
   if (titleLines.length > 10) throw new Error('书名过长，无法完整排版，请缩短书名后重试');
   const headerLines = wrapImageText(descriptor.title, 24, measure);
@@ -101,7 +113,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
       assertActive();
       const coverIndex = index < covers.length ? index : -1;
       const textIndex = index - covers.length;
-      const height = coverIndex >= 0 ? PAGE_HEIGHT : pages[textIndex].height;
+      const height = coverIndex >= 0 || 'modules' in pages[textIndex] ? PAGE_HEIGHT : pages[textIndex].height;
       await timed<void>(resolve => page.setData({ canvasHeight: height }, () => resolve()), '准备画布');
       assertActive();
       canvas.width = IMAGE_WIDTH; canvas.height = height;
@@ -131,7 +143,19 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
       } else {
         ctx.fillStyle = '#6a6e68'; ctx.font = 24 + 'px sans-serif';
         headerLines.forEach((line, i) => ctx.fillText(line.text, 60, 66 + i * 34));
-        for (const row of pages[textIndex].rows) {
+        if ('modules' in pages[textIndex]) {
+          for (const module of pages[textIndex].modules) {
+            const size = module.fontSize * moduleScale, x = moduleLeft + module.rect.x * moduleScale;
+            ctx.fillStyle = '#2a2e2b'; ctx.font = size + 'px sans-serif';
+            ctx.textAlign = module.alignment === 'center' ? 'center' : 'left';
+            const left = module.alignment === 'center' ? x + module.rect.width * moduleScale / 2 : x;
+            const lineHeight = Math.ceil(size * 1.25);
+            wrapImageText(module.text, size, measure, module.rect.width * moduleScale).forEach((line, lineIndex) => {
+              ctx.fillText(line.text, left, moduleTop + module.rect.y * moduleScale + lineIndex * lineHeight);
+            });
+          }
+          ctx.textAlign = 'left';
+        } else for (const row of pages[textIndex].rows) {
           ctx.fillStyle = row.heading ? '#4f7f6b' : '#2a2e2b'; ctx.font = row.fontSize + 'px sans-serif'; ctx.fillText(row.text, 60, row.y);
         }
       }

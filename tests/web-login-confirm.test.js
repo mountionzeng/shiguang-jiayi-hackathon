@@ -35,24 +35,62 @@ test("响应形状：只接受 JSON 与已知结果", () => {
   assert.equal(core.webLoginResultShapeError("application/json", { outcome: "ok" }), "bridge_unavailable");
 });
 
-test("开关关闭时云函数入口拒绝确认，且只提供入口可见性", async () => {
+test("云函数登录开关优先于运行配置，关闭时不读取身份或发出请求", async t => {
   const Module = require("node:module");
   const original = Module._load;
+  const keys = ["DRINKING_TIME_BRIDGE_BASE_URL", "DRINKING_TIME_BRIDGE_SECRET", "WEB_LOGIN_CONFIRM_ENABLED"];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  const entry = require.resolve("../cloudfunctions/drinkingTimeBridge/index.js");
+  let contextCalls = 0;
+  let networkCalls = 0;
   Module._load = function (request, ...rest) {
-    if (request === "wx-server-sdk") return { init() {}, DYNAMIC_CURRENT_ENV: "x", database: () => ({}), getWXContext: () => CONTEXT };
+    if (request === "wx-server-sdk") return { init() {}, DYNAMIC_CURRENT_ENV: "x", database: () => ({}), getWXContext: () => { contextCalls++; return CONTEXT; } };
+    if (request === "node:https") return { request() { networkCalls++; throw new Error("unexpected_network"); } };
     return original.call(this, request, ...rest);
   };
-  process.env.DRINKING_TIME_BRIDGE_BASE_URL = "https://test.drinkingtime.top/api/shiguang";
-  process.env.DRINKING_TIME_BRIDGE_SECRET = "s".repeat(32);
-  delete process.env.WEB_LOGIN_CONFIRM_ENABLED;
   try {
+    delete require.cache[entry];
     const { main } = require("../cloudfunctions/drinkingTimeBridge/index.js");
-    await assert.rejects(main({ action: "confirmWebLogin", code: "ABC234", decision: "confirm" }), /web_login_disabled/);
-    assert.deepEqual(await main({ action: "webLoginEnabled" }), { enabled: false });
-    process.env.WEB_LOGIN_CONFIRM_ENABLED = "true";
-    assert.deepEqual(await main({ action: "webLoginEnabled" }), { enabled: true });
+    for (const flag of [undefined, "false", "TRUE"]) {
+      for (const configured of [false, true]) {
+        await t.test(`开关 ${flag ?? "未设置"}、配置${configured ? "完整" : "缺失"}：同样失败关闭`, async () => {
+          if (flag === undefined) delete process.env.WEB_LOGIN_CONFIRM_ENABLED;
+          else process.env.WEB_LOGIN_CONFIRM_ENABLED = flag;
+          process.env.DRINKING_TIME_BRIDGE_BASE_URL = configured ? "https://test.drinkingtime.top/api/shiguang" : "";
+          process.env.DRINKING_TIME_BRIDGE_SECRET = configured ? "s".repeat(32) : "";
+          contextCalls = 0;
+          for (const decision of ["preview", "confirm", "deny"]) {
+            for (const code of ["ABC234", "000000"]) {
+              await assert.rejects(main({ action: "confirmWebLogin", code, decision }), /^Error: web_login_disabled$/);
+            }
+          }
+          assert.deepEqual(await main({ action: "webLoginEnabled" }), { enabled: false });
+          assert.equal(contextCalls, 0);
+          assert.equal(networkCalls, 0);
+        });
+      }
+    }
+    await t.test("开启但配置缺失时仍隐藏入口，并明确报告配置缺失", async () => {
+      process.env.WEB_LOGIN_CONFIRM_ENABLED = "true";
+      process.env.DRINKING_TIME_BRIDGE_SECRET = "";
+      await assert.rejects(main({ action: "webLoginEnabled" }), /bridge_not_configured/);
+      await assert.rejects(main({ action: "confirmWebLogin", code: "ABC234", decision: "preview" }), /bridge_not_configured/);
+      // 旧传电脑入口仍要求原有配置。
+      await assert.rejects(main({ action: "issueDesktop" }), /bridge_not_configured/);
+      assert.equal(networkCalls, 0);
+    });
+    await t.test("开启且配置完整才显示入口，格式错误不发网络请求", async () => {
+      process.env.DRINKING_TIME_BRIDGE_SECRET = "s".repeat(32);
+      assert.deepEqual(await main({ action: "webLoginEnabled" }), { enabled: true });
+      await assert.rejects(main({ action: "confirmWebLogin", code: "000000", decision: "preview" }), /invalid_input/);
+      assert.equal(networkCalls, 0);
+    });
   } finally {
     Module._load = original;
-    delete process.env.WEB_LOGIN_CONFIRM_ENABLED;
+    delete require.cache[entry];
+    for (const key of keys) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
   }
 });

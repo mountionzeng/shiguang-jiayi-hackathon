@@ -13,7 +13,9 @@
     <button wx:if="{{!protectedCopy && storyImageSelected}}" class="tool-button" catchtouchstart="placeSelectedStoryImage" disabled="{{!editorReady || refreshingStoryImage || saving || generating || pickingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{refreshingStoryImage ? '准备插图' : '插入插图'}}</button>
     <button wx:if="{{!protectedCopy && !storyImageSelected}}" class="tool-button send-toggle" bindtap="toggleSend" disabled="{{!draft || panel || preparingSend || generating || pickingPhoto}}">{{preparingSend ? '准备中' : '发送'}}<text class="send-chevron">⌄</text></button>
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button save-button" bindtap="openAppendOwn" disabled="{{panel || appendingOwn}}">补充经历</button>
+    <button wx:if="{{protectedCopy && protectedCanRevise && chapterPackageOn && view === 'chapter'}}" class="tool-button" bindtap="openProtectedRevision" disabled="{{panel || protectedRevisionSaving}}">改原文/排版</button>
     <button wx:if="{{protectedCopy && view === 'chapter'}}" class="tool-button" bindtap="returnOwnExperience" disabled="{{panel || returningOwn || appendingOwn}}">{{returningOwn ? '发送中' : '发回原作者'}}</button>
+    <button wx:if="{{protectedCopy && chapterDeliveryOn && protectedHasDeliveryLineage && view === 'chapter'}}" class="tool-button" bindtap="returnChapterDelivery" disabled="{{panel || protectedRevisionSaving}}">发回修改稿</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button save-button" bindtap="saveEdits" disabled="{{!draft || !editing || saving || generating || panel || pickingPhoto || (view === 'chapter' && !editorReady)}}"><view class="action-icon icon-save" aria-hidden="true"></view>{{saving ? '保存中' : '保存'}}</button>
     <button class="tool-button" bindtap="showMore" disabled="{{loading || saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-more" aria-hidden="true"></view>更多</button>
   </view>
@@ -52,11 +54,17 @@
     <block wx:if="{{moreSection === 'chapter'}}">
       <button class="more-option more-back" bindtap="showMoreMain">‹ 返回更多</button>
       <button class="more-option" data-action="new-chapter" bindtap="selectTool">新建章节</button>
+      <button wx:if="{{chapterPackageOn}}" class="more-option" data-action="package-chapter" bindtap="selectTool">打包这一章</button>
+      <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-send" bindtap="selectTool">投递给已连接亲友</button>
+      <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-link" bindtap="selectTool">创建一次性领取链接</button>
+      <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-inbox" bindtap="selectTool">章节投递收件箱</button>
+      <button wx:if="{{chapterPackageDev}}" class="more-option" data-action="import-package" bindtap="selectTool">导入最近的章节包（开发版）</button>
       <button class="more-option" data-action="up" bindtap="selectTool">上移本章</button>
       <button class="more-option" data-action="down" bindtap="selectTool">下移本章</button>
       <button class="more-option more-danger" data-action="delete-chapter" bindtap="selectTool">删除本章</button>
     </block>
     <block wx:else>
+      <button wx:if="{{chapterPackageOn && chapterDeliveryOn}}" class="more-option" data-action="chapter-delivery-inbox" bindtap="selectTool">章节投递收件箱</button>
       <button wx:if="{{storyId}}" class="more-option" data-action="people" bindtap="selectTool">书中人物与权限<text>›</text></button>
       <button wx:if="{{draft}}" class="more-option" data-action="history" bindtap="selectTool">历史版本<text>›</text></button>
       <block wx:if="{{protectedCopy && storyId && savedRevisionId && !editing}}">
@@ -90,6 +98,7 @@
     <button wx:if="{{panel === 'version'}}" class="tool-button save-button" bindtap="saveVersion" disabled="{{saving}}"><view class="action-icon icon-version" aria-hidden="true"></view>存为版本</button>
     <button wx:if="{{panel === 'share-excerpt'}}" class="tool-button save-button" bindtap="sendExcerpt" disabled="{{sharingExcerpt}}">{{sharingExcerpt ? '发送中…' : '确认发送'}}</button>
     <button wx:if="{{panel === 'append-own'}}" class="tool-button save-button" bindtap="appendOwnExperience" disabled="{{appendingOwn}}">{{appendingOwn ? '保存中…' : '保存我的补充'}}</button>
+    <button wx:if="{{panel === 'source-revision'}}" class="tool-button save-button" bindtap="saveProtectedRevision" disabled="{{protectedRevisionSaving}}">{{protectedRevisionSaving ? '保存中…' : '保存修订'}}</button>
   </view>
   <view class="book-generation" wx:if="{{loading && !draft && !loadError && !openingChapter}}"><generation-status text="正在打开这本书…" /></view>
   <view class="book-generation" wx:if="{{generating}}"><generation-status text="正在整理正文，完成后可以先预览…" /></view>
@@ -252,6 +261,25 @@
         <textarea class="version-name" value="{{appendOwnText}}" maxlength="20000" auto-height bindinput="onAppendOwnText" disabled="{{appendingOwn}}" placeholder="写下你对这段记忆的补充、不同视角或后来发生的事…" />
         <view class="panel-note">你的文字会追加在本章末尾。亲友分享的原文和图片不会被改写。</view>
       </block>
+      <block wx:if="{{panel === 'source-revision'}}">
+        <view class="panel-title serif">修改亲友分享的原文</view>
+        <view class="panel-note">只提交你改过的来源文字和本章排版。服务器会保留来源标记并另存一个版本；原作者确认后，修改才会进入原稿。</view>
+        <view class="pending-card" wx:for="{{protectedRevisionRows}}" wx:key="blockId">
+          <view class="pending-label">原文模块 {{index + 1}}</view>
+          <textarea class="version-name" value="{{item.text}}" maxlength="20000" auto-height data-index="{{index}}" bindinput="onProtectedRevisionInput" disabled="{{protectedRevisionSaving}}" />
+        </view>
+        <view class="panel-title serif" wx:if="{{protectedRevisionLayout}}">调整排版位置</view>
+        <view class="panel-note" wx:if="{{!protectedRevisionLayout}}">这章没有网页排版；可以只修改原文。</view>
+        <view class="pending-card" wx:for="{{protectedLayoutRows}}" wx:key="id">
+          <view class="pending-label">第 {{item.pageIndex + 1}} 页 · {{item.kind}}模块 {{item.id}} · {{item.x}}, {{item.y}}</view>
+          <view class="pending-actions">
+            <button class="pending-btn" data-page="{{item.pageIndex}}" data-module="{{item.moduleIndex}}" data-dx="-10" bindtap="nudgeProtectedLayout">←</button>
+            <button class="pending-btn" data-page="{{item.pageIndex}}" data-module="{{item.moduleIndex}}" data-dy="-10" bindtap="nudgeProtectedLayout">↑</button>
+            <button class="pending-btn" data-page="{{item.pageIndex}}" data-module="{{item.moduleIndex}}" data-dy="10" bindtap="nudgeProtectedLayout">↓</button>
+            <button class="pending-btn" data-page="{{item.pageIndex}}" data-module="{{item.moduleIndex}}" data-dx="10" bindtap="nudgeProtectedLayout">→</button>
+          </view>
+        </view>
+      </block>
       <block wx:if="{{panel === 'history'}}">
         <view class="panel-title serif">历史版本</view>
         <button wx:if="{{!protectedCopy && draft && view === 'contents'}}" class="tool-button" data-action="version" bindtap="selectTool">为当前版本命名存档</button>
@@ -263,10 +291,20 @@
         <view wx:if="{{revisionLoading}}" class="panel-note">正在读取这一版正文…</view>
         <view wx:if="{{previewVersion}}">
           <view class="panel-title serif">{{previewVersion.draft.title}}</view>
-          <view class="chapter-para serif" wx:for="{{previewBlocks}}" wx:key="index">
-            <image wx:if="{{item.path}}" class="book-photo" src="{{item.path}}" mode="widthFix" />
-            <text wx:else selectable>{{item.text}}</text>
+          <view wx:if="{{previewLayoutPages.length}}" class="chapter-layout-preview">
+            <view wx:for="{{previewLayoutPages}}" wx:for-item="page" wx:key="id" class="chapter-layout-page" style="height:{{page.height}}px">
+              <block wx:for="{{page.modules}}" wx:for-item="module" wx:key="id">
+                <text wx:if="{{module.kind === 'text'}}" class="chapter-layout-text serif" selectable style="{{module.style}}font-size:{{module.fontSize}}px;text-align:{{module.alignment === 'center' ? 'center' : 'left'}};">{{module.text}}</text>
+                <image wx:elif="{{module.kind === 'image'}}" class="chapter-layout-image" src="{{module.imagePath}}" mode="aspectFill" style="{{module.style}}" />
+              </block>
+            </view>
           </view>
+          <block wx:else>
+            <view class="chapter-para serif" wx:for="{{previewBlocks}}" wx:key="index">
+              <image wx:if="{{item.path}}" class="book-photo" src="{{item.path}}" mode="widthFix" />
+              <text wx:else selectable>{{item.text}}</text>
+            </view>
+          </block>
         </view>
       </block>
       <block wx:if="{{panel === 'organize'}}">
