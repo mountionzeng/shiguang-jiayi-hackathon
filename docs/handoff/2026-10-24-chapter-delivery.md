@@ -14,7 +14,7 @@
 
 - `npm run typecheck -- --pretty false` 通过。
 - `node --test tests/chapter-delivery-contract.test.js tests/chapter-package-cloud.test.js`：桥契约与04章节包定向测试29项通过；`tests/chapter-delivery-service.test.ts` 的发回决议回归1项通过。
-- 网页修复提交为 `39e554ed`，验收记录提交为 `94bef0be`；本仓本轮提交号待记录。
+- 网页修复提交为 `39e554ed`，验收记录提交为 `94bef0be`；本仓修复与交接提交为 `9375294`。
 - 网页迁移没有执行，未做浏览器、微信开发者工具或真机端到端测试。
 
 ## 待办
