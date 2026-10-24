@@ -128,10 +128,25 @@ export async function createChapterClaimLink(chapter: ManuscriptChapter, display
   saveOutbox(item);
   return uploadOutgoing(item);
 }
+/** Recover legacy copies only from the exact received package; never guess from title or order. */
+export function chapterWithReturnSource(chapter: ManuscriptChapter, reads: Record<string, { package?: ChapterPackage }>): ManuscriptChapter {
+  const lineage = chapter.packageLineage;
+  if (!lineage) throw new Error("这一章没有原始章节来源，不能发回");
+  if (lineage.sourceChapterId) return chapter;
+  const original = Object.values(reads).map(item => item.package).find(pkg =>
+    pkg?.packageId === lineage.receivedPackageId && pkg.lineage.rootPackageId === lineage.rootPackageId);
+  if (!original || original.chapters.length !== 1)
+    throw new Error("旧副本缺少原章节编号，请重新接收原章节后再发回");
+  return { ...chapter, packageLineage: { ...lineage, sourceChapterId: original.chapters[0].chapterId } };
+}
+
 export async function returnChapter(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string) {
   guarded();
-  const prior = readOutbox().find(item => item.action === "returnChapter" && item.package.chapters[0]?.chapterId === chapter.id);
-  const item = prior ?? await createOutbox("returnChapter", chapter, displayName, storyTitle, storyId);
+  const source = chapterWithReturnSource(chapter, (wx.getStorageSync(READS_KEY) || {}) as Record<string, { package?: ChapterPackage }>);
+  const prior = readOutbox().find(item => item.action === "returnChapter" &&
+    item.package.chapters[0]?.chapterId === source.packageLineage?.sourceChapterId &&
+    item.package.lineage.parentPackageId === source.packageLineage?.receivedPackageId);
+  const item = prior ?? await createOutbox("returnChapter", source, displayName, storyTitle, storyId);
   saveOutbox(item);
   return uploadOutgoing(item);
 }

@@ -36,7 +36,7 @@ test('import keeps text, block ids and layout, and leaves the fingerprint empty'
   assert.equal(revision.kind,'version');assert.equal(revision.sourceFingerprint,'');
   assert.deepEqual(saved.content.map(i=>i.blockId),[B1,B2]);
   assert.deepEqual(saved.layout,layout());
-  assert.deepEqual(saved.packageLineage,{rootPackageId:'cp_root0001',receivedPackageId:'cp_test-0000001'});
+  assert.deepEqual(saved.packageLineage,{rootPackageId:'cp_root0001',receivedPackageId:'cp_test-0000001',sourceChapterId:'chapter-from-web'});
   assert.equal(story.sourcePolicyRequired,true);
   assert.equal(revision.draft.paragraphs.includes('第一行'),true);
 });

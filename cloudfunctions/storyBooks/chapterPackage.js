@@ -135,7 +135,7 @@ async function importChapterPackage(repo,ctx,raw,{now=()=>new Date().toISOString
       packageBlockDigests[savedId]=digest(item.text.replace(/\r\n?/g,'\n').replace(/\n$/,''));
     }});
     const chapter={id:chapterId,title:input.chapter.title,memoryIds:[],content:input.chapter.content.map(item=>({...item,blockId:idMap.get(item.blockId),sourceIds:[sourceId]})),
-      packageLineage:{rootPackageId:input.lineage.rootPackageId,receivedPackageId:input.packageId},
+      packageLineage:{rootPackageId:input.lineage.rootPackageId,receivedPackageId:input.packageId,sourceChapterId:input.chapter.id},
       ...(input.chapter.containsAiText?{containsAiText:true}:{}),...(layout?{layout}:{}),
       packageSourceBlockIds,packageBlockDigests,
       ...(input.assets.length?{packageAssets:Object.fromEntries(input.assets.map(asset=>[asset.assetId,{photoId:input.assetPhotos[asset.assetId],aiGenerated:asset.aiGenerated}]))}:{}),

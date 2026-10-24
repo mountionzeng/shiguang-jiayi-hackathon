@@ -88,7 +88,8 @@ function buildChapterPackage(input: ExportInput, allowProtectedReturn: boolean):
   }
   const coverPhotoId = input.chapter.packageCoverAssetId ? input.chapter.packageAssets?.[input.chapter.packageCoverAssetId]?.photoId : null;
   const result = toChapterPackage(
-    input.chapter, input.images ?? {},
+    allowProtectedReturn && savedLineage?.sourceChapterId
+      ? { ...input.chapter, id: savedLineage.sourceChapterId } : input.chapter, input.images ?? {},
     { packageId: input.packageId, createdAt: input.createdAt, displayName: input.displayName, storyTitle: input.storyTitle, lineage },
     { layout: input.layout ?? input.chapter.layout ?? null, ...(coverPhotoId ? { coverPhotoId } : {}), assetIdByPhotoId, aiGeneratedByPhotoId }
   );

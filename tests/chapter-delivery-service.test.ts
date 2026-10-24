@@ -32,3 +32,21 @@ test("claim links accept the public origin and reject foreign, malformed or deco
   await assert.rejects(waitForChapterModeration(async () => { calls++; throw pending(); }, async () => {}), /审核中/);
   assert.equal(calls, 15);
 });
+
+
+test("return uses the original chapter id, including exact legacy receipt recovery", async () => {
+  const { chapterWithReturnSource } = await import("../miniprogram/services/chapterDelivery");
+  const { exportChapterReturnPackage } = await import("../miniprogram/services/chapterPackageService");
+  const chapter = { id: "chapter-local-copy", title: "副本", memoryIds: [], content: [{ text: "修改后\n" }],
+    packageLineage: { rootPackageId: "cp_root0001", receivedPackageId: "cp_parent01" } };
+  const receipt = { packageId: "cp_parent01", lineage: { rootPackageId: "cp_root0001" },
+    chapters: [{ chapterId: "chapter-original" }] } as any;
+  assert.throws(() => chapterWithReturnSource(chapter, {}), /缺少原章节编号/);
+  assert.throws(() => chapterWithReturnSource(chapter, { wrong: { package: { ...receipt, packageId: "cp_other001" } } }), /缺少原章节编号/);
+  const recovered = chapterWithReturnSource(chapter, { exact: { package: receipt } });
+  assert.equal(recovered.id, "chapter-local-copy");
+  const saved = chapterWithReturnSource(recovered, {});
+  const result = exportChapterReturnPackage({ chapter: saved, packageId: "cp_return01", displayName: "我", createdAt: "2026-10-25T00:00:00.000Z", storyTitle: "故事" });
+  assert.equal(result.package.chapters[0].chapterId, "chapter-original");
+  assert.equal(chapter.packageLineage.hasOwnProperty("sourceChapterId"), false);
+});

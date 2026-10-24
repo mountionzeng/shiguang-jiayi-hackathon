@@ -213,7 +213,7 @@ export interface ManuscriptChapter {
    */
   layout?: import("./chapterPackage").PackageLayout;
   /** Server-side lineage for a received chapter package; not exported as private package data. */
-  packageLineage?: { rootPackageId: string; receivedPackageId: string };
+  packageLineage?: { rootPackageId: string; receivedPackageId: string; sourceChapterId?: string };
   /** Package asset links stay outside the public package JSON and point to locally/cloud-registered photos. */
   packageAssets?: Record<string, { photoId: string; aiGenerated: boolean }>;
   packageCoverAssetId?: string;
