@@ -159,3 +159,6 @@ page { height: 100%; overflow: hidden; }
 .chapter-layout-text, .chapter-layout-image { position: absolute; box-sizing: border-box; overflow: hidden; white-space: pre-wrap; }
 .chapter-layout-text { color: #2a2e2b; line-height: 1.45; }
 .chapter-layout-image { display: block; }
+
+.chapter-current-layout { flex: 1; height: 0; min-height: 0; }
+.manuscript-body[hidden] { display: none; }

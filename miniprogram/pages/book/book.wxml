@@ -161,7 +161,17 @@
       <view class="field-label">正文</view>
       <view wx:if="{{!protectedCopy}}" class="panel-note">文字可以直接修改；点图片可删除，换图请用顶部「图片」入口。修改后点保存。</view>
       <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
-      <editor id="manuscript-editor" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{!protectedCopy}}" show-img-resize="{{false}}"></editor>
+      <scroll-view wx:if="{{currentLayoutPages.length}}" class="chapter-current-layout" scroll-y>
+        <view class="chapter-layout-preview">
+          <view wx:for="{{currentLayoutPages}}" wx:for-item="page" wx:key="id" class="chapter-layout-page" style="height:{{page.height}}px">
+            <block wx:for="{{page.modules}}" wx:for-item="module" wx:key="id">
+              <text wx:if="{{module.kind === 'text'}}" class="chapter-layout-text serif" selectable style="{{module.style}}font-size:{{module.fontSize}}px;text-align:{{module.alignment === 'center' ? 'center' : 'left'}};">{{module.text}}</text>
+              <image wx:elif="{{module.kind === 'image'}}" class="chapter-layout-image" src="{{module.imagePath}}" mode="aspectFill" style="{{module.style}}" />
+            </block>
+          </view>
+        </view>
+      </scroll-view>
+      <editor id="manuscript-editor" hidden="{{currentLayoutPages.length}}" class="manuscript-body" bindready="onEditorReady" bindinput="onEditorInput" read-only="{{protectedCopy || saving || generating || !editorReady}}" placeholder="从这里开始写…" show-img-size="{{false}}" show-img-toolbar="{{!protectedCopy}}" show-img-resize="{{false}}"></editor>
       <button wx:if="{{!protectedCopy}}" class="xiaoyi-entry" catchtouchstart="openXiaoyi" disabled="{{saving || generating || pickingPhoto || !editorReady}}" aria-label="小忆">
         <image class="xiaoyi-entry-avatar" src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFill" aria-hidden="true" />
       </button>

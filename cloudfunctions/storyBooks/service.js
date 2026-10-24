@@ -89,14 +89,16 @@ function createStoryService(repo, options = {}) {
     }
     if (action === 'chapterPackageImport') {
       if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
-      // 图片只认已登记在本人名下、且审核通过的照片；审核未出结果按未通过处理。
+      // Keep ownership/path checks ahead of the retryable moderation state.
       const approveImage = async (c, photoId) => {
         const photo = await repo.get('photos', `${c.familyId}__${photoId}`);
-        return !!photo && photo.familyId === c.familyId && photo.photoId === photoId && photo._openid === c.verifiedOpenid &&
-          !photo.deletedAt && !photo.sourcePolicyRequired && photo.sourceIds === undefined &&
-          photo.moderation?.ok === true && photo.moderation?.suggest === 'pass' &&
-          typeof photo.displayFileID === 'string' && photo.displayFileID.startsWith('cloud://') &&
-          photo.displayFileID.endsWith(`/user-photos/${c.familyId}/${photoId}/display.jpg`);
+        if (!photo || photo.familyId !== c.familyId || photo.photoId !== photoId || photo._openid !== c.verifiedOpenid ||
+          photo.deletedAt || photo.sourcePolicyRequired || photo.sourceIds !== undefined ||
+          typeof photo.displayFileID !== 'string' || !photo.displayFileID.startsWith('cloud://') ||
+          !photo.displayFileID.endsWith(`/user-photos/${c.familyId}/${photoId}/display.jpg`)) return false;
+        if (photo.moderation?.ok === false && photo.moderation?.suggest === 'review')
+          throw Object.assign(new Error('图片仍在审核中，请稍后从收件箱继续接收'), { code: 'MODERATION_PENDING' });
+        return photo.moderation?.ok === true && photo.moderation?.suggest === 'pass';
       };
       return importChapterPackage(repo,ctx,{requestId:event.requestId,target:event.target,chapter:event.chapter,layout:event.layout ?? null,
         origin:event.origin,packageId:event.packageId,senderName:event.senderName,lineage:event.lineage,assets:event.assets,assetPhotos:event.assetPhotos,

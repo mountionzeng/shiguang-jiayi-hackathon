@@ -41,7 +41,7 @@ import { PackageLayout } from "../../domain/chapterPackage";
 import { chapterPackageRequestId, chapterPackages, type ImportTarget } from "../../services/chapterPackageService";
 import { chapterClaimToken, claimChapterDelivery, createChapterClaimLink, declineChapterDelivery, importChapterDelivery, listChapterDeliveryContacts, listChapterDeliveryInbox, readChapterDelivery, returnChapter as returnChapterDelivery, sendChapter as sendChapterDelivery } from "../../services/chapterDelivery";
 import { CHAPTER_DELIVERY_ENABLED } from "../../config/runtime";
-import { chapterLayoutView, ChapterLayoutViewPage } from "../../services/chapterLayoutView";
+import { chapterPhotoIds, chapterLayoutView, ChapterLayoutViewPage } from "../../services/chapterLayoutView";
 import { chapterIdsWithReturns, invalidatePendingReturns, loadPendingReturns, PendingReturn, returnsForChapter, senderLabel } from "../../services/storyReturnsInbox";
 import {
   askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
@@ -102,6 +102,7 @@ Page({
     storyImageSelected: false, refreshingStoryImage: false,
     previewBlocks: [] as Array<{ text?: string; path?: string }>,
     previewLayoutPages: [] as ChapterLayoutViewPage[],
+    currentLayoutPages: [] as ChapterLayoutViewPage[],
     // "contents" lists the chapters; "chapter" edits one of them. Empty until the first load.
     view: "" as "" | "contents" | "chapter",
     chapterRows: [] as Array<{ id: string; label: string; title: string; memoryCount: number; photoCount: number; hasReturn: boolean }>,
@@ -344,8 +345,7 @@ Page({
       if (visibleChapters.length === 1) activeChapterId = visibleChapters[0].id;
     }
     if (view === "chapter" && !visibleChapters.some(chapter => chapter.id === activeChapterId)) view = "contents";
-    const localPhotoIds = chapters.flatMap(chapter => chapter.content)
-      .flatMap(item => item.photoId && !isStoryImageReference(item.photoId) ? [item.photoId] : []);
+    const localPhotoIds = chapters.flatMap(chapterPhotoIds).filter(id => !isStoryImageReference(id));
     const storyImageReferences = new Set(chapters.flatMap(chapter => chapter.content)
       .flatMap(item => item.photoId && isStoryImageReference(item.photoId) ? [item.photoId] : []));
     const backdropImageIds = new Set(chapters.flatMap(chapter => chapter.backdropImageId ? [chapter.backdropImageId] : []));
@@ -371,8 +371,8 @@ Page({
     });
     // Only an editor opening with inline photos needs their URL-to-ID mappings.
     // Contents and plain text can render while decoration/unopened photos load.
-    const needsInlineImages = view === "chapter" && chapters
-      .find(chapter => chapter.id === activeChapterId)?.content.some(item => item.photoId);
+    const opening = chapters.find(chapter => chapter.id === activeChapterId);
+    const needsInlineImages = view === "chapter" && opening && chapterPhotoIds(opening).length > 0;
     if (needsInlineImages) {
       const chapter = chapters.find(item => item.id === activeChapterId)!;
       this.setData({ openingChapter: { title: chapter.title, text: plainText(chapter.content) } });
@@ -576,12 +576,14 @@ Page({
       if (title) stories.set(title, (stories.get(title) ?? 0) + 1);
     });
     return {
+      currentLayoutPages: this.story?.sourcePolicyRequired && active?.layout
+        ? chapterLayoutView(active, Math.max(1, (this.windowWidth || 375) - 56), this.photoPaths) : [],
       bookIntroduction: this.introductionBuffer,
       protectedCanRevise: Boolean(this.story?.sourcePolicyRequired === true && active?.content.some(item => typeof item.text === "string" && item.sourceIds?.length && item.blockId)),
       protectedHasDeliveryLineage: Boolean(active?.packageLineage?.rootPackageId && active.packageLineage.receivedPackageId),
       chapterRows: visibleChapters.map((chapter, index) => ({
         id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
-        memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: imageCount(chapter.content),
+        memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: chapterPhotoIds(chapter).length,
         hasReturn: returned.has(chapter.id),
       })),
       chapterReturns: this.story && active
@@ -1967,9 +1969,7 @@ Page({
     const layoutPhotoPaths: Record<string, string> = {};
     let canUseLayout = previewChapters.length > 0 && previewChapters.every(chapter => Boolean(chapter.layout));
     for (const chapter of previewChapters) {
-      for (const item of chapter.content) {
-        if (!item.photoId) continue;
-        const modulePhotoId = item.photoId;
+      for (const modulePhotoId of chapterPhotoIds(chapter)) {
         const path = isStoryImageReference(modulePhotoId) ? this.photoPaths[modulePhotoId] : await readLocalPhoto(modulePhotoId);
         if (path) layoutPhotoPaths[modulePhotoId] = path;
         else canUseLayout = false;

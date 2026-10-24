@@ -238,3 +238,17 @@ test('不支持的粘贴图像保留文字，不能自动提交旧正文', async
   const reopened=page(); await reopened.refresh(); assert.equal(reopened.bodyBuffer,'粘贴文字\n');
   assert.ok(reopened.editorError);
 });
+
+ test('收到的章节正文展示只在排版中引用的图片，不把图片追加进原文', async () => {
+  const {p} = await setup();
+  p.story = {...p.story, sourcePolicyRequired:true};
+  const chapter = p.chapters[0];
+  chapter.packageAssets = {'asset-test':{photoId:'photo-layout-only',aiGenerated:false}};
+  chapter.layout = {canvas:{width:900,height:1200},settings:{},pages:[{label:'正文',modules:[{id:'pic',kind:'image',assetId:'asset-test',rect:{x:0,y:0,width:300,height:200}}]}]};
+  p.photoPaths['photo-layout-only'] = 'https://example.test/photo.jpg';
+  const before = structuredClone(chapter.content);
+  const display = p.chapterData();
+  assert.equal(display.currentLayoutPages[0].modules[0].imagePath, 'https://example.test/photo.jpg');
+  assert.equal(display.chapterRows[0].photoCount,1);
+  assert.deepEqual(chapter.content,before);
+});

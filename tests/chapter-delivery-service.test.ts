@@ -18,3 +18,17 @@ test("claim links accept the public origin and reject foreign, malformed or deco
     assert.throws(() => chapterClaimToken(bad), /完整领取链接/);
   }
 });
+
+ test("pending image review retries, while rejection and timeout never import silently", async () => {
+  const { waitForChapterModeration } = await import("../miniprogram/services/chapterPackageService");
+  let calls = 0;
+  const pending = () => Object.assign(new Error("审核中"), { code: "MODERATION_PENDING" });
+  assert.equal(await waitForChapterModeration(async () => { if (++calls < 3) throw pending(); return "saved"; }, async () => {}), "saved");
+  assert.equal(calls, 3);
+  calls = 0;
+  await assert.rejects(waitForChapterModeration(async () => { calls++; throw Object.assign(new Error("拒绝"), { code: "CONTENT_REJECTED" }); }, async () => {}), /拒绝/);
+  assert.equal(calls, 1);
+  calls = 0;
+  await assert.rejects(waitForChapterModeration(async () => { calls++; throw pending(); }, async () => {}), /审核中/);
+  assert.equal(calls, 15);
+});

@@ -280,6 +280,8 @@ test('the image gate rejects mismatched owners, deleted photos, non-pass moderat
     f.tables.set('photos:family_owner__'+photoId,{...photo,...patch});const before=structuredClone(f.tables);
     await assert.rejects(dispatch(ctx,input),{code:'CONTENT_REJECTED'});assert.deepEqual(f.tables,before);
   }
+  f.tables.set('photos:family_owner__'+photoId,{...photo,moderation:{ok:false,suggest:'review'}});
+  await assert.rejects(dispatch(ctx,input),{code:'MODERATION_PENDING'});
   f.tables.set('photos:family_owner__'+photoId,photo);
   assert.equal((await dispatch(ctx,input)).ok,true);
   const saved=stored(f).revision.draft.chapters[0];

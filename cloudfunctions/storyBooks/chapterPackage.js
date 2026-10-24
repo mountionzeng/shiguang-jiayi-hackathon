@@ -67,12 +67,12 @@ async function loadRevision(tx,familyId,story){
 async function importChapterPackage(repo,ctx,raw,{now=()=>new Date().toISOString(),approveText,approveImage}={}){
   const input=normalize(raw),stamp=now();
   if(typeof approveText!=='function'||typeof approveImage!=='function')throw error('MODERATION_UNAVAILABLE','内容安全检测暂时不可用，请稍后再试');
+  for(const photoId of new Set(Object.values(input.assetPhotos)))if(await approveImage(ctx,photoId)!==true)throw error('CONTENT_REJECTED','这一章里有图片没有通过检查，没有导入');
   const texts=[input.chapter.title,input.senderName,...(input.target.mode==='new'?[input.target.title]:[]),
     ...(input.layout?input.layout.pages.map(page=>page.label):[]),...input.chapter.content.filter(i=>typeof i.text==='string').map(i=>i.text)];
   // createTextModerator owns chunking. Keep adjacent lines together and avoid
   // making a remote moderation call for every individual line.
   if(await approveText(texts.join('\n'),ctx.verifiedOpenid,'章节包')!==true)throw error('CONTENT_REJECTED','这一章里有内容没有通过内容安全检测，没有导入');
-  for(const photoId of new Set(Object.values(input.assetPhotos)))if(await approveImage(ctx,photoId)!==true)throw error('CONTENT_REJECTED','这一章里有图片没有通过检查，没有导入');
   const requestKey='request-'+digest([ctx.principalId,input.requestId,'chapter-package']);
   const packageDigest=digest({chapter:input.chapter,layout:input.layout||null,target:input.target,origin:input.origin||null,packageId:input.packageId,
     senderName:input.senderName,lineage:input.lineage,assets:input.assets,assetPhotos:input.assetPhotos,coverAssetId:input.coverAssetId});

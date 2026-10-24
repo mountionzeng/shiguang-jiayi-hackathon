@@ -191,13 +191,24 @@ async function call<T>(action: string, data: Record<string, unknown>): Promise<T
 
 export const chapterPackageRequestId = () => `package-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
+/** Wait only for asynchronous image review; preserve the same import request. */
+export async function waitForChapterModeration<T>(attempt: () => Promise<T>, pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 2000))): Promise<T> {
+  for (let index = 0; ; index++) {
+    try { return await attempt(); }
+    catch (error) {
+      if ((error as { code?: string })?.code !== "MODERATION_PENDING" || index >= 14) throw error;
+      await pause();
+    }
+  }
+}
+
 export const chapterPackages = {
   import: (payload: ImportPayload, target: ImportTarget, requestId: string, origin?: { storyId: string; chapterId: string }) =>
-    call<{ ok: true; storyId: string; revisionId: string; chapterId: string; alreadyReceived: boolean }>("chapterPackageImport", {
+    waitForChapterModeration(() => call<{ ok: true; storyId: string; revisionId: string; chapterId: string; alreadyReceived: boolean }>("chapterPackageImport", {
       requestId, target, chapter: payload.chapter, layout: payload.layout, packageId: payload.packageId, senderName: payload.senderName, lineage: payload.lineage,
       assets: payload.assets, assetPhotos: payload.assetPhotos, coverAssetId: payload.coverAssetId,
       ...(origin ? { origin } : {}),
-    }),
+    })),
   revise: (input: { storyId: string; revisionId: string; expectedVersion: number; chapterId: string;
     edits: Array<{ blockId: string; text: string }>; layout: PackageLayout | null; requestId: string }) =>
     call<{ ok: true; storyId: string; revisionId: string; chapterId: string; version: number; alreadySaved: boolean }>("chapterPackageRevise", input),

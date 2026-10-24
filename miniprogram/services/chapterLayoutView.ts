@@ -13,6 +13,14 @@ export type ChapterLayoutViewModule = {
 
 export type ChapterLayoutViewPage = { id: string; height: number; modules: ChapterLayoutViewModule[] };
 
+/** Include assets referenced only by layout, without adding blocks to the manuscript. */
+export function chapterPhotoIds(chapter: ManuscriptChapter): string[] {
+  return [...new Set([
+    ...chapter.content.flatMap(item => item.photoId ? [item.photoId] : []),
+    ...Object.values(chapter.packageAssets ?? {}).map(asset => asset.photoId),
+  ])];
+}
+
 /** Convert stored 900×1200 module geometry to a responsive, read-only page view. */
 export function chapterLayoutView(chapter: ManuscriptChapter, viewportWidth: number, photoPaths: Record<string, string>): ChapterLayoutViewPage[] {
   const layout = chapter.layout as PackageLayout | undefined;
