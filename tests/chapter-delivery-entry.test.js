@@ -62,8 +62,8 @@ test('actual cloud entry dispatches chapter inbox with a trusted signed subject'
   assert.equal(call.options.headers['x-shiguang-signature'], core.signature(secret, '/chapter-delivery/inbox', call.options.headers['x-shiguang-timestamp'], call.options.headers['x-shiguang-nonce'], body));
   await assert.rejects(main({ action: 'unrecognizedAction' }), /UNKNOWN_BRIDGE_ACTION/);
 }));
-test('cloud runtime userInfo is ignored while signed identity remains context-only', () => harness(async (main, calls) => {
-  assert.deepEqual(await main({ action: 'listChapterInbox', userInfo: { openId: 'untrusted-openid', appId: 'untrusted-appid' } }), { items: [] });
+test('cloud runtime metadata is ignored while signed identity remains context-only', () => harness(async (main, calls) => {
+  assert.deepEqual(await main({ action: 'listChapterInbox', userInfo: { openId: 'untrusted-openid', appId: 'untrusted-appid' }, tcbContext: { openid: 'untrusted-runtime-openid' } }), { items: [] });
   const body = JSON.parse(calls[0].body);
   assert.deepEqual(body, { subject: core.subjectFor(context.APPID, context.OPENID) });
   await assert.rejects(main({ action: 'listChapterInbox', userId: 7 }), /invalid_input/);
