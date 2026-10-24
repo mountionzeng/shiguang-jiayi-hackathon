@@ -111,7 +111,8 @@ export function exportChapterReturnPackage(input: ExportInput) {
 /** Build a v1 manifest only after checking actual bytes and image signature. */
 export function packageImageInfo(bytes: Uint8Array, width: number, height: number): PackageImageInfo {
   const limits = CHAPTER_PACKAGE_LIMITS;
-  if (!bytes.length || bytes.length > limits.imageBytes) throw new Error("章节包单张图片最多 2 MB");
+  if (!bytes.length) throw new Error("章节图片未能读取，请重新打开故事后再试");
+  if (bytes.length > limits.imageBytes) throw new Error("章节包单张图片最多 2 MB");
   if (!Number.isSafeInteger(width) || width < 1 || width > 20_000 || !Number.isSafeInteger(height) || height < 1 || height > 20_000)
     throw new Error("图片尺寸信息无效");
   let mime: PackageImageInfo["mime"];

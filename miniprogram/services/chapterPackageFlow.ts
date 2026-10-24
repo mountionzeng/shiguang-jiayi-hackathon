@@ -19,7 +19,7 @@ function imageInfo(src: string): Promise<{ width: number; height: number }> {
 }
 function readImageBytes(path: string): Promise<Uint8Array> {
   return new Promise((resolve, reject) => wx.getFileSystemManager().readFile({
-    filePath: path, success: result => resolve(result.data instanceof ArrayBuffer ? new Uint8Array(result.data) : new Uint8Array()), fail: reject,
+    filePath: path, success: result => resolve(typeof result.data === "string" ? new Uint8Array() : new Uint8Array(result.data)), fail: reject,
   }));
 }
 async function persistentImagePath(photoId: string): Promise<{ path: string; staged: boolean }> {
