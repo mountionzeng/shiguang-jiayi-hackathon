@@ -1800,3 +1800,58 @@ test('article image menu opens upload directly or passes saved selected text, wi
   await call(page,'addArticleImage');assert.equal(uploaded,1);
  } finally {env.restore();}
 });
+
+test('article send offers return, web and WeChat without sending on cancellation', async () => {
+  const menus: string[][] = [];
+  let selection = -1;
+  const env = installWx({ showActionSheet: (options: {itemList:string[];success:(r:{tapIndex:number})=>void;fail:()=>void}) => {
+    menus.push(options.itemList); selection < 0 ? options.fail() : options.success({tapIndex:selection});
+  }});
+  try {
+    const page = instantiate(await pageDefinition('book'));
+    Object.assign(page.data, {chapterDeliveryOn:true,protectedHasDeliveryLineage:true});
+    const calls: string[] = [];
+    page.returnChapterDelivery = async () => { calls.push('return'); };
+    page.openChapterDeliveryClaimLink = async (channel:string) => { calls.push(channel); };
+    await call(page,'sendArticle');
+    assert.deepEqual(menus[0],['发回原作者','发给网页用户','发给微信用户']);
+    assert.deepEqual(calls,[]);
+    selection = 0; await call(page,'sendArticle');
+    selection = 2; await call(page,'sendArticle');
+    selection = 1; await call(page,'sendArticle');
+    assert.deepEqual(calls,['return','wechat','web']);
+    Object.assign(page.data,{protectedHasDeliveryLineage:false});
+    selection = -1; await call(page,'sendArticle');
+    assert.deepEqual(menus[menus.length - 1],['发给网页用户','发给微信用户']);
+  } finally { env.restore(); }
+});
+
+test('article share card is scoped to explicit button, chapter and saved revision', async () => {
+  const env = installWx();
+  try {
+    const page = instantiate(await pageDefinition('book'));
+    const token = 'a'.repeat(43);
+    Object.assign(page,{revisionId:'r1',activeChapterId:'chapter1'});
+    Object.assign(page.data,{articleShareUrl:`https://www.drinkingtime.top/chapter/claim/${token}`,articleShareTitle:'测试文章',articleShareRevision:'r1',articleShareChapterId:'chapter1'});
+    const button = {from:'button',target:{dataset:{chapterShare:true}}};
+    assert.deepEqual(call(page,'onShareAppMessage',button),{title:'测试文章',path:`/pages/book/book?chapterClaim=${token}`});
+    assert.equal((call(page,'onShareAppMessage',{from:'menu'}) as {path:string}).path,'/pages/index/index');
+    page.activeChapterId = 'chapter2';
+    assert.equal((call(page,'onShareAppMessage',button) as {path:string}).path,'/pages/index/index');
+    page.activeChapterId = 'chapter1'; page.revisionId = 'r2';
+    assert.equal((call(page,'onShareAppMessage',button) as {path:string}).path,'/pages/index/index');
+  } finally { env.restore(); }
+});
+
+test('receiving a shared article asks before claiming and cancel does not write', async () => {
+  const env = installWx({cloud:{callFunction:()=>{throw new Error('must not claim');}}});
+  try {
+    const page = instantiate(await pageDefinition('book'));
+    page.pendingChapterClaim = 'a'.repeat(43); page.unloaded = false;
+    page.data.chapterDeliveryOn = true;
+    let asked = false; page.confirm = async () => {asked=true;return false;};
+    await call(page,'receiveSharedArticle');
+    assert.equal(asked,true); assert.equal(page.pendingChapterClaim,'');
+    assert.equal(page.data.loadError,'');
+  } finally { env.restore(); }
+});

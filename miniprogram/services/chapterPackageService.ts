@@ -99,10 +99,15 @@ function buildChapterPackage(input: ExportInput, allowProtectedReturn: boolean):
 export function exportChapterPackage(input: ExportInput) { return buildChapterPackage(input, false); }
 
 /**
- * Return-only package export keeps the chapter's source markers untouched and
- * requires the original imported-package lineage. Drinking Time rechecks that
- * lineage and routes the package only to the root sender before it is stored.
+ * Forward a received copy with its original lineage and source markers.
+ * The delivery server verifies that this sender actually received the parent.
  */
+export function exportChapterForwardPackage(input: ExportInput) {
+  if (!input.chapter.packageLineage?.rootPackageId || !input.chapter.packageLineage.receivedPackageId)
+    throw new Error('这一章缺少可验证的接收来源，不能转发');
+  return buildChapterPackage(input, true);
+}
+
 export function exportChapterReturnPackage(input: ExportInput) {
   if (!input.chapter.packageLineage?.rootPackageId || !input.chapter.packageLineage.receivedPackageId)
     throw new Error("这一章没有可验证的原始章节来源，不能发回");

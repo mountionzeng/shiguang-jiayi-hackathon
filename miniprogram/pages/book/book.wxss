@@ -173,3 +173,8 @@ page { height: 100%; overflow: hidden; }
 .article-scroll { flex:1;min-height:0;box-sizing:border-box;padding:24rpx 32rpx; }.article-title { font-size:38rpx;line-height:1.5;padding:8rpx 0 20rpx; }
 
 .article-toolbar button { width:auto;flex:none; }.article-toolbar text { color:#68776c; }.article-scroll > .chapter-ai-label { display:inline-block; }
+
+.article-share-mask { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.35); display:flex; align-items:flex-end; }
+.article-share-sheet { width:100%; padding:36rpx 32rpx 60rpx; background:#f8faf5; border-radius:28rpx 28rpx 0 0; box-sizing:border-box; font-size:36rpx; }
+.article-share-note { margin:20rpx 0; font-size:28rpx; line-height:1.6; color:#627269; }
+.article-share-sheet button { margin-top:16rpx; font-size:32rpx; color:#315c4c; }

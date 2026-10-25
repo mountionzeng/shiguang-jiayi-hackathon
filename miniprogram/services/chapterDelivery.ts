@@ -60,10 +60,11 @@ function saveOutbox(item: Outbox) {
 function removeOutbox(action: Outbox["action"], id: string) { writeOutbox(readOutbox().filter(item => item.action !== action || item.requestId !== id)); }
 
 async function createOutbox(action: Outbox["action"], chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, recipientContactId?: string) {
-  const exported = await exportChapterToCloud(chapter, displayName, storyTitle, storyId, action === "returnChapter" ? "return" : "copy");
+  if (chapter.packageLineage) chapter = chapterWithReturnSource(chapter, (wx.getStorageSync(READS_KEY) || {}) as Record<string, { package?: ChapterPackage }>);
+  const exported = await exportChapterToCloud(chapter, displayName, storyTitle, storyId, action === "returnChapter" ? "return" : chapter.packageLineage ? "forward" : "copy");
   if (Object.keys(exported.assetPhotos).length !== Object.keys(exported.assetFiles).length)
     throw new Error("章节图片来源映射不完整，请重新添加图片后再投递");
-  if (action !== "returnChapter" && storyId) {
+  if (action !== "returnChapter" && storyId && !chapter.packageLineage) {
     const roots = (wx.getStorageSync(ROOTS_KEY) || {}) as Record<string, { storyId: string; chapterId: string }>;
     roots[exported.package.lineage.rootPackageId] = { storyId, chapterId: chapter.id };
     wx.setStorageSync(ROOTS_KEY, roots);

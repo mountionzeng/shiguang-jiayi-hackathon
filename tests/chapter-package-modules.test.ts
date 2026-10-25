@@ -7,7 +7,7 @@ import { CHAPTER_PACKAGE_ENABLED } from "../miniprogram/config/runtime";
 import { chapterPackageBlockId, parseChapterPackage } from "../miniprogram/domain/chapterPackage";
 import { copyChapter, draftWithChapters, flattenChapters, validateManuscriptDraft } from "../miniprogram/services/chapters";
 import {
-  CHAPTER_LAYOUT_MAX_BYTES, assertLayoutFits, chapterPackageEnabled, chapterPackageImportAttempt, exportChapterPackage, packageImageInfo, prepareImport, utf8Bytes, verifyPackageAssetBytes,
+  CHAPTER_LAYOUT_MAX_BYTES, assertLayoutFits, chapterPackageEnabled, chapterPackageImportAttempt, exportChapterForwardPackage, exportChapterPackage, packageImageInfo, prepareImport, utf8Bytes, verifyPackageAssetBytes,
 } from "../miniprogram/services/chapterPackageService";
 import { chapterLayoutView } from "../miniprogram/services/chapterLayoutView";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -271,4 +271,26 @@ test("saving or restoring a legacy draft writes canonical paragraphs into a new 
     assert.deepEqual(next.manuscriptRevisions[1].draft.paragraphs, core.flatten(draft.chapters).paragraphs);
     assert.deepEqual(state, before);
   }
+});
+
+
+test("forward keeps received text, images and root chapter identity without opening arbitrary protected exports", () => {
+  const id = block("a"), photoId = "photo-received", assetId = "asset-" + "9".repeat(32);
+  const chapter: ManuscriptChapter = {
+    ...chapterWith(), content: [{text:"收到的文字\n",blockId:id,sourceIds:["source-received"]},{photoId}],
+    packageLineage:{rootPackageId:"cp_root0001",receivedPackageId:"cp_parent01",sourceChapterId:"chapter-original"},
+    packageBlockDigests:{[id]:"b".repeat(64)},packageSourceBlockIds:{[id]:id},
+    packageAssets:{[assetId]:{photoId,aiGenerated:true}},
+  };
+  const images = {[photoId]:packageImageInfo(new Uint8Array([0xff,0xd8,0xff,0]),2,3)};
+  const result = exportChapterForwardPackage({chapter,...meta,images});
+  assert.equal(result.package.chapters[0].chapterId,"chapter-original");
+  assert.equal(result.package.lineage.rootPackageId,"cp_root0001");
+  assert.equal(result.package.lineage.parentPackageId,"cp_parent01");
+  assert.equal(result.package.assets[0].assetId,assetId);
+  assert.equal(result.package.assets[0].aiGenerated,true);
+  assert.deepEqual(result.assetPhotos,{[assetId]:photoId});
+  assert.throws(()=>exportChapterPackage({chapter,...meta,images}),/来源权限/);
+  assert.throws(()=>exportChapterForwardPackage({chapter:{...chapter,packageLineage:undefined},...meta,images}),/来源/);
+  assert.throws(()=>exportChapterForwardPackage({chapter:{...chapter,packageBlockDigests:{}},...meta,images}),/来源权限/);
 });

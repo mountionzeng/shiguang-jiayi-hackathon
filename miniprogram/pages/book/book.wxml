@@ -7,7 +7,7 @@
       <text class="chapter-loading-text serif" selectable>{{openingChapter.text}}</text>
     </view>
   </scroll-view>
-  <view wx:if="{{article && view === 'chapter' && !panel}}" class="article-toolbar"><button bindtap="onBack">‹ 返回</button><text bindtap="flushArticle">{{articleStatus || '自动保存'}}</text><button bindtap="sendArticle" disabled="{{pickingPhoto}}">发送</button><button bindtap="showMore" aria-label="更多">···</button></view>
+  <view wx:if="{{article && view === 'chapter' && !panel}}" class="article-toolbar"><button bindtap="onBack">‹ 返回</button><text bindtap="flushArticle">{{articleStatus || '自动保存'}}</text><button bindtap="sendArticle" disabled="{{pickingPhoto || articleSending}}">发送</button><button bindtap="showMore" aria-label="更多">···</button></view>
   <view class="writing-toolbar {{protectedCopy ? 'reading-toolbar' : ''}}" wx:if="{{!(article && view === 'chapter' && !panel) && !openingChapter && panel !== 'organize' && panel !== 'organize-preview'}}">
     <button class="tool-button" bindtap="onBack" disabled="{{saving || generating || pickingPhoto || appendingOwn}}"><view class="action-icon icon-back" aria-hidden="true"></view>{{protectedCopy ? '返回' : (view === 'chapter' ? '目录' : '返回')}}</button>
     <button wx:if="{{!protectedCopy}}" class="tool-button" bindtap="togglePhotoMenu" disabled="{{!draft || panel || saving || generating || pickingPhoto || preparingPhoto}}"><view class="action-icon icon-photo" aria-hidden="true"></view>{{pickingPhoto ? '添加中' : '图片'}}<text class="send-chevron">⌄</text></button>
@@ -156,6 +156,14 @@
     <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
     <article-editor chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindaddimage="addArticleImage" />
   </scroll-view>
+  <view wx:if="{{articleShareUrl}}" class="article-share-mask" bindtap="closeArticleShare">
+    <view class="article-share-sheet" catchtap="keepArticleShareOpen">
+      <view class="serif">发给微信用户</view>
+      <view class="article-share-note">文字和图片一起发送。对方点开卡片即可接收，每张卡片限一个账号。</view>
+      <button open-type="share" data-chapter-share="true">选择微信好友</button>
+      <button bindtap="closeArticleShare">取消</button>
+    </view>
+  </view>
   <!-- One chapter: keep both native inputs mounted; initialize values only on load/switch/save/discard. -->
   <view wx:for="{{editorKeys}}" wx:key="*this" class="writing-fields" hidden="{{article || openingChapter || !draft || panel || view !== 'chapter'}}">
     <view class="title-field">

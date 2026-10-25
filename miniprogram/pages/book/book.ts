@@ -120,6 +120,7 @@ Page({
     backdropUrl: "",
     shareText: "", shareRecipientIds: [] as string[], sharingExcerpt: false,
     shareRecipients: [] as Array<{ id: string; name: string; relation: string; checked: boolean }>,
+    articleSending: false, articleShareUrl: '', articleShareTitle: '', articleShareRevision: '', articleShareChapterId: '',
     protectedCopy: false, chapterPackageOn: CHAPTER_PACKAGE_ENABLED, chapterDeliveryOn: CHAPTER_PACKAGE_ENABLED && CHAPTER_DELIVERY_ENABLED, chapterPackageDev: CHAPTER_PACKAGE_ENABLED && envIsDevelop(), appendOwnText: "", appendingOwn: false, returningOwn: false,
     protectedCanRevise: false, protectedHasDeliveryLineage: false, protectedRevisionRows: [] as Array<{blockId:string;text:string}>, protectedRevisionLayout: null as PackageLayout | null,
     protectedLayoutRows: [] as Array<{pageIndex:number;moduleIndex:number;id:string;kind:string;x:number;y:number}>, protectedRevisionSaving: false,
@@ -202,12 +203,14 @@ Page({
   xiaoyiCaptureId: 0,
   xiaoyiCapturePending: undefined as Promise<void> | undefined,
   articleConflict: false,
+  pendingChapterClaim: '',
   articlePending: null as ArticleChapter | null,
   articleAttempt: null as ArticleSaveRequest | null,
   articleSaving: null as Promise<boolean> | null,
   articleTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   articleKey() { return `article-draft:${cachedAccountScope()}:${this.story?.id || this.data.storyId}:${this.activeChapterId}`; },
   onArticleChange(event: { detail: { chapter: ArticleChapter } }) {
+    this.setData({ articleShareUrl: '' });
     this.articlePending = event.detail.chapter;
     this.setData({ articleDirty: true, articleStatus: '正在保存…' });
     try { wx.setStorageSync(this.articleKey(), { revisionId: this.revisionId, chapter: this.articlePending }); }
@@ -282,11 +285,23 @@ Page({
     finally { this.setData({ pickingPhoto:false }); }
   },
   async sendArticle() {
+    if (this.data.articleSending) return;
     if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
-    if (this.data.protectedHasDeliveryLineage) await this.returnChapterDelivery();
-    else await this.openChapterDeliverySend();
+    if (!this.data.chapterDeliveryOn) { this.setData({ articleStatus: '发送功能暂未开放' }); return; }
+    const choices = [...(this.data.protectedHasDeliveryLineage ? ['发回原作者'] : []), '发给网页用户', '发给微信用户'];
+    const index = await new Promise<number>(resolve => wx.showActionSheet({ itemList: choices,
+      success: result => resolve(result.tapIndex), fail: () => resolve(-1) }));
+    const choice = choices[index];
+    if (!choice || this.unloaded) return;
+    this.setData({ articleSending: true, articleShareUrl: '' });
+    try {
+      if (choice === '发回原作者') await this.returnChapterDelivery();
+      else if (choice === '发给微信用户') await this.openChapterDeliveryClaimLink('wechat');
+      else await this.openChapterDeliveryClaimLink('web');
+    } finally { this.setData({ articleSending: false }); }
   },
-  onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string } = {}) {
+  onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string; chapterClaim?: string } = {}) {
+    this.pendingChapterClaim = /^[A-Za-z0-9_-]{43}$/.test(options.chapterClaim || '') ? options.chapterClaim! : '';
     this.sendSnapshot = undefined;
     this.sendAccountScope = "";
     this.openOrganizeOnLoad = options.memoryIds !== undefined;
@@ -356,7 +371,7 @@ Page({
       return;
     }
     if (!this.articlePending && !this.articleSaving && !this.organizeCandidate && !this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
-      void this.refresh(staged, { projection: Boolean(staged) }).catch((error) => { logLoadError("book", error); this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }); });
+      void this.refresh(staged, { projection: Boolean(staged) }).then(() => this.receiveSharedArticle()).catch((error) => { logLoadError("book", error); this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }); });
     }
   },
   async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>, options: { projection?: boolean } = {}) {
@@ -1801,7 +1816,7 @@ Page({
     return this.chapters.find(item => item.id === this.activeChapterId);
   },
   async openChapterDeliverySend() {
-    if (!this.data.chapterDeliveryOn || this.data.protectedCopy || this.data.view !== "chapter" || this.data.editing || this.data.panel) return;
+    if (!this.data.chapterDeliveryOn || (this.data.protectedCopy && !this.data.protectedHasDeliveryLineage) || this.data.view !== "chapter" || this.data.editing || this.data.panel) return;
     const chapter = this.activeChapterForDelivery();
     if (!chapter) return;
     try {
@@ -1816,15 +1831,15 @@ Page({
       wx.showLoading({ title: "准备章节…", mask: true });
       const result = await sendChapterDelivery(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined, recipient.contactId);
       wx.hideLoading();
-      this.setData({ saveNotice: `已投递给${recipient.displayName}` });
+      this.setData({ articleStatus: `已发送给${recipient.displayName}`, saveNotice: `已投递给${recipient.displayName}` });
     } catch (error) {
       wx.hideLoading();
       const message = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg || "投递没有完成，请重试");
       if (!/cancel/i.test(message)) this.setData({ saveNotice: message });
     }
   },
-  async openChapterDeliveryClaimLink() {
-    if (!this.data.chapterDeliveryOn || this.data.protectedCopy || this.data.view !== "chapter" || this.data.editing || this.data.panel) return;
+  async openChapterDeliveryClaimLink(channel: "web" | "wechat" = "web") {
+    if (!this.data.chapterDeliveryOn || (this.data.protectedCopy && !this.data.protectedHasDeliveryLineage) || this.data.view !== "chapter" || this.data.editing || this.data.panel) return;
     const chapter = this.activeChapterForDelivery();
     if (!chapter) return;
     try {
@@ -1833,13 +1848,30 @@ Page({
       const result = await createChapterClaimLink(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined);
       wx.hideLoading();
       if (!result.claimUrl) throw new Error("这条领取链接已被使用，或已失效");
-      await new Promise<void>((resolve, reject) => wx.setClipboardData({ data: result.claimUrl!, success: () => resolve(), fail: reject }));
-      this.setData({ saveNotice: "一次性领取链接已复制，可发给亲友" });
+      if (channel === 'wechat') {
+        this.setData({ articleShareUrl: result.claimUrl, articleShareTitle: chapter.title || this.story?.title || '一篇文章', articleShareRevision: this.revisionId, articleShareChapterId: chapter.id });
+      } else {
+        await new Promise<void>((resolve, reject) => wx.setClipboardData({ data: result.claimUrl!, success: () => resolve(), fail: reject }));
+        this.setData({ articleStatus: '网页领取链接已复制', saveNotice: '链接已复制。发给对方，登录网页后即可领取文字和图片；每条链接限一个账号。' });
+        await this.confirm('网页领取链接已复制', '发给对方后，对方登录网页即可领取这篇文章的文字和图片。每条链接限一个账号。');
+      }
     } catch (error) {
       wx.hideLoading();
       const message = error instanceof Error ? error.message : String((error as { errMsg?: string })?.errMsg || "领取链接没有创建成功，请重试");
       if (!/cancel/i.test(message)) this.setData({ saveNotice: message });
     }
+  },
+  keepArticleShareOpen() {},
+  closeArticleShare() { this.setData({ articleShareUrl: '' }); },
+  async receiveSharedArticle() {
+    const token = this.pendingChapterClaim;
+    if (!token || this.unloaded || !this.data.chapterDeliveryOn) return;
+    this.pendingChapterClaim = '';
+    if (!await this.confirm('接收这篇文章？', '接收后会放进你的收件箱，原稿不会被覆盖。')) return;
+    try {
+      const result = await claimChapterDelivery(token);
+      await this.openChapterDeliveryInbox(result.deliveryId);
+    } catch (error) { this.setData({ loadError: error instanceof Error ? error.message : '暂时无法接收，请重新打开分享卡片' }); }
   },
   async openChapterDeliveryClaim() {
     if (!this.data.chapterDeliveryOn || this.data.panel || this.data.saving || this.data.generating) return;
@@ -1913,7 +1945,7 @@ Page({
     if (!this.data.chapterDeliveryOn || !this.data.protectedCopy || !this.data.protectedHasDeliveryLineage || this.data.protectedRevisionSaving) return;
     const chapter = this.activeChapterForDelivery();
     if (!chapter) return;
-    const confirmed = await this.confirm("把修改后的章节发回原作者？", "只发回这份章节副本及受审核的修改。原文来源标记会保留，网页只会投递给根包作者。");
+    const confirmed = await this.confirm("把修改后的章节发回原作者？", "把这版文字和图片发回原作者。对方确认采用后才会更新原稿，之前的版本仍会保留。");
     if (!confirmed) return;
     try {
       wx.showLoading({ title: "发送修改稿…", mask: true });
@@ -2439,6 +2471,11 @@ Page({
       wx.navigateBack();
     } else wx.reLaunch({ url: "/pages/index/index" });
   },
-  onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareAppMessage(event: WechatMiniprogram.Page.IShareAppMessageOption): { title: string; path: string } {
+    if (event?.from === 'button' && event.target?.dataset?.chapterShare && this.data.articleShareUrl && this.data.articleShareRevision === this.revisionId && this.data.articleShareChapterId === this.activeChapterId) {
+      return { title: this.data.articleShareTitle, path: '/pages/book/book?chapterClaim=' + chapterClaimToken(this.data.articleShareUrl) };
+    }
+    return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" };
+  },
   onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },
 });

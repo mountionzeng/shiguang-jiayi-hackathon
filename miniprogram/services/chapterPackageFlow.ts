@@ -4,7 +4,7 @@ import { readLocalPhoto } from "./bookImages";
 import { newStoryId } from "./storyRecords";
 import {
   assertPackageImageTotal, chapterPackageEnabled, chapterPackageImportAttempt, chapterPackageRequestId, chapterPackages,
-  exportChapterPackage, exportChapterReturnPackage, packageImageInfo, prepareImport, ImportTarget,
+  exportChapterPackage, exportChapterReturnPackage, exportChapterForwardPackage, packageImageInfo, prepareImport, ImportTarget,
 } from "./chapterPackageService";
 
 const LAST_PACKAGE_KEY = "chapterPackage.lastExport";
@@ -44,7 +44,7 @@ type SavedPackage = {
 };
 
 /** Export one chapter. Source lineage is preserved locally when this chapter was imported from a package. */
-export async function exportChapterToCloud(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, purpose: "copy" | "return" = "copy"): Promise<ExportedChapter> {
+export async function exportChapterToCloud(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, purpose: "copy" | "return" | "forward" = "copy"): Promise<ExportedChapter> {
   if (!chapterPackageEnabled()) throw new Error("章节包功能暂未开放");
   const packageId = newPackageId();
   const photoIds = [...new Set([
@@ -64,7 +64,7 @@ export async function exportChapterToCloud(chapter: ManuscriptChapter, displayNa
       }));
     }
     assertPackageImageTotal(images);
-    const exporter = purpose === "return" ? exportChapterReturnPackage : exportChapterPackage;
+    const exporter = purpose === "return" ? exportChapterReturnPackage : purpose === "forward" ? exportChapterForwardPackage : exportChapterPackage;
     const { package: pkg, assetPhotos } = exporter({
       chapter, images, packageId, displayName: displayName || "我", createdAt: new Date().toISOString(), storyTitle,
       layout: chapter.layout ?? null,
