@@ -10,6 +10,6 @@
     "jpeg-js": "0.4.4",
     "wx-server-sdk": "latest",
     "tencentcloud-sdk-nodejs-tms": "4.1.311",
-    "sharp": "0.32.6"
+    "pngjs": "7.0.0"
   }
 }
