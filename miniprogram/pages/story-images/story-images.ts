@@ -92,11 +92,15 @@ Page({
   requestedStoryId: "",
   requestedMemoryId: "",
   referenceBookId: "",
+  selectionGenerationPending: false,
+  confirmingGeneration: false,
 
   onLoad(options: { memoryId?: string; storyId?: string; memberId?: string; chapterId?: string; purpose?: string } = {}) {
     this.unloaded = false;
-    this.getOpenerEventChannel?.().on?.('selectedText', (selection: { blockId: string; text: string }) => {
+    this.getOpenerEventChannel?.().on?.('selectedText', (selection: { blockId: string; text: string; generate?: boolean }) => {
       this.setData({ selectedText: selection.text, selectedBlockId: selection.blockId });
+      this.selectionGenerationPending = selection.generate === true;
+      void this.startSelectionGeneration();
     });
     if (options.memoryId) {
       try { this.requestedMemoryId = decodeURIComponent(options.memoryId); } catch { this.requestedMemoryId = '!invalid'; }
@@ -217,6 +221,15 @@ Page({
       this.setData({ preview: latest ? { ...latest, chapterId: selected.chapterId } : null });
     }
     this.schedulePoll();
+    void this.startSelectionGeneration();
+  },
+  async startSelectionGeneration() {
+    if (!this.selectionGenerationPending || this.data.loading || this.hidden || this.unloaded
+      || !this.data.selectedText || !this.data.selectedBlockId
+      || !this.data.groups.some(group => group.id === this.data.focusChapterId)) return;
+    // Consume before awaiting confirmation: refresh/onShow must never submit twice.
+    this.selectionGenerationPending = false;
+    await this.generate({currentTarget:{dataset:{id:this.data.focusChapterId,purpose:this.data.focusPurpose}}});
   },
   clearPoll() {
     if (this.pollTimer !== undefined) clearTimeout(this.pollTimer);
@@ -297,11 +310,13 @@ Page({
     const referenceImageId = event.currentTarget.dataset.reference;
     const purpose: StoryImagePurpose = event.currentTarget.dataset.purpose === "backdrop" ? "backdrop" : "illustration";
     const group = this.data.groups.find(item => item.id === chapterId);
-    if (this.data.submitting || this.data.pickingReference || this.data.removingId || this.data.savingBackdrop || this.data.savingPlacement || !chapterId) return;
+    if (this.confirmingGeneration || this.data.submitting || this.data.pickingReference || this.data.removingId || this.data.savingBackdrop || this.data.savingPlacement || !chapterId) return;
     if (this.data.selectedText) {
+      this.confirmingGeneration = true;
       const confirmed = await new Promise<boolean>(resolve => wx.showModal({ title: '根据这段文字生成图片',
         content: this.data.selectedText + '\n\n生成成功会产生供应商费用，确认后开始。',
         confirmText: '确认生成', success: result => resolve(result.confirm), fail: () => resolve(false) }));
+      this.confirmingGeneration = false;
       if (!confirmed || this.unloaded || this.data.submitting) return;
     }
     const phoneIds = (this.data.phoneReferences[chapterId] || []).map(photo => photo.id);
@@ -441,7 +456,12 @@ Page({
       return;
     }
     const current = currentManuscript(this.roomState, this.data.storyId || this.data.memberId);
-    const content = current.draft && chaptersOf(current.draft, current.sourceFingerprint).find(item => item.id === chapterId)?.content || [];
+    const chapter = current.draft && chaptersOf(current.draft, current.sourceFingerprint).find(item => item.id === chapterId);
+    const content = chapter?.content || [];
+    if (this.data.storyId && chapter?.layout) {
+      this.setData({preview:{...image,chapterId},placementOptions:[{label:'放入文章后，可以直接拖动图片调整位置',after:null,block:0,offset:0}],placementIndex:0});
+      return;
+    }
     const options = illustrationPoints(content, image.imageId);
     const anchor = image.inText ? illustrationAnchor(content, image.imageId) : null;
     this.setData({ preview: { ...image, chapterId }, placementOptions: options,

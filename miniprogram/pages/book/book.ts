@@ -2477,7 +2477,7 @@ Page({
     ].filter(Boolean).join("&");
     wx.navigateTo({
       url: "/pages/story-images/story-images" + (query ? "?" + query : ""),
-      success: result => { if (selection) result.eventChannel.emit('selectedText', selection); },
+      success: result => { if (selection) result.eventChannel.emit('selectedText', { ...selection, generate: true }); },
       events: {
         insertStoryImage: (image: { imageId: string; chapterId: string; url: string }) => {
           this.pendingStoryImage = image;

@@ -1869,3 +1869,71 @@ test('图片列表展示正文照片且预览不提供 AI 原图操作', async c
   assert.equal(photo.uploaded,true);assert.equal(photo.uploaderLabel,'未记录');
   assert.equal(photo.referenceReady,false);
 });
+
+test('selected image action waits for chapter load and starts only once, including cancellation', async () => {
+  let confirmation: ((result: {confirm:boolean}) => void) | undefined;
+  let prompts=0;
+  const env=installWx({showModal:({success}:any)=>{prompts++;confirmation=success;}});
+  try {
+    const page=instantiate(await pageDefinition('story-images'));
+    let receive: ((selection:unknown)=>void) | undefined;
+    page.getOpenerEventChannel=()=>({on:(_name:string,callback:any)=>{receive=callback;}});
+    call(page,'onLoad',{chapterId:'chapter-a',purpose:'illustration'});
+    receive!({text:'蓝色纸船',blockId:'block-a',generate:true});
+    assert.equal(prompts,0);
+    page.setData({loading:false,groups:[{id:'chapter-a'}]});
+    const start=call(page,'startSelectionGeneration');
+    assert.equal(prompts,1);
+    await call(page,'startSelectionGeneration');
+    await call(page,'generate',{currentTarget:{dataset:{id:'chapter-a'}}});
+    assert.equal(prompts,1);
+    confirmation!({confirm:false});
+    await start;
+    await call(page,'startSelectionGeneration');
+    assert.equal(prompts,1);
+    assert.equal(page.data.submitting,'');
+  } finally {env.restore();}
+});
+
+test('late selection event starts after loaded chapter; browsing gallery does not generate',async()=>{
+ const env=installWx();
+ try {
+  const page=instantiate(await pageDefinition('story-images'));
+  let receive:any;let starts=0;
+  page.getOpenerEventChannel=()=>({on:(_name:string,callback:any)=>{receive=callback;}});
+  page.generate=async()=>{starts++;};
+  call(page,'onLoad',{chapterId:'chapter-a'});
+  page.setData({loading:false,groups:[{id:'chapter-a'}]});
+  await call(page,'startSelectionGeneration');assert.equal(starts,0);
+  receive({text:'蓝色纸船',blockId:'block-a',generate:true});assert.equal(starts,1);
+  await call(page,'startSelectionGeneration');assert.equal(starts,1);
+ } finally {env.restore();}
+});
+
+test('module article illustration saves through article protocol without changing text IDs or layout', async () => {
+ const {articleChapter}=await import('../miniprogram/services/articleModules');
+ const {saveChapterIllustration}=await import('../miniprogram/services/chapterIllustrations');
+ const state=stateWithBook();
+ const revision=state.manuscriptRevisions![0]; revision.storyId='story-images-test';
+ const chapter=articleChapter(revision.draft.chapters![0]);
+ revision.draft.chapters![0]=chapter;
+ state.stories=[{id:revision.storyId,familyId:'family-test',title:'测试',version:3,currentRevisionId:revision.id,
+ protagonistMemberIds:[],memoryIds:[],createdAt:'2026-10-25',updatedAt:'2026-10-25'}];
+ const requests:any[]=[];
+ const env=installWx({},state);
+ env.setApp(false);
+ const images=listWith({pending:[]}).images.map(image=>({...image,moderation:'pass' as const}));
+ const restore=withApi({listStoryImages:async()=>{
+  (wx as any).cloud={callFunction:async({data}:any)=>{requests.push(data);delete (wx as any).cloud;return {result:{revisionId:'revision-new',version:4}};}};
+  return listWith({images,pending:[]});
+ }});
+ try {
+  await saveChapterIllustration({storyId:revision.storyId,chapterId:chapter.id,imageId:images[0].imageId,after:null});
+  assert.equal(requests.length,1);const saved=requests[0];
+  assert.equal(saved.action,'articleSave');assert.equal(saved.expectedVersion,3);assert.equal(saved.revisionId,revision.id);
+  assert.deepEqual(saved.chapter.content[0],{blockId:chapter.content[0].blockId,text:chapter.content[0].text});
+  assert.deepEqual(saved.chapter.layout.pages[0].modules[0],chapter.layout.pages[0].modules[0]);
+  assert.equal(saved.chapter.content[1].photoId,'photo-ai-req-aaaaaaaa');
+  assert.equal(Object.values(saved.chapter.packageAssets).some((asset:any)=>asset.aiGenerated===true),true);
+ } finally {restore();env.restore();}
+});

@@ -25,6 +25,19 @@ function accessError(code) {
   return Object.assign(new Error(code === 'STORY_ACCESS_NOT_READY' ? '故事权限服务尚未准备好' : '故事共享尚未开放'), { code });
 }
 
+async function approveArticleImage(repo, ctx, id, storyId, chapterId) {
+  if (/^photo-ai-req-[a-z0-9-]{8,60}$/.test(id)) {
+    const image = await repo.get('story_images', `${ctx.familyId}_img_${id.slice(9)}`);
+    return Boolean(image && image.familyId === ctx.familyId && image.storyId === storyId && image.chapterId === chapterId &&
+      image.requestId === id.slice(9) && image.purpose === 'illustration' && image.moderation === 'pass' &&
+      image.deletedAtMs === undefined && !image.sourcePolicyRequired && image.sourceIds === undefined &&
+      typeof image.fileID === 'string' && image.fileID.startsWith('cloud://'));
+  }
+  const photo = await repo.get('photos', `${ctx.familyId}__${id}`);
+  return Boolean(photo && photo.familyId === ctx.familyId && photo._openid === ctx.verifiedOpenid && !photo.deletedAt &&
+    !photo.sourcePolicyRequired && photo.sourceIds === undefined && photo.moderation?.ok === true && photo.moderation?.suggest === 'pass');
+}
+
 function createStoryService(repo, options = {}) {
   const accessEnabled = options.accessEnabled === true;
   const canaryFamilies = new Set(options.sharedReadFamilyIds || []);
@@ -112,10 +125,8 @@ function createStoryService(repo, options = {}) {
     }
     if (action === 'articleSave') {
       if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
-      return saveArticle(repo,ctx,event,{now:options.now,approveText:options.approveChapterText,approveImage:async(c,id)=>{
-        const photo=await repo.get('photos',`${c.familyId}__${id}`);
-        return Boolean(photo&&photo.familyId===c.familyId&&photo._openid===c.verifiedOpenid&&!photo.deletedAt&&!photo.sourcePolicyRequired&&photo.sourceIds===undefined&&photo.moderation?.ok===true&&photo.moderation?.suggest==='pass');
-      }});
+      return saveArticle(repo,ctx,event,{now:options.now,approveText:options.approveChapterText,
+        approveImage:(c,id)=>approveArticleImage(repo,c,id,event.storyId,event.chapter?.id)});
     }
     if (action === 'chapterPackageRevise') {
       if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
@@ -259,4 +270,4 @@ function createStoryService(repo, options = {}) {
   };
 }
 
-module.exports = { createStoryService };
+module.exports = { createStoryService, approveArticleImage };
