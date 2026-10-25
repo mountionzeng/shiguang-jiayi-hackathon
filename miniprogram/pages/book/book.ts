@@ -1543,7 +1543,9 @@ Page({
     return {
       memoryType: "memoir",
       storyTitle: [this.data.editTitle, this.data.editChapterTitle].filter(Boolean).join(" · "),
-      storyId: this.data.writingMode === "objective" || (this.data.article && this.data.protectedCopy) ? undefined : this.data.storyId,
+      // Article chat already sends its explicit live sourceText. The legacy saved-book
+      // context reader rejects modern blockIds and must not reload this manuscript.
+      storyId: this.data.writingMode === "objective" || this.data.article ? undefined : this.data.storyId,
       mode: "personal",
     };
   },

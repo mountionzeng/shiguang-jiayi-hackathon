@@ -3989,3 +3989,21 @@ test('memory composition uses live article context and edited draft without over
   assert.deepEqual(page.articlePending,{content:[{text:'刚刚改过的正文'}]});
   assert.equal(page.data.xiaoyiDraftText,'【虚构】纸船顺水漂向灯塔。');
 });
+
+
+test('chat send does not depend on native input being replayed through setData', () => {
+  const wxml=readFileSync('miniprogram/pages/book/book.wxml','utf8');
+  assert.match(wxml,/bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">发送/);
+});
+
+
+test('article chat uses live source-only context instead of the legacy saved-book protocol', async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const page=instantiate(await pageDefinition('book'));
+  page.data.writingMode='creative';page.data.storyId='modern-book';
+  page.data.article={content:[{blockId:'block',text:'实时文字'}]};
+  assert.equal((callPage(page,'xiaoyiConfig') as any).storyId,undefined);
+  assert.equal(callPage(page,'xiaoyiContextText'),'实时文字');
+  page.data.protectedCopy=true;
+  assert.equal(callPage(page,'xiaoyiContextText'),'');
+});

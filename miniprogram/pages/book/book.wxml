@@ -220,7 +220,7 @@
 
       </view>
       <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="想到什么就写什么，也可以用键盘语音输入…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
-      <button wx:if="{{article}}" class="xiaoyi-action" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading || !xiaoyiAnswer}}">发送</button>
+      <button wx:if="{{article}}" class="xiaoyi-action" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">发送</button>
       <view wx:if="{{!article}}" class="xiaoyi-message-label">这次怎么写（可不填）</view>
       <textarea wx:if="{{!article}}" class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
       <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
