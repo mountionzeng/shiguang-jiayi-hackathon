@@ -98,3 +98,9 @@
 修复：微信卡片领取传otherUserOnly=true，经drinkingTimeBridge可信请求传到网页。服务端发现领取者是发送者仅返回senderPreview，不更改recipientUserId，页面提示请由好友打开。普通网页/跨端领取保持原兼容。无数据库迁移，无存量领取归属变更；已经被本人领走的链接不会自动转给好友，应重新创建。
 
 网页修复提交f2a2157b，27项投递/桥定向测试、类型与构建检查；小程序桥字段类型回归新增。本修复尚未部署网页/云函数，也未发布手机。需部署网页后端与drinkingTimeBridge后复验，不能仅凭代码判断真实好友收到。此前“排版引用了不存在的文字块”故障仍独立未解决。
+
+### 上述本人预览保护已部署（2026-10-25，用户明确批准）
+
+- 网页后端 f2a2157b 已部署，dist/index.js SHA256 94b5cd06b4e81d15f72f7c4bc914788a631b704e86cae0371c22222caf8865f7。前端HTML不变，healthz=ok，readyz=ready/mysql/auth required。
+- drinkingTimeBridge 从干净固定提交6af9768经标准部署脚本部署到cloud1-d5ghzk30ve609f544，5个JS/JSON源码下载回读哈希一致。证据 /tmp/friend-preview-cloud-deploy.log、/tmp/friend-preview-readback.log、/tmp/friend-preview-readback/drinkingTimeBridge.zip/。
+- 本地runtime验收开关已恢复原样，未提交；无开关或数据库变更。小程序客户端尚未发布新手机版本，好友卡片需要新客户端传otherUserOnly；不把服务器部署视为真机端到端已通过。
