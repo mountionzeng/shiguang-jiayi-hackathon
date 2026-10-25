@@ -524,3 +524,12 @@
 .person-editor,.shared-article { padding:28rpx;margin:24rpx 0;background:rgba(255,254,250,.95);border-radius:24rpx;border:1rpx solid var(--paper-edge,#e8e2d4); }
 .person-editor input { background:#fff;border:1rpx solid #d8dfd5;border-radius:14rpx;padding:20rpx;margin:18rpx 0;font-size:32rpx; }
 .shared-article .tl-text { white-space:pre-wrap; }.shared-change { margin:20rpx 0;padding-left:18rpx;border-left:3rpx solid #9ab2a4;font-size:28rpx;line-height:1.7; }
+/* 长账号名不挤占相邻头像；原生 input 明确高度，避免文字被裁切。 */
+.filter-name { display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.person-editor input { height:88rpx;line-height:88rpx;box-sizing:border-box;padding:0 20rpx; }
+.quiet-action.quiet-action { width:auto;margin-left:0;margin-right:0; }
+.person-add.person-add { width:128rpx;margin-left:0;margin-right:12rpx;padding:14rpx 6rpx; }
+
+.filter.filter.filter { width:128rpx;margin-left:0;margin-right:12rpx;line-height:1.5;background:transparent;font-weight:normal; }
+.filter.filter.filter-on { background:var(--jade-soft); }
+.filter.filter::after { border:0; }

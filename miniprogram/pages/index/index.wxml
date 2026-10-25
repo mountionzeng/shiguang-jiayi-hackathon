@@ -46,12 +46,12 @@
 
     <view class="home-shares" wx:if="{{sharedArticles.length || sharesError}}">
       <view wx:if="{{sharesError}}" class="home-share-note">{{sharesError}}<button bindtap="refreshShares">重试</button></view>
-      <view class="home-share" wx:for="{{sharedArticles}}" wx:key="id" data-account="{{item.accountKey}}" bindtap="openSharedPerson" role="button" aria-label="查看{{item.name}}分享的{{item.title}}">
+      <button class="home-share" wx:for="{{sharedArticles}}" wx:key="id" data-account="{{item.accountKey}}" bindtap="openSharedPerson" role="button" aria-label="查看{{item.name}}分享的{{item.title}}">
         <view class="home-share-note">{{item.name}} · {{item.kind}}</view>
         <view class="home-share-title serif">{{item.title}}</view>
         <view class="home-share-preview">{{item.text}}</view>
         <view wx:if="{{item.imageCount}}" class="home-share-note">附 {{item.imageCount}} 张图片</view>
-      </view>
+      </button>
     </view>
 
     <view wx:if="{{bookSlides.length}}" class="book-stage {{bookSlides.length > 1 ? 'book-stage-scrollable' : ''}}">

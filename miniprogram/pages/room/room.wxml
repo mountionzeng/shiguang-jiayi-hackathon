@@ -8,7 +8,7 @@
   <view class="room-sub" wx:elif="{{loadingDetails}}">正在同步记忆详情…</view>
   <scroll-view class="filter-strip" scroll-x enhanced show-scrollbar="{{false}}">
     <view class="filter-row">
-      <view
+      <button
         class="filter {{activeId === item.id ? 'filter-on' : ''}}"
         wx:for="{{people}}"
         wx:key="id"
@@ -24,7 +24,7 @@
         <text class="filter-name">{{item.name}}</text>
         <text class="filter-count">{{item.account ? '分享 ' : ''}}{{item.count}}</text>
         <view class="filter-letter-dot" wx:if="{{item.letters}}" aria-label="有新的回信"></view>
-      </view>
+      </button>
       <button wx:if="{{!sharedFamilyId}}" class="person-add filter" bindtap="addPersonForm" aria-label="添加人物">＋<text>添加</text></button>
     </view>
   </scroll-view>
