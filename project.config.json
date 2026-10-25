@@ -17,5 +17,37 @@
     "minifyWXML": true
   },
   "simulatorType": "wechat",
-  "condition": {}
+  "condition": {},
+  "packOptions": {
+    "ignore": [
+      {
+        "type": "file",
+        "value": "assets/illustrations/story-book-cover-frame.png"
+      },
+      {
+        "type": "file",
+        "value": "assets/illustrations/story-tab-personal.png"
+      },
+      {
+        "type": "file",
+        "value": "assets/illustrations/story-tab-family.png"
+      },
+      {
+        "type": "file",
+        "value": "assets/illustrations/story-tab-chat.png"
+      },
+      {
+        "type": "file",
+        "value": "assets/illustrations/memory-nest.png"
+      },
+      {
+        "type": "file",
+        "value": "assets/illustrations/memory-branch.png"
+      },
+      {
+        "type": "file",
+        "value": "assets/illustrations/memory-bird.png"
+      }
+    ]
+  }
 }

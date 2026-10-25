@@ -8,9 +8,9 @@ export interface InviteCardStyle {
 }
 
 export const INVITE_CARD_STYLES: InviteCardStyle[] = [
-  { id: "branch", name: "枝头来信", note: "清浅枝叶与归鸟", art: "/assets/illustrations/memory-branch.png" },
+  { id: "branch", name: "枝头来信", note: "清浅枝叶与归鸟", art: "/assets/illustrations/memory-branch.webp" },
   { id: "book", name: "旧书新页", note: "像一本等你续写的书", art: "/assets/illustrations/story-book-cover.png" },
-  { id: "nest", name: "归巢相聚", note: "鸟巢与暖色水彩", art: "/assets/illustrations/memory-nest.png" },
+  { id: "nest", name: "归巢相聚", note: "鸟巢与暖色水彩", art: "/assets/illustrations/memory-nest.webp" },
 ];
 
 function short(value: string, fallback: string): string {
