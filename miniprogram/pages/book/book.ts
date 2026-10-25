@@ -1089,6 +1089,17 @@ Page({
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
     this.closePhotoMenu();
+    if (this.data.article && this.data.view === "chapter") {
+      this.setData({ moreOpen: false, moreSection: "", sendOpen: false });
+      wx.showActionSheet({
+        itemList: ["历史版本"],
+        success: result => {
+          if (!this.unloaded && result.tapIndex === 0) void this.selectTool({ currentTarget: { dataset: { action: "history" } } });
+        },
+        fail: () => {},
+      });
+      return;
+    }
     this.setData({ moreOpen: !this.data.moreOpen, moreSection: "", sendOpen: false });
   },
   closeMore() { this.setData({ moreOpen: false, moreSection: "" }); },

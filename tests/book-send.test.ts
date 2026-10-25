@@ -714,3 +714,24 @@ test('合并后的公开故事卡入口先保存再跳转，保存失败不跳�
   await page.chooseSend(sendEvent('card'));
   assert.deepEqual(urls, ['/packages/story-sharing/pages/card/index?storyId=story-test']);
 });
+
+
+test('文章历史使用原生菜单，避免浮层与正文输入框争抢点击', async () => {
+  const page = await bookPage();
+  page.data.article = { id: 'chapter-one' }; page.data.view = 'chapter';
+  let sheet: any, historyLoads = 0;
+  (globalThis as any).wx = { hideKeyboard() {}, showActionSheet(options: any) { sheet = options; } };
+  page.loadHistory = async () => { historyLoads++; };
+  page.showMore();
+  assert.deepEqual(sheet.itemList, ['历史版本']);
+  assert.equal(page.data.moreOpen, false);
+  sheet.success({ tapIndex: 0 });
+  await Promise.resolve();
+  assert.equal(page.data.panel, 'history');
+  assert.equal(historyLoads, 1);
+  page.closePanel();
+  page.showMore(); sheet.fail({ errMsg: 'cancel' });
+  assert.equal(page.data.panel, '');assert.equal(historyLoads, 1);
+  page.unloaded = true; sheet.success({ tapIndex: 0 });
+  assert.equal(historyLoads, 1);
+});
