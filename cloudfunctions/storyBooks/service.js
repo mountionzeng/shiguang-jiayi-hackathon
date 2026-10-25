@@ -1,3 +1,5 @@
+const { accountActivity } = require('./accountActivity');
+const { saveArticle } = require('./article');
 const { createHandlers } = require('./flow');
 const { measurePerformance } = require('./performance');
 const { resolveStoryIdentity, assertSpaceOwner, identityError } = require('./identity');
@@ -103,6 +105,17 @@ function createStoryService(repo, options = {}) {
       return importChapterPackage(repo,ctx,{requestId:event.requestId,target:event.target,chapter:event.chapter,layout:event.layout ?? null,
         origin:event.origin,packageId:event.packageId,senderName:event.senderName,lineage:event.lineage,assets:event.assets,assetPhotos:event.assetPhotos,
         coverAssetId:event.coverAssetId ?? null},{now:options.now,approveText:options.approveChapterText,approveImage});
+    }
+    if (action === 'accountActivity') {
+      if (!accessEnabled) throw accessError('STORY_ACCESS_DISABLED');
+      return accountActivity(repo,ctx);
+    }
+    if (action === 'articleSave') {
+      if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      return saveArticle(repo,ctx,event,{now:options.now,approveText:options.approveChapterText,approveImage:async(c,id)=>{
+        const photo=await repo.get('photos',`${c.familyId}__${id}`);
+        return Boolean(photo&&photo.familyId===c.familyId&&photo._openid===c.verifiedOpenid&&!photo.deletedAt&&!photo.sourcePolicyRequired&&photo.sourceIds===undefined&&photo.moderation?.ok===true&&photo.moderation?.suggest==='pass');
+      }});
     }
     if (action === 'chapterPackageRevise') {
       if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');

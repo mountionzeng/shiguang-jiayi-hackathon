@@ -1,3 +1,4 @@
+import { loadAccountActivity, groupAccountActivity, type AccountActivity } from '../../services/accountActivity';
 import {
   FamilyMember,
   FamilyRoomState,
@@ -54,6 +55,8 @@ type IdEvent = { currentTarget: { dataset: { id: string } } };
 
 Page({
   data: {
+    contacts: [] as ReturnType<typeof groupAccountActivity>, activity: [] as AccountActivity[], activeContact: '', activeContactName:'', activityError:'', activityLoading:false,
+
     view: "people" as "people" | "new-book",
     people: [] as PersonRow[],
     trash: [] as TrashRow[],
@@ -81,6 +84,7 @@ Page({
   onShow() {
     this.pageActive = true;
     const generation = ++this.refreshGeneration;
+    void this.refreshActivity();
     void this.refresh(undefined, generation).catch((error) => {
       if (!this.pageActive || generation !== this.refreshGeneration) return;
       logLoadError("profiles", error);
@@ -118,6 +122,16 @@ Page({
     });
   },
 
+  async refreshActivity() {
+    this.setData({activityLoading:true,activityError:''});
+    try { const events=(await loadAccountActivity()).map(event=>({...event,at:event.at?new Date(event.at).toLocaleString():'时间未记录'})); if(!this.pageActive)return;
+      this.setData({contacts:groupAccountActivity(events),activity:this.data.activeContact?events.filter(e=>e.accountKey===this.data.activeContact):[]});
+    } catch(error) { if(this.pageActive)this.setData({activityError:error instanceof Error?error.message:'往来记录加载失败'}); }
+    finally {if(this.pageActive)this.setData({activityLoading:false});}
+  },
+  openContact(event: IdEvent) { const contact=this.data.contacts.find(c=>c.id===event.currentTarget.dataset.id);if(contact)this.setData({activeContact:contact.id,activeContactName:contact.name,activity:contact.events}); },
+  closeContact() {this.setData({activeContact:'',activity:[]});},
+  openActivity(event: IdEvent) {const item=this.data.activity.find(e=>e.id===event.currentTarget.dataset.id);if(item?.storyId)wx.navigateTo({url:'/pages/book/book?storyId='+encodeURIComponent(item.storyId)});},
   retryLoad() { this.onShow(); },
 
   onNameInput(event: WechatMiniprogram.Input) { this.setData({ nameInput: event.detail.value }); },

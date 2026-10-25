@@ -2,6 +2,7 @@
   "navigationBarTitleText": "人生之书",
   "disableScroll": true,
   "usingComponents": {
-    "generation-status": "/components/generation-status/generation-status"
+    "generation-status": "/components/generation-status/generation-status",
+    "article-editor": "/components/article-editor/article-editor"
   }
 }

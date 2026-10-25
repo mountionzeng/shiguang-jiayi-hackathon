@@ -161,7 +161,7 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     await tx.set('biography_drafts',docId(ctx.familyId,revisionId),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision});
     await tx.set('story_names',nameId,{familyId:ctx.familyId,storyId:story.id,title:story.title});
     await tx.set('stories',targetId,story);
-    await tx.set('story_copies',copyId,{familyId:ctx.familyId,principalId:ctx.principalId,status:'complete',storyId:story.id,revisionId,createdAt:stamp});
+    await tx.set('story_copies',copyId,{familyId:ctx.familyId,principalId:ctx.principalId,sourcePrincipalId:receivedSources[0]?.sourceOwnerPrincipalId||'',senderName:receivedSources[0]?.senderName||'',status:'complete',storyId:story.id,revisionId,createdAt:stamp});
     await tx.set('story_copy_requests',requestId,{familyId:ctx.familyId,principalId:ctx.principalId,fingerprint,copyId});
     return {ok:true,storyId:story.id,revisionId,alreadyReceived:false};
   });

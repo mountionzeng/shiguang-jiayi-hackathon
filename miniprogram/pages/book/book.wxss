@@ -162,3 +162,14 @@ page { height: 100%; overflow: hidden; }
 
 .chapter-current-layout { flex: 1; height: 0; min-height: 0; }
 .manuscript-body[hidden] { display: none; }
+
+/* Reading a received story: keep the story, not editing tools, in focus. */
+.writing-toolbar.reading-toolbar { justify-content: space-between; padding: 0 24rpx; }
+.writing-page .reading-toolbar > .tool-button { width: auto; flex: none; min-width: 120rpx; font-size: 32rpx; padding: 0 12rpx; }
+
+.article-toolbar { flex:none;display:flex;align-items:center;justify-content:space-between;min-height:96rpx;border-bottom:1rpx solid var(--line);padding:0 16rpx; }
+.article-toolbar button { background:transparent;color:var(--jade);font-size:30rpx;margin:0;min-height:88rpx;padding:0 16rpx;display:flex;align-items:center; }
+.article-toolbar button::after { border:none; }.article-toolbar text { font-size:24rpx;color:var(--muted);flex:1;overflow:hidden;max-height:80rpx; }
+.article-scroll { flex:1;min-height:0;box-sizing:border-box;padding:24rpx 32rpx; }.article-title { font-size:38rpx;line-height:1.5;padding:8rpx 0 20rpx; }
+
+.article-toolbar button { width:auto;flex:none; }.article-toolbar text { color:#68776c; }.article-scroll > .chapter-ai-label { display:inline-block; }

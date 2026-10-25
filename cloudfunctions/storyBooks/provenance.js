@@ -36,8 +36,8 @@ function materializeOwnedDraft(draft, scope) {
   validateShape(draft);requireValid(draft.provenanceVersion===undefined);
   const result=clone(draft);
   for(const chapter of result.chapters) chapter.content=chapter.content.map((item,index)=>{
-    requireValid(item.blockId===undefined && item.sourceIds===undefined);
-    return {...item,blockId:blockId([scope.familyId,scope.storyId,scope.revisionId,chapter.id,index]),sourceIds:[]};
+    requireValid((item.blockId===undefined || BLOCK.test(item.blockId)) && item.sourceIds===undefined);
+    return {...item,blockId:item.blockId || blockId([scope.familyId,scope.storyId,scope.revisionId,chapter.id,index]),sourceIds:[]};
   });
   result.provenanceVersion=1;Object.assign(result,core.flatten(result.chapters));
   return result;
@@ -80,7 +80,8 @@ function applyBlockEdits(base, edits, scope) {
 // Legacy full-draft writes cannot safely preserve provenance. Fail before any
 // update rather than silently treating a stripped received block as own text.
 function assertLegacyWritable(story, draft) {
-  const marked=value=>value&&(value.blockId!==undefined||value.sourceIds!==undefined||value.provenanceVersion!==undefined);
+  // A stable editing ID is geometry identity, not a source-policy marker.
+  const marked=value=>value&&(value.sourceIds!==undefined||value.provenanceVersion!==undefined);
   if (story?.sourcePolicyRequired || marked(story) || marked(draft) || draft?.content?.some(marked) ||
       draft?.chapters?.some(c=>marked(c)||c.content?.some(marked))) throw protocolError();
 }

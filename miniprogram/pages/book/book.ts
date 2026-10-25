@@ -1,3 +1,6 @@
+import { articleChapter, addArticlePhoto, type ArticleChapter } from '../../services/articleModules';
+import { saveArticle, type ArticleSaveRequest } from '../../services/articleService';
+import { ensurePhotoUploads } from '../../services/photoCloud';
 import { linePosition, splitLines, type LinePosition } from "../../domain/lineModules";
 import { exploreMemoryConnection, MemoryConnection } from "../../services/memoryConnections";
 import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft } from "../../services/chapterDraft";
@@ -80,6 +83,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 
 Page({
   data: {
+    article: null as ArticleChapter | null, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
     openingChapter: null as { title: string; text: string } | null,
     photoMenu: "", photoAction: "", preparingPhoto: false, bookIntroduction: "", editIntroduction: "",
     coverUrl: "", coverImageId: "", sendOpen: false, preparingSend: false,
@@ -197,6 +201,75 @@ Page({
   xiaoyiCapturedSequence: -1,
   xiaoyiCaptureId: 0,
   xiaoyiCapturePending: undefined as Promise<void> | undefined,
+  articleConflict: false,
+  articlePending: null as ArticleChapter | null,
+  articleAttempt: null as ArticleSaveRequest | null,
+  articleSaving: null as Promise<boolean> | null,
+  articleTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  articleKey() { return `article-draft:${cachedAccountScope()}:${this.story?.id || this.data.storyId}:${this.activeChapterId}`; },
+  onArticleChange(event: { detail: { chapter: ArticleChapter } }) {
+    this.articlePending = event.detail.chapter;
+    this.setData({ articleDirty: true, articleStatus: '正在保存…' });
+    try { wx.setStorageSync(this.articleKey(), { revisionId: this.revisionId, chapter: this.articlePending }); }
+    catch { this.setData({ articleStatus: '本机空间不足，请保持本页打开并重试保存' }); }
+    if (this.articleTimer) clearTimeout(this.articleTimer);
+    this.articleTimer = setTimeout(() => { void this.flushArticle(); }, 1200);
+  },
+  async flushArticle(): Promise<boolean> {
+    if(this.articleConflict){this.setData({articleStatus:"本机草稿与云端新版冲突，草稿已保留，请先核对历史版本"});return false;}
+    if (this.articleTimer) clearTimeout(this.articleTimer);
+    if (this.articleSaving) { if (!await this.articleSaving) return false; }
+    if (!this.articlePending && !this.articleAttempt) return true;
+    const story = this.story;
+    if (!story?.currentRevisionId || !story.version) return false;
+    const snapshot = this.articlePending!;
+    if (!this.articleAttempt) this.articleAttempt = { requestId: `request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`,
+      storyId: story.id, revisionId: story.currentRevisionId, expectedVersion: story.version, chapter: snapshot };
+    const attempt = this.articleAttempt;
+    this.articleSaving = (async () => {
+      try {
+        await ensurePhotoUploads(chapterPhotoIds(attempt.chapter));
+        const result = await saveArticle(attempt);
+        this.story = { ...this.story!, version: result.version, currentRevisionId: result.revisionId };
+        this.revisionId = result.revisionId;
+        this.chapters = this.chapters.map(c => c.id === attempt.chapter.id ? attempt.chapter : c);
+        this.articleAttempt = null;
+        if (this.articlePending === attempt.chapter) {
+          this.articlePending = null; wx.removeStorageSync(this.articleKey());
+          this.setData({ article: attempt.chapter, articleDirty: false, articleStatus: '已保存', savedRevisionId: result.revisionId });
+        } else {
+          wx.setStorageSync(this.articleKey(), { revisionId: result.revisionId, chapter: this.articlePending });
+        }
+        return true;
+      } catch (error) { this.setData({ articleStatus: error instanceof Error ? error.message : '保存失败，点这里重试' }); return false; }
+      finally { this.articleSaving = null; }
+    })();
+    if (!await this.articleSaving) return false;
+    return this.articlePending ? this.flushArticle() : true;
+  },
+  onArticleTitle(event: WechatMiniprogram.Input) {
+    const base=this.articlePending || this.data.article;
+    if(base)this.onArticleChange({detail:{chapter:{...base,title:event.detail.value}}});
+  },
+  async addArticleImage() {
+    if (this.data.pickingPhoto || !this.data.article) return;
+    this.setData({ pickingPhoto: true });
+    try {
+      const picked = await new Promise<WechatMiniprogram.ChooseMediaSuccessCallbackResult>((resolve,reject) => wx.chooseMedia({ count:1, mediaType:['image'], sizeType:['compressed'], success:resolve, fail:reject }));
+      if (!picked.tempFiles[0] || this.unloaded) return;
+      const photo = await saveLocalPhoto(picked.tempFiles[0].tempFilePath);
+      this.photoPaths[photo.id] = photo.path;
+      const chapter = addArticlePhoto(this.articlePending || this.data.article, photo.id);
+      this.setData({ article:chapter, articlePaths:{...this.photoPaths} });
+      this.onArticleChange({ detail:{chapter} });
+    } catch (error) { this.setData({ articleStatus:error instanceof Error?error.message:'没有添加图片' }); }
+    finally { this.setData({ pickingPhoto:false }); }
+  },
+  async sendArticle() {
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
+    if (this.data.protectedHasDeliveryLineage) await this.returnChapterDelivery();
+    else await this.openChapterDeliverySend();
+  },
   onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string } = {}) {
     this.sendSnapshot = undefined;
     this.sendAccountScope = "";
@@ -232,6 +305,7 @@ Page({
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
   onHide() {
+    if (this.articlePending) void this.flushArticle();
     this.connectionEpoch++;
     this.setData({ connectionBusy: false });
     this.photoEpoch++;
@@ -245,6 +319,8 @@ Page({
     }
   },
   onUnload() {
+    if (this.articleTimer) clearTimeout(this.articleTimer);
+    if (this.articlePending) void this.flushArticle();
     // onUnload cannot await the network. The synchronous input backup is the guarantee.
     if (this.data.editing) { this.backupEdits(); void this.saveEdits(true); }
     this.unloaded = true;
@@ -262,7 +338,7 @@ Page({
       void this.refreshSelectedStoryImageUrl();
       return;
     }
-    if (!this.organizeCandidate && !this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
+    if (!this.articlePending && !this.articleSaving && !this.organizeCandidate && !this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
       void this.refresh(staged, { projection: Boolean(staged) }).catch((error) => { logLoadError("book", error); this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }); });
     }
   },
@@ -438,7 +514,7 @@ Page({
       protectedCopy: story?.sourcePolicyRequired === true,
       isCloudDraft: current.draft?.generationMode === "cloud-ai",
       modeLabel: story?.sourcePolicyRequired ? "亲友故事副本" : story ? (story.writingMode === "creative" ? "AI 共创" : "客观记录") : "当前书稿",
-      modeNote: story?.sourcePolicyRequired ? "亲友原文保持不变；你可以在章节末尾补充自己的经历。" : story ? "模式只影响以后的整理，不会改写旧章节。" : "可以直接编辑。",
+      modeNote: story?.sourcePolicyRequired ? "你收到的故事，修改会保存在这份副本中。" : story ? "模式只影响以后的整理，不会改写旧章节。" : "可以直接编辑。",
       stale: !!current.draft && current.sourceFingerprint !== (story ? storySourceFingerprint(state, story.id) : personalBookSourceFingerprint(state, member.id)),
       history: projection ? [] : manuscriptHistory(state, bookId), historyLoading: false, storageLabel: roomDataModeLabel(), loadError: "",
       ...this.chapterData(),
@@ -575,7 +651,17 @@ Page({
       const title = contributionStoryTitle(memory);
       if (title) stories.set(title, (stories.get(title) ?? 0) + 1);
     });
+    let article = active && this.story && CHAPTER_PACKAGE_ENABLED ? articleChapter(active) : null;
+    if (article) {
+      const saved = wx.getStorageSync(this.articleKey());
+      if (saved?.chapter?.id === active!.id) {
+        article = saved.chapter; this.articlePending = article;
+        if(saved.revisionId!==this.revisionId)this.articleConflict=true;
+      }
+    }
     return {
+      article, articleWidth: Math.max(180, (this.windowWidth || 375) - 32), articlePaths: {...this.photoPaths},
+      articleDirty: Boolean(this.articlePending), articleStatus:this.articleConflict?'本机草稿与云端新版冲突，草稿已保留':this.articlePending?'已恢复本机草稿，等待保存':this.data.articleStatus,
       currentLayoutPages: this.story?.sourcePolicyRequired && active?.layout
         ? chapterLayoutView(active, Math.max(1, (this.windowWidth || 375) - 56), this.photoPaths) : [],
       bookIntroduction: this.introductionBuffer,
@@ -824,6 +910,7 @@ Page({
     return this.canLeaveEditor(allowLocalDraft);
   },
   async backToContents() {
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
     if (this.data.openingChapter && this.data.loading) this.refreshId++;
     this.chapterOpenId++;
     this.pendingPhotoImportChapter = "";
@@ -833,6 +920,7 @@ Page({
     this.setData({ openingChapter: null, view: "contents", moreOpen: false, panel: "", ...this.chapterData() });
   },
   async openChapter(event: { currentTarget: { dataset: { id: string } } }) {
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
     if (this.suppressChapterOpen) { this.suppressChapterOpen = false; return; }
     const openId = ++this.chapterOpenId;
     if ((this.data.editing || this.editSave) && !await this.finishEditing(true)) return;
@@ -1026,7 +1114,8 @@ Page({
       if (!this.unloaded) this.setData({ preparingSend: false });
     }
   },
-  selectTool(event: { currentTarget: { dataset: { action: string } } }) {
+  async selectTool(event: { currentTarget: { dataset: { action: string } } }) {
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
     if (this.data.saving || this.data.generating) return;
     this.closeMore();
     this.closeSend();
@@ -1790,6 +1879,8 @@ Page({
     }
   },
   async returnChapterDelivery() {
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
+    this.closeMore();
     if (!this.data.chapterDeliveryOn || !this.data.protectedCopy || !this.data.protectedHasDeliveryLineage || this.data.protectedRevisionSaving) return;
     const chapter = this.activeChapterForDelivery();
     if (!chapter) return;
@@ -1832,6 +1923,7 @@ Page({
     }
   },
   async returnOwnExperience() {
+    this.closeMore();
     const story=this.story;
     if(!this.data.protectedCopy || !story || !this.activeChapterId || this.data.returningOwn)return;
     if(!story.currentRevisionId || !Number.isSafeInteger(story.version)){this.setData({saveNotice:"故事版本信息不完整，请重新打开后再试"});return;}

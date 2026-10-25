@@ -163,7 +163,7 @@ async function importChapterPackage(repo,ctx,raw,{now=()=>new Date().toISOString
       recipientPrincipalId:ctx.principalId,createdAt:stamp});
     await tx.set('stories',targetId,story);
     await tx.set('story_names',nameId,{familyId:ctx.familyId,storyId:story.id,title:story.title});
-    await tx.set('story_copies',copyId,{familyId:ctx.familyId,principalId:ctx.principalId,status:'complete',storyId:story.id,revisionId,createdAt:stamp});
+    await tx.set('story_copies',copyId,{familyId:ctx.familyId,principalId:ctx.principalId,status:'complete',storyId:story.id,revisionId,createdAt:stamp,senderName:input.senderName,packageId:input.packageId});
     await tx.set('story_copy_requests',requestKey,{familyId:ctx.familyId,principalId:ctx.principalId,fingerprint:packageDigest,copyId,chapterId});
     return {ok:true,storyId:story.id,revisionId,chapterId,alreadyReceived:false};
   });

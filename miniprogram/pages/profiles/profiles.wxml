@@ -22,10 +22,40 @@
   <block wx:else>
     <view class="profiles-heading">
       <view class="profiles-title serif">家人和朋友</view>
-      <view class="profiles-note">你是主笔。拉人进来后，每个人能看什么、能改什么、要回答什么，都写在名字旁边。</view>
+      <view class="profiles-note">查看亲友发来的内容，也可以管理书里的人物。</view>
       <view wx:if="{{loadError}}" class="profiles-note">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
     </view>
 
+    <view class="account-records">
+      <view class="profiles-title serif">{{activeContact ? activeContactName : '和我有往来的账号'}}</view>
+      <view class="profiles-note">谁发来了什么，谁改过文章，都留在这里。</view>
+      <view wx:if="{{activityLoading}}" class="profiles-note">正在加载往来记录…</view>
+      <view wx:if="{{activityError}}" class="profiles-note">{{activityError}}<button bindtap="refreshActivity">重试</button></view>
+      <block wx:if="{{activeContact}}">
+        <button class="activity-back" bindtap="closeContact">‹ 全部账号</button>
+        <view class="activity-event" wx:for="{{activity}}" wx:key="id">
+          <view class="activity-kind">{{item.kind}} · {{item.at}}</view>
+          <view class="activity-title">{{item.title}}</view>
+          <view class="activity-text">{{item.text}}</view>
+          <view wx:if="{{item.imageCount}}" class="profiles-note">附 {{item.imageCount}} 张图片</view>
+          <view wx:for="{{item.changes}}" wx:for-item="change" wx:key="index" class="activity-change">
+            <view>{{change.kind === 'layout' ? '调整了排版' : change.kind === 'image' ? '修改了图片' : change.action === 'added' ? '新增内容' : change.action === 'removed' ? '删除内容' : '修改内容'}}</view>
+            <view wx:if="{{change.before}}" class="activity-before">原来：{{change.before}}</view>
+            <view wx:if="{{change.after}}">现在：{{change.after}}</view>
+          </view>
+          <view wx:if="{{!item.comparisonAvailable}}" class="profiles-note">没有可核对的前一版，仅展示已收到的内容。</view>
+          <button wx:if="{{item.storyId}}" class="activity-back" data-id="{{item.id}}" bindtap="openActivity">打开文章 ›</button>
+        </view>
+      </block>
+      <block wx:else>
+        <button class="account-contact" wx:for="{{contacts}}" wx:key="id" data-id="{{item.id}}" bindtap="openContact">
+          <view class="profile-avatar serif">{{item.name}}</view><view class="account-contact-copy"><view>{{item.name}}</view><text>{{item.latest}} · {{item.count}} 条记录{{item.verified ? '' : ' · 来源账号未记录'}}</text></view><text>›</text>
+        </button>
+        <view wx:if="{{!contacts.length && !activityLoading && !activityError}}" class="profiles-note">还没有往来记录。收到文章和修改后，会按账号出现在这里。</view>
+      </block>
+    </view>
+    <view class="profiles-title serif people-heading">书里的人物</view>
+    <view class="profiles-note">人物备注和发送消息的账号分别记录。</view>
     <view class="people-add">
       <input class="profile-input" value="{{nameInput}}" bindinput="onNameInput" maxlength="12" placeholder="名字" placeholder-class="profile-input-placeholder" />
       <input class="profile-input" value="{{relationInput}}" bindinput="onRelationInput" maxlength="12" placeholder="关系，如妈妈" placeholder-class="profile-input-placeholder" />

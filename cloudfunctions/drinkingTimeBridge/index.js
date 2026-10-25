@@ -1,3 +1,4 @@
+const { recordDeliveryActivity } = require('./activity');
 const cloud = require("wx-server-sdk");
 const https = require("node:https");
 const fs = require("node:fs");
@@ -217,6 +218,7 @@ async function main(event = {}) {
       (contentType, data) => chapterDeliveryResultShapeError(contentType, data, action), 256 * 1024);
     if (["sendChapter", "createChapterClaimLink", "returnChapter"].includes(action)) {
       await uploadOutgoingAssets(event, context, baseUrl, secret, result);
+      await recordDeliveryActivity(db,context,result,"sent",event.package);
       if (action === "createChapterClaimLink" && result.claimUrl) {
         const origin = new URL(baseUrl).origin;
         const claim = new URL(result.claimUrl, origin);
@@ -225,6 +227,7 @@ async function main(event = {}) {
       }
       return result;
     }
+    if (action === "readChapterPackage") await recordDeliveryActivity(db,context,result,"received");
     return result;
   }
   if (action === "confirmWebLogin") {
