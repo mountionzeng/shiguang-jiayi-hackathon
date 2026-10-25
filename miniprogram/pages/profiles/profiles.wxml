@@ -49,11 +49,12 @@
       </block>
       <block wx:else>
         <button class="account-contact" wx:for="{{contacts}}" wx:key="id" data-id="{{item.id}}" bindtap="openContact">
-          <view class="profile-avatar serif">{{item.name}}</view><view class="account-contact-copy"><view>{{item.name}}</view><text>{{item.latest}} · {{item.count}} 条记录{{item.verified ? '' : ' · 来源账号未记录'}}</text></view><text>›</text>
+          <view class="profile-avatar serif">{{item.avatar}}</view><view class="account-contact-copy"><view>{{item.name}}</view><text>{{item.latest}} · {{item.count}} 条记录{{item.verified ? '' : ' · 来源账号未记录'}}</text></view><text>›</text>
         </button>
         <view wx:if="{{!contacts.length && !activityLoading && !activityError}}" class="profiles-note">还没有往来记录。收到文章和修改后，会按账号出现在这里。</view>
       </block>
     </view>
+    <block wx:if="{{!activeContact}}">
     <view class="profiles-title serif people-heading">书里的人物</view>
     <view class="profiles-note">人物备注和发送消息的账号分别记录。</view>
     <view class="people-add">
@@ -128,5 +129,6 @@
     <view class="profile-danger-zone">
       <button class="profile-clear-button" bindtap="clearCurrentFamilyData" hover-class="none">清空当前账号数据</button>
     </view>
+    </block>
   </block>
 </view>

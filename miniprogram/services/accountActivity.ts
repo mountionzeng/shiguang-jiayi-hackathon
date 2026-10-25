@@ -10,7 +10,7 @@ export async function loadAccountActivity(): Promise<AccountActivity[]> {
   return result.events;
 }
 export function groupAccountActivity(events:AccountActivity[]) {
-  const groups=new Map<string,{id:string;name:string;verified:boolean;count:number;latest:string;events:AccountActivity[]}>();
-  for(const event of events){const row=groups.get(event.accountKey)||{id:event.accountKey,name:event.name,verified:event.verified,count:0,latest:event.kind,events:[]};row.events.push(event);row.count++;groups.set(row.id,row);}
+  const groups=new Map<string,{id:string;name:string;avatar:string;verified:boolean;count:number;latest:string;events:AccountActivity[]}>();
+  for(const event of events){const row=groups.get(event.accountKey)||{id:event.accountKey,name:event.name,avatar:Array.from(event.name.trim())[0]||'人',verified:event.verified,count:0,latest:event.kind,events:[]};row.events.push(event);row.count++;groups.set(row.id,row);}
   return [...groups.values()];
 }
