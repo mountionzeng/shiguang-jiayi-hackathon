@@ -91,7 +91,8 @@ test("Memory Home shows memories whether or not they are written into a book", a
 
   call(room, "openMemory", tap("with-friend"));
   call(room, "openPeople");
-  assert.deepEqual(env.navigations.slice(-2), ["/pages/archive/archive?id=with-friend", "/pages/profiles/profiles?mode=people"]);
+  assert.deepEqual(env.navigations, ["/pages/archive/archive?id=with-friend"]);
+  assert.equal(room.data.editorOpen, true, "person editing stays inside Memory Home");
 });
 
 test("a new room without profiles displays an empty state instead of a load error", async (context) => {
@@ -116,4 +117,27 @@ test("a person with no memories yet says so instead of looking empty", async (co
   assert.equal(room.data.hasMemories, false);
   assert.equal(room.data.hasAnyMemory, true, "the page still knows there are memories elsewhere");
   assert.equal(room.data.activeName, "陈野");
+});
+
+test('received accounts stay separate from same-named story characters and filter shares in place', async context => {
+  const state = stateWithPeopleMemories(), env = install(state); context.after(env.restore);
+  const room = await loadRoom();
+  room.allActivity = [{id:'message-one',accountKey:'trusted-one',name:'周明',verified:true,at:'2026-10-25',kind:'发来文章',title:'只分享给我的文章',text:'独立分享的正文',imageCount:1,changes:[],comparisonAvailable:true,storyId:''}];
+  await call(room,'refresh');
+  assert.ok(ids(room.data.people).includes('account:trusted-one'));
+  assert.ok(ids(room.data.people).includes('friend-1'));
+  await call(room,'choosePerson',tap('account:trusted-one'));
+  assert.equal(room.data.canEditPerson,false,'a sender account is not a locally editable character');
+  assert.equal((room.data.sharedArticles as any[])[0].text,'独立分享的正文');
+  assert.deepEqual(room.data.memories,[]);
+  await call(room,'choosePerson',tap('friend-1'));
+  assert.deepEqual(room.data.sharedArticles,[],'matching names must not disclose another identity’s activity');
+});
+
+test('shared family view refuses person mutations even if its event handlers are called directly', async context => {
+  const env=install(stateWithPeopleMemories());context.after(env.restore);
+  const room=await loadRoom();
+  room.setData({sharedFamilyId:'someone-else',nameInput:'should-not-save',editingId:'friend-1',canEditPerson:true});
+  await call(room,'savePerson');await call(room,'removePerson');await call(room,'editPerson');
+  assert.equal(room.data.editorOpen,false);assert.equal(room.data.personSaving,false);
 });

@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "记忆之家"
+  "navigationBarTitleText": "记忆之家",
+  "usingComponents": {
+    "book-people": "/components/book-people/book-people"
+  }
 }

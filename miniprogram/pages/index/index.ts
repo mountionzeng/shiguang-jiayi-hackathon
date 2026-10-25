@@ -1,3 +1,4 @@
+import { loadAccountActivity, type AccountActivity } from '../../services/accountActivity';
 import {dailyQuestionAvailable, dailyQuestionCache, generateDailyQuestion} from "../../services/dailyQuestion";
 import {homeReturnNotice, loadPendingReturns} from "../../services/storyReturnsInbox";
 import {hasAiConsent} from "../../services/aiConsent";
@@ -342,16 +343,27 @@ Page({
     hasRecommendedQuestion: false,
     returnNotice: "",
     returnNoticeChapterId: "",
+    sharedArticles: [] as AccountActivity[], sharesError: '',
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
   },
 
+  sharesSequence: 0,
+  async refreshShares() {
+    const sequence = ++this.sharesSequence;
+    try { const events = await loadAccountActivity(); if (sequence === this.sharesSequence) this.setData({ sharedArticles: events.slice(0, 3), sharesError: '' }); }
+    catch { if (sequence === this.sharesSequence) this.setData({ sharesError: '亲友分享暂时没加载出来' }); }
+  },
+  openSharedPerson(event: { currentTarget: { dataset: { account: string } } }) {
+    wx.navigateTo({ url: '/pages/room/room?account=' + encodeURIComponent(event.currentTarget.dataset.account) });
+  },
   onShow() {
+    void this.refreshShares();
     this.setData({ bookOpening: false });
     void this.refresh().catch(() => undefined);
   },
 
-  onHide() { this.dailyRequestId += 1; },
+  onHide() { this.sharesSequence++; this.dailyRequestId += 1; },
 
   async refresh(state?: FamilyRoomState) {
     this.dailyRequestId += 1;
@@ -585,14 +597,14 @@ Page({
   startInterview() {
     if (!this.data.hasProfile) {
       wx.showToast({ title: "先写下你的名字", icon: "none" });
-      wx.navigateTo({ url: "/pages/profiles/profiles" });
+      wx.navigateTo({ url: "/pages/profiles/profiles?mode=new-book" });
       return;
     }
     wx.navigateTo({ url: "/pages/interview/interview" });
   },
 
   createFirstProfile() {
-    wx.navigateTo({ url: "/pages/profiles/profiles" });
+    wx.navigateTo({ url: "/pages/profiles/profiles?mode=new-book" });
   },
 
   toggleStoryChooser() {
@@ -686,7 +698,7 @@ Page({
   openPeople() {
     if(!this.data.storyId){stageRoomStateForRoom(this.roomSnapshot);wx.navigateTo({url:'/pages/room/room'});return;}
     stageBookPeople(this.roomSnapshot,this.data.storyId);
-    wx.navigateTo({ url: "/packages/story-sharing/pages/people/index?storyId="+encodeURIComponent(this.data.storyId) });
+    wx.navigateTo({ url: "/pages/room/room?storyId="+encodeURIComponent(this.data.storyId) });
   },
 
   openMemoryHome() {

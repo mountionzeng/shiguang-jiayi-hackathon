@@ -1,3 +1,7 @@
+import { loadAccountActivity, groupAccountActivity, openSharedArticle, type AccountActivity } from '../../services/accountActivity';
+import { addFamilyMemberRemoteFirst, updateMemberRemoteFirst, restoreMemberRemoteFirst } from '../../services/roomRepository';
+import { deleteMemberWithConfirm } from '../../services/memberActions';
+import { loadCurrentAccount, saveCurrentAccountName } from '../../services/accountService';
 import {
   contributionRelatedMemberIds,
   contributionStoryTitle,
@@ -15,7 +19,7 @@ import { logLoadError } from "../../services/loadErrorLog";
 import { bookmarkDateParts } from "../../services/memoryDates";
 import { loadPendingReturns, PendingReturn, senderLabel } from "../../services/storyReturnsInbox";
 
-interface RoomLoadOptions { familyId?: string; }
+interface RoomLoadOptions { familyId?: string; account?: string; edit?: string; storyId?:string; }
 
 function decodeFamilyId(value = ""): string {
   try { return decodeURIComponent(value).trim(); } catch { return ""; }
@@ -24,7 +28,7 @@ function decodeFamilyId(value = ""): string {
 /**
  * 记忆之家：先是人，再是记忆。
  * 点「你」看全部记忆，点某个人看和 ta 有关的记忆；写没写进书都在这里。
- * 名单本身（加人、删人、恢复）在「家人和朋友」页。
+ * 人员编辑与分享往来均在本页展开。
  */
 
 const ME = "me";
@@ -40,6 +44,7 @@ interface PersonTab {
   count: number;
   /** 这位家人有几封等你决定的回信；0 时界面上什么都不显示。 */
   letters: number;
+  account?: boolean;
 }
 
 /** 某位家人发回的、等主人决定要不要放进书里的回信。 */
@@ -76,10 +81,20 @@ function formatDate(iso: string): string {
 Page({
   roomSnapshot: undefined as FamilyRoomState | undefined,
   loadSequence: 0,
-  onUnload() { this.loadSequence++; },
+  activitySequence: 0,
+  requestedAccount: '',
+  requestedEdit: false,
+  allActivity: [] as AccountActivity[],
+  onHide() { this.loadSequence++; this.activitySequence++; },
+  onUnload() { this.loadSequence++; this.activitySequence++; },
   lettersById: new Map<string, PendingReturn>(),
   data: {
+    accessStoryId: '',
     people: [] as PersonTab[],
+    sharedArticles: [] as AccountActivity[], activityError: '', activityLoading: false, openingShare: false,
+    editorOpen: false, editingId: '', nameInput: '', relationInput: '', personSaving: false,
+    canEditPerson: false, trash: [] as FamilyMember[], trashOpen: false,
+
     activeId: ME,
     activeName: "你",
     memories: [] as MemoryRow[],
@@ -97,10 +112,14 @@ Page({
   },
 
   onLoad(options: RoomLoadOptions = {}) {
-    this.setData({ sharedFamilyId: decodeFamilyId(options.familyId) });
+    this.allActivity = [];
+    this.requestedEdit = options.edit === 'me';
+    this.requestedAccount = options.account ? 'account:' + decodeFamilyId(options.account) : '';
+    this.setData({ sharedFamilyId: decodeFamilyId(options.familyId), accessStoryId: options.storyId || '', activeId: options.account ? 'account:' + decodeFamilyId(options.account) : ME, editorOpen: false, editingId: '' });
   },
 
   onShow() {
+    if (!this.data.sharedFamilyId) void this.refreshActivity();
     const staged = takeStagedRoomStateForRoom();
     if (staged && !this.data.sharedFamilyId) void this.refresh(staged, true);
     void this.refresh().catch((error) => { logLoadError("room", error); this.setData({ loading: false, loadingDetails: false, loadError: "记忆暂时没加载出来，请重试。" }); });
@@ -147,7 +166,8 @@ Page({
         letters: (lettersBy.get(member.id) ?? []).length,
       })),
     ];
-    const active = people.find((person) => person.id === this.data.activeId) ?? people[0];
+    for (const contact of groupAccountActivity(this.allActivity)) people.push({ id: 'account:' + contact.id, name: contact.name, relation: '分享给我的内容', avatarText: contact.avatar, count: contact.count, letters: 0, account: true });
+    const active = people.find((person) => person.id === (this.requestedAccount || this.data.activeId)) ?? people[0];
     const shown = active.id === ME ? pool : memoriesWith(pool, active.id);
     const memories: MemoryRow[] = shown
       .slice()
@@ -191,11 +211,16 @@ Page({
       viewerName: viewer?.name ?? "",
       viewerRole,
       canInvite: this.data.sharedFamilyId ? viewerRole === "owner" : true,
+      canEditPerson: !this.data.sharedFamilyId && !active.account,
+      trash: currentState.members.filter(member => member.deletedAt),
+      sharedArticles: this.allActivity.filter(event => active.id === ME || active.id === 'account:' + event.accountKey),
     });
+    if (this.requestedEdit && !preview) { this.requestedEdit = false; void this.editPerson(); }
   },
 
   choosePerson(event: { currentTarget: { dataset: { id: string } } }) {
-    this.setData({ activeId: event.currentTarget.dataset.id });
+    this.requestedAccount = '';
+    this.setData({ activeId: event.currentTarget.dataset.id, editorOpen: false });
     void this.refresh(this.roomSnapshot, this.data.loadingDetails).catch((error) => { logLoadError("room", error); this.setData({ loadError: "记忆暂时没加载出来，请重试。" }); });
   },
 
@@ -210,8 +235,71 @@ Page({
     wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(item.sourceStoryId) + "&chapterId=" + encodeURIComponent(item.sourceChapterId) });
   },
 
-  openPeople() {
-    wx.navigateTo({ url: "/pages/profiles/profiles?mode=people" });
+  openPeople() { this.addPersonForm(); },
+  async refreshActivity() {
+    const sequence = ++this.activitySequence;
+    this.setData({ activityLoading: true, activityError: '' });
+    try {
+      const events = await loadAccountActivity();
+      if (sequence !== this.activitySequence) return;
+      this.allActivity = events.map(event => ({ ...event, at: formatDate(event.at) }));
+      if (this.roomSnapshot) await this.refresh(this.roomSnapshot, this.data.loadingDetails);
+    } catch (error) { if (sequence === this.activitySequence) this.setData({ activityError: error instanceof Error ? error.message : '分享暂时没有加载出来' }); }
+    finally { if (sequence === this.activitySequence) this.setData({ activityLoading: false }); }
+  },
+  async openShared(event: { currentTarget: { dataset: { id: string } } }) {
+    const item = this.allActivity.find(row => row.id === event.currentTarget.dataset.id);
+    if (!item || this.data.openingShare) return;
+    this.setData({ openingShare: true });
+    wx.showLoading({ title: '打开文章…', mask: true });
+    try { await openSharedArticle(item); }
+    catch (error) { wx.showToast({ title: error instanceof Error ? error.message : '暂时打不开，请重试', icon: 'none' }); }
+    finally { wx.hideLoading(); this.setData({ openingShare: false }); }
+  },
+  addPersonForm() {
+    if (this.data.sharedFamilyId || this.data.personSaving) return;
+    this.setData({ editorOpen: true, editingId: '', nameInput: '', relationInput: '' });
+  },
+  async editPerson() {
+    if (this.data.sharedFamilyId || !this.data.canEditPerson || this.data.personSaving) return;
+    const member = this.roomSnapshot?.members.find(row => row.id === this.data.activeId);
+    if (this.data.activeId === ME) {
+      try { const account = await loadCurrentAccount(); this.setData({ editorOpen: true, editingId: ME, nameInput: account.displayName || '', relationInput: '' }); }
+      catch (error) { wx.showToast({ title: error instanceof Error ? error.message : '名字暂时没加载出来', icon: 'none' }); }
+    } else if (member) this.setData({ editorOpen: true, editingId: member.id, nameInput: member.name, relationInput: member.relation });
+  },
+  onNameInput(event: WechatMiniprogram.Input) { this.setData({ nameInput: event.detail.value }); },
+  onRelationInput(event: WechatMiniprogram.Input) { this.setData({ relationInput: event.detail.value }); },
+  closePersonEditor() { if (!this.data.personSaving) this.setData({ editorOpen: false }); },
+  async savePerson() {
+    if (this.data.sharedFamilyId || this.data.personSaving) return;
+    if (!this.data.nameInput.trim()) { wx.showToast({ title: '请写下名字', icon: 'none' }); return; }
+    if (this.data.editingId !== ME && this.data.relationInput.trim() === '自己') { wx.showToast({ title: '你自己已在头像栏里', icon: 'none' }); return; }
+    this.setData({ personSaving: true });
+    try {
+      if (this.data.editingId === ME) await saveCurrentAccountName(this.data.nameInput);
+      else if (this.data.editingId) await updateMemberRemoteFirst(this.data.editingId, this.data.nameInput, this.data.relationInput, { view: 'home' });
+      else await addFamilyMemberRemoteFirst(this.data.nameInput, this.data.relationInput, 'person', { view: 'home' });
+      this.setData({ editorOpen: false, editingId: '' }); await this.refresh();
+      wx.showToast({ title: '已保存', icon: 'success' });
+    } catch (error) { wx.showToast({ title: error instanceof Error ? error.message : '保存失败，请重试', icon: 'none' }); }
+    finally { this.setData({ personSaving: false }); }
+  },
+  async removePerson() {
+    if (this.data.sharedFamilyId || this.data.personSaving || !this.data.editingId || this.data.editingId === ME) return;
+    const state = this.roomSnapshot, member = state?.members.find(row => row.id === this.data.editingId);
+    if (!state || !member || member.id === this.data.viewerId) return;
+    this.setData({ personSaving: true });
+    try { if (await deleteMemberWithConfirm(member, state, { view: 'home' })) { this.setData({ editorOpen: false, activeId: ME }); await this.refresh(); } }
+    finally { this.setData({ personSaving: false }); }
+  },
+  toggleTrash() { this.setData({ trashOpen: !this.data.trashOpen }); },
+  async restorePerson(event: { currentTarget: { dataset: { id: string } } }) {
+    if (this.data.sharedFamilyId || this.data.personSaving) return;
+    this.setData({ personSaving: true });
+    try { await restoreMemberRemoteFirst(event.currentTarget.dataset.id, { view: 'home' }); await this.refresh(); }
+    catch (error) { wx.showToast({ title: error instanceof Error ? error.message : '恢复失败', icon: 'none' }); }
+    finally { this.setData({ personSaving: false }); }
   },
 
   startInterview() {
@@ -219,7 +307,15 @@ Page({
     wx.navigateTo({ url: `/pages/interview/interview${query}` });
   },
 
-  inviteFamilyMember() { wx.navigateTo({ url: "/pages/invite/invite" }); },
+  closeAccess() { this.setData({ accessStoryId: '' }); },
+  async inviteFamilyMember() {
+    const stories = this.roomSnapshot?.stories?.filter(story => !story.deletedAt) || [];
+    if (!stories.length) { wx.showToast({title:'先写一个故事，再邀请亲友一起读',icon:'none'}); return; }
+    try {
+      const chosen = await new Promise<number>((resolve,reject) => wx.showActionSheet({itemList:stories.map(story=>story.title || '未命名故事'),success:result=>resolve(result.tapIndex),fail:reject}));
+      if(stories[chosen])this.setData({accessStoryId:stories[chosen].id});
+    } catch { /* Cancel leaves the page unchanged. */ }
+  },
 
   retryLoad() { this.onShow(); },
 
@@ -230,6 +326,6 @@ Page({
     stageRoomStateForStories(this.roomSnapshot);
     wx.reLaunch({ url: "/pages/stories/stories" });
   },
-  onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
+  onShareAppMessage(): {title:string;path:string} { const access = this.selectComponent('#book-access'); if (access && this.data.accessStoryId) return access.onShareAppMessage(); return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
   onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },
 });

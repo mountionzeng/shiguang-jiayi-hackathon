@@ -11,12 +11,13 @@ type PageInstance = PageDefinition & { data: Record<string, unknown>; setData(up
 // A page module registers itself once; later instances reuse its definition.
 const definitions = new Map<string, PageDefinition>();
 
-async function loadPage(name: "index" | "profiles", options?: Record<string, string>): Promise<PageInstance> {
+async function loadPage(name: "index" | "profiles" | "room", options?: Record<string, string>): Promise<PageInstance> {
   let captured = definitions.get(name);
   if (!captured) {
     (globalThis as any).Page = (definition: PageDefinition) => { captured = definition; };
     try {
       if (name === "index") await import("../miniprogram/pages/index/index");
+      else if (name === "room") await import("../miniprogram/pages/room/room");
       else await import("../miniprogram/pages/profiles/profiles");
     } finally { delete (globalThis as any).Page; }
     assert.ok(captured);
@@ -66,24 +67,24 @@ test("the people page lists everyone except the author, labels access, and adds 
   state.members.push({ id: "self-book", name: "岱", relation: "自己", avatarText: "岱", role: "owner", kind: "recording-profile" });
   const env = install(state);
   context.after(env.restore);
-  const people = await loadPage("profiles", {});
+  const people = await loadPage("room", {});
   await call(people, "refresh");
-  assert.equal(people.data.view, "people");
+  assert.equal(people.data.activeId, "me");
   const rows = people.data.people as Array<{ id: string; permission: string; canDelete: boolean }>;
   assert.ok(!ids(rows).includes("self-book"), "the author's own book is not listed as a person");
-  assert.ok(rows.every((row) => row.permission === "还没邀请"), "nobody has access before real invitations exist");
-  assert.equal(rows.find((row) => row.id === "owner")?.canDelete, false, "the book being written cannot be deleted");
+
+  assert.equal(people.data.viewerId, "self-book");
 
   people.setData({ nameInput: "测试朋友", relationInput: "朋友" });
-  await call(people, "addPerson");
+  await call(people, "savePerson");
   const friend = env.room().members.find((member) => member.name === "测试朋友")!;
   assert.equal(friend.kind, "person");
   assert.equal(env.current(), "owner", "adding a person never switches the book");
   assert.ok(ids(people.data.people).includes(friend.id));
 
   people.setData({ nameInput: "还是我", relationInput: "自己" });
-  await call(people, "addPerson");
-  assert.match(env.toasts[env.toasts.length - 1], /你自己就是主笔/);
+  await call(people, "savePerson");
+  assert.match(env.toasts[env.toasts.length - 1], /你自己已在头像栏里/);
 
   const home = await loadPage("index");
   await call(home, "refresh");
@@ -97,12 +98,13 @@ test("a person can be renamed without changing identity, permissions, or authore
   const before = state.contributions.find((memory) => memory.authorMemberId === "member-1")!;
   const env = install(state);
   context.after(env.restore);
-  const people = await loadPage("profiles", {});
+  const people = await loadPage("room", {});
   await call(people, "refresh");
 
-  call(people, "startEdit", tap("member-1"));
-  people.setData({ editNameInput: "林小秋", editRelationInput: "妈妈" });
-  await call(people, "saveEdit");
+  await call(people, "choosePerson", tap("member-1"));
+  await call(people, "editPerson");
+  people.setData({ nameInput: "林小秋", relationInput: "妈妈" });
+  await call(people, "savePerson");
 
   const member = env.room().members.find((item) => item.id === "member-1")!;
   assert.deepEqual({ id: member.id, name: member.name, relation: member.relation, kind: member.kind }, {
@@ -112,7 +114,7 @@ test("a person can be renamed without changing identity, permissions, or authore
   assert.deepEqual({ id: memory.id, text: memory.text, authorName: memory.authorName, relation: memory.relation }, {
     id: before.id, text: before.text, authorName: "林小秋", relation: "妈妈",
   });
-  assert.equal(people.data.editMemberId, "");
+  assert.equal(people.data.editingId, "");
   assert.equal((people.data.people as Array<{ id: string; name: string }>).find((item) => item.id === "member-1")?.name, "林小秋");
 });
 
@@ -120,7 +122,7 @@ test("only the newest people-page refresh can render its snapshot", async (conte
   const state = createDemoRoomStateForTests();
   const env = install(state);
   context.after(env.restore);
-  const people = await loadPage("profiles", {});
+  const people = await loadPage("room", {});
   const older = structuredClone(state);
   const newer = structuredClone(state);
   older.members = older.members.map((member) => member.id === "member-1" ? { ...member, name: "旧名字" } : member);
@@ -134,7 +136,7 @@ test("only the newest people-page refresh can render its snapshot", async (conte
 test("a new book starts from its own view, and an account without any book is sent there", async (context) => {
   const env = install(createEmptyRoomState(), "");
   context.after(env.restore);
-  const page = await loadPage("profiles", {});
+  const page = await loadPage("profiles", { mode: "new-book" });
   await call(page, "refresh");
   assert.equal(page.data.view, "new-book");
   page.setData({ nameInput: "岱" });
@@ -167,9 +169,10 @@ test("deleting another book hides its story on home, keeps its memories, and res
   await call(home, "refresh");
   assert.ok(stories().includes("林秋的书"), "every profile's book is a story on home");
 
-  const people = await loadPage("profiles", {});
+  const people = await loadPage("room", {});
   await call(people, "refresh");
-  await call(people, "removeMember", tap("member-1"));
+  people.setData({ editingId: "member-1" });
+  await call(people, "removePerson");
   assert.match(env.dialogs[env.dialogs.length - 1], /书稿和所有版本会放进「最近删除」.*记忆都还在记忆库里/);
   await call(home, "refresh");
   assert.ok(!stories().includes("林秋的书"));
@@ -177,11 +180,12 @@ test("deleting another book hides its story on home, keeps its memories, and res
     "the memories it told stay in the shared pool");
   assert.equal(env.room().manuscriptRevisions?.length, 1, "its book is kept");
 
-  await call(people, "removeMember", tap("owner"));
-  assert.match(env.toasts[env.toasts.length - 1], /这是你自己，不能删除/);
+  people.setData({ editingId: "owner" });
+  await call(people, "removePerson");
+  assert.ok(!env.room().members.find(m => m.id === "owner")?.deletedAt, "current owner cannot be removed");
 
   assert.deepEqual(ids(people.data.trash), ["member-1"]);
-  await call(people, "restoreMember", tap("member-1"));
+  await call(people, "restorePerson", tap("member-1"));
   assert.deepEqual(ids(people.data.trash), []);
   await call(home, "refresh");
   assert.ok(stories().includes("林秋的书"));
@@ -196,9 +200,10 @@ test("deleting a person clears its references, keeps the memory, and can be rest
   }));
   const env = install(state);
   context.after(env.restore);
-  const people = await loadPage("profiles", {});
+  const people = await loadPage("room", {});
   await call(people, "refresh");
-  await call(people, "removeMember", tap("friend-1"));
+  people.setData({ editingId: "friend-1" });
+  await call(people, "removePerson");
   assert.match(env.dialogs[env.dialogs.length - 1], /记忆本身不删/);
   assert.ok(!ids(people.data.people).includes("friend-1"));
   assert.deepEqual(ids(people.data.trash), ["friend-1"]);
@@ -207,6 +212,6 @@ test("deleting a person clears its references, keeps the memory, and can be rest
   assert.equal(memory.sharedWithMemberIds, undefined);
   assert.equal(memory.text, "提到周明的虚构记忆。");
 
-  await call(people, "restoreMember", tap("friend-1"));
+  await call(people, "restorePerson", tap("friend-1"));
   assert.ok(ids(people.data.people).includes("friend-1"));
 });

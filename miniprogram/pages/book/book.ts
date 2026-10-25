@@ -1138,7 +1138,7 @@ Page({
       case "images": this.openImages(); break;
       case "audio": this.openAudioStory(); break;
       case "invite": if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/invite/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
-      case "people": if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/people/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
+      case "people": if(this.data.storyId)wx.navigateTo({url:'/pages/room/room?storyId='+encodeURIComponent(this.data.storyId)}); break;
       case "share-card": if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/card/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
       case "mode": void this.switchWritingMode(); break;
       case "package-chapter": void this.packageActiveChapter(); break;
@@ -1340,7 +1340,7 @@ Page({
           title: "还没有可以发送的家人",
           content: "先在“家人和朋友”里添加并邀请对方。对方接受邀请后，才能在记忆之家看到选段。",
           confirmText: "去添加",
-          success: result => { if (result.confirm) wx.navigateTo({ url: "/pages/profiles/profiles?mode=people" }); },
+          success: result => { if (result.confirm) wx.navigateTo({ url: "/pages/room/room" }); },
         });
         return;
       }

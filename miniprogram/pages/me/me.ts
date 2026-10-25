@@ -160,7 +160,7 @@ Page({
   },
 
   editAccountProfile() {
-    this.setData({ editingAccount: true, accountAvatarPreview: this.data.accountAvatarText });
+    wx.navigateTo({ url: "/pages/room/room?edit=me" });
   },
 
   cancelAccountProfile() {
@@ -228,7 +228,7 @@ Page({
   },
 
   openProfiles() {
-    wx.navigateTo({ url: "/pages/profiles/profiles" });
+    wx.navigateTo({ url: "/pages/room/room" });
   },
 
   openArchive() {

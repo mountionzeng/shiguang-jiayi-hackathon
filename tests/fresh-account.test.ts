@@ -114,7 +114,7 @@ test("a brand-new WeChat account opens every memory, the people list and home", 
   await call(recall, "refresh");
   assert.equal(recall.data.hasItems, false);
 
-  const profiles = await capturePage("../miniprogram/pages/profiles/profiles");
+  const profiles = await capturePage("../miniprogram/pages/room/room");
   call(profiles, "onLoad", {});
   await call(profiles, "refresh");
   assert.equal(profiles.data.loadError, "");

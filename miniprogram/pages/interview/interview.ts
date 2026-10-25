@@ -240,7 +240,7 @@ Page({
     if (!member) throw new Error("成员身份已失效，请重新接受邀请");
     if (!member.id) {
       wx.showToast({ title: "先写下你的名字，就可以开始聊了", icon: "none" });
-      wx.redirectTo({ url: "/pages/profiles/profiles" });
+      wx.redirectTo({ url: "/pages/profiles/profiles?mode=new-book" });
       return;
     }
     const question = pickInterviewQuestion(sharedQuestionSeed(), sharedFamilyId ? "family" : "personal");

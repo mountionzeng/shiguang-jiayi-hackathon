@@ -77,14 +77,15 @@ Page({
   pageActive: true,
 
   onLoad(options: { mode?: string } = {}) {
-    this.requestedNewBook = options.mode === "new-book";
+    if (options.mode !== 'new-book') { wx.redirectTo({ url: '/pages/room/room' }); return; }
+    this.requestedNewBook = true;
     this.setData({ view: this.requestedNewBook ? "new-book" : "people" });
   },
 
   onShow() {
+    if (!this.requestedNewBook) return;
     this.pageActive = true;
     const generation = ++this.refreshGeneration;
-    void this.refreshActivity();
     void this.refresh(undefined, generation).catch((error) => {
       if (!this.pageActive || generation !== this.refreshGeneration) return;
       logLoadError("profiles", error);

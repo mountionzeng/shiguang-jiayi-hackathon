@@ -1299,3 +1299,5 @@
 .return-notice-dot { flex: none; width: 12rpx; height: 12rpx; border-radius: 50%; background: var(--apricot); }
 .return-notice-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 27rpx; }
 .return-notice-go { flex: none; font-size: 24rpx; color: var(--apricot); }
+
+.home-shares { position:relative;margin:24rpx 0; }.home-share { padding:24rpx;background:rgba(255,254,250,.94);border-radius:20rpx;margin:16rpx 0; }.home-share-note { font-size:25rpx;color:var(--ink-soft); }.home-share-title { font-size:32rpx;margin:10rpx 0; }.home-share-preview { font-size:28rpx;line-height:1.6;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden; }

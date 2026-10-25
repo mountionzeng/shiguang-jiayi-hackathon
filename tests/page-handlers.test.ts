@@ -918,7 +918,8 @@ test("an incomplete account can browse home and start recording without filling 
   await callPage(me, "refresh", initial);
   assert.equal(me.data.editingAccount, false);
   callPage(me, "editAccountProfile");
-  assert.equal(me.data.editingAccount, true);
+  assert.equal(last(storage.navigations), "/pages/room/room?edit=me");
+  assert.equal(me.data.editingAccount, false);
   callPage(me, "cancelAccountProfile");
   assert.equal(me.data.editingAccount, false);
 });

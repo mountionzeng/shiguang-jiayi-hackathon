@@ -21,8 +21,8 @@ async function accountActivity(repo,ctx){
       if(before)changes.push(...moduleChanges({title:before.title,content:before.blocks.map(b=>({blockId:b.blockId,...(b.type==='text'?{text:b.text}:{photoId:b.assetId})})),layout:before.layout},
         {title:chapter.title,content:chapter.blocks.map(b=>({blockId:b.blockId,...(b.type==='text'?{text:b.text}:{photoId:b.assetId})})),layout:chapter.layout}));
     }
-    events.push({id:row._id,accountKey:row.senderKey?'web:'+row.senderKey:'unknown:'+row._id,name:row.senderName||'未记录称呼的账号',verified:Boolean(row.senderKey),
-      at:row.createdAt,kind:row.kind==='return'?'发来修改':'发来文章',title:pkg.storyTitle||pkg.chapters?.[0]?.title||'文章',
+    events.push({id:row._id,deliveryId:row.deliveryId,accountKey:row.senderKey?'web:'+row.senderKey:'unknown:'+row._id,name:row.senderName||'未记录称呼的账号',verified:Boolean(row.senderKey),
+      at:row.createdAt,kind:row.kind==='return'?'发来修改':'发来文章',title:pkg.chapters?.[0]?.title||pkg.storyTitle||'文章',
       text:clip(pkg.chapters?.flatMap(c=>c.blocks.filter(b=>b.type==='text').map(b=>b.text)).join('\n')),imageCount:pkg.assets?.length||0,
       changes:changes.slice(0,30).map(c=>({...c,before:clip(c.before),after:clip(c.after)})),comparisonAvailable:row.kind!=='return'||Boolean(previous),revisionId:'',storyId:''});
   }
@@ -31,6 +31,8 @@ async function accountActivity(repo,ctx){
     const source=stories.find(story=>story.id===row.storyId)?.receivedSources?.[0];
     const sourcePrincipalId=row.sourcePrincipalId||source?.sourceOwnerPrincipalId;
     const revision=revisions.find(r=>r.revision?.id===row.revisionId)?.revision;
+    const packageId=row.packageId||revision?.draft?.chapters?.[0]?.packageLineage?.receivedPackageId;
+    if(packageId&&deliveries.some(item=>item.direction==='received'&&item.packageId===packageId))continue;
     events.push({id:row._id,accountKey:sourcePrincipalId?'principal:'+sourcePrincipalId:'unknown-copy:'+row._id,name:row.senderName||source?.senderName||'来源账号未记录',verified:Boolean(sourcePrincipalId),at:row.createdAt,kind:'发来文章',title:revision?.draft?.title||'文章',text:clip(revision?.draft?.paragraphs?.join('\n')),imageCount:revision?.draft?.chapters?.reduce((n,c)=>n+c.content.filter(b=>b.photoId).length,0)||0,changes:[],comparisonAvailable:true,storyId:row.storyId,revisionId:row.revisionId});
   }
   for(const row of revisions){

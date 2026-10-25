@@ -7,8 +7,8 @@ const model=()=>({bookPeople:true,familyId:'family_owner',copyAvailable:true,sto
 async function setup(respond:(data:Def)=>any=()=>model()) {
   const calls:Def[]=[];
   (globalThis as any).wx={hideShareMenu:()=>{},cloud:{callFunction:async({data}:Def)=>{calls.push(data);return {result:await respond(data)};}}};
-  if(!definition){(globalThis as any).Page=(d:Def)=>definition=d;await import('../miniprogram/packages/story-sharing/pages/people/index');}
-  const p:Def={...definition,data:structuredClone(definition.data)};p.setData=(v:Def)=>Object.assign(p.data,v);p.onLoad({storyId:'story-a'});
+  if(!definition){(globalThis as any).Component=(d:Def)=>definition=d;await import('../miniprogram/components/book-people/book-people');}
+  const p:Def={...definition.methods,data:structuredClone(definition.data)};p.setData=(v:Def)=>Object.assign(p.data,v);p.onLoad({storyId:'story-a'});
   return {p,calls};
 }
 const row={currentTarget:{dataset:{key:'person:person-a'}}};
@@ -40,9 +40,9 @@ test('late reads/writes cannot repopulate a hidden people page or leak an invita
   let finish:(value:any)=>void=()=>{};
   const {p}=await setup(()=>new Promise(resolve=>finish=resolve));const reading=p.refresh();p.onHide();finish(model());await reading;
   assert.deepEqual(p.data.people,[]);assert.equal(p.data.ready,false);
-  p.hidden=false;p.model=model();p.familyId='family_owner';p.setData({ready:true,people:[{key:'person:person-a',memberId:'person-a',name:'岚'}]});p.openPerson(row);
+  p.data.hidden=false;p.data.model=model();p.data.familyId='family_owner';p.setData({ready:true,people:[{key:'person:person-a',memberId:'person-a',name:'岚'}]});p.openPerson(row);
   p.chooseChapters({detail:{value:['chapter-one']}});const writing=p.saveAccess();p.onHide();finish({invitationId:'i',token:'late-secret'});await writing;
-  assert.equal(p.data.shareReady,false);assert.equal(p.shareToken,'');
+  assert.equal(p.data.shareReady,false);assert.equal(p.data.shareToken,'');
 });
 test('denied or old cloud data never enables people permissions; failed invitation is not automatically retried',async()=>{
   const {p,calls}=await setup(()=>({story:{id:'story-a',title:'旧版'},chapters:[],invitations:[]}));
