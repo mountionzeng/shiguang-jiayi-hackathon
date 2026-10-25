@@ -297,11 +297,12 @@ Page({
     this.setData({ creating: true });
     try {
       const memoryIds = this.data.createMemories.filter(memory => memory.checked).map(memory => memory.id);
-      const { story } = await createStoryBook({
+      const { story, state } = await createStoryBook({
         title, writingMode: this.data.createMode,
         memoryIds,
       });
       saveCurrentStoryId(story.id);
+      stageRoomStateForBook(state);
       this.setData({ createOpen: false, createTitle: "", createMode: "objective", createMemories: [] });
       const organizeQuery = memoryIds.length ? "&memoryIds=" + memoryIds.map(encodeURIComponent).join(",") : "";
       wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(story.id) + organizeQuery });

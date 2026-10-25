@@ -2864,11 +2864,11 @@ test("inserting into a scoped chapter uses the chapter number displayed in its p
 test("inline xiaoyi entry is embedded in chapter editor and hidden for protected copies", () => {
   const template = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
   assert.match(template, /class="xiaoyi-entry"[^>]*catchtouchstart="openXiaoyi"/);
-  assert.match(template, /wx:if="\{\{!protectedCopy\}\}"[^>]*class="xiaoyi-entry"/);
+  assert.match(template, /wx:if="\{\{!protectedCopy && writingMode === \'creative\'\}\}"[^>]*class="xiaoyi-entry"/);
   assert.match(template, /class="xiaoyi-panel"/);
   assert.match(template, /看看这一章的记忆/);
   assert.match(template, /就用我的原话/);
-  assert.match(template, /写成一段/);
+  assert.match(template, /整理成文/);
   assert.match(template, /整理原话/);
   assert.match(template, /class="pending-edits"/);
   assert.doesNotMatch(template, /xiaoyi-entry[\s\S]{0,240}navigateTo/, "inline xiaoyi must not jump to interview page");
@@ -3811,4 +3811,181 @@ test('article bird keeps unsent thoughts and photos isolated across chapters and
   page.data.view='chapter';page.data.panel='';
   await callPage(page,'openXiaoyi');
   assert.equal(page.data.xiaoyiAnswer,'纸船的想法，还没有发送');
+});
+
+
+test("new chapter action appends a blank chapter and opens it without a chooser", async context => {
+  const state = createInitialRoomState();
+  state.personalDrafts = { owner: { title: "测试书", paragraphs: ["保留原文"], content: [{ text: "保留原文" }], sourceCount: 0, generatedAt: "", generationMode: "local-demo" } };
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("book"));
+  await callPage(page, "refresh");
+  callPage(page, "onBack");
+  const first = structuredClone((page.data.draft as any).chapters?.[0] || (page as any).chapters[0]);
+  await callPage(page, "selectTool", { currentTarget: { dataset: { action: "new-chapter" } } });
+  const chapters = (page.data.draft as any).chapters;
+  assert.equal(chapters.length, 2);
+  assert.deepEqual(chapters[0], first);
+  assert.deepEqual(chapters[1].memoryIds, []);
+  assert.equal(page.data.view, "chapter");
+  assert.equal(page.data.chapterLabelText, "第二章");
+  assert.notEqual(page.data.panel, "new-chapter");
+});
+
+test('article module selection starts a short conversation and follows live text without consuming input', async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition('book'));
+  page.data.storyId = 'fictional-selection'; page.activeChapterId = 'a'; page.data.writingMode = 'creative';
+  page.data.view = 'chapter'; page.data.panel = '';
+  page.data.article = { title: '纸船', content: [{blockId:'b1',text:'灯塔下放纸船'}, {blockId:'b2',text:''}], layout: {pages:[{modules:[
+    {id:'t1',kind:'text',bind:{blockId:'b1'}}, {id:'i1',kind:'image',assetId:'image'}, {id:'t2',kind:'text',bind:{blockId:'b2'}}
+  ]}]} };
+  callPage(page, 'restoreArticleChat');
+  callPage(page, 'onXiaoyiAnswerInput', {detail:{value:'未发送的想法'}});
+  await callPage(page, 'openXiaoyi');
+  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
+  assert.equal(page.data.xiaoyiSelectionLabel, '已定位到当前文字');
+  assert.match((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /灯塔下放纸船/);
+  assert.equal(page.data.xiaoyiAnswer, '未发送的想法');
+  const count = (page.data.xiaoyiMessages as any[]).length;
+  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
+  assert.equal((page.data.xiaoyiMessages as any[]).length, count);
+  (page.data.article as any).content[0].text = '新写的灯塔';
+  assert.equal(callPage(page, 'xiaoyiContextText'), '新写的灯塔');
+  await callPage(page, 'onArticleModuleSelected', {detail:{id:'i1'}});
+  assert.equal(page.data.xiaoyiSelectionLabel, '已定位到当前图片');
+  assert.match((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /新写的灯塔/);
+  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t2'}});
+  assert.equal(callPage(page, 'xiaoyiContextText'), '');
+  assert.match((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /零散的想法/);
+  page.data.protectedCopy = true;
+  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
+  assert.equal(callPage(page, 'xiaoyiContextText'), '');
+  assert.doesNotMatch((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /灯塔/);
+});
+
+test('save as memory creates one private reusable memory and preserves the article and chat', async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition('book'));
+  page.data.storyId='fictional-chat'; page.activeChapterId='chapter';
+  callPage(page,'restoreArticleChat');
+  page.xiaoyiConversation=[{role:'user',text:'【虚构】我折了一只蓝色纸船。'},{role:'assistant',text:'你和外婆一起吗？'}];
+  page.data.xiaoyiAnswer='灯塔是黄色的。';
+  page.data.article={content:[{text:'保持原文章'}]};
+  await callPage(page,'rememberXiaoyiAnswer');
+  const saved = page.articleChatMemory as any;
+  assert.equal(saved.saved,true);
+  assert.equal(saved.memory.scope,'personal');
+  assert.equal(saved.memory.visibility,'private');
+  assert.match(saved.memory.text,/蓝色纸船/);
+  assert.match(saved.memory.text,/灯塔/);
+  assert.doesNotMatch(saved.memory.text,/外婆/);
+  assert.deepEqual(page.data.article,{content:[{text:'保持原文章'}]});
+  assert.equal(page.data.xiaoyiAnswer,'灯塔是黄色的。');
+  await callPage(page,'rememberXiaoyiAnswer');
+  assert.equal((page.articleChatMemory as any).memory.id,saved.memory.id);
+  callPage(page,'releaseArticleChat'); callPage(page,'restoreArticleChat');
+  await callPage(page,'rememberXiaoyiAnswer');
+  assert.equal((page.articleChatMemory as any).memory.id,saved.memory.id);
+});
+
+test('a new empty book opens a writable first chapter and reopening does not add chapters', async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const { createStoryBook, ensureStoryBooks } = await import('../miniprogram/services/storyBooks');
+  await ensureStoryBooks();
+  const created = await createStoryBook({title:'【虚构】直接写作验收',writingMode:'objective'});
+  const page = instantiate(await pageDefinition('book'));
+  page.requestedStoryKey=created.story.id;
+  await callPage(page,'refresh',created.state);
+  assert.equal(page.data.view,'chapter', String(page.data.saveNotice));
+  assert.equal((page.chapters as any[]).length,1);
+  assert.equal(page.data.writingMode,'objective');
+  assert.ok(page.data.article, 'blank chapter exposes the article editor');
+  await callPage(page,'openXiaoyi');
+  assert.equal(page.data.xiaoyiOpen,false);
+  await callPage(page,'refresh');
+  assert.equal((page.chapters as any[]).length,1);
+});
+
+test('AI writing leaves the editor undisturbed until the bird is opened', async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition('book'));
+  page.data.writingMode='creative';page.data.view='chapter';page.data.panel='';
+  page.data.article={title:'虚构',content:[{blockId:'a',text:'纸船'}],layout:{pages:[{modules:[{id:'a',kind:'text',bind:{blockId:'a'}}]}]}};
+  await callPage(page,'onArticleModuleSelected',{detail:{id:'a'}});
+  assert.equal(page.data.xiaoyiOpen,false);
+  assert.deepEqual(page.data.xiaoyiMessages,[]);
+  await callPage(page,'openXiaoyi');
+  assert.equal(page.data.xiaoyiOpen,true);
+  assert.equal(callPage(page,'xiaoyiContextText'),'纸船');
+});
+
+
+test('article memory picker uses explicit own sources, keeps draft intact and supports empty chapters', async context => {
+  const state = createInitialRoomState();
+  const mine = createContribution({authorMemberId:'owner',authorName:'我',relation:'自己',text:'【虚构】蓝纸船在河边。',memoryType:'note',scope:'personal',visibility:'private',sharedWithMemberIds:[]});
+  const other = {...mine,id:'someone-elses',authorMemberId:'other',text:'别人的私人文字'};
+  state.contributions.push(mine,other);
+  const storage = installWxMock(state);context.after(storage.restore);
+  const page = instantiate(await pageDefinition('book'));
+  page.data.storyId='test'; page.activeChapterId='first'; page.data.view='chapter';
+  page.data.article={title:'空白第一章',content:[]};
+  await callPage(page,'openArticleMemories');
+  const rows = page.data.articleMemoryRows as any[];
+  assert.ok(rows.some(row=>row.id===mine.id));
+  assert.ok(!rows.some(row=>row.id===other.id));
+  assert.ok(rows.every(row=>!row.checked),'never automatically opt in memories');
+  let generated=0;
+  page.organizeXiaoyiAnswer=async()=>{generated++;page.setData({xiaoyiDraftText:'一段待修改的草稿'});};
+  await callPage(page,'composeArticleMemories');
+  assert.equal(generated,0);
+  callPage(page,'onArticleMemories',{detail:{value:[mine.id]}});
+  await callPage(page,'composeArticleMemories');
+  assert.equal(generated,1);
+  assert.equal(page.data.xiaoyiOpen,true);
+  assert.equal(page.data.articleMemoryOpen,false);
+  assert.deepEqual(page.data.article,{title:'空白第一章',content:[]},'preview does not write into chapter');
+  assert.match(JSON.stringify(page.xiaoyiConversation),/蓝纸船/);
+  assert.doesNotMatch(JSON.stringify(page.xiaoyiConversation),/别人的私人文字/);
+  await callPage(page,'openArticleMemories');
+  callPage(page,'onArticleMemories',{detail:{value:[mine.id]}});
+  await callPage(page,'composeArticleMemories');
+  assert.equal((page.xiaoyiConversation as any[]).length,1,'retry does not duplicate sources');
+  callPage(page,'releaseArticleChat');
+  assert.equal(page.data.articleMemoryOpen,false);
+});
+
+test('article memory picker refuses stale selection before generating', async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const page=instantiate(await pageDefinition('book'));
+  page.data.article={content:[{text:'保留原文'}]};
+  page.data.articleMemoryRows=[{id:'removed-memory',text:'过去的记忆',checked:true}];
+  let generated=false;page.organizeXiaoyiAnswer=async()=>{generated=true;};
+  await callPage(page,'composeArticleMemories');
+  assert.equal(generated,false);
+  assert.match(String(page.data.articleMemoryNotice),/已变化/);
+  assert.deepEqual(page.data.article,{content:[{text:'保留原文'}]});
+});
+
+test('memory composition uses live article context and edited draft without overwriting text', async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  wx.setStorageSync('aiConsentDecision',{granted:true,version:1,decidedAt:'2026-10-25T00:00:00.000Z'});
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'getApp');
+  Object.defineProperty(globalThis,'getApp',{configurable:true,value:()=>({globalData:{cloudReady:true,aiReady:true}})});
+  context.after(()=>{if(previous)Object.defineProperty(globalThis,'getApp',previous);else delete (globalThis as any).getApp;});
+  let request:any;
+  (wx as any).cloud={callFunction:async({data}:any)=>{request=data;return {result:{body:'【虚构】纸船顺水漂向灯塔。',generationMode:'cloud-ai'}};}};
+  const page=instantiate(await pageDefinition('book'));
+  page.data.article={content:[{text:'原稿'}]};page.articlePending={content:[{text:'刚刚改过的正文'}]};
+  page.data.xiaoyiDraftText='用户手动改过的草稿';
+  page.xiaoyiConversation=[{role:'user',text:'〔选入的记忆〕【虚构】纸船和灯塔。'}];
+  page.data.xiaoyiAnswer='写得简短一点';
+  await callPage(page,'organizeXiaoyiAnswer');
+  assert.equal(request.basisText,'刚刚改过的正文');
+  assert.deepEqual(request.conversation,[{role:'assistant',content:'用户手动改过的草稿'}]);
+  assert.match(request.transcript.join(''),/纸船和灯塔/);
+  assert.match(request.transcript.join(''),/简短一点/);
+  assert.deepEqual(page.articlePending,{content:[{text:'刚刚改过的正文'}]});
+  assert.equal(page.data.xiaoyiDraftText,'【虚构】纸船顺水漂向灯塔。');
 });

@@ -718,7 +718,7 @@ test('合并后的公开故事卡入口先保存再跳转，保存失败不跳�
 
 test('文章历史使用原生菜单，避免浮层与正文输入框争抢点击', async () => {
   const page = await bookPage();
-  page.data.article = { id: 'chapter-one' }; page.data.view = 'chapter';
+  page.data.article = { id: 'chapter-one' }; page.data.view = 'chapter'; page.data.writingMode = 'creative';
   let sheet: any, historyLoads = 0;
   (globalThis as any).wx = { hideKeyboard() {}, showActionSheet(options: any) { sheet = options; } };
   page.loadHistory = async () => { historyLoads++; };
@@ -739,7 +739,7 @@ test('文章历史使用原生菜单，避免浮层与正文输入框争抢点�
 test('旧文章和新文章菜单都保留AI与历史，旧编辑先保存再打开历史', async () => {
   const page = await bookPage();let sheet:any,loads=0,saved=0;
   (globalThis as any).wx={hideKeyboard(){},showActionSheet(options:any){sheet=options;}};
-  page.data.article=null;page.data.view='chapter';page.data.editing=true;
+  page.data.article=null;page.data.view='chapter';page.data.editing=true;page.data.writingMode='creative';
   page.finishEditing=async()=>{saved++;page.data.editing=false;return true;};
   page.loadHistory=async()=>{loads++;};
   page.showMore();assert.deepEqual(sheet.itemList,['AI 帮我写','添加图片','历史版本']);

@@ -72,11 +72,12 @@ export function blendCoverSeam(
     return t * t * (3 - 2 * t);
   };
   const leftFeather = width * .045;
-  const verticalInset = height * .025;
+  const verticalFeather = height * .025;
+  const rightFeather = width * .025;
   for (let y = Math.max(0, Math.floor(top)); y < Math.min(height, Math.ceil(bottom)); y++) {
-    const inside = smooth(Math.min(y - top, bottom - y), verticalInset);
-    for (let x = Math.max(0, Math.floor(left)); x < Math.min(width, Math.ceil(left + leftFeather), Math.ceil(right)); x++) {
-      const cover = 1 - inside * (1 - smooth(x - left, leftFeather));
+    const vertical = smooth(Math.min(y - top, bottom - y), verticalFeather);
+    for (let x = Math.max(0, Math.floor(left)); x < Math.min(width, Math.ceil(right)); x++) {
+      const cover = Math.min(vertical, smooth(x - left, leftFeather), smooth(right - x, rightFeather));
       if (cover >= 1) continue;
       const pixel = (y * width + x) * 4;
       for (let channel = 0; channel < 4; channel++) {
@@ -130,8 +131,8 @@ export function renderBookCover(page: WechatMiniprogram.Page.TrivialInstance, ur
       const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
       recolorSpine(frame.data, color);
       ctx.putImageData(frame, 0, 0);
-      const left = canvas.width * .145, top = canvas.height * .025;
-      const right = canvas.width * .95, bottom = canvas.height * .975;
+      const left = canvas.width * .105, top = canvas.height * .006;
+      const right = canvas.width * .96, bottom = canvas.height * .977;
       const radius = canvas.width * .018;
       ctx.save();
       ctx.beginPath();
@@ -186,7 +187,7 @@ export function bookSpineKey(storyId: string, coverImageId: string): string {
 }
 
 export function bookCoverKey(storyId: string, coverImageId: string): string {
-  return `cover-v6:${storyId}:${coverImageId}`;
+  return `cover-v7:${storyId}:${coverImageId}`;
 }
 
 /** Reuse the small derivative cache and serial canvas queue; never generate new artwork. */

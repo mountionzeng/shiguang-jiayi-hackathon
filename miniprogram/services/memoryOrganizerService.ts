@@ -120,6 +120,8 @@ export interface OrganizeMemoryInput extends WritingOptions {
 
 export interface OrganizeInlineAnswerInput extends WritingOptions {
   answer: string;
+  /** Explicit user-only dialogue material, up to eight 500-character segments. */
+  transcript?: string[];
   /** Current editor excerpt, for voice/continuity; never appended as new text. */
   basisText?: string;
   memoryType?: MemoryType;
@@ -178,8 +180,9 @@ export async function organizeMemory(
 export async function organizeInlineAnswer(
   input: OrganizeInlineAnswerInput,
 ): Promise<OrganizedMemoryDraft | undefined> {
-  const answer = normalizeMemoryText(input.answer);
-  if (input.answer.trim().length > 500) return undefined;
+  const transcript = input.transcript ?? [input.answer];
+  if (!transcript.length || transcript.length > 8 || transcript.some(text => text.trim().length > 500)) return undefined;
+  const answer = normalizeMemoryText(transcript.join('\n'));
   if (!answer || !canUseCloudAi()) return undefined;
   if (!await requestAiConsent()) return undefined;
   const fallback = localOrganizedDraft([answer], input.memoryType ?? "note");
@@ -189,7 +192,7 @@ export async function organizeInlineAnswer(
       name: "organizeMemory",
       data: {
         inlineAnswer: true,
-        transcript: [answer],
+        transcript: transcript.map(text => text.trim()).filter(Boolean),
         memoryType: input.memoryType ?? "note",
         memberName: input.memberName,
         storyTitle: input.storyTitle,

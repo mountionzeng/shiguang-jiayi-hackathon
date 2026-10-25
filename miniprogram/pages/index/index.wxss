@@ -464,8 +464,9 @@
 }
 
 .book-cover-copy-printed .book-slip {
+  position: relative;
   margin-top: 34rpx;
-  padding: 0;
+  padding: 18rpx 20rpx;
   border: 0;
   background: transparent;
 }
@@ -1266,8 +1267,8 @@
 .book-actions {
   position: absolute;
   top: 668rpx;
-  left: 50%;
-  width: 440rpx;
+  left: calc(50% + 10rpx);
+  width: 420rpx;
   transform: translateX(-50%);
   z-index: 3;
   margin: 0;
@@ -1301,3 +1302,28 @@
 .book-actions .book-stat-action:active { opacity: .6; background: transparent; }
 .book-actions .book-stat-num { color: #535c53; font-size: 22rpx; }
 .book-actions .book-stat-label { margin: 0; font-size: 30rpx; letter-spacing: 2rpx; }
+
+
+/* Thin paper labels remain part of the cover; never intercept its controls. */
+.book-label-paper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  opacity: .45;
+  /* Uneven paper fibres, not a rounded UI card. */
+  clip-path: polygon(0.5% 1%, 9% 0.4%, 18% 1.2%, 29% 0%, 41% 0.8%, 54% 0.2%, 68% 1%, 80% 0.3%, 91% 1.1%, 99.6% 0.5%, 99.2% 17%, 100% 36%, 99.4% 58%, 100% 77%, 99.3% 99%, 89% 99.6%, 77% 98.8%, 63% 100%, 48% 99.1%, 34% 99.8%, 20% 98.9%, 8% 100%, 0.4% 99.1%, 0.9% 79%, 0% 57%, 0.7% 36%, 0.1% 18%);
+  pointer-events: none;
+  z-index: 0;
+}
+.book-cover-copy-printed .book-title,
+.book-cover-copy-printed .book-subtitle {
+  position: relative;
+  z-index: 1;
+  color: #302e27;
+  text-shadow: none;
+}
+.book-actions .book-stat-action { z-index: 1; text-shadow: none; }
+.book-actions .book-label-paper { opacity: .45; }

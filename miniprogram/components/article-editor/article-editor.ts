@@ -27,6 +27,7 @@ Component({
     select(event: WechatMiniprogram.TouchEvent) {
       const { id, block } = event.currentTarget.dataset;
       this.setData({ selected: id, focused: block || '' });
+      this.triggerEvent('selectmodule', { id });
     },
     clear() { this.setData({ selected: '', focused: '' }); },
     change(event: WechatMiniprogram.Input) {

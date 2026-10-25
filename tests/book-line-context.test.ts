@@ -30,7 +30,7 @@ function setup(options: { enabled?: boolean; text?: string; selected?: string; r
     },
     wx: { showToast() {} }, console, setTimeout, clearTimeout,
   }, { filename });
-  const page = { ...definition, data: { ...definition.data, view: "chapter", editorReady: true, storyId: "s" },
+  const page = { ...definition, data: { ...definition.data, writingMode: "creative", view: "chapter", editorReady: true, storyId: "s" },
     activeChapterId: "a", bodyBuffer: text,
     contentBuffer: [{ text }],
     chapters: [{ id: "a", title: "第一章", content: [{ text }] }],
