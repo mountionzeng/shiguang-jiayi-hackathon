@@ -45,8 +45,9 @@ test('ordinary article IDs remain compatible with owned legacy writes without we
 test('article AI image approval requires same story/chapter, successful review and no source restriction',async()=>{
  const {approveArticleImage}=require('../cloudfunctions/storyBooks/service');
  const ctx={familyId:'family-test',verifiedOpenid:'owner'};
- const image={familyId:ctx.familyId,storyId:'story-test',chapterId:'chapter-test',requestId:'req-abcdefgh',purpose:'illustration',moderation:'pass',fileID:'cloud://env/story-images/image.png'};
+ const image={familyId:ctx.familyId,storyId:'story-test',chapterId:'chapter-test',requestId:'req-abcdefgh',purpose:'illustration',moderation:'pass',fileID:'cloud://env/story-images/family-test/story-test/req-abcdefgh.png'};
  const check=patch=>approveArticleImage({get:async(collection,id)=>collection==='story_images'&&id==='family-test_img_req-abcdefgh'?{...image,...patch}:null},ctx,'photo-ai-req-abcdefgh','story-test','chapter-test');
  assert.equal(await check({}),true);
+ assert.equal(await check({requestId:undefined}),true,'existing chapter images derive request ID from storage path');
  for(const patch of [{familyId:'other'},{storyId:'story-other'},{chapterId:'chapter-other'},{requestId:'req-other'},{purpose:'cover'},{moderation:'pending'},{moderation:'fail'},{deletedAtMs:1},{sourcePolicyRequired:true},{sourceIds:[]},{fileID:'https://other/image.png'}])assert.equal(await check(patch),false,JSON.stringify(patch));
 });

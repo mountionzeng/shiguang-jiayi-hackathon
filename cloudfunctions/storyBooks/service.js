@@ -29,9 +29,10 @@ async function approveArticleImage(repo, ctx, id, storyId, chapterId) {
   if (/^photo-ai-req-[a-z0-9-]{8,60}$/.test(id)) {
     const image = await repo.get('story_images', `${ctx.familyId}_img_${id.slice(9)}`);
     return Boolean(image && image.familyId === ctx.familyId && image.storyId === storyId && image.chapterId === chapterId &&
-      image.requestId === id.slice(9) && image.purpose === 'illustration' && image.moderation === 'pass' &&
+      (image.requestId === undefined || image.requestId === id.slice(9)) && image.purpose === 'illustration' && image.moderation === 'pass' &&
       image.deletedAtMs === undefined && !image.sourcePolicyRequired && image.sourceIds === undefined &&
-      typeof image.fileID === 'string' && image.fileID.startsWith('cloud://'));
+      typeof image.fileID === 'string' && image.fileID.startsWith('cloud://') &&
+      ['png','jpg','jpeg','webp'].some(ext => image.fileID.endsWith(`/story-images/${ctx.familyId}/${storyId}/${id.slice(9)}.${ext}`)));
   }
   const photo = await repo.get('photos', `${ctx.familyId}__${id}`);
   return Boolean(photo && photo.familyId === ctx.familyId && photo._openid === ctx.verifiedOpenid && !photo.deletedAt &&
