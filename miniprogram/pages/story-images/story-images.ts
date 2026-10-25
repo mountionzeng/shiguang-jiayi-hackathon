@@ -59,6 +59,7 @@ Page({
     groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
+    selectedText: '', selectedBlockId: '',
     artDirections: {} as Record<string, string>,
     useChapterPhotos: {} as Record<string, boolean>,
     phoneReferences: {} as Record<string, PhoneReferencePhoto[]>, pickingReference: "",
@@ -82,6 +83,9 @@ Page({
 
   onLoad(options: { memoryId?: string; storyId?: string; memberId?: string; chapterId?: string; purpose?: string } = {}) {
     this.unloaded = false;
+    this.getOpenerEventChannel?.().on?.('selectedText', (selection: { blockId: string; text: string }) => {
+      this.setData({ selectedText: selection.text, selectedBlockId: selection.blockId });
+    });
     if (options.memoryId) {
       try { this.requestedMemoryId = decodeURIComponent(options.memoryId); } catch { this.requestedMemoryId = '!invalid'; }
       this.setData({memoryId:this.requestedMemoryId, focusChapterId:'memory', focusPurpose:'illustration'});
@@ -250,8 +254,14 @@ Page({
     const purpose: StoryImagePurpose = event.currentTarget.dataset.purpose === "backdrop" ? "backdrop" : "illustration";
     const group = this.data.groups.find(item => item.id === chapterId);
     if (this.data.submitting || this.data.pickingReference || this.data.removingId || this.data.savingBackdrop || this.data.savingPlacement || !chapterId) return;
+    if (this.data.selectedText) {
+      const confirmed = await new Promise<boolean>(resolve => wx.showModal({ title: '根据这段文字生成图片',
+        content: this.data.selectedText + '\n\n生成成功会产生供应商费用，确认后开始。',
+        confirmText: '确认生成', success: result => resolve(result.confirm), fail: () => resolve(false) }));
+      if (!confirmed || this.unloaded || this.data.submitting) return;
+    }
     const phoneIds = (this.data.phoneReferences[chapterId] || []).map(photo => photo.id);
-    const referencePhotoIds = [...new Set([...phoneIds, ...(this.data.useChapterPhotos[chapterId] ? group?.referencePhotoIds || [] : [])])].slice(0, 3);
+    const referencePhotoIds = this.data.selectedText ? [] : [...new Set([...phoneIds, ...(this.data.useChapterPhotos[chapterId] ? group?.referencePhotoIds || [] : [])])].slice(0, 3);
     this.setData({
       submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"),
       notice: this.data.memoryId ? "正在读取这段回忆，准备配图…" : "正在读取这一章，准备配图…", noticeChapterId: chapterId,
@@ -259,6 +269,7 @@ Page({
     try {
       const job = await storyImageApi.submitChapterImage({
         ...(this.data.memoryId ? {memoryId:this.data.memoryId} : this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
+        ...(this.data.selectedText ? { selectedText: this.data.selectedText, selectedBlockId: this.data.selectedBlockId } : {}),
         ...(referenceImageId ? { referenceImageId } : {}),
         ...(!referenceImageId && referencePhotoIds.length ? { referencePhotoIds,
           ...(phoneIds.length ? { phoneReferencePhotoIds: phoneIds.filter(id => referencePhotoIds.includes(id)) } : {}) } : {}),

@@ -1783,3 +1783,20 @@ test('封面大图跟随选用结果更新，关闭发送 null 且选用期间�
   call(page, 'closePreview');
   assert.equal(page.data.previewCover, null);
 });
+
+test('article image menu opens upload directly or passes saved selected text, without a paid call',async()=>{
+ const env=installWx({showActionSheet:({success}:any)=>success({tapIndex:1})});
+ try {
+  const page=instantiate(await pageDefinition('book'));
+  page.data.article={}; page.unloaded=false;
+  let saved=0;let selection:any;
+  page.flushArticle=async()=>{saved++;return true;};
+  page.openImages=(purpose:string,value:unknown)=>{selection={purpose,value};};
+  await call(page,'addArticleImage',{detail:{blockId:'block-1',text:'蓝色纸船'}});
+  assert.equal(saved,1);assert.deepEqual(selection,{purpose:'illustration',value:{blockId:'block-1',text:'蓝色纸船'}});
+  selection=undefined;await call(page,'addArticleImage',{detail:{}});assert.equal(selection,undefined);
+  (wx.showActionSheet as any)=({success}:any)=>success({tapIndex:0});
+  let uploaded=0;page.uploadArticleImage=async()=>{uploaded++;};
+  await call(page,'addArticleImage');assert.equal(uploaded,1);
+ } finally {env.restore();}
+});

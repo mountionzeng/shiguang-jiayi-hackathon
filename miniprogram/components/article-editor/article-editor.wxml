@@ -13,4 +13,4 @@
     </block>
   </view>
 </view>
-<button class="article-add" bindtap="addImage">＋ 添加图片</button>
+<button class="article-add" bindtouchstart="captureImageSelection" bindtap="addImage">＋ 添加图片</button>

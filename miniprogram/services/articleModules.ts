@@ -83,11 +83,11 @@ export function removeArticleModule(input: ArticleChapter, id: string): ArticleC
   }
   return articleChapter(next);
 }
-export function addArticlePhoto(input: ArticleChapter, photoId: string): ArticleChapter {
+export function addArticlePhoto(input: ArticleChapter, photoId: string, aiGenerated = false): ArticleChapter {
   if (Object.keys(input.packageAssets || {}).length >= 12) throw new Error('一章最多十二张图片');
   const next = clone(input), id = freshId(), assetId = chapterPackageAssetId(photoId);
   next.content.push({ blockId: id, photoId });
-  next.packageAssets = { ...next.packageAssets, [assetId]: { photoId, aiGenerated: false } };
+  next.packageAssets = { ...next.packageAssets, [assetId]: { photoId, aiGenerated } };
   place(next, { id: `image-${id.slice(6)}`, kind: 'image', assetId, rect: { x: 48, y: 48, width: 804, height: 420 }, crop: { x: 0, y: 0, width: 1, height: 1 } });
   return next;
 }

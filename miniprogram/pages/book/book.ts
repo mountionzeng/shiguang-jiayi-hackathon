@@ -251,7 +251,23 @@ Page({
     const base=this.articlePending || this.data.article;
     if(base)this.onArticleChange({detail:{chapter:{...base,title:event.detail.value}}});
   },
-  async addArticleImage() {
+  async addArticleImage(event: { detail?: { blockId?: string; text?: string } } = {}) {
+    if (this.data.pickingPhoto || !this.data.article) return;
+    const action = await new Promise<number>(resolve => wx.showActionSheet({
+      itemList: ['上传图片', '根据选中文字生成 AI 图片'],
+      success: result => resolve(result.tapIndex), fail: () => resolve(-1),
+    }));
+    if (action < 0 || this.unloaded) return;
+    if (action === 1) {
+      const text = event.detail?.text?.trim();
+      if (!text || !event.detail?.blockId) { wx.showToast({ title: '先点选一块文字，再添加图片', icon: 'none' }); return; }
+      if (!await this.flushArticle()) return;
+      this.openImages('illustration', { blockId: event.detail.blockId, text });
+      return;
+    }
+    await this.uploadArticleImage();
+  },
+  async uploadArticleImage() {
     if (this.data.pickingPhoto || !this.data.article) return;
     this.setData({ pickingPhoto: true });
     try {
@@ -334,6 +350,7 @@ Page({
     // refresh the manuscript right now.
     const staged = takeStagedRoomStateForBook();
     if (this.pendingStoryImage) {
+      if (this.data.article) { void this.placeSelectedStoryImage(); return; }
       this.setData({ storyImageSelected: true, refreshingStoryImage: true, saveNotice: "插图已选好。请点正文中的位置，再点顶部「插入插图」。" });
       void this.refreshSelectedStoryImageUrl();
       return;
@@ -814,6 +831,18 @@ Page({
     if (!isStoryImageId(input.imageId) || !/^https:\/\//.test(input.url)) {
       wx.showToast({ title: "这张插图暂时不可用", icon: "none" });
       return false;
+    }
+    if (this.data.article) {
+      try {
+        const referenceId = storyImageReferenceId(input.imageId);
+        const base = this.articlePending || this.data.article;
+        if (base.content.some(item => item.photoId === referenceId)) return true;
+        const chapter = addArticlePhoto(base, referenceId, true);
+        this.photoPaths[referenceId] = input.url;
+        this.setData({ article: chapter, articlePaths: { ...this.photoPaths } });
+        this.onArticleChange({ detail: { chapter } });
+        return await this.flushArticle();
+      } catch (error) { this.setData({ articleStatus: error instanceof Error ? error.message : '图片没有加入，请重试' }); return false; }
     }
     if (!this.editorContext || !this.data.editorReady) {
       wx.showToast({ title: "编辑器还没准备好，请稍候", icon: "none" });
@@ -2374,7 +2403,7 @@ Page({
   },
   startInterview() { wx.navigateTo({ url: "/pages/interview/interview?storyId=" + encodeURIComponent(this.data.storyId) }); },
   /** Pictures are drawn from the saved chapter; selectTool has already refused to leave unsaved edits. */
-  openImages(purpose?: "illustration" | "backdrop") {
+  openImages(purpose?: "illustration" | "backdrop", selection?: { blockId: string; text: string }) {
     const chapterId = this.data.view === "chapter" ? this.activeChapterId : "";
     const query = [
       this.data.storyId ? "storyId=" + encodeURIComponent(this.data.storyId) : "",
@@ -2384,6 +2413,7 @@ Page({
     ].filter(Boolean).join("&");
     wx.navigateTo({
       url: "/pages/story-images/story-images" + (query ? "?" + query : ""),
+      success: result => { if (selection) result.eventChannel.emit('selectedText', selection); },
       events: {
         insertStoryImage: (image: { imageId: string; chapterId: string; url: string }) => {
           this.pendingStoryImage = image;

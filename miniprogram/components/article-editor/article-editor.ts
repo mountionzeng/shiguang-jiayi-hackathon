@@ -2,7 +2,7 @@ import type { ManuscriptChapter } from '../../domain/biography';
 import { articleChapter, changeArticleText, moveArticleModule, removeArticleModule, type ArticleChapter } from '../../services/articleModules';
 Component({
   properties: { chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
-  data: { current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
+  data: { imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
   observers: {
     'chapter, paths, width': function(chapter: ManuscriptChapter, _paths: Record<string, string>, width: number) {
       if (!chapter) return;
@@ -54,6 +54,21 @@ Component({
       if (!result.confirm) return;
       this.data.current = removeArticleModule(this.data.current!, this.data.selected); this.clear(); this.render(); this.publish();
     },
-    addImage() { this.triggerEvent('addimage'); },
+    captureImageSelection() {
+      this.data.imageSelection = new Promise<{ start: number; end: number } | null>(resolve => {
+        if (!this.data.focused || !wx.getSelectedTextRange) { resolve(null); return; }
+        wx.getSelectedTextRange({ success: resolve, fail: () => resolve(null) });
+      });
+    },
+    async addImage() {
+      const chapter = this.data.current;
+      const module = chapter?.layout.pages.flatMap(page => page.modules).find(item => item.id === this.data.selected);
+      const blockId = module?.kind === 'text' && 'blockId' in module.bind ? module.bind.blockId : '';
+      let text = chapter?.content.find(item => item.blockId === blockId)?.text || '';
+      const range = await this.data.imageSelection;
+      this.data.imageSelection = undefined;
+      if (range && range.end > range.start) text = text.slice(range.start, range.end);
+      this.triggerEvent('addimage', { blockId, text });
+    },
   },
 });

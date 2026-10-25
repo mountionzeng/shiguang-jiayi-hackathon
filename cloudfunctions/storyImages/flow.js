@@ -43,6 +43,7 @@ function createStoryImageHandlers(deps) {
   const qualityEnabled = Boolean(qualityChecker && qualityChecker.configured);
   const assertSameRequest = (existing,input) => {
     if (String(existing.memoryId || "") !== String(input.memoryId || "") || String(existing.storyId || "") !== input.storyId || existing.memberId !== input.memberId || existing.chapterId !== input.chapterId ||
+      String(existing.selectedText || '') !== String(input.selectedText || '') || String(existing.selectedBlockId || '') !== String(input.selectedBlockId || '') ||
       existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId ||
       String(existing.artDirectionHash || "") !== (input.artDirection ? core.textHash(input.artDirection) : "") ||
       JSON.stringify(existing.referenceImageIds || []) !== JSON.stringify(input.referenceImageIds || []) ||
@@ -169,13 +170,13 @@ function createStoryImageHandlers(deps) {
       if(typeof repo.getActiveStoryDraft!=='function')throw new core.StoryImageError("IMAGE_REPOSITORY_CONFIG_REQUIRED","故事配图服务尚未准备好");
       storyContext=await repo.getActiveStoryDraft(input.familyId,input.storyId);
       if(!storyContext)throw new core.StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
-      core.assertUnrestrictedStory(storyContext.story,storyContext.draft);
+      if (!input.selectedText) core.assertUnrestrictedStory(storyContext.story,storyContext.draft);
     }
     const draft = input.memoryId ? undefined : input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
     const artMemories = await storyArtMemories(input.familyId, storyContext);
-    const source = input.memoryId ? await repo.getMemorySource(input.familyId, memory.memoryId(input.memoryId))
+    const source = input.selectedText ? core.selectedTextSource(storyContext.story, draft, input.chapterId, input.selectedBlockId, input.selectedText) : input.memoryId ? await repo.getMemorySource(input.familyId, memory.memoryId(input.memoryId))
       : input.purpose === "cover" ? core.bookSource(draft, artMemories) : core.chapterSource(draft, input.chapterId, artMemories);
-    if (input.memoryId) {
+    if (input.memoryId || input.selectedText) {
       const verdict = textChecker && await textChecker.check({text: [source.title, source.text].join('\n'), openid: ctx.openid});
       if (!verdict?.ok) throw new core.StoryImageError('MEMORY_CHECK_FAILED', '这段回忆暂时未通过内容检查，请稍后再试');
     }
@@ -243,6 +244,7 @@ function createStoryImageHandlers(deps) {
       memberId: input.memberId,
       storyId: input.storyId,
       ...(input.memoryId ? {memoryId: input.memoryId} : {}),
+      ...(input.selectedText ? { selectedText: input.selectedText, selectedBlockId: input.selectedBlockId } : {}),
       ...(storyContext?{sourceRevisionId:storyContext.revision.id}:{}),
       chapterId: input.chapterId,
       purpose: input.purpose,

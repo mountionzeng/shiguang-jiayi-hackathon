@@ -155,11 +155,11 @@ function isJob(value: unknown): value is StoryImageJob {
   return Boolean(job && typeof job.jobId === "string" && typeof job.status === "string" && typeof job.message === "string");
 }
 
-async function submitChapterImage(input: { memoryId?: string; storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string; referencePhotoIds?: string[]; phoneReferencePhotoIds?: string[]; artDirection?: string }): Promise<StoryImageJob> {
+async function submitChapterImage(input: { memoryId?: string; storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string; referencePhotoIds?: string[]; phoneReferencePhotoIds?: string[]; artDirection?: string; selectedText?: string; selectedBlockId?: string }): Promise<StoryImageJob> {
   if (!await requestAiConsent()) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图需要读取已保存的文字");
   }
-  let capabilities: { memoryImages?: unknown; referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown } | undefined;
+  let capabilities: { memoryImages?: unknown; referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown; selectedTextImages?: unknown } | undefined;
   const loadCapabilities = async (unavailable: () => StoryImageServiceError) => {
     try {
       if (!capabilities) capabilities = await callStoryImages("capabilities", {});
@@ -167,8 +167,12 @@ async function submitChapterImage(input: { memoryId?: string; storyId?: string; 
       if (error instanceof StoryImageServiceError && error.code === "UNKNOWN_ACTION") throw unavailable();
       throw error;
     }
-    return capabilities as { memoryImages?: unknown; referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown };
+    return capabilities as { memoryImages?: unknown; referenceIllustration?: unknown; referencePhotos?: unknown; guidedGeneration?: unknown; selectedTextImages?: unknown };
   };
+  if (input.selectedText) {
+    const supported = await loadCapabilities(() => new StoryImageServiceError('SELECTION_UNAVAILABLE', '选中文字配图服务正在更新，请稍后再试'));
+    if (supported.selectedTextImages !== true) throw new StoryImageServiceError('SELECTION_UNAVAILABLE', '选中文字配图服务正在更新，请稍后再试');
+  }
   if (input.memoryId) {
     const supported = await loadCapabilities(() => new StoryImageServiceError('MEMORY_IMAGES_UNAVAILABLE', '记忆配图服务正在更新，请稍后再试'));
     if (supported.memoryImages !== true) throw new StoryImageServiceError('MEMORY_IMAGES_UNAVAILABLE', '记忆配图服务正在更新，请稍后再试');
@@ -206,6 +210,7 @@ async function submitChapterImage(input: { memoryId?: string; storyId?: string; 
   const result = await callStoryImages<{ job?: unknown }>("submit", {
     ...(input.memoryId ? {memoryId: input.memoryId} : input.storyId ? { storyId: input.storyId } : { memberId: input.memberId || "" }),
     chapterId: input.chapterId,
+    ...(input.selectedText ? { selectedText: input.selectedText, selectedBlockId: input.selectedBlockId } : {}),
     requestId: input.requestId ?? newImageRequestId(),
     purpose: input.purpose,
     ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),

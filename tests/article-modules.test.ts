@@ -35,3 +35,9 @@ test('removing the last text leaves an editable blank beside remaining photos',(
  assert.ok(removed.content.some(b=>b.text===''));
  assert.ok(removed.layout.pages.some(p=>p.modules.some(m=>m.kind==='text')));
 });
+
+test('generated image keeps AI attribution in the chapter package',()=>{
+ const next=addArticlePhoto(base(),'photo-ai-example',true);
+ assert.equal(Object.values(next.packageAssets!)[0].aiGenerated,true);
+ assert.equal(base().content.length,1);
+});

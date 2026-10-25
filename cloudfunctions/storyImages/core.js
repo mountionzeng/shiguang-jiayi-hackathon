@@ -126,6 +126,11 @@ function normalizeSubmitInput(event) {
   const referencePhotoIds = normalizeReferencePhotoIds(input.referencePhotoIds);
   const phoneReferencePhotoIds = normalizeReferencePhotoIds(input.phoneReferencePhotoIds);
   const artDirection = normalizeArtDirection(input.artDirection);
+  const selectedText = input.selectedText === undefined ? '' : String(input.selectedText).trim();
+  const selectedBlockId = input.selectedBlockId === undefined ? '' : String(input.selectedBlockId);
+  if ((input.selectedText !== undefined || input.selectedBlockId !== undefined) &&
+      (typeof input.selectedText !== 'string' || !selectedText || selectedText.length > 12000 || !selectedBlockId || selectedBlockId.length > 160 || !storyId || purpose !== 'illustration'))
+    throw new StoryImageError('INVALID_SELECTION', '请先选择一块已保存的文字');
   if (!memoryId && !ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
   if (!ID_PATTERN.test(chapterId)) throw new StoryImageError("INVALID_CHAPTER", "章节信息不完整");
   if (!REQUEST_ID_PATTERN.test(requestId)) throw new StoryImageError("INVALID_REQUEST", "请求编号无效，请重试");
@@ -161,7 +166,7 @@ function normalizeSubmitInput(event) {
     }
     return { familyId, memberId: "", storyId, chapterId, requestId, purpose, referenceImageId: "", referenceImageIds, referencePhotoIds, phoneReferencePhotoIds, artDirection };
   }
-  return { familyId, memberId, storyId, ...(memoryId ? { memoryId } : {}), chapterId, requestId, purpose, referenceImageId, referencePhotoIds, phoneReferencePhotoIds, artDirection };
+  return { familyId, memberId, storyId, ...(selectedText ? { selectedText, selectedBlockId } : {}), ...(memoryId ? { memoryId } : {}), chapterId, requestId, purpose, referenceImageId, referencePhotoIds, phoneReferencePhotoIds, artDirection };
 }
 
 function normalizeMemberInput(event) {
@@ -205,6 +210,18 @@ function assertUnrestrictedStory(story,draft) {
   if(marked(story)||marked(draft)||(draft?.content||[]).some(marked)||
     (draft?.chapters||[]).some(chapter=>marked(chapter)||(chapter.content||[]).some(marked)))
     throw new StoryImageError("STORY_PROTOCOL_REQUIRED","这份故事包含来源限制，暂不支持生成配图");
+}
+
+function selectedTextSource(story, draft, chapterId, blockId, selectedText) {
+  const restricted = value => value && (value.sourcePolicyRequired || (Array.isArray(value.sourceIds) ? value.sourceIds.length > 0 : !!value.sourceIds));
+  const chapter = draft?.chapters?.find(item => item.id === chapterId);
+  const block = chapter?.content?.find(item => item.blockId === blockId);
+  if (!chapter || !block || typeof block.text !== 'string') throw new StoryImageError('CHAPTER_NOT_FOUND', '选中的文字已变化，请重新选择');
+  if ([story, draft, chapter, block].some(restricted)) throw new StoryImageError('STORY_PROTOCOL_REQUIRED', '这段文字包含来源限制，暂不支持生成配图');
+  const text = String(selectedText || '').trim();
+  if (!text || text.length > 12000 || !block.text.includes(text)) throw new StoryImageError('REVISION_CHANGED', '选中的文字已变化，请保存后重新选择');
+  return { title: '', text, textLength: text.length, artText: text, artTextLength: text.length,
+    fullTextHash: textHash(text), characterContext: '', photoIds: [], storyImageReferenceIds: [] };
 }
 
 function memoryIdOf(memory) {
@@ -761,6 +778,7 @@ function extensionFor(contentType) {
 }
 
 module.exports = {
+  selectedTextSource,
   assertUnrestrictedStory,
   ACTIVE_STATUSES,
   COUNTED_STATUSES,

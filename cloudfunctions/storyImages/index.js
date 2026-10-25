@@ -1,7 +1,7 @@
 const cloud = require("wx-server-sdk");
 const {memoryId, memorySource, assertMemoryImage} = require("./memory");
 const { createAigcMetadataWriter } = require("./aigcMetadata");
-const { StoryImageError, assertUnrestrictedStory, chapterSource, bookSource, draftReferencesStoryImage, textHash } = require("./core");
+const { StoryImageError, selectedTextSource, assertUnrestrictedStory, chapterSource, bookSource, draftReferencesStoryImage, textHash } = require("./core");
 const { createCoverServices, coverSelectionPatch } = require("./cover");
 const { createCaptionHandler } = require("./caption");
 const { createDiagnostics } = require("./diagnostics");
@@ -168,7 +168,8 @@ const repo = {
       const record=await getTransactionDoc(transaction,DRAFTS,`${data.familyId}_${data.sourceRevisionId}`);
       if(record?.familyId!==data.familyId||record.storyId!==data.storyId||record.revision?.id!==data.sourceRevisionId||record.revision.storyId!==data.storyId)
         throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
-      assertUnrestrictedStory(story,record.revision.draft);
+      if (data.selectedText) selectedTextSource(story, record.revision.draft, data.chapterId, data.selectedBlockId, data.selectedText);
+      else assertUnrestrictedStory(story,record.revision.draft);
       await transaction.collection(JOBS).doc(id).set({data:withoutId(data)});
       return undefined;
     });
@@ -188,9 +189,9 @@ const repo = {
       const record=await getTransactionDoc(transaction,DRAFTS,`${job.familyId}_${job.sourceRevisionId}`);
       if(record?.familyId!==job.familyId||record.storyId!==job.storyId||record.revision?.id!==job.sourceRevisionId||record.revision.storyId!==job.storyId)
         throw new StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
-      assertUnrestrictedStory(story,record.revision.draft);
+      if (!job.selectedText) assertUnrestrictedStory(story,record.revision.draft);
       const memories = await repo.listStoryMemories(job.familyId, story);
-      const source=job.purpose === "cover" ? bookSource(record.revision.draft, memories) : chapterSource(record.revision.draft,job.chapterId, memories);
+      const source=job.selectedText ? selectedTextSource(story, record.revision.draft, job.chapterId, job.selectedBlockId, job.selectedText) : job.purpose === "cover" ? bookSource(record.revision.draft, memories) : chapterSource(record.revision.draft,job.chapterId, memories);
       if((source.fullTextHash || textHash(source.text))!==job.source?.textHash)throw new StoryImageError("REVISION_CHANGED","章节内容已经变化，请重新配图");
       if(job.source?.photoHash && source.photoHash!==job.source.photoHash)throw new StoryImageError("REVISION_CHANGED","章节照片已经变化，请重新配图");
       if(job.source?.storyImageReferenceHash && source.storyImageReferenceHash!==job.source.storyImageReferenceHash)throw new StoryImageError("REVISION_CHANGED","章节插图已经变化，请重新配图");
@@ -449,7 +450,7 @@ async function main(event = {}) {
   const ctx = { openid: String(context.OPENID || "").trim() };
   try {
     switch (event.action) {
-      case "capabilities": return { apiVersion: 6, memoryImages: true, referenceIllustration: referenceAnalyzer.configured, referencePhotos: referenceAnalyzer.configured, guidedGeneration: true, bookCover: true };
+      case "capabilities": return { apiVersion: 6, memoryImages: true, referenceIllustration: referenceAnalyzer.configured, referencePhotos: referenceAnalyzer.configured, guidedGeneration: true, selectedTextImages: true, bookCover: true };
       case "coverSources": return await coverServices.sources(ctx, event);
       case "selectCover": return await coverServices.select(ctx, event);
       case "selectMemoryImage": return await selectMemoryImage(ctx,event);
