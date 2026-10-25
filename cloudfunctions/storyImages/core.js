@@ -205,8 +205,10 @@ function latestDraftForStory(records, storyId) {
 }
 
 function assertUnrestrictedStory(story,draft) {
+  // The article editor gives every block an ID. Only provenance metadata marks
+  // source-controlled content; an editing identity alone is not a permission.
   const marked=item=>item&&typeof item==='object'&&
-    (item.sourcePolicyRequired||['sourceIds','blockId','provenanceVersion'].some(key=>Object.prototype.hasOwnProperty.call(item,key)));
+    (item.sourcePolicyRequired||['sourceIds','provenanceVersion'].some(key=>Object.prototype.hasOwnProperty.call(item,key)));
   if(marked(story)||marked(draft)||(draft?.content||[]).some(marked)||
     (draft?.chapters||[]).some(chapter=>marked(chapter)||(chapter.content||[]).some(marked)))
     throw new StoryImageError("STORY_PROTOCOL_REQUIRED","这份故事包含来源限制，暂不支持生成配图");

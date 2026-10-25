@@ -25,3 +25,13 @@ test('selected generation rejects incomplete or oversized requests',()=>{
  for(const selectedText of ['',42,'字'.repeat(12001)])assert.throws(()=>normalizeSubmitInput({...base,selectedText}),{code:'INVALID_SELECTION'});
  assert.throws(()=>normalizeSubmitInput({...base,selectedText:'纸船',purpose:'cover'}),{code:'INVALID_SELECTION'});
 });
+
+test('ordinary editor block IDs alone do not mark a chapter as restricted source material',()=>{
+ const {assertUnrestrictedStory}=require('../cloudfunctions/storyImages/core');
+ const ownDraft={chapters:[{id:'chapter-1',content:[{blockId:'block-own',text:'虚构：蓝色纸船经过黄色灯塔。'}]}]};
+ assert.doesNotThrow(()=>assertUnrestrictedStory({},ownDraft));
+ for(const value of [[],['source-private'],null]){
+  const marked=structuredClone(ownDraft);marked.chapters[0].content[0].sourceIds=value;
+  assert.throws(()=>assertUnrestrictedStory({},marked),{code:'STORY_PROTOCOL_REQUIRED'});
+ }
+});
