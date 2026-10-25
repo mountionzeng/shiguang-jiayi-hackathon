@@ -2123,14 +2123,14 @@ test("writing UI uses native fields without an expanding textarea or bottom navi
   assert.match(template, /<input[^>]*bindinput="onEditTitle"/);
   assert.match(template, /<editor[^>]*bindinput="onEditorInput"/);
   assert.doesNotMatch(template, /writing-heading|writing-status/);
-  assert.match(template, /bindtap="togglePhotoMenu"/);
+  assert.match(template, /bindtap="showMore"/);
   assert.match(template, /data-action="import"[^>]*bindtap="choosePhotoAction"/);
   assert.match(template, /viewportHeight/);
   assert.doesNotMatch(template, /100vh\s*-/, "do not subtract a keyboard from a shrinking CSS viewport");
   const styles = readFileSync("miniprogram/pages/book/book.wxss", "utf8");
   assert.match(styles, /\.writing-toolbar > \.tool-button[^}]*width: 20%/);
   assert.match(styles, /\.tool-button[^}]*white-space: nowrap/);
-  assert.ok(template.indexOf('bindtap="saveEdits"') < template.indexOf('class="writing-fields"'));
+  assert.ok(template.indexOf('bindtap="saveCurrentArticle"') < template.indexOf('class="writing-fields"'));
   assert.doesNotMatch(template, /<story-switcher|bindtap="editManuscript"/);
 });
 
@@ -3501,7 +3501,7 @@ test("已保存的自有故事可从书稿菜单移入最近删除，原始记�
   assert.equal(storage.roomState().deletedStories?.some(item => item.key === story.id), true);
   assert.equal(storage.backCount(), 1);
   assert.ok(storage.toasts.includes("已放进最近删除"));
-  assert.match(readFileSync("miniprogram/pages/book/book.wxml", "utf8"), /删除整个故事（可恢复）/);
+  assert.match(readFileSync("miniprogram/pages/book/book.ts", "utf8"), /删除整个故事（可恢复）/);
 });
 
 test('connection reflection is independently saved only explicitly, and never copies AI interpretation',async context=>{
@@ -3773,4 +3773,19 @@ test("目录切换章节会读取本章改动，等待期间不显示上一章�
   assert.deepEqual(chapters, ["chapter-one"]);
   assert.deepEqual(page.data.chapterChanges, []);
   assert.equal(page.data.changesOpen, false);
+});
+
+test('人物入口在导航栈已满时仍打开同一记忆之家，失败也明确提示', async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const page=instantiate(await pageDefinition('index'));page.setData({storyId:'story-with-no-people'});
+  let requested='',replaced='',toast='';
+  const wxMock=(globalThis as any).wx;
+  wxMock.navigateTo=({url,fail}:any)=>{requested=url;fail({errMsg:'page limit'});};
+  wxMock.redirectTo=({url,fail}:any)=>{replaced=url;fail({errMsg:'offline'});};
+  wxMock.showToast=({title}:any)=>{toast=title;};
+  callPage(page,'openPeople');
+  assert.equal(requested,'/pages/room/room?storyId=story-with-no-people');
+  assert.equal(replaced,requested);assert.match(toast,/人物页未能打开/);
+  const template=readFileSync('miniprogram/pages/index/index.wxml','utf8');
+  assert.ok(template.indexOf('class="book-stats book-actions"')>template.indexOf('</swiper>'));
 });

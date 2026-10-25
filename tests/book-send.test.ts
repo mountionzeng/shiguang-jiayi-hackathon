@@ -695,9 +695,9 @@ test('章节发送等待期间切到另一章，不用迟到的保存回执跳�
 
 test('更多、发送与图片菜单互斥，选择工具后不留遮罩', async () => {
   const page = await bookPage();
-  (globalThis as any).wx = { hideKeyboard() {} };
+  (globalThis as any).wx = { hideKeyboard() {}, showActionSheet() {} };
   page.data.photoMenu = 'main';
-  page.showMore(); assert.equal(page.data.moreOpen, true); assert.equal(page.data.photoMenu, '');
+  page.showMore(); assert.equal(page.data.moreOpen, false); assert.equal(page.data.photoMenu, '');
   page.toggleSend(); assert.equal(page.data.sendOpen, true); assert.equal(page.data.moreOpen, false);
   page.canLeaveEditor = () => true; page.openImages = () => {};
   page.data.photoMenu = 'main';
@@ -723,15 +723,26 @@ test('文章历史使用原生菜单，避免浮层与正文输入框争抢点�
   (globalThis as any).wx = { hideKeyboard() {}, showActionSheet(options: any) { sheet = options; } };
   page.loadHistory = async () => { historyLoads++; };
   page.showMore();
-  assert.deepEqual(sheet.itemList, ['历史版本']);
+  assert.deepEqual(sheet.itemList, ['AI 帮我写', '历史版本']);
   assert.equal(page.data.moreOpen, false);
-  sheet.success({ tapIndex: 0 });
+  sheet.success({ tapIndex: sheet.itemList.indexOf('历史版本') });
   await Promise.resolve();
   assert.equal(page.data.panel, 'history');
   assert.equal(historyLoads, 1);
   page.closePanel();
   page.showMore(); sheet.fail({ errMsg: 'cancel' });
   assert.equal(page.data.panel, '');assert.equal(historyLoads, 1);
-  page.unloaded = true; sheet.success({ tapIndex: 0 });
+  page.unloaded = true; sheet.success({ tapIndex: sheet.itemList.indexOf('历史版本') });
   assert.equal(historyLoads, 1);
+});
+
+test('旧文章和新文章菜单都保留AI与历史，旧编辑先保存再打开历史', async () => {
+  const page = await bookPage();let sheet:any,loads=0,saved=0;
+  (globalThis as any).wx={hideKeyboard(){},showActionSheet(options:any){sheet=options;}};
+  page.data.article=null;page.data.view='chapter';page.data.editing=true;
+  page.finishEditing=async()=>{saved++;page.data.editing=false;return true;};
+  page.loadHistory=async()=>{loads++;};
+  page.showMore();assert.deepEqual(sheet.itemList,['AI 帮我写','添加图片','历史版本']);
+  sheet.success({tapIndex:2});await Promise.resolve();await Promise.resolve();
+  assert.equal(saved,1);assert.equal(loads,1);assert.equal(page.data.panel,'history');
 });

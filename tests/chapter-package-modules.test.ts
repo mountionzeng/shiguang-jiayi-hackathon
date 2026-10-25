@@ -210,10 +210,9 @@ test("the chapter package service follows the release setting and supports a clo
   assert.equal(chapterPackageEnabled(true), true);
 });
 
-test("the page shows the package entries only behind the switch, and the four story switches stay closed", () => {
+test("user-facing menus omit developer package tools while the four story switches stay closed", () => {
   const wxml = readFileSync(join(__dirname, "..", "miniprogram", "pages", "book", "book.wxml"), "utf8");
-  assert.match(wxml, /wx:if="\{\{chapterPackageOn\}\}"[^>]*data-action="package-chapter"/);
-  assert.match(wxml, /wx:if="\{\{chapterPackageDev\}\}"[^>]*data-action="import-package"/);
+  assert.doesNotMatch(wxml, /data-action="(?:package-chapter|import-package|chapter-delivery-claim)"/);
   const runtime = readFileSync(join(__dirname, "..", "miniprogram", "config", "runtime.ts"), "utf8");
   assert.match(runtime, /export const CHAPTER_PACKAGE_ENABLED = true;/);
   assert.doesNotMatch(runtime, /STORY_(ACCESS|INVITATIONS|COPY_RECEIVE|SHARED_EDIT)_ENABLED\s*=\s*true/);

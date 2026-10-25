@@ -696,9 +696,10 @@ Page({
 
   /** 人物名单与正在查看的书绑定，授权由云端重新确认。 */
   openPeople() {
-    if(!this.data.storyId){stageRoomStateForRoom(this.roomSnapshot);wx.navigateTo({url:'/pages/room/room'});return;}
-    stageBookPeople(this.roomSnapshot,this.data.storyId);
-    wx.navigateTo({ url: "/pages/room/room?storyId="+encodeURIComponent(this.data.storyId) });
+    stageRoomStateForRoom(this.roomSnapshot);
+    if (this.data.storyId) stageBookPeople(this.roomSnapshot,this.data.storyId);
+    const url = "/pages/room/room" + (this.data.storyId ? "?storyId=" + encodeURIComponent(this.data.storyId) : "");
+    wx.navigateTo({ url, fail: () => wx.redirectTo({ url, fail: () => wx.showToast({title:"人物页未能打开，请重试",icon:"none"}) }) });
   },
 
   openMemoryHome() {

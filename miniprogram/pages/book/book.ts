@@ -284,6 +284,8 @@ Page({
     } catch (error) { this.setData({ articleStatus:error instanceof Error?error.message:'没有添加图片' }); }
     finally { this.setData({ pickingPhoto:false }); }
   },
+  saveCurrentArticle() { if (this.data.article) void this.flushArticle(); else void this.saveEdits(); },
+  sendCurrentArticle() { if (this.data.article) void this.sendArticle(); else this.toggleSend(); },
   async sendArticle() {
     if (this.data.articleSending) return;
     if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
@@ -1089,18 +1091,25 @@ Page({
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();
     this.closePhotoMenu();
-    if (this.data.article && this.data.view === "chapter") {
-      this.setData({ moreOpen: false, moreSection: "", sendOpen: false });
-      wx.showActionSheet({
-        itemList: ["历史版本"],
-        success: result => {
-          if (!this.unloaded && result.tapIndex === 0) void this.selectTool({ currentTarget: { dataset: { action: "history" } } });
-        },
-        fail: () => {},
-      });
-      return;
+    this.setData({ moreOpen: false, moreSection: "", sendOpen: false });
+    const actions: Array<{label:string;action:string}> = [];
+    if (!this.data.protectedCopy) {
+      actions.push({label:"AI 帮我写",action:"generate"});
+      if (this.data.view === "contents") actions.push({label:"新建章节",action:"new-chapter"});
+      else if (!this.data.article) actions.push({label:"添加图片",action:"photo-menu"});
     }
-    this.setData({ moreOpen: !this.data.moreOpen, moreSection: "", sendOpen: false });
+    if (this.data.draft) actions.push({label:"历史版本",action:"history"});
+    if (this.data.view === "contents" && this.data.storyId && this.data.savedRevisionId && !this.data.protectedCopy)
+      actions.push({label:"删除整个故事（可恢复）",action:"delete-story"});
+    if (!actions.length) { wx.showToast({title:"先写下你的故事",icon:"none"});return; }
+    wx.showActionSheet({
+      itemList: actions.map(item=>item.label),
+      success: result => {
+        const choice=actions[result.tapIndex];
+        if (!this.unloaded && choice) void this.selectTool({currentTarget:{dataset:{action:choice.action}}});
+      },
+      fail: () => {},
+    });
   },
   closeMore() { this.setData({ moreOpen: false, moreSection: "" }); },
   showMoreMain() { this.setData({ moreSection: "" }); },
@@ -1178,8 +1187,11 @@ Page({
     const action = event.currentTarget.dataset.action;
     if (action === "copy-draft") { this.copyCurrentDraft(); return; }
     if (action === "discard") { this.cancelEdit(); return; }
+    if (this.data.editing && !await this.finishEditing()) return;
     if (!this.canLeaveEditor()) return;
     switch (action) {
+      case "delete-story": this.deleteCurrentStory(); break;
+      case "photo-menu": this.togglePhotoMenu(); break;
       case "history": this.toggleHistory(); break;
       case "version": this.setData({ panel: "version" }); break;
       case "generate": this.showOrganize(); break;
