@@ -204,15 +204,10 @@ test("an exported package round-trips through prepareImport without losing text,
   assert.deepEqual(payload.layout, chapter.layout);
 });
 
-test("the chapter package switch is off by default and gates the service", async () => {
-  assert.equal(CHAPTER_PACKAGE_ENABLED, false);
-  assert.equal(chapterPackageEnabled(), false);
+test("the chapter package service follows the release setting and supports a closed gate", () => {
+  assert.equal(chapterPackageEnabled(), CHAPTER_PACKAGE_ENABLED);
+  assert.equal(chapterPackageEnabled(false), false);
   assert.equal(chapterPackageEnabled(true), true);
-  const { chapterPackages } = await import("../miniprogram/services/chapterPackageService");
-  await assert.rejects(
-    chapterPackages.import(prepareImport(load("valid-01-text-only.json")), { mode: "new", storyId: "story-x", title: "x" }, "package-request-1"),
-    /暂未开放/
-  );
 });
 
 test("the page shows the package entries only behind the switch, and the four story switches stay closed", () => {
@@ -220,7 +215,7 @@ test("the page shows the package entries only behind the switch, and the four st
   assert.match(wxml, /wx:if="\{\{chapterPackageOn\}\}"[^>]*data-action="package-chapter"/);
   assert.match(wxml, /wx:if="\{\{chapterPackageDev\}\}"[^>]*data-action="import-package"/);
   const runtime = readFileSync(join(__dirname, "..", "miniprogram", "config", "runtime.ts"), "utf8");
-  assert.match(runtime, /export const CHAPTER_PACKAGE_ENABLED = false;/);
+  assert.match(runtime, /export const CHAPTER_PACKAGE_ENABLED = true;/);
   assert.doesNotMatch(runtime, /STORY_(ACCESS|INVITATIONS|COPY_RECEIVE|SHARED_EDIT)_ENABLED\s*=\s*true/);
 });
 

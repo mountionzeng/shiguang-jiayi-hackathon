@@ -104,3 +104,10 @@
 - 网页后端 f2a2157b 已部署，dist/index.js SHA256 94b5cd06b4e81d15f72f7c4bc914788a631b704e86cae0371c22222caf8865f7。前端HTML不变，healthz=ok，readyz=ready/mysql/auth required。
 - drinkingTimeBridge 从干净固定提交6af9768经标准部署脚本部署到cloud1-d5ghzk30ve609f544，5个JS/JSON源码下载回读哈希一致。证据 /tmp/friend-preview-cloud-deploy.log、/tmp/friend-preview-readback.log、/tmp/friend-preview-readback/drinkingTimeBridge.zip/。
 - 本地runtime验收开关已恢复原样，未提交；无开关或数据库变更。小程序客户端尚未发布新手机版本，好友卡片需要新客户端传otherUserOnly；不把服务器部署视为真机端到端已通过。
+
+## 正式审核准备（用户2026-10-25明确要求）
+
+- 用户选择直接提交正式版审核，授权向Jane的小宇宙发送现有虚构纸船灯塔故事验证。
+- 发布前已复现空文字模块导致打包MISSING_BLOCK_REF：article editor回车保留空模块，而toChapterPackage跳过空文字却保留排版引用。修复仅清除被省略空模块的引用，不清除未知引用，不改原稿；回归先失败后通过。
+- 客户端章节/投递开关正式纳入发布配置（此前只在本机验收开启）；云端独立开关和权限仍然生效。用户授权正式发布，不再把该配置当作临时未提交验收覆盖。1510项全量测试及类型检查通过。
+- 浏览器站点安全策略禁止访问mp.weixin.qq.com，不能换入口绕过。管理后台提交审核必须由用户操作；未提交审核、未正式发布、未验证Jane真实领取，不得宣称完成。

@@ -101,3 +101,18 @@ test("cross-end: web-made package gives the same lines and package round-trips",
   const again = toChapterPackage(out.chapter, {}, { ...meta, lineage: pkg.lineage });
   assert.deepEqual(again.package.chapters[0].blocks.map(b => b.type === "text" && b.text), pkg.chapters[0].blocks.map(b => b.type === "text" && b.text));
 });
+
+test('export omits empty editor placeholders and only their layout bindings', async () => {
+  const {articleChapter,changeArticleText} = await import('../miniprogram/services/articleModules');
+  const start = articleChapter({id:'chapter-one',title:'测试',memoryIds:[],content:[{text:'正文'}]});
+  const edited = changeArticleText(start,start.content[0].blockId,'正文\n').chapter;
+  assert.equal(edited.content.length,2);
+  const output = toChapterPackage(edited,{},meta,{layout:edited.layout}).package;
+  assert.equal(output.chapters[0].blocks.length,1);
+  assert.equal(output.chapters[0].layout!.pages[0].modules.length,1);
+  assert.equal(edited.layout.pages[0].modules.length,2);
+  const broken = structuredClone(edited.layout);
+  const module = broken.pages[0].modules[0];
+  if(module.kind === 'text') module.bind = {blockId:'block-'+'f'.repeat(64)};
+  assert.equal(codeOf(()=>toChapterPackage(edited,{},meta,{layout:broken})),'MISSING_BLOCK_REF');
+});

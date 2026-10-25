@@ -433,9 +433,18 @@ export function toChapterPackage(
     const photoId = Object.keys(images).find(id => (options.assetIdByPhotoId?.[id] ?? chapterPackageAssetId(id)) === assetId);
     if (!photoId || addAsset(photoId) !== assetId) fail("ASSET_INFO_MISSING", "排版引用的图片没有可校验的原始文件");
   }
+  // Empty editor placeholders are not package text blocks. Drop only their
+  // bindings; leave unknown/damaged references for the semantic validator.
+  const exportedIds = new Set(blocks.map(block => block.blockId));
+  const emptyIds = new Set(chapter.content.filter(item => !item.photoId && item.blockId &&
+    chapterPackageLines(item.text ?? "").length === 0 && !exportedIds.has(item.blockId)).map(item => item.blockId));
+  const layout = options.layout ? { ...options.layout, pages: options.layout.pages.map(page => ({
+    ...page, modules: page.modules.filter(module => !(module.kind === "text" &&
+      "blockId" in module.bind && emptyIds.has(module.bind.blockId))),
+  })) } : null;
   const pkgChapter: PackageChapter = {
     chapterId, title: chapter.title, containsAiText: chapter.containsAiText === true,
-    cover: coverAssetId ? { assetId: coverAssetId } : null, blocks, layout: options.layout ?? null,
+    cover: coverAssetId ? { assetId: coverAssetId } : null, blocks, layout,
   };
   const out: ChapterPackage = {
     kind: "chapter-package", version: 1, packageId: meta.packageId,
