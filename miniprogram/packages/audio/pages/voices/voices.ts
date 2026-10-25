@@ -74,6 +74,7 @@ Page({
       if(!registered&&!this.unloaded)this.setData({notice:error instanceof Error?error.message:'录音没有完成，请重试。'});
     }finally{if(!this.unloaded)this.setData({busy:false,recording:false,uploading:false});}
   },
+  leaveVoices(){wx.navigateBack({fail:()=>wx.reLaunch({url:'/pages/index/index'})});},
   stopRecording(){stopVoiceRecording();},
   async disableVoice(){const profile=this.data.profile;if(!profile||this.data.uploading)return;try{const result=await storyAudioApi.disableVoice(profile.id);if(!this.unloaded)this.setData({profile:result.profile,notice:'已停用。正在处理中的迟到结果不会重新启用这个声音。'});}catch(error){if(!this.unloaded)this.setData({notice:error instanceof Error?error.message:'暂时无法停用，请重试'});}},
   deleteVoice(){const profile=this.data.profile;if(!profile||this.data.uploading||this.data.recording)return;wx.showModal({title:'删除这个声音？',content:'会先停用声音并删除微信云存储里的录音样本。腾讯云音色删除若不能自动完成，会明确显示为待人工处理，不会假装已经删除。',confirmText:'确认删除',confirmColor:'#9b4637',success:async result=>{if(!result.confirm)return;try{const deleted=await storyAudioApi.deleteVoice(profile.id);if(!this.unloaded)this.setData({profile:deleted.profile,notice:'删除已开始；样本和腾讯云音色会分别显示处理状态。'});}catch(error){if(!this.unloaded)this.setData({notice:error instanceof Error?error.message:'暂时无法删除，请重试'});}}});},

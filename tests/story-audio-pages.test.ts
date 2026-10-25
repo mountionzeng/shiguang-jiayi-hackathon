@@ -143,3 +143,32 @@ test('voice page locks immediately so a double tap opens only one consent flow',
     assert.equal(cloudCalls,0);assert.equal(page.data.busy,false);
   }finally{(globalThis as any).wx=previous;}
 });
+
+
+test('voice entry requires both enrollment and playback capability, and closes on refresh failure',async context=>{
+  const previous=(globalThis as any).wx;
+  let navigations=0,fail=false;
+  const capabilities={submission:{enabled:true},tts:{enabled:true},voiceClone:{enabled:true},voiceEnrollment:{enabled:false},video:{enabled:false},officialVoices:[{id:'official-a',label:'朗读声音'}]};
+  (globalThis as any).wx={showToast:()=>undefined,navigateTo:()=>{navigations++;},cloud:{callFunction:async()=>{if(fail)throw new Error('offline');return {result:capabilities};}}};
+  context.after(()=>{(globalThis as any).wx=previous;});
+  const page=instance(createDefinition);
+  await page.refreshCapabilities();page.openVoices();
+  assert.equal(page.data.cloneAvailable,false);assert.equal(navigations,0);
+  assert.equal(page.data.canCreate,true);assert.equal(page.data.officialVoices.length,1);
+  capabilities.voiceEnrollment.enabled=true;
+  await page.refreshCapabilities();page.openVoices();assert.equal(navigations,1);
+  fail=true;await page.refreshCapabilities();page.openVoices();
+  assert.equal(page.data.cloneAvailable,false);assert.equal(navigations,1);
+  const template=readFileSync('miniprogram/packages/audio/pages/create/create.wxml','utf8');
+  assert.match(template,/<button wx:if="{{cloneAvailable}}"[^>]*bindtap="openVoices"/);
+});
+
+test('unavailable voice page offers a working exit even when opened directly',()=>{
+  const previous=(globalThis as any).wx;let home='';
+  (globalThis as any).wx={navigateBack:({fail}:any)=>fail(),reLaunch:({url}:any)=>{home=url;}};
+  try{instance(voiceDefinition).leaveVoices();assert.equal(home,'/pages/index/index');}
+  finally{(globalThis as any).wx=previous;}
+  const template=readFileSync('miniprogram/packages/audio/pages/voices/voices.wxml','utf8');
+  assert.match(template,/wx:elif="{{available}}"[^>]*bindtap="beginRecording"/);
+  assert.doesNotMatch(template,/暂未开放录音/);
+});
