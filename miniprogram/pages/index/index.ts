@@ -689,6 +689,14 @@ Page({
     wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(memberId) });
   },
 
+  openStoryImages() {
+    const query = this.data.storyId ? 'storyId=' + encodeURIComponent(this.data.storyId)
+      : this.data.storyManuscriptMemberId ? 'memberId=' + encodeURIComponent(this.data.storyManuscriptMemberId) : '';
+    if (!query) { wx.showToast({title:'先为这个故事整理一个章节，再添加图像',icon:'none'}); return; }
+    wx.navigateTo({url:'/pages/story-images/story-images?' + query,
+      fail:()=>wx.showToast({title:'图像页未能打开，请重试',icon:'none'})});
+  },
+
   openPersonalStories() {
     stageRoomStateForStories(this.roomSnapshot);
     wx.reLaunch({ url: "/pages/stories/stories" });

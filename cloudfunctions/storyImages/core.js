@@ -129,7 +129,7 @@ function normalizeSubmitInput(event) {
   const selectedText = input.selectedText === undefined ? '' : String(input.selectedText).trim();
   const selectedBlockId = input.selectedBlockId === undefined ? '' : String(input.selectedBlockId);
   if ((input.selectedText !== undefined || input.selectedBlockId !== undefined) &&
-      (typeof input.selectedText !== 'string' || !selectedText || selectedText.length > 12000 || !selectedBlockId || selectedBlockId.length > 160 || !storyId || purpose !== 'illustration'))
+      (typeof input.selectedText !== 'string' || !selectedText || selectedText.length > 12000 || !selectedBlockId || selectedBlockId.length > 160 || !storyId || !['illustration', 'backdrop'].includes(purpose)))
     throw new StoryImageError('INVALID_SELECTION', '请先选择一块已保存的文字');
   if (!memoryId && !ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
   if (!ID_PATTERN.test(chapterId)) throw new StoryImageError("INVALID_CHAPTER", "章节信息不完整");
@@ -767,6 +767,8 @@ function publicImage(image, url) {
       .map(key => QUALITY_ISSUE_LABELS[key])
       .filter(Boolean),
     aiGenerated: true,
+    sourceText: typeof image.sourceText === 'string' ? image.sourceText.slice(0, 12000) : '',
+    sourceKind: ['selection', 'memory', 'chapter'].includes(image.sourceKind) ? image.sourceKind : '',
     createdAtMs: image.createdAtMs,
   };
 }

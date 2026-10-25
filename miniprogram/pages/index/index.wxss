@@ -1306,7 +1306,7 @@
 .home-share.home-share::after { border:0; }
 
 /* Keep real controls outside the transformed decorative book cover. */
-.book-actions { position:relative;z-index:2;margin:8rpx 24rpx 16rpx;gap:12rpx;text-shadow:none; }
-.book-actions .book-stat-action.book-stat-action { flex:1;width:auto;min-height:88rpx;padding:12rpx 8rpx;border:1rpx solid var(--line);border-radius:14rpx;background:var(--paper-card);font-size:28rpx;align-items:center;gap:6rpx; }
+.book-actions { position:absolute;top:668rpx;left:50%;width:480rpx;transform:translateX(-50%);z-index:3;margin:0;gap:6rpx;text-shadow:none; }
+.book-actions .book-stat-action.book-stat-action { flex:1;width:auto;min-height:88rpx;padding:12rpx 8rpx;border:1rpx solid var(--line);border-radius:14rpx;background:rgba(255,250,233,.92);font-size:26rpx;align-items:center;flex-direction:column;gap:6rpx; }
 .book-actions .book-stat-action::before { display:none; }
 .book-actions .book-stat-num,.book-actions .book-stat-label { font-size:28rpx; }

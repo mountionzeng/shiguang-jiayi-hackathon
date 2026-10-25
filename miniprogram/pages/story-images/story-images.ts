@@ -1,3 +1,5 @@
+import { storyCoverApi } from '../../services/storyCoverService';
+import { chapterPhotoIds, galleryPhotos, type GalleryPhoto } from "../../services/storyImageGallery";
 import { illustrationAnchor, illustrationPoints, IllustrationPoint, saveChapterIllustration } from "../../services/chapterIllustrations";
 import { saveChapterBackdrop } from "../../services/chapterBackdrop";
 import { chapterLabel, chaptersOf } from "../../services/chapters";
@@ -14,6 +16,7 @@ import { activeStory } from "../../services/storyBooks";
 import { choosePhoneReferencePhotos, isPhotoPickerCancel, PhoneReferencePhoto } from "../../services/phoneReferencePhotos";
 
 interface ImageCard {
+  uploaded?: boolean; isCover?: boolean; sourceLabel: string; sourceText: string; uploaderLabel: string;
   imageId: string; url: string; sizeLabel: string; purposeLabel: string;
   isBackdrop: boolean; referenceReady: boolean; inUse: boolean; inText: boolean; moderationLabel: string; qualityLabel: string; qualityFlawed: boolean;
 }
@@ -33,12 +36,21 @@ const chapterReferencePhotoIds = (chapter: ManuscriptChapter): string[] =>
     .filter((id): id is string => LOCAL_PHOTO_ID.test(id)))].slice(0, 3);
 
 const card = (image: StoryImage, backdropImageId = "", textImageReferences = new Set<string>()): ImageCard => ({
+  isCover: image.purpose === 'cover',
+  sourceLabel: image.sourceKind === 'selection' ? '选中文字生成' : image.sourceKind === 'chapter' ? '根据整章文字生成' : image.sourceKind === 'memory' ? '根据回忆生成' : '生成原文未记录',
+  sourceText: image.sourceText || '', uploaderLabel: '',
   imageId: image.imageId, url: image.url, sizeLabel: formatBytes(image.bytes),
   purposeLabel: PURPOSE_LABELS[image.purpose] ?? "配图",
   isBackdrop: image.purpose === "backdrop", referenceReady: image.purpose === "illustration" && image.moderation === "pass",
   inUse: !!backdropImageId && image.imageId === backdropImageId,
   inText: Array.from(textImageReferences).some(reference => storyImageMatchesReference(image.imageId, reference)),
   moderationLabel: moderationLabel(image.moderation), qualityLabel: qualityLabel(image), qualityFlawed: image.quality === "flawed",
+});
+const photoCard = (photo: GalleryPhoto, aiGenerated = false): ImageCard => ({
+  imageId: photo.photoId, url: photo.url, uploaded:true,
+  sourceLabel: aiGenerated ? '接收的 AI 图像 · 生成原文未记录' : '上传或接收的图片', sourceText:'', uploaderLabel:photo.uploaderLabel,
+  sizeLabel:'', purposeLabel:aiGenerated ? 'AI 图像' : '照片', isBackdrop:false, referenceReady:false,
+  inUse:false, inText:true, moderationLabel:photo.url ? '' : '图片暂不可读取', qualityLabel:'', qualityFlawed:false,
 });
 const jobRow = (job: StoryImageJob): JobRow => ({
   jobId: job.jobId, message: job.message, active: isActiveJob(job), purposeLabel: PURPOSE_LABELS[job.purpose] ?? "配图",
@@ -59,7 +71,7 @@ Page({
     groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
-    selectedText: '', selectedBlockId: '',
+    selectedText: '', selectedBlockId: '', selectionExpanded:false, coverImages: [] as ImageCard[], coverJobs: [] as JobRow[], storyVersion:0,
     artDirections: {} as Record<string, string>,
     useChapterPhotos: {} as Record<string, boolean>,
     phoneReferences: {} as Record<string, PhoneReferencePhoto[]>, pickingReference: "",
@@ -146,6 +158,7 @@ Page({
       return;
     }
     const story = this.requestedStoryId ? activeStory(state, this.requestedStoryId) : undefined;
+    if (this.requestedStoryId && !story) throw new Error("这本书已不可用，请重新选择");
     const member = story ? undefined : (this.requestedMemberId
       ? state.members.find(item => item.id === this.requestedMemberId && isRecordingProfile(item))
       : await loadCurrentMemberRemoteFirst(state));
@@ -154,7 +167,10 @@ Page({
     const current = currentManuscript(state, bookId);
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
     const chapterIds = new Set(chapters.map(chapter => chapter.id));
-    const list = await storyImageApi.listStoryImages(bookId);
+    const [list, photos] = await Promise.all([
+      storyImageApi.listStoryImages(bookId),
+      galleryPhotos(chapters.flatMap(chapterPhotoIds), !!story?.sourcePolicyRequired),
+    ]);
     if (this.unloaded || refreshId !== this.refreshId) return;
     this.roomState = state;
     const phoneReferences = this.referenceBookId === bookId ? this.data.phoneReferences : {};
@@ -165,6 +181,9 @@ Page({
     this.pendingImageChecks = list.images.some(image => image.moderation === "pending" || image.quality === "pending");
     if (!this.activeJobIds.length && !this.pendingImageChecks) this.pollStartedAt = 0;
     this.setData({
+      storyVersion:story?.version || 0,
+      coverImages:list.images.filter(image=>image.purpose === 'cover').map(image=>({...card(image),inUse:image.imageId === story?.coverImageId})),
+      coverJobs:list.pending.filter(job=>job.purpose === 'cover').map(jobRow),
       storyId: story?.id || "", memberId: member?.id || this.requestedMemberId,
       bookTitle: current.draft?.title ?? story?.bookTitle ?? story?.title ?? "",
       groups: chapters.map((chapter, index) => {
@@ -177,13 +196,14 @@ Page({
           referencePhotoLabel: referencePhotoIds.length ? `默认参考本章 ${referencePhotoIds.length} 张照片，可关闭` : "本章没有正文照片，可从手机选择或只根据文字生成",
           // The chosen picture was deleted or failed the platform check.
           backdropMissing: !!backdropImageId && !listed.has(backdropImageId),
-          images: list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
+          images: [...list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
+            ...chapterPhotoIds(chapter).map(id => photoCard(photos[id], Object.values(chapter.packageAssets || {}).some(asset => asset.photoId === id && asset.aiGenerated)))],
           pending: list.pending.filter(job => job.chapterId === chapter.id).map(jobRow),
         };
       }),
       // A chapter can be deleted after it got pictures; its pictures stay manageable here.
       otherImages: list.images.filter(image => image.purpose !== "cover" && !known.has(image.chapterId)).map(image => card(image)),
-      usageLabel: `共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
+      usageLabel: `共 ${list.images.length + Object.keys(photos).length} 张 · AI 配图占用 ${formatBytes(list.usage.bytes)}`,
       limitsLabel: imageLimitLabel(list.limits),
       phoneReferences: Object.fromEntries(Object.entries(phoneReferences).filter(([id]) => chapterIds.has(id))),
       useChapterPhotos: Object.fromEntries(chapters.map(chapter => [chapter.id,
@@ -193,7 +213,7 @@ Page({
     });
     const selected = this.data.preview;
     if (selected) {
-      const latest = this.data.groups.find(group => group.id === selected.chapterId)?.images.find(image => image.imageId === selected.imageId);
+      const latest = selected.isCover ? this.data.coverImages.find(image=>image.imageId === selected.imageId) : this.data.groups.find(group => group.id === selected.chapterId)?.images.find(image => image.imageId === selected.imageId);
       this.setData({ preview: latest ? { ...latest, chapterId: selected.chapterId } : null });
     }
     this.schedulePoll();
@@ -247,6 +267,30 @@ Page({
       this.polling = false;
       this.schedulePoll();
     }
+  },
+  toggleSelection() { this.setData({selectionExpanded:!this.data.selectionExpanded}); },
+  async generateCover() {
+    if (!this.data.storyId || this.data.submitting || this.data.savingBackdrop || this.data.savingPlacement) return;
+    this.setData({submitting:'cover',noticeChapterId:'',notice:''});
+    try {
+      const job = await storyCoverApi.submit({storyId:this.data.storyId,referenceImageIds:[],referencePhotoIds:[]});
+      if(this.unloaded)return;
+      this.setData({coverJobs:[jobRow(job),...this.data.coverJobs],notice:job.message});
+      if(isActiveJob(job))this.activeJobIds=[...new Set([...this.activeJobIds,job.jobId])];
+      this.schedulePoll(true);
+    } catch(error) { if(!this.unloaded)this.setData({notice:messageOf(error,'封面暂时没生成成功')}); }
+    finally { if(!this.unloaded)this.setData({submitting:''}); }
+  },
+  async usePreviewCover() {
+    const image=this.data.preview;
+    if(!image?.isCover || !this.data.storyId || this.data.savingBackdrop || this.data.submitting)return;
+    this.setData({savingBackdrop:true});
+    try {
+      await storyCoverApi.select(this.data.storyId,image.inUse ? '' : image.imageId,this.data.storyVersion);
+      this.setData({preview:null});
+      await this.refresh();
+    } catch(error) { this.setData({previewNotice:messageOf(error,'封面未能保存')}); }
+    finally { this.setData({savingBackdrop:false}); }
   },
   async generate(event: { currentTarget: { dataset: { id: string; purpose?: string; reference?: string } } }) {
     const chapterId = event.currentTarget.dataset.id;
@@ -345,11 +389,14 @@ Page({
   previewImage(event: { currentTarget: { dataset: { url: string } } }) {
     const url = event.currentTarget.dataset.url;
     if (!url || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
+    const cover = this.data.coverImages.find(image=>image.url === url);
+    if(cover){this.setData({preview:{...cover,chapterId:'cover'},previewNotice:''});return;}
     const group = this.data.groups.find(item => item.images.some(image => image.url === url));
     const image = group?.images.find(item => item.url === url);
     if (!image || !group || !this.roomState) {
       wx.previewImage({ current: url, urls: [url] }); return;
     }
+    if (image.uploaded) { this.setData({preview:{...image,chapterId:group.id},previewNotice:''}); return; }
     this.updatePreviewImage(image, group.id);
     this.setData({ previewNotice: "" });
   },

@@ -152,6 +152,12 @@ async function read(event, context) {
     return result.status === "ok" && input.purpose === "ai-reference" && isInternalContext(context)
       ? { ...result, source: photo.source } : result;
   });
+  const uploaderIds = [...new Set(records.filter((photo, index) => photo && results[index].status === 'ok' && photo.source === 'book' && photo._openid).map(photo => accountIdFor(photo._openid)))];
+  const accounts = await Promise.all(uploaderIds.map(async id => [id, await getDoc('user_accounts', id)]));
+  const names = new Map(accounts.map(([id, account]) => [id, String(account?.displayName || '').slice(0, 80)]));
+  results.forEach((result, index) => {
+    if (result.status === 'ok' && records[index]._openid && records[index].source === 'book') result.uploaderLabel = names.get(accountIdFor(records[index]._openid)) || result.uploaderLabel;
+  });
   const urls = await tempUrls(results.filter(result => result.status === "ok").map(result => result.fileID));
   return {
     photos: results.map(result => {

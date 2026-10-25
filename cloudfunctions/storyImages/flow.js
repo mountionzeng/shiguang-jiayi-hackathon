@@ -449,6 +449,8 @@ function createStoryImageHandlers(deps) {
       quality: qualityEnabled ? "pending" : "unchecked",
       qualityIssues: [],
       aiGenerated: true,
+      sourceText: typeof job.selectedText === 'string' ? job.selectedText : '',
+      sourceKind: job.selectedText ? 'selection' : job.memoryId ? 'memory' : 'chapter',
       jobId: job._id,
       ...(core.normalizeArtRecipe(job.scene?.art) ? { art: core.normalizeArtRecipe(job.scene.art) } : {}),
       createdAtMs: nowMs,

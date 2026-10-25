@@ -4,7 +4,10 @@
     <view class="images-title serif">{{memoryId ? '这段回忆的图' : '这本书的图'}}</view>
     <view class="images-usage" wx:if="{{usageLabel}}">{{usageLabel}}</view>
     <view class="images-note" wx:if="{{limitsLabel}}">{{limitsLabel}}</view>
-    <view wx:if="{{selectedText}}" class="images-note">根据选中的文字生成：{{selectedText}}</view>
+    <view wx:if="{{selectedText}}">
+      <view class="images-note {{selectionExpanded ? '' : 'selection-collapsed'}}">根据选中的文字生成：{{selectedText}}</view>
+      <button class="tool-button" bindtap="toggleSelection">{{selectionExpanded ? '收起原文' : '查看选中文字'}}</button>
+    </view>
     <view wx:elif="{{memoryId}}" class="images-note">根据这段已保存的回忆生成配图。可以选参考照片，也可以只根据文字生成。点开大图，确认后再加入记忆；图片保留 AI 生成标识。</view>
     <view wx:else class="images-note">画面以本章已保存的文字为准。可直接从手机选参考照片，无需先放进正文；也可以不选图，只根据文字生成。参考照片会帮助画面贴近原图中的主体、颜色和关键物件。底图铺在正文纸面，插图可放进正文，每张图保留 AI 生成标识。</view>
   </view>
@@ -13,6 +16,18 @@
   <view wx:if="{{loading && !loadError}}" class="images-note images-loading">正在读取…</view>
   <view wx:elif="{{!loadError && !groups.length}}" class="images-note images-loading">这本书还没有章节。先在书稿里新开一章、写几句并保存，再来配图。</view>
 
+  <view class="chapter-group" wx:if="{{storyId && !loading && !loadError}}">
+    <view class="group-name serif">封面</view>
+    <view class="images-note">封面根据整本书生成；生成后再决定是否使用，旧图会保留。</view>
+    <button class="tool-button" bindtap="generateCover" loading="{{submitting === 'cover'}}" disabled="{{submitting || savingBackdrop}}">生成封面</button>
+    <view class="job-row" wx:for="{{coverJobs}}" wx:key="jobId">{{item.message}}</view>
+    <view class="image-grid">
+      <view class="image-card" wx:for="{{coverImages}}" wx:key="imageId" wx:for-item="image">
+        <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看封面" />
+        <view class="image-meta"><text>{{image.inUse ? '封面 · 使用中' : '封面 · 未使用'}}</text><text>{{image.moderationLabel}}</text></view>
+      </view>
+    </view>
+  </view>
   <view class="chapter-group {{group.id === focusChapterId ? 'is-focus' : ''}}" wx:for="{{groups}}" wx:if="{{!selectedText || group.id === focusChapterId}}" wx:key="id" wx:for-item="group">
     <view class="group-head">
       <text class="group-name serif">{{group.label}}{{group.title ? '　' + group.title : ''}}</text>
@@ -37,7 +52,7 @@
       <button class="tool-button {{group.id === focusChapterId && focusPurpose === 'illustration' ? 'is-route-focus' : ''}}" data-id="{{group.id}}" data-purpose="illustration" bindtap="generate" loading="{{submitting === group.id + ':illustration'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
         <view class="action-icon icon-ai" aria-hidden="true"></view>{{submitting === group.id + ':illustration' ? '提交中' : '配一张插图'}}
       </button>
-      <button wx:if="{{!memoryId && !selectedText}}" class="tool-button {{group.id === focusChapterId && focusPurpose === 'backdrop' ? 'is-route-focus' : ''}}" data-id="{{group.id}}" data-purpose="backdrop" bindtap="generate" loading="{{submitting === group.id + ':backdrop'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
+      <button wx:if="{{!memoryId}}" class="tool-button {{group.id === focusChapterId && focusPurpose === 'backdrop' ? 'is-route-focus' : ''}}" data-id="{{group.id}}" data-purpose="backdrop" bindtap="generate" loading="{{submitting === group.id + ':backdrop'}}" disabled="{{submitting || savingBackdrop ? true : false}}">
         <view class="action-icon icon-photo" aria-hidden="true"></view>{{submitting === group.id + ':backdrop' ? '提交中' : '配一张底图'}}
       </button>
     </view>
@@ -57,8 +72,11 @@
       <view class="image-card" wx:for="{{group.images}}" wx:key="imageId" wx:for-item="image">
         <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />
         <view class="image-meta">
-          <text class="purpose-badge {{image.inUse ? 'is-in-use' : ''}}">{{image.inUse ? '本章底图' : image.purposeLabel}}</text>
+          <text class="purpose-badge {{image.inUse ? 'is-in-use' : ''}}">{{image.purposeLabel}} · {{image.inUse || image.inText ? '使用中' : '未使用'}}</text>
           <text>{{image.sizeLabel}}</text>
+          <text>{{image.sourceLabel}}</text>
+          <text wx:if="{{image.sourceText}}">生成原句：{{image.sourceText}}</text>
+          <text wx:if="{{image.uploaded}}">上传者：{{image.uploaderLabel}}</text>
           <text wx:if="{{image.moderationLabel}}">{{image.moderationLabel}}</text>
           <text wx:if="{{image.qualityLabel}}" class="{{image.qualityFlawed ? 'quality-flawed' : ''}}">{{image.qualityLabel}}</text>
           <text wx:if="{{image.inText}}">{{memoryId ? '已加入这段记忆' : '正文中使用'}}</text>
@@ -69,13 +87,16 @@
   </view>
 
   <view wx:if="{{otherImages.length}}" class="chapter-group">
-    <view class="group-head"><text class="group-name serif">已删掉的章节里的图</text></view>
+    <view class="group-head"><text class="group-name serif">封面与其他图像</text></view>
     <view class="image-grid">
       <view class="image-card" wx:for="{{otherImages}}" wx:key="imageId" wx:for-item="image">
         <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看大图" />
         <view class="image-meta">
           <text class="purpose-badge">{{image.purposeLabel}}</text>
           <text>{{image.sizeLabel}}</text>
+          <text>{{image.sourceLabel}}</text>
+          <text wx:if="{{image.sourceText}}">生成原句：{{image.sourceText}}</text>
+          <text wx:if="{{image.uploaded}}">上传者：{{image.uploaderLabel}}</text>
           <text wx:if="{{image.qualityLabel}}" class="{{image.qualityFlawed ? 'quality-flawed' : ''}}">{{image.qualityLabel}}</text>
         </view>
         <view class="card-actions">
@@ -93,8 +114,13 @@
     <view class="image-preview-head"><text class="serif">{{preview.purposeLabel}}</text><button bindtap="closePreview" disabled="{{savingPlacement || savingBackdrop || removingId || submitting}}" aria-label="关闭大图">关闭</button></view>
     <image class="image-preview-art" src="{{preview.url}}" mode="aspectFit" />
     <scroll-view class="image-preview-controls" scroll-y>
+      <view class="image-preview-note">{{preview.sourceLabel}}</view>
+      <view class="image-preview-note" wx:if="{{preview.sourceText}}">生成原句：{{preview.sourceText}}</view>
+      <view class="image-preview-note" wx:if="{{preview.uploaded}}">上传者：{{preview.uploaderLabel}}</view>
+      <block wx:if="{{!preview.uploaded}}">
       <text class="image-preview-note" wx:if="{{preview.qualityLabel}}">{{preview.qualityLabel}}</text>
-      <block wx:if="{{!preview.isBackdrop}}">
+      <button wx:if="{{preview.isCover}}" class="image-preview-primary" bindtap="usePreviewCover" disabled="{{savingBackdrop || submitting || preview.moderationLabel}}">{{preview.inUse ? '恢复默认封面' : '用作封面'}}</button>
+      <block wx:elif="{{!preview.isBackdrop}}">
         <picker wx:if="{{!memoryId}}" range="{{placementOptions}}" range-key="label" value="{{placementIndex}}" bindchange="onPlacementChange" disabled="{{savingPlacement || savingBackdrop || removingId || submitting}}">
           <view class="image-preview-position">{{placementIndex >= 0 ? placementOptions[placementIndex].label : '请选择插图位置'}}<text>⌄</text></view>
         </picker>
@@ -103,10 +129,11 @@
       </block>
       <button class="image-preview-primary" wx:else bindtap="usePreviewBackdrop" loading="{{savingBackdrop}}" disabled="{{savingBackdrop || savingPlacement || removingId || submitting}}">{{preview.inUse ? '不用这张底图' : '设为本章底图'}}</button>
       <view class="image-preview-note" wx:if="{{previewNotice}}">{{previewNotice}}</view>
-      <view class="image-preview-actions">
+      <view class="image-preview-actions" wx:if="{{!preview.isCover}}">
         <button wx:if="{{preview.referenceReady}}" bindtap="redrawPreview" loading="{{submitting ? true : false}}" disabled="{{submitting || savingPlacement || savingBackdrop || removingId}}">{{submitting ? '提交中' : '参考这张再画'}}</button>
         <button wx:if="{{!memoryId}}" bindtap="deletePreview" disabled="{{removingId || savingPlacement || savingBackdrop || submitting}}">删除原图</button>
       </view>
+      </block>
     </scroll-view>
   </view>
 </view>

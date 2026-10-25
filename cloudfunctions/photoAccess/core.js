@@ -105,6 +105,7 @@ function publicPhoto(photo, input, requester, visibleMemories) {
   return {
     photoId: input.photoId,
     status: "ok",
+    uploaderLabel: typeof photo.uploaderLabel === "string" ? photo.uploaderLabel.slice(0, 80) : owner && photo.source === "book" ? "你" : "未记录",
     fileID,
     contentType: "image/jpeg",
     width: photo.width,

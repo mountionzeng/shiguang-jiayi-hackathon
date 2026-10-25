@@ -758,7 +758,7 @@ test("这本书的图：按章节分组，显示占用空间和正在画的图�
   assert.equal(groups[0].images[1].inUse, false);
   assert.equal(groups[1].pending[0].purposeLabel, "插图");
   assert.equal(groups[1].pending[0].active, true);
-  assert.equal(page.data.usageLabel, "共 2 张 · 3 KB");
+  assert.equal(page.data.usageLabel, "共 2 张 · AI 配图占用 3 KB");
   assert.equal(timers.scheduled.length, 1);
   assert.equal(timers.scheduled[0].delay, 3000);
 });
@@ -1713,7 +1713,7 @@ test('大图下选择段落、保存、重新打开和移除都保留历史与�
   assert.deepEqual(currentManuscript(after, 'owner').draft!.chapters![0].content, state.manuscriptRevisions![0].draft.chapters![0].content);
   assert.equal(after.manuscriptRevisions!.length, 3);
   assert.equal((page.data.preview as any).inText, false);
-  assert.equal((page.data.groups as any[])[0].images.length, 2, '从正文移除仍保留原图');
+  assert.equal((page.data.groups as any[])[0].images.filter((image:any)=>!image.uploaded).length, 2, '从正文移除仍保留原图');
 });
 
 test('段落在其他页面更新后不按旧序号插入，刷新选项等待重选', async context => {
@@ -1788,12 +1788,14 @@ test('article image menu opens upload directly or passes saved selected text, wi
  const env=installWx({showActionSheet:({success}:any)=>success({tapIndex:1})});
  try {
   const page=instantiate(await pageDefinition('book'));
-  page.data.article={}; page.unloaded=false;
+  page.data.article={id:'chapter-1',content:[{blockId:'block-1',text:'蓝色纸船'}]}; page.unloaded=false;
+  page.chapters=[{id:'chapter-1',content:[{text:'蓝色纸船'}]}];page.activeChapterId='chapter-1';
+  let staged=false;page.onArticleChange=({detail}:any)=>{staged=true;page.articlePending=detail.chapter;};
   let saved=0;let selection:any;
   page.flushArticle=async()=>{saved++;return true;};
   page.openImages=(purpose:string,value:unknown)=>{selection={purpose,value};};
   await call(page,'addArticleImage',{detail:{blockId:'block-1',text:'蓝色纸船'}});
-  assert.equal(saved,1);assert.deepEqual(selection,{purpose:'illustration',value:{blockId:'block-1',text:'蓝色纸船'}});
+  assert.equal(staged,true);assert.equal(saved,1);assert.deepEqual(selection,{purpose:'illustration',value:{blockId:'block-1',text:'蓝色纸船'}});
   selection=undefined;await call(page,'addArticleImage',{detail:{}});assert.equal(selection,undefined);
   (wx.showActionSheet as any)=({success}:any)=>success({tapIndex:0});
   let uploaded=0;page.uploadArticleImage=async()=>{uploaded++;};
@@ -1854,4 +1856,16 @@ test('receiving a shared article asks before claiming and cancel does not write'
     assert.equal(asked,true); assert.equal(page.pendingChapterClaim,'');
     assert.equal(page.data.loadError,'');
   } finally { env.restore(); }
+});
+
+
+test('图片列表展示正文照片且预览不提供 AI 原图操作', async context => {
+  const state = stateWithBook();
+  state.manuscriptRevisions![0].draft.chapters![0].content.push({photoId:'photo-original'});
+  const env=installWx({},state);env.setApp(false);context.after(()=>env.restore());
+  context.after(withApi({listStoryImages:async()=>listWith({pending:[]})}));
+  const page=instantiate(await pageDefinition('story-images'));await call(page,'refresh');
+  const photo=(page.data.groups as any[])[0].images.find((image:any)=>image.imageId==='photo-original');
+  assert.equal(photo.uploaded,true);assert.equal(photo.uploaderLabel,'未记录');
+  assert.equal(photo.referenceReady,false);
 });

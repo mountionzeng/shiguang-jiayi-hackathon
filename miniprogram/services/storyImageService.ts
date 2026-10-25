@@ -41,6 +41,8 @@ export interface StoryImageJob {
 }
 
 export interface StoryImage {
+  sourceText?: string;
+  sourceKind?: "selection" | "memory" | "chapter" | "";
   memoryId?: string;
   imageId: string;
   chapterId: string;

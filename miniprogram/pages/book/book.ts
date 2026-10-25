@@ -264,6 +264,11 @@ Page({
     if (action === 1) {
       const text = event.detail?.text?.trim();
       if (!text || !event.detail?.blockId) { wx.showToast({ title: '先点选一块文字，再添加图片', icon: 'none' }); return; }
+      // Older chapters receive stable editor IDs on opening; persist those IDs before
+      // asking the server to verify the selected block, even when no text was edited.
+      const saved = this.chapters.find(chapter => chapter.id === this.activeChapterId);
+      if (!saved?.content.some(block => block.blockId === event.detail!.blockId) && !this.articlePending)
+        this.onArticleChange({detail:{chapter:this.data.article}});
       if (!await this.flushArticle()) return;
       this.openImages('illustration', { blockId: event.detail.blockId, text });
       return;

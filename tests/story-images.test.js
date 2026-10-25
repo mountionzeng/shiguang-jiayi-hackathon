@@ -2120,3 +2120,11 @@ test('新底图景物提炼不会把码头、石头中的头字当人体删除',
   const prompt = core.buildImagePrompt({ scene: '海边', backdropTrace: '码头边平放的石头与绳索', objects: [], figures: [] }, 'backdrop').prompt;
   assert.match(prompt, /章节情景的景物痕迹：码头边平放的石头与绳索/);
 });
+
+
+test('图片只公开生成来源，不泄露供应商提示词和账号', () => {
+  const image=core.publicImage({_id:'image',sourceText:'纸船浮在水面',sourceKind:'selection',requesterOpenId:'secret',prompt:'private'},'https://example.com/image');
+  assert.equal(image.sourceText,'纸船浮在水面');assert.equal(image.sourceKind,'selection');
+  assert.equal(image.prompt,undefined);assert.equal(image.requesterOpenId,undefined);
+  assert.equal(core.publicImage({_id:'old'},'').sourceText,'');
+});

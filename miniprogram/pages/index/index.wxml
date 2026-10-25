@@ -93,7 +93,7 @@
           </view>
         </swiper-item>
       </swiper>
-      <view class="book-stats book-actions" role="group" aria-label="这本书的记忆、章节和人物">
+      <view class="book-stats book-actions" role="group" aria-label="这本书的记忆、章节、人物和图像">
         <button
           class="book-stat-action book-stat-note"
           bindtap="openStoryMemories"
@@ -120,6 +120,9 @@
         >
           <text class="book-stat-num">{{storyPeopleCount}}</text>
           <text class="book-stat-label">人物</text>
+        </button>
+        <button class="book-stat-action" bindtap="openStoryImages" hover-class="none" aria-label="这本书的图像与来源">
+          <text class="book-stat-label">图像</text>
         </button>
       </view>
       <view class="book-rail" wx:if="{{bookSlides.length > 1}}" aria-hidden="true">

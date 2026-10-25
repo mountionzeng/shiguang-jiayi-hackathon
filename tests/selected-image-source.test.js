@@ -21,6 +21,7 @@ test('selection cannot bypass provenance or use stale/foreign text',()=>{
 test('selected generation rejects incomplete or oversized requests',()=>{
  const base={familyId:'family_owner',storyId:'story-1',chapterId:'chapter-1',purpose:'illustration',requestId:'req-20261025-abcdef12',selectedBlockId:'block-1'};
  assert.equal(normalizeSubmitInput({...base,selectedText:'蓝色纸船'}).selectedText,'蓝色纸船');
+ assert.equal(normalizeSubmitInput({...base,selectedText:'蓝色纸船',purpose:'backdrop'}).purpose,'backdrop');
  for(const selectedText of ['',42,'字'.repeat(12001)])assert.throws(()=>normalizeSubmitInput({...base,selectedText}),{code:'INVALID_SELECTION'});
  assert.throws(()=>normalizeSubmitInput({...base,selectedText:'纸船',purpose:'cover'}),{code:'INVALID_SELECTION'});
 });
