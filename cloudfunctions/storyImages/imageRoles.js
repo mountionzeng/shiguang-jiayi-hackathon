@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const core = require('./core');
+const {normalizeCrop}=require('./imageCrop');
 const fail = (message = '这张图尚未审核通过、已删除或没有使用权限') => { throw new core.StoryImageError('IMAGE_NOT_READY', message); };
 
 // Role selections preserve the original. Deterministic, server-owned copies keep
@@ -9,6 +10,7 @@ async function prepareImageRole(repo, storage, ctx, input) {
   const storyId = core.normalizeStoryInput(input);
   const purpose = input.purpose;
   if (!['cover', 'backdrop', 'illustration'].includes(purpose)) fail('请选择封面、底图或插图');
+  const crop = normalizeCrop(input.crop, purpose);
   const chapterId = purpose === 'cover' ? core.COVER_CHAPTER_ID : input.chapterId;
   const sourceId = String(input.imageId || '');
   const read = async () => {
@@ -36,18 +38,20 @@ async function prepareImageRole(repo, storage, ctx, input) {
     return source;
   };
   const source = await read();
-  if (source.existingId) return {imageId:source.existingId};
-  const requestId = 'req-role-' + crypto.createHash('sha256').update(JSON.stringify([input.familyId,storyId,chapterId,purpose,sourceId,source.fileID])).digest('hex').slice(0,32);
+  if (source.existingId && !crop) return {imageId:source.existingId};
+  const requestId = 'req-role-' + crypto.createHash('sha256').update(JSON.stringify([input.familyId,storyId,chapterId,purpose,source.originImageId,...(crop?[sourceId,crop]:[])])).digest('hex').slice(0,32);
   const imageId = `${input.familyId}_img_${requestId}`;
   const previous = await repo.getImage(imageId);
   if (previous && previous.deletedAtMs === undefined && previous.moderation === 'pass') return {imageId};
   const extension = /\.(png|jpg|jpeg|webp)$/.exec(source.fileID)?.[1];
   if (!extension) fail();
-  const fileID = await storage.copy(source.fileID, `story-images/${input.familyId}/${storyId}/${requestId}.${extension}`);
+  const result = await storage.copy(source.fileID, `story-images/${input.familyId}/${storyId}/${requestId}.${crop ? 'png' : extension}`, {crop,purpose,aiGenerated:source.aiGenerated,sourceId:imageId});
+  const fileID = typeof result === 'string' ? result : result.fileID;
   const after = await read();
   if (JSON.stringify(source) !== JSON.stringify(after)) fail('图片状态有变化，请重新选择');
   await repo.createImage(imageId, {familyId:input.familyId, storyId, chapterId, purpose, requestId, fileID,
-    bytes:source.bytes || 0, moderation:'pass', quality:source.quality, qualityIssues:source.qualityIssues,
+    ...(crop?{crop,parentImageId:sourceId,width:purpose==='cover'?800:900,height:1200}:{}),
+    bytes:typeof result === 'object' ? result.bytes : source.bytes || 0, moderation:'pass', quality:source.quality, qualityIssues:source.qualityIssues,
     aiGenerated:source.aiGenerated, sourceText:source.sourceText, sourceKind:source.sourceKind,
     originImageId:source.originImageId, createdAtMs:Date.now()});
   return {imageId};

@@ -1,3 +1,4 @@
+import {imageCropFrame, type ImageCrop} from '../../services/imageCrop';
 import { storyCoverApi } from '../../services/storyCoverService';
 import { chapterPhotoIds, galleryPhotos, type GalleryPhoto } from "../../services/storyImageGallery";
 import { illustrationAnchor, illustrationPoints, IllustrationPoint, saveChapterIllustration } from "../../services/chapterIllustrations";
@@ -38,7 +39,7 @@ const chapterReferencePhotoIds = (chapter: ManuscriptChapter): string[] =>
 const card = (image: StoryImage, backdropImageId = "", textImageReferences = new Set<string>()): ImageCard => ({
   isCover: image.purpose === 'cover',
   sourceLabel: image.sourceKind === 'upload' ? '上传的图片' : image.sourceKind === 'selection' ? '选中文字生成' : image.sourceKind === 'chapter' ? '根据整章文字生成' : image.sourceKind === 'memory' ? '根据回忆生成' : '生成原文未记录',
-  sourceText: image.sourceText || '', uploaderLabel: '',
+  sourceText: (image.crop ? '裁切版本 · ' : '') + (image.sourceText || ''), uploaderLabel: '',
   imageId: image.imageId, url: image.url, sizeLabel: formatBytes(image.bytes),
   purposeLabel: PURPOSE_LABELS[image.purpose] ?? "配图",
   isBackdrop: image.purpose === "backdrop", referenceReady: image.purpose === "illustration" && image.moderation === "pass",
@@ -68,6 +69,7 @@ const imageLimitLabel = (limits: { daily: number | null; book: number | null; un
 Page({
   data: {
     memoryId: "", storyId: "", memberId: "", bookTitle: "", focusChapterId: "", focusPurpose: "" as "" | "illustration" | "backdrop",
+    cropRole:'', cropWidth:220, cropHeight:330, cropStyle:'', cropZoom:100,
     roleChapterIndex:0, libraryImages: [] as ImageCard[], groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
@@ -419,31 +421,69 @@ Page({
     this.updatePreviewImage(image, chapterId);
     this.setData({ previewNotice: "" });
   },
+  cropSource: {width:0,height:0,x:.5,y:.5},
+  cropGesture:null as {x:number;y:number;positionX:number;positionY:number} | null,
   onRoleChapterChange(event: {detail:{value:string}}) {
     if (!this.data.savingPlacement) this.setData({roleChapterIndex:Number(event.detail.value)});
   },
   async useImageRole(event: {currentTarget:{dataset:{role:string}}}) {
     const image = this.data.preview, purpose = event.currentTarget.dataset.role;
     if (!image || !this.data.storyId || this.data.savingPlacement || this.data.savingBackdrop || this.data.submitting) return;
+    if (purpose === 'cover' || purpose === 'backdrop') {
+      try {
+        const info = await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve,reject)=>wx.getImageInfo({src:image.url,success:resolve,fail:reject}));
+        if (this.unloaded || this.data.preview?.imageId !== image.imageId) return;
+        this.cropSource={width:info.width,height:info.height,x:.5,y:.5};
+        this.setData({cropRole:purpose,cropZoom:100,previewNotice:''}); this.updateCropFrame();
+      } catch { if (!this.unloaded) this.setData({previewNotice:'暂时读不到图片，请重新打开再试'}); }
+      return;
+    }
+    await this.saveImageRole(purpose);
+  },
+  updateCropFrame() {
+    const source=this.cropSource, frame=imageCropFrame(source.width,source.height,this.data.cropRole,this.data.cropZoom/100,source.x,source.y);
+    this.setData({cropWidth:frame.width,cropHeight:frame.height,cropStyle:frame.style});
+  },
+  startCrop(event:WechatMiniprogram.TouchEvent) {
+    const point=event.touches[0]; if (!point || this.data.savingPlacement) return;
+    this.cropGesture={x:point.clientX,y:point.clientY,positionX:this.cropSource.x,positionY:this.cropSource.y};
+  },
+  moveCrop(event:WechatMiniprogram.TouchEvent) {
+    const point=event.touches[0],start=this.cropGesture;if(!point || !start || this.data.savingPlacement)return;
+    const source=this.cropSource,frame=imageCropFrame(source.width,source.height,this.data.cropRole,this.data.cropZoom/100);
+    source.x=Math.max(0,Math.min(1,start.positionX-(point.clientX-start.x)/Math.max(1,frame.imageWidth-frame.width)));
+    source.y=Math.max(0,Math.min(1,start.positionY-(point.clientY-start.y)/Math.max(1,frame.imageHeight-frame.height)));
+    this.updateCropFrame();
+  },
+  endCrop() { this.cropGesture=null; },
+  zoomCrop(event:{detail:{value:number}}) { if(!this.data.savingPlacement){this.setData({cropZoom:event.detail.value});this.updateCropFrame();} },
+  cancelCrop() { if(!this.data.savingPlacement)this.setData({cropRole:''}); },
+  async confirmCrop() {
+    const source=this.cropSource, frame=imageCropFrame(source.width,source.height,this.data.cropRole,this.data.cropZoom/100,source.x,source.y);
+    await this.saveImageRole(this.data.cropRole,frame.crop);
+  },
+  async saveImageRole(purpose:string,crop?:ImageCrop) {
+    const image=this.data.preview;
+    if (!image || this.data.savingPlacement || this.data.savingBackdrop || this.data.submitting) return;
     const group = this.data.groups[this.data.roleChapterIndex];
     if (purpose !== 'cover' && !group) return;
     this.setData({savingPlacement:true,previewNotice:''});
     try {
       const selected = await callStoryImages<{imageId:string}>('prepareImageRole', {
-        storyId:this.data.storyId,chapterId:group?.id || '',imageId:image.imageId,purpose,
+        storyId:this.data.storyId,chapterId:group?.id || '',imageId:image.imageId,purpose,...(crop?{crop}:{}),
       });
       if (purpose === 'cover') await storyCoverApi.select(this.data.storyId,selected.imageId,this.data.storyVersion);
       else if (purpose === 'backdrop') await saveChapterBackdrop({storyId:this.data.storyId,chapterId:group.id,imageId:selected.imageId});
       else await saveChapterIllustration({storyId:this.data.storyId,chapterId:group.id,imageId:selected.imageId,after:null});
       if (this.unloaded) return;
-      this.setData({preview:null,notice:`已设为${purpose === 'cover' ? '整本书的封面' : group.label + (purpose === 'backdrop' ? '底图' : '插图')}，原图已保留`,noticeChapterId:''});
+      this.setData({preview:null,cropRole:'',notice:`已设为${purpose === 'cover' ? '整本书的封面' : group.label + (purpose === 'backdrop' ? '底图' : '插图')}，原图已保留`,noticeChapterId:''});
       await this.refresh();
     } catch(error) {
       if (!this.unloaded) this.setData({previewNotice:messageOf(error,'没有保存，请重新选择')});
     } finally { if (!this.unloaded) this.setData({savingPlacement:false}); }
   },
   closePreview() {
-    if (!this.data.savingPlacement && !this.data.savingBackdrop && !this.data.removingId && !this.data.submitting) this.setData({ preview: null, previewNotice: "" });
+    if (!this.data.savingPlacement && !this.data.savingBackdrop && !this.data.removingId && !this.data.submitting) this.setData({ preview: null, cropRole:'', previewNotice: "" });
   },
   keepPreviewOpen() {},
   onPlacementChange(event: { detail: { value: string } }) {

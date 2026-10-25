@@ -288,10 +288,15 @@ const repo = {
 };
 
 const storage = {
-  async copy(fileID, cloudPath) {
+  async copy(fileID, cloudPath, options = {}) {
     const response = await cloud.downloadFile({fileID});
     if (!response.fileContent?.length || response.fileContent.length > 12 * 1024 * 1024) throw new StoryImageError("IMAGE_NOT_READY", "图片文件不可用");
-    return (await cloud.uploadFile({cloudPath, fileContent:response.fileContent})).fileID;
+    let fileContent=response.fileContent;
+    if(options.crop) {
+      const rendered=await require('./imageCrop').renderRoleImage(fileContent,options.crop,options.purpose,options.aiGenerated);
+      fileContent=options.aiGenerated ? aigcMetadata.writeForSource(rendered.buffer,'image/png',options.sourceId).buffer : rendered.buffer;
+    }
+    return {fileID:(await cloud.uploadFile({cloudPath,fileContent})).fileID,bytes:fileContent.length};
   },
   async upload(cloudPath, buffer) {
     const response = await cloud.uploadFile({ cloudPath, fileContent: buffer });

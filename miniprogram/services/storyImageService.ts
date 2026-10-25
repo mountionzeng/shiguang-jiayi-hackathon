@@ -42,6 +42,7 @@ export interface StoryImageJob {
 
 export interface StoryImage {
   originImageId?: string;
+  crop?: {x:number;y:number;width:number;height:number};
   sourceText?: string;
   sourceKind?: "selection" | "memory" | "chapter" | "upload" | "";
   memoryId?: string;

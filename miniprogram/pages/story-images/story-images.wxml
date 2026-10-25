@@ -123,8 +123,19 @@
 <view class="image-preview-mask" wx:if="{{preview}}" bindtap="closePreview">
   <view class="image-preview-sheet" catchtap="keepPreviewOpen" role="dialog" aria-label="配图预览与位置">
     <view class="image-preview-head"><text class="serif">{{preview.purposeLabel}}</text><button bindtap="closePreview" disabled="{{savingPlacement || savingBackdrop || removingId || submitting}}" aria-label="关闭大图">关闭</button></view>
-    <image class="image-preview-art" src="{{preview.url}}" mode="aspectFit" />
-    <scroll-view class="image-preview-controls" scroll-y>
+    <image wx:if="{{!cropRole}}" class="image-preview-art" src="{{preview.url}}" mode="aspectFit" />
+    <block wx:if="{{cropRole}}">
+      <view class="crop-note">拖动图片调整位置 · 原图保留，另存{{cropRole === 'cover' ? '封面' : '底图'}}版本</view>
+      <view class="crop-frame" style="width:{{cropWidth}}px;height:{{cropHeight}}px;" catchtouchstart="startCrop" catchtouchmove="moveCrop" catchtouchend="endCrop" catchtouchcancel="endCrop">
+        <image src="{{preview.url}}" style="{{cropStyle}}" mode="scaleToFill" />
+        <view class="crop-guide"></view>
+      </view>
+      <slider min="100" max="300" value="{{cropZoom}}" bindchanging="zoomCrop" bindchange="zoomCrop" disabled="{{savingPlacement}}" aria-label="放大图片" />
+      <view class="image-preview-note" wx:if="{{previewNotice}}">{{previewNotice}}</view>
+      <button class="image-preview-primary" bindtap="confirmCrop" loading="{{savingPlacement}}" disabled="{{savingPlacement}}">保存{{cropRole === 'cover' ? '封面' : '底图'}}新版本</button>
+      <button class="image-preview-secondary" bindtap="cancelCrop" disabled="{{savingPlacement}}">返回原图</button>
+    </block>
+    <scroll-view wx:else class="image-preview-controls" scroll-y>
       <view class="image-preview-note">{{preview.sourceLabel}}</view>
       <view class="image-preview-note" wx:if="{{preview.sourceText}}">生成原句：{{preview.sourceText}}</view>
       <view class="image-preview-note" wx:if="{{preview.uploaded}}">上传者：{{preview.uploaderLabel}}</view>
@@ -135,6 +146,8 @@
         <button class="image-preview-primary" data-role="illustration" bindtap="useImageRole" disabled="{{savingPlacement || savingBackdrop || submitting}}">设为插图</button>
         <button class="image-preview-secondary" data-role="backdrop" bindtap="useImageRole" disabled="{{savingPlacement || savingBackdrop || submitting}}">设为底图</button>
         <button class="image-preview-secondary" data-role="cover" bindtap="useImageRole" disabled="{{savingPlacement || savingBackdrop || submitting}}">设为整本书封面</button>
+        <button wx:if="{{preview.isBackdrop && preview.inUse}}" class="image-preview-secondary" bindtap="usePreviewBackdrop" disabled="{{savingPlacement || savingBackdrop}}">不用这张底图</button>
+        <button wx:if="{{preview.isCover && preview.inUse}}" class="image-preview-secondary" bindtap="usePreviewCover" disabled="{{savingPlacement || savingBackdrop}}">恢复默认封面</button>
         <view class="image-preview-note" wx:if="{{savingPlacement}}">正在保存…</view>
         <view class="image-preview-note" wx:if="{{previewNotice}}">{{previewNotice}}</view>
       </block>

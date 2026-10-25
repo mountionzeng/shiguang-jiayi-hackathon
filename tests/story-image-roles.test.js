@@ -45,3 +45,18 @@ test('rechecks source after copying and refuses a newly revoked image',async()=>
   const f=fixture();f.storage.copy=async()=>{f.images.get(original).moderation='risky';return 'cloud://copy.png';};
   await assert.rejects(f.run());assert.equal(f.images.size,1);
 });
+
+test('selecting from a role copy or the original resolves the same target asset',async()=>{
+ const f=fixture();const backdrop=await f.run();
+ const fromCopy=await f.run({imageId:backdrop.imageId,purpose:'illustration'});
+ const fromOriginal=await f.run({purpose:'illustration'});
+ assert.equal(fromCopy.imageId,fromOriginal.imageId);assert.equal(f.copies(),2);
+});
+
+test('different crops are different versions, identical retries reuse version and retain parent',async()=>{
+ const f=fixture();const crop={x:.2,y:0,width:.5,height:1};
+ const a=await f.run({purpose:'cover',crop}),b=await f.run({purpose:'cover',crop:{...crop,x:.3}});
+ assert.notEqual(a.imageId,b.imageId);assert.equal((await f.run({purpose:'cover',crop})).imageId,a.imageId);
+ assert.deepEqual(f.images.get(a.imageId).crop,crop);assert.equal(f.images.get(a.imageId).parentImageId,original);
+ assert.equal(f.images.get(a.imageId).width,800);assert.equal(f.images.get(a.imageId).height,1200);
+});

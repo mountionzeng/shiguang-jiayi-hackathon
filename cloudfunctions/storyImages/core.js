@@ -770,6 +770,7 @@ function publicImage(image, url) {
       .filter(Boolean),
     aiGenerated: image.aiGenerated !== false,
     originImageId: image.originImageId || "",
+    ...(image.crop ? {crop:image.crop,parentImageId:image.parentImageId || "",width:image.width,height:image.height} : {}),
     sourceText: typeof image.sourceText === 'string' ? image.sourceText.slice(0, 12000) : '',
     sourceKind: ['selection', 'memory', 'chapter', 'upload'].includes(image.sourceKind) ? image.sourceKind : '',
     createdAtMs: image.createdAtMs,
