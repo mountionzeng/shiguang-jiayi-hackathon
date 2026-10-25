@@ -90,9 +90,6 @@
                 </view>
               </view>
             </view>
-          </view>
-        </swiper-item>
-      </swiper>
       <view class="book-stats book-actions" role="group" aria-label="这本书的记忆、章节、人物和图像">
         <button
           class="book-stat-action book-stat-note"
@@ -100,7 +97,7 @@
           hover-class="none"
           aria-label="这本书里的记忆"
         >
-          <text class="book-stat-num">{{storyMemoryCount}}</text>
+          <text class="book-stat-num">{{item.memoryCount}}</text>
           <text class="book-stat-label">段记忆</text>
         </button>
         <button
@@ -109,7 +106,7 @@
           hover-class="none"
           aria-label="这本书整理好的章节"
         >
-          <text class="book-stat-num">{{storyChapterCount}}</text>
+          <text class="book-stat-num">{{item.chapterCount}}</text>
           <text class="book-stat-label">章节</text>
         </button>
         <button
@@ -118,20 +115,16 @@
           hover-class="none"
           aria-label="这本书里的人物与章节权限"
         >
-          <text class="book-stat-num">{{storyPeopleCount}}</text>
+          <text class="book-stat-num">{{item.peopleCount}}</text>
           <text class="book-stat-label">人物</text>
         </button>
         <button class="book-stat-action" bindtap="openStoryImages" hover-class="none" aria-label="这本书的图像与来源">
           <text class="book-stat-label">图像</text>
         </button>
       </view>
-      <view class="book-rail" wx:if="{{bookSlides.length > 1}}" aria-hidden="true">
-        <text class="book-rail-word">左滑</text>
-        <view class="book-rail-dots">
-          <text class="book-rail-dot {{index === activeBookIndex ? 'book-rail-dot-on' : ''}}" wx:for="{{bookSlides}}" wx:key="key"></text>
-        </view>
-        <text class="book-rail-word">右滑</text>
-      </view>
+          </view>
+        </swiper-item>
+      </swiper>
       <view class="book-open-label typewriter">{{bookSlides.length > 1 ? '左右滑动换一本书 · 轻触打开' : '轻触打开这个故事'}}</view>
     </view>
 

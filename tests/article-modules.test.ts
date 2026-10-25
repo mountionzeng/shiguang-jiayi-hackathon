@@ -60,6 +60,7 @@ test('typing preserves manually arranged image and text geometry',()=>{
  const after=appendArticleText(before,'新的故事'.repeat(30));
  assert.deepEqual(after.content[0],before.content[0]);
  assert.deepEqual(after.layout.pages[0].modules[0],before.layout.pages[0].modules[0]);
- assert.ok(after.layout.pages.flatMap(p=>p.modules).at(-1)!.rect.height>110);
+ const modules=after.layout.pages.flatMap(p=>p.modules);
+ assert.ok(modules[modules.length-1].rect.height>110);
  assert.equal(before.content.length,1);
  });
