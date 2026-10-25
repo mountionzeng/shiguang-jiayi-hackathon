@@ -36,7 +36,7 @@ export function articleChapter(input: ManuscriptChapter): ArticleChapter {
         rect: { x: 48, y: 48, width: 804, height: 420 }, crop: { x: 0, y: 0, width: 1, height: 1 } });
     }
   }
-  if (!chapter.content.length) { const id = freshId(); chapter.content.push({ blockId: id, text: '' }); place(chapter, textModule(id, { x: 48, y: 48, width: 804, height: 130 })); }
+  if (!chapter.content.some(block => typeof block.text === 'string')) { const id = freshId(); chapter.content.push({ blockId: id, text: '' }); place(chapter, textModule(id, { x: 48, y: 48, width: 804, height: 130 })); }
   return chapter;
 }
 export function changeArticleText(input: ArticleChapter, blockId: string, value: string) {
@@ -81,7 +81,7 @@ export function removeArticleModule(input: ArticleChapter, id: string): ArticleC
       next.content = next.content.filter(block => block.photoId !== photoId);
     }
   }
-  return next;
+  return articleChapter(next);
 }
 export function addArticlePhoto(input: ArticleChapter, photoId: string): ArticleChapter {
   if (Object.keys(input.packageAssets || {}).length >= 12) throw new Error('一章最多十二张图片');

@@ -50,6 +50,7 @@ async function accountActivity(repo,ctx){
   for(const event of events){
     if(event.storyId)continue;
     const receipt=deliveries.find(row=>row._id===event.id);
+    if(!receipt?.packageId)continue;
     const matched=revisions.find(row=>row.revision?.draft?.chapters?.some(chapter=>chapter.packageLineage?.receivedPackageId===receipt?.packageId));
     if(matched){event.storyId=matched.storyId;event.revisionId=matched.revision.id;}
   }

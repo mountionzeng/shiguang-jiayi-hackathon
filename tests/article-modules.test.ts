@@ -27,3 +27,11 @@ test('people with the same name remain separate accounts',()=>{
  const event={id:'1',accountKey:'one',name:'小满',verified:true,at:'',kind:'发来文章',title:'故事',text:'',imageCount:0,changes:[],comparisonAvailable:true,storyId:'',revisionId:''};
  assert.equal(groupAccountActivity([event,{...event,id:'2',accountKey:'two'}]).length,2);
 });
+
+test('removing the last text leaves an editable blank beside remaining photos',()=>{
+ const chapter=addArticlePhoto(base(),'photo-keep');
+ const removed=removeArticleModule(chapter,chapter.layout.pages[0].modules[0].id);
+ assert.ok(removed.content.some(b=>b.photoId==='photo-keep'));
+ assert.ok(removed.content.some(b=>b.text===''));
+ assert.ok(removed.layout.pages.some(p=>p.modules.some(m=>m.kind==='text')));
+});

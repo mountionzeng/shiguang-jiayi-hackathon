@@ -29,7 +29,7 @@ test('rejects spoofed sources, missing parents, unapproved photos and moderation
 test('activity is owner scoped, groups by trusted account and distinguishes missing comparison',async()=>{const f=await setup();
  for(const [id,senderKey] of [['one','account-a'],['two','account-b']])f.tables.set('account_message_receipts:'+id,{familyId:'family_owner',direction:'received',senderKey,senderName:'同名',createdAt:'2026-10-25',kind:'return',package:{storyTitle:'纸船',lineage:{parentPackageId:'missing'},chapters:[{blocks:[{type:'text',text:'收到文字'}]}],assets:[]}});
  f.tables.set('account_message_receipts:secret',{familyId:'family_other',direction:'received',package:{storyTitle:'不能看到'}});
- const {events}=await accountActivity(f.repo,f.ctx);const received=events.filter(e=>e.kind==='发来修改');assert.equal(received.length,2);assert.notEqual(received[0].accountKey,received[1].accountKey);assert.equal(received[0].comparisonAvailable,false);assert.equal(received[0].text,'收到文字');assert.ok(events.some(e=>!e.verified),'historical imports are explicitly unverified');
+ const {events}=await accountActivity(f.repo,f.ctx);const received=events.filter(e=>e.kind==='发来修改');assert.equal(received.length,2);assert.notEqual(received[0].accountKey,received[1].accountKey);assert.equal(received[0].comparisonAvailable,false);assert.equal(received[0].text,'收到文字');assert.equal(received[0].storyId,'');assert.ok(events.some(e=>!e.verified),'historical imports are explicitly unverified');
 });
 test('ordinary article IDs remain compatible with owned legacy writes without weakening received provenance',()=>{
  const {assertLegacyWritable,materializeOwnedDraft}=require('../cloudfunctions/storyBooks/provenance');
