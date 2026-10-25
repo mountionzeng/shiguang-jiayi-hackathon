@@ -25,3 +25,11 @@
 
 ## 发布后验证
 仅更新storyBooks和drinkingTimeBridge，以及网页后端发送人标识字段；不改环境变量或数据库迁移。检查articleSave、accountActivity、readChapterPackage错误；写入失败、来源不符或旧内容丢失则停止验收并保留草稿、回退对应代码。测试仅使用已授权的纸船与灯塔文章，不动“岱”。
+
+## 2026-10-25 11:55 部署与补查
+- 5979c26 部署 storyBooks、drinkingTimeBridge；5064522 补修仅重部署 storyBooks。环境 cloud1-d5ghzk30ve609f544。
+- CLI下载回读：storyBooks 36个业务文件、drinkingTimeBridge 5个业务文件逐字节一致。下载时必须传绝对project路径；相对`.`会报appid missing，不能把退出码0当成功。
+- 网页544e20b5新增稳定senderKey及测试，5项通过、功能账本通过；新构建与线上旧后端仅差该字段。保留旧后端备份后只替换dist/index.js，未动前端、环境变量、迁移。healthz/readyz正常，已部署SHA256为576539f0599eeb41b49cd48c1ea1778ea6298e70fcfc97a8a459d81dec478642。
+- 补查修复：删除最后文字后仍保留空白文字模块；缺少收件packageId时不得匹配其他无来源章节。10项定向测试通过。
+- 本地验收开关已恢复；只有runtime.ts保留临时未提交开关。
+- 实际界面已读取历史往来。历史无账号来源明确标注。新消息记录、实际编辑保存与最终截图仍在进行，尚不认定完成验收。
