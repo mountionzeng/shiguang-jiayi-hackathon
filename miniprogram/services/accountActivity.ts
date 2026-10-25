@@ -28,7 +28,14 @@ export async function loadAccountActivity(): Promise<AccountActivity[]> {
     await Promise.all(missing.slice(i, i + 3).map(item => readChapterDelivery(item.deliveryId)));
   }
   if (missing.length) events = await readActivity();
-  return events;
+  const available = new Map(inbox.items.map(item => [item.deliveryId, item.status]));
+  return events.map(event => {
+    if (!event.deliveryId || event.storyId) return event;
+    const status = available.get(event.deliveryId);
+    return status === 'declined' || !status
+      ? { ...event, deliveryId: undefined, kind: status === 'declined' ? '已谢绝的分享' : event.kind }
+      : event;
+  });
 }
 export async function openSharedArticle(event: AccountActivity): Promise<void> {
   let storyId = event.storyId;

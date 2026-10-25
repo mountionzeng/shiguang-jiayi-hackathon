@@ -253,7 +253,7 @@ Page({
     this.setData({ openingShare: true });
     wx.showLoading({ title: '打开文章…', mask: true });
     try { await openSharedArticle(item); }
-    catch (error) { wx.showToast({ title: error instanceof Error ? error.message : '暂时打不开，请重试', icon: 'none' }); }
+    catch (error) { this.setData({ activityError: error instanceof Error ? error.message : '暂时打不开，请重试' }); }
     finally { wx.hideLoading(); this.setData({ openingShare: false }); }
   },
   addPersonForm() {

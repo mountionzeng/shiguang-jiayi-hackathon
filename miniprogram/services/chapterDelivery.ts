@@ -207,7 +207,17 @@ export async function importChapterDelivery(deliveryId: string, target: ImportTa
   const payload = prepareImport(record.package, record.photoIds);
   const roots = (wx.getStorageSync(ROOTS_KEY) || {}) as Record<string, { storyId: string; chapterId: string }>;
   const origin = roots[record.package.lineage.rootPackageId];
-  const result = await chapterPackages.import(payload, record.target, record.requestId, origin);
+  let result;
+  try { result = await chapterPackages.import(payload, record.target, record.requestId, origin); }
+  catch (error) {
+    if ((error as { code?: string }).code !== 'DUPLICATE_TITLE' || record.target.mode !== 'new') throw error;
+    // The rejected transaction wrote nothing. Keep the source title in the chapter,
+    // and distinguish this received story without overwriting another story.
+    record.target = { ...record.target, title: record.target.title.slice(0, 25) + '（' + deliveryId.slice(0, 8) + '）' };
+    record.requestId = requestId();
+    imported[deliveryId] = record; wx.setStorageSync(IMPORTS_KEY, imported);
+    result = await chapterPackages.import(payload, record.target, record.requestId, origin);
+  }
   // 04's import endpoint writes the approved chapter directly. Resolve only
   // after its durable receipt; a retry reuses the same requestId and target.
   const status = deliveryResolutionAfterImport(record.kind ?? "send", record.target.mode);
