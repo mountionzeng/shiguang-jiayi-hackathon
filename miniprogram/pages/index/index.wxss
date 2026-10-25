@@ -1306,7 +1306,51 @@
 .home-share.home-share::after { border:0; }
 
 /* Keep real controls outside the transformed decorative book cover. */
-.book-actions { position:absolute;top:668rpx;left:50%;width:480rpx;transform:translateX(-50%);z-index:3;margin:0;gap:6rpx;text-shadow:none; }
-.book-actions .book-stat-action.book-stat-action { flex:1;width:auto;min-height:88rpx;padding:12rpx 8rpx;border:1rpx solid var(--line);border-radius:14rpx;background:rgba(255,250,233,.92);font-size:26rpx;align-items:center;flex-direction:column;gap:6rpx; }
-.book-actions .book-stat-action::before { display:none; }
-.book-actions .book-stat-num,.book-actions .book-stat-label { font-size:28rpx; }
+.book-actions {
+  position: absolute;
+  top: 668rpx;
+  left: 50%;
+  width: 480rpx;
+  transform: translateX(-50%);
+  z-index: 3;
+  margin: 0;
+  gap: 0;
+  padding: 6rpx;
+  box-sizing: border-box;
+  border: 1rpx solid rgba(255, 255, 255, .65);
+  border-radius: 20rpx;
+  /* The translucent base stays readable even without backdrop-filter support. */
+  background: rgba(250, 248, 240, .82);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4rpx 16rpx rgba(26, 34, 29, .12);
+  text-shadow: none;
+}
+.book-actions .book-stat-action.book-stat-action {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 88rpx;
+  padding: 10rpx 4rpx;
+  border: 0;
+  border-radius: 14rpx;
+  background: transparent;
+  color: #353c36;
+  font-weight: 500;
+  align-items: center;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.book-actions .book-stat-action + .book-stat-action::before {
+  position: absolute;
+  left: 0;
+  top: 24rpx;
+  bottom: 24rpx;
+  width: 1rpx;
+  margin: 0;
+  background: rgba(53, 60, 54, .16);
+  content: "";
+}
+.book-actions .book-stat-action:active { background: rgba(53, 60, 54, .08); opacity: 1; }
+.book-actions .book-stat-num { color: #535c53; font-size: 24rpx; }
+.book-actions .book-stat-label { margin: 0; font-size: 28rpx; }
