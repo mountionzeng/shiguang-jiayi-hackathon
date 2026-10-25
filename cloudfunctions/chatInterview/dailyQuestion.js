@@ -3,6 +3,12 @@ const ID = /^[a-zA-Z0-9_-]{1,128}$/;
 function legacy(value) {
   if (value?.sourcePolicyRequired || value?.sourceIds !== undefined || value?.blockId !== undefined || value?.provenanceVersion !== undefined) throw new Error('STORY_PROTOCOL_REQUIRED');
 }
+function ownedTextBlock(value) {
+  // Editor block IDs identify local text; they do not grant access to shared sources.
+  const hasSources = value?.sourceIds !== undefined &&
+    (!Array.isArray(value.sourceIds) || value.sourceIds.length > 0);
+  if (value?.sourcePolicyRequired || hasSources || value?.provenanceVersion !== undefined) throw new Error('STORY_PROTOCOL_REQUIRED');
+}
 async function get(db, collection, id) {
   try { return (await db.collection(collection).doc(id).get()).data; }
   catch (error) {
@@ -28,7 +34,7 @@ async function loadDailySources(db, identity, event) {
   legacy(draft);
   for (const [index, chapter] of (draft?.chapters || []).slice(0, 24).entries()) {
     legacy(chapter);
-    const text = (chapter.content || []).map(item => { legacy(item); return String(item.text || ''); }).join('\n').trim().slice(0, 800);
+    const text = (chapter.content || []).map(item => { ownedTextBlock(item); return String(item.text || ''); }).join('\n').trim().slice(0, 800);
     if (text) sources.push({id:`chapter-${index}`, memoryId:'', text});
   }
   // One bounded query instead of one round trip for every saved answer.

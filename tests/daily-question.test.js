@@ -3,6 +3,19 @@ const assert = require('node:assert/strict');
 const {loadDailySources, dailyMessages, validateDailyQuestion} = require('../cloudfunctions/chatInterview/dailyQuestion');
 function database(records) { return {command:{in:ids=>ids},collection: name => ({doc: id => ({get: async () => ({data: records[name + '/' + id]})}),where:query=>({limit:()=>({get:async()=>({data:query._id.map(id=>records[name+'/'+id] && ({_id:id,...records[name+'/'+id]})).filter(Boolean)})})})})}; }
 const identity = {familyId:'family_owner'};
+test('daily question accepts owned editor block IDs but rejects restricted or malformed sources', async () => {
+ const read = item => loadDailySources(database({
+  'stories/family_owner_story-one':{familyId:'family_owner',currentRevisionId:'r1'},
+  'biography_drafts/family_owner_r1':{familyId:'family_owner',revision:{storyId:'story-one',draft:{chapters:[{content:[item]}]}}}
+ }),identity,{storyId:'story-one'});
+ for (const sourceIds of [undefined,[]]) {
+  const result=await read({blockId:'text-own-1',sourceIds,text:'A fictional blue boat floats beside a lighthouse.'});
+  assert.match(result.sources[0].text,/blue boat/);
+ }
+ for (const extra of [{sourceIds:['shared-source']},{sourceIds:null},{sourceIds:'bad'},{sourcePolicyRequired:true},{provenanceVersion:1}]) {
+  await assert.rejects(read({blockId:'text-own-1',text:'Restricted text',...extra}),/STORY_PROTOCOL_REQUIRED/);
+ }
+});
 test('daily question reads saved chapters and personal answers only under authenticated family', async () => {
  const db=database({'stories/family_owner_story-one':{familyId:'family_owner',title:'蓝色旧书',memoryIds:['m1','m2','m3'],currentRevisionId:'r1'},'biography_drafts/family_owner_r1':{revision:{storyId:'story-one',draft:{chapters:[{title:'树下',content:[{text:'我在银杏树下读蓝色旧书。'}]}]}}},'memories/family_owner_m1':{familyId:'family_owner',scope:'personal',text:'旧书是毕业时老师送给我的。'},'memories/family_owner_m2':{familyId:'family_other',scope:'personal',text:'不得泄露'},'memories/family_owner_m3':{familyId:'family_owner',scope:'family',text:'家庭素材不可用'}});
  const result=await loadDailySources(db,identity,{storyId:'story-one',familyId:'family_other'});
