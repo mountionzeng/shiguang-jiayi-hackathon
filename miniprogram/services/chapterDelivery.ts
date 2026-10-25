@@ -231,8 +231,8 @@ export async function declineChapterDelivery(deliveryId: string) {
   return call("resolveChapterDelivery", { deliveryId, status: "declined" });
 }
 
-export async function claimChapterDelivery(token: string) {
-  return call<{ deliveryId: string }>("claimChapterPackage", { token });
+export async function claimChapterDelivery(token: string, otherUserOnly = false) {
+  return call<{ deliveryId: string; senderPreview?: boolean }>("claimChapterPackage", { token, ...(otherUserOnly ? { otherUserOnly: true } : {}) });
 }
 
 /** Accept only our public claim links; never navigate to a pasted URL. */

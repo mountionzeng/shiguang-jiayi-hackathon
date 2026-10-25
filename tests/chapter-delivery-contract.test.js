@@ -44,3 +44,10 @@ test("1.7.0 收件回包必须给出有效的投递种类以决定完成状态",
 test("canonical JSON 把数组里的 undefined 按传输结果规范化为 null", () => {
   assert.equal(core.canonicalJson([undefined, { gone: undefined }]), "[null,{}]");
 });
+
+test('好友卡片领取保护通过可信桥透传，旧的跨端领取仍兼容', () => {
+  const input = {token:'A'.repeat(43),otherUserOnly:true};
+  assert.equal(core.chapterDeliveryBody('claimChapterPackage',input,CONTEXT).body.otherUserOnly,true);
+  assert.equal(core.chapterDeliveryBody('claimChapterPackage',{token:input.token},CONTEXT).body.otherUserOnly,undefined);
+  assert.throws(()=>core.chapterDeliveryBody('claimChapterPackage',{...input,otherUserOnly:'true'},CONTEXT),/invalid_input/);
+});

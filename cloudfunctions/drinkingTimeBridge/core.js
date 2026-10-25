@@ -85,11 +85,15 @@ function chapterDeliveryBody(action, event, context, options = {}) {
   if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
   if (!appid) throw new Error("APPID_NOT_AVAILABLE");
   // WeChat injects userInfo/tcbContext. Ignore both; identity comes only from getWXContext.
-  if (Object.keys(event).some(key => !["action", "userInfo", "tcbContext", ...contract.fields, "assetFileIDs", "assetPhotos"].includes(key))) throw new Error("invalid_input");
+  if (Object.keys(event).some(key => !["action", "userInfo", "tcbContext", ...contract.fields, ...(action === "claimChapterPackage" ? ["otherUserOnly"] : []), "assetFileIDs", "assetPhotos"].includes(key))) throw new Error("invalid_input");
   const body = { subject: subjectFor(appid, openid) };
   for (const key of contract.fields) {
     if (!(key in event)) throw new Error("invalid_input");
     body[key] = event[key];
+  }
+  if (action === "claimChapterPackage" && event.otherUserOnly !== undefined) {
+    if (typeof event.otherUserOnly !== "boolean") throw new Error("invalid_input");
+    body.otherUserOnly = event.otherUserOnly;
   }
   if (action === "sendChapter") {
     if (typeof body.recipientContactId !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(body.recipientContactId) || !validRequestId(body.requestId)) throw new Error("invalid_input");

@@ -1869,7 +1869,11 @@ Page({
     this.pendingChapterClaim = '';
     if (!await this.confirm('接收这篇文章？', '接收后会放进你的收件箱，原稿不会被覆盖。')) return;
     try {
-      const result = await claimChapterDelivery(token);
+      const result = await claimChapterDelivery(token, true);
+      if (result.senderPreview) {
+        await this.confirm("这是你发出的分享", "请让好友在自己的微信中打开卡片。你不会接收自己的文章，领取名额会为对方保留。");
+        return;
+      }
       await this.openChapterDeliveryInbox(result.deliveryId);
     } catch (error) { this.setData({ loadError: error instanceof Error ? error.message : '暂时无法接收，请重新打开分享卡片' }); }
   },
