@@ -106,7 +106,7 @@
   <scroll-view wx:if="{{article && !panel && view === 'chapter' && !openingChapter}}" class="article-scroll" scroll-y>
     <input class="article-title serif" value="{{article.title}}" bindinput="onArticleTitle" maxlength="40" placeholder="给这一章起个名字" />
     <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
-    <article-editor chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindaddimage="addArticleImage" />
+    <article-editor backdrop="{{backdropUrl}}" chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindaddimage="addArticleImage" />
   </scroll-view>
   <button wx:if="{{article && !panel && view === 'chapter' && !xiaoyiOpen}}" class="article-bird" bindtap="openXiaoyi" aria-label="和小忆聊这篇文章"><image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" /><text>小忆帮我写</text></button>
   <view wx:if="{{articleShareUrl}}" class="article-share-mask" bindtap="closeArticleShare">

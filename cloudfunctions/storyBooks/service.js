@@ -25,11 +25,11 @@ function accessError(code) {
   return Object.assign(new Error(code === 'STORY_ACCESS_NOT_READY' ? '故事权限服务尚未准备好' : '故事共享尚未开放'), { code });
 }
 
-async function approveArticleImage(repo, ctx, id, storyId, chapterId) {
+async function approveArticleImage(repo, ctx, id, storyId, chapterId, purpose = 'illustration') {
   if (/^photo-ai-req-[a-z0-9-]{8,60}$/.test(id)) {
     const image = await repo.get('story_images', `${ctx.familyId}_img_${id.slice(9)}`);
     return Boolean(image && image.familyId === ctx.familyId && image.storyId === storyId && image.chapterId === chapterId &&
-      (image.requestId === undefined || image.requestId === id.slice(9)) && image.purpose === 'illustration' && image.moderation === 'pass' &&
+      (image.requestId === undefined || image.requestId === id.slice(9)) && image.purpose === purpose && image.moderation === 'pass' &&
       image.deletedAtMs === undefined && !image.sourcePolicyRequired && image.sourceIds === undefined &&
       typeof image.fileID === 'string' && image.fileID.startsWith('cloud://') &&
       ['png','jpg','jpeg','webp'].some(ext => image.fileID.endsWith(`/story-images/${ctx.familyId}/${storyId}/${id.slice(9)}.${ext}`)));
@@ -127,7 +127,8 @@ function createStoryService(repo, options = {}) {
     if (action === 'articleSave') {
       if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return saveArticle(repo,ctx,event,{now:options.now,approveText:options.approveChapterText,
-        approveImage:(c,id)=>approveArticleImage(repo,c,id,event.storyId,event.chapter?.id)});
+        approveImage:(c,id)=>approveArticleImage(repo,c,id,event.storyId,event.chapter?.id),
+        approveBackdrop:(c,id)=>id.startsWith(c.familyId+'_img_') && approveArticleImage(repo,c,'photo-ai-'+id.slice(id.lastIndexOf('_img_')+5),event.storyId,event.chapter?.id,'backdrop')});
     }
     if (action === 'chapterPackageRevise') {
       if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');

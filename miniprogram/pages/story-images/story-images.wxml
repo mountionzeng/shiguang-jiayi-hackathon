@@ -107,6 +107,17 @@
       </view>
     </view>
   </view>
+  <view wx:if="{{libraryImages.length}}" class="chapter-group">
+    <view class="group-head"><text class="group-name serif">收藏的图</text></view>
+    <view class="images-note">本账号之前生成并保留的图片，点开就能用在这本书里。</view>
+    <view class="image-grid">
+      <view class="image-card" wx:for="{{libraryImages}}" wx:key="imageId" wx:for-item="image">
+        <image class="image-thumb" src="{{image.url}}" mode="aspectFill" data-url="{{image.url}}" bindtap="previewImage" aria-label="查看并选用图片" />
+        <view class="image-meta"><text>{{image.sourceLabel}}</text><text wx:if="{{image.sourceText}}">{{image.sourceText}}</text></view>
+      </view>
+    </view>
+  </view>
+
 </view>
 
 <view class="image-preview-mask" wx:if="{{preview}}" bindtap="closePreview">
@@ -117,7 +128,17 @@
       <view class="image-preview-note">{{preview.sourceLabel}}</view>
       <view class="image-preview-note" wx:if="{{preview.sourceText}}">生成原句：{{preview.sourceText}}</view>
       <view class="image-preview-note" wx:if="{{preview.uploaded}}">上传者：{{preview.uploaderLabel}}</view>
-      <block wx:if="{{!preview.uploaded}}">
+      <block wx:if="{{storyId}}">
+        <picker range="{{groups}}" range-key="label" value="{{roleChapterIndex}}" bindchange="onRoleChapterChange" disabled="{{savingPlacement}}">
+          <view class="image-preview-position">{{groups[roleChapterIndex].label || '选择章节'}}<text>⌄</text></view>
+        </picker>
+        <button class="image-preview-primary" data-role="illustration" bindtap="useImageRole" disabled="{{savingPlacement || savingBackdrop || submitting}}">设为插图</button>
+        <button class="image-preview-secondary" data-role="backdrop" bindtap="useImageRole" disabled="{{savingPlacement || savingBackdrop || submitting}}">设为底图</button>
+        <button class="image-preview-secondary" data-role="cover" bindtap="useImageRole" disabled="{{savingPlacement || savingBackdrop || submitting}}">设为整本书封面</button>
+        <view class="image-preview-note" wx:if="{{savingPlacement}}">正在保存…</view>
+        <view class="image-preview-note" wx:if="{{previewNotice}}">{{previewNotice}}</view>
+      </block>
+      <block wx:elif="{{!preview.uploaded}}">
       <text class="image-preview-note" wx:if="{{preview.qualityLabel}}">{{preview.qualityLabel}}</text>
       <button wx:if="{{preview.isCover}}" class="image-preview-primary" bindtap="usePreviewCover" disabled="{{savingBackdrop || submitting || preview.moderationLabel}}">{{preview.inUse ? '恢复默认封面' : '用作封面'}}</button>
       <block wx:elif="{{!preview.isBackdrop}}">

@@ -41,8 +41,9 @@ export interface StoryImageJob {
 }
 
 export interface StoryImage {
+  originImageId?: string;
   sourceText?: string;
-  sourceKind?: "selection" | "memory" | "chapter" | "";
+  sourceKind?: "selection" | "memory" | "chapter" | "upload" | "";
   memoryId?: string;
   imageId: string;
   chapterId: string;
@@ -52,7 +53,7 @@ export interface StoryImage {
   moderation: string;
   quality: string;
   qualityIssues: string[];
-  aiGenerated: true;
+  aiGenerated: boolean;
   createdAtMs: number;
 }
 

@@ -768,9 +768,10 @@ function publicImage(image, url) {
     qualityIssues: (Array.isArray(image.qualityIssues) ? image.qualityIssues : [])
       .map(key => QUALITY_ISSUE_LABELS[key])
       .filter(Boolean),
-    aiGenerated: true,
+    aiGenerated: image.aiGenerated !== false,
+    originImageId: image.originImageId || "",
     sourceText: typeof image.sourceText === 'string' ? image.sourceText.slice(0, 12000) : '',
-    sourceKind: ['selection', 'memory', 'chapter'].includes(image.sourceKind) ? image.sourceKind : '',
+    sourceKind: ['selection', 'memory', 'chapter', 'upload'].includes(image.sourceKind) ? image.sourceKind : '',
     createdAtMs: image.createdAtMs,
   };
 }

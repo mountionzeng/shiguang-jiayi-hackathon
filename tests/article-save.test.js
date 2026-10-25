@@ -51,3 +51,14 @@ test('article AI image approval requires same story/chapter, successful review a
  assert.equal(await check({requestId:undefined}),true,'existing chapter images derive request ID from storage path');
  for(const patch of [{familyId:'other'},{storyId:'story-other'},{chapterId:'chapter-other'},{requestId:'req-other'},{purpose:'cover'},{moderation:'pending'},{moderation:'fail'},{deletedAtMs:1},{sourcePolicyRequired:true},{sourceIds:[]},{fileID:'https://other/image.png'}])assert.equal(await check(patch),false,JSON.stringify(patch));
 });
+
+test('chapter backdrop saves a recoverable version without changing received text provenance',async()=>{
+ const f=await setup(),imageId='family_owner_img_req-backdrop123';f.input.chapter.backdropImageId=imageId;
+ await assert.rejects(saveArticle(f.repo,f.ctx,f.input,options),{code:'CONTENT_REJECTED'});
+ const result=await saveArticle(f.repo,f.ctx,f.input,{...options,approveBackdrop:async(_ctx,id)=>id===imageId});
+ const chapter=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft.chapters[0];
+ assert.equal(chapter.backdropImageId,imageId);assert.deepEqual(chapter.content,f.chapter.content);
+ assert.ok(f.tables.get('biography_drafts:family_owner_'+f.input.revisionId));
+ const cleared=await saveArticle(f.repo,f.ctx,{...f.input,requestId:'request-clear-001',revisionId:result.revisionId,expectedVersion:result.version,chapter:{...f.input.chapter,backdropImageId:''}},options);
+ assert.equal(f.tables.get('biography_drafts:family_owner_'+cleared.revisionId).revision.draft.chapters[0].backdropImageId,undefined);
+});

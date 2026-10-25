@@ -1,6 +1,7 @@
 <view class="article-note" wx:if="{{note}}">{{note}}</view>
 <view class="article-hint">点文字就能写 · 回车另起一段</view>
 <view wx:for="{{pages}}" wx:for-item="page" wx:key="id" class="article-page" style="height:{{page.height}}px;" bindtap="clear">
+  <image wx:if="{{backdrop}}" class="article-backdrop" src="{{backdrop}}" mode="aspectFill" />
   <view wx:for="{{page.modules}}" wx:for-item="module" wx:key="id" class="article-module {{selected === module.id ? 'selected' : ''}}" style="{{module.style}}" data-id="{{module.id}}" data-block="{{module.blockId}}" catchtap="select">
     <textarea wx:if="{{module.kind === 'text' && module.blockId}}" class="article-text" style="{{module.fontStyle}}" value="{{module.text}}" focus="{{focused === module.blockId}}" data-block="{{module.blockId}}" bindinput="change" maxlength="20000" placeholder="写点什么…" adjust-position cursor-spacing="100" />
     <text wx:elif="{{module.kind === 'text'}}" style="{{module.fontStyle}}">{{module.text}}</text>

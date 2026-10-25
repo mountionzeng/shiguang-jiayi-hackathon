@@ -111,6 +111,8 @@ function assertMemoryUnchanged(source, job) {
 }
 
 const repo = {
+  getPhoto: (familyId, photoId) => getDoc("photos", `${familyId}__${photoId}`),
+  listLibraryImages: familyId => loadAll(IMAGES, {familyId, deletedAtMs: _.exists(false)}),
   async getMemorySource(familyId, id) { return (await readMemorySource(getDoc, familyId, id)).source; },
   async assertMemoryImageSource(job) {
     const source = await repo.getMemorySource(job.familyId, job.memoryId);
@@ -286,6 +288,11 @@ const repo = {
 };
 
 const storage = {
+  async copy(fileID, cloudPath) {
+    const response = await cloud.downloadFile({fileID});
+    if (!response.fileContent?.length || response.fileContent.length > 12 * 1024 * 1024) throw new StoryImageError("IMAGE_NOT_READY", "图片文件不可用");
+    return (await cloud.uploadFile({cloudPath, fileContent:response.fileContent})).fileID;
+  },
   async upload(cloudPath, buffer) {
     const response = await cloud.uploadFile({ cloudPath, fileContent: buffer });
     return response.fileID;
@@ -452,6 +459,13 @@ async function main(event = {}) {
     switch (event.action) {
       case "capabilities": return { apiVersion: 6, memoryImages: true, referenceIllustration: referenceAnalyzer.configured, referencePhotos: referenceAnalyzer.configured, guidedGeneration: true, selectedTextImages: true, bookCover: true };
       case "coverSources": return await coverServices.sources(ctx, event);
+      case "prepareImageRole": return await require("./imageRoles").prepareImageRole(repo, storage, ctx, event);
+      case "listLibrary": {
+        require("./core").requireOwner(ctx.openid, event.familyId);
+        const images = (await repo.listLibraryImages(event.familyId)).filter(image => !image.originImageId && !image.sourcePolicyRequired && image.sourceIds === undefined && image.moderation === "pass");
+        const urls = await storage.tempUrls(images.map(image => image.fileID));
+        return {images:images.sort((a,b)=>b.createdAtMs-a.createdAtMs).map(image=>require("./core").publicImage(image, urls[image.fileID]))};
+      }
       case "selectCover": return await coverServices.select(ctx, event);
       case "selectMemoryImage": return await selectMemoryImage(ctx,event);
       case "readMemoryImage": return await readMemoryImage(ctx,event);

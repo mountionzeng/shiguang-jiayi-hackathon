@@ -2115,7 +2115,7 @@ test("home book cover is a horizontal swiper with direct-open affordance", () =>
   assert.match(styles, /\.book-stat-action[^{]*{[^}]*background: transparent/);
   assert.match(styles, /\.book-stat-action[^{]*{[^}]*border: 0/);
   assert.match(styles, /\.book-stat-action \+ \.book-stat-action::before[^{]*{[^}]*content: "•"/);
-  assert.match(styles, /\.book-rail-dot-on/);
+  assert.doesNotMatch(template, /class="book-rail/);
 });
 
 test("writing UI uses native fields without an expanding textarea or bottom navigation", () => {
@@ -3787,7 +3787,8 @@ test('人物入口在导航栈已满时仍打开同一记忆之家，失败也�
   assert.equal(requested,'/pages/room/room?storyId=story-with-no-people');
   assert.equal(replaced,requested);assert.match(toast,/人物页未能打开/);
   const template=readFileSync('miniprogram/pages/index/index.wxml','utf8');
-  assert.ok(template.indexOf('class="book-stats book-actions"')>template.indexOf('</swiper>'));
+  assert.ok(template.indexOf('class="book-stats book-actions"')<template.indexOf('</swiper-item>'), 'controls follow each book slide');
+  assert.match(template, /item.peopleCount/);
 });
 
 test('article bird keeps unsent thoughts and photos isolated across chapters and reopening', async context => {

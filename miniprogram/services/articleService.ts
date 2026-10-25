@@ -4,6 +4,7 @@ export async function saveArticle(request: ArticleSaveRequest): Promise<{ revisi
   if (!wx.cloud) throw new Error('请连接网络后重试');
   const { chapter } = request;
   const response = await wx.cloud.callFunction({ name: 'storyBooks', data: { ...request, action: 'articleSave', chapter: {
+    ...(chapter.backdropImageId !== undefined ? {backdropImageId:chapter.backdropImageId} : {}),
     id: chapter.id, title: chapter.title, content: chapter.content.map(block => ({ blockId: block.blockId,
       ...(block.parentBlockId ? { parentBlockId: block.parentBlockId } : {}),
       ...(typeof block.text === 'string' ? { text: block.text } : { photoId: block.photoId }),

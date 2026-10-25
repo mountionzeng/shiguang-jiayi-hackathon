@@ -1,7 +1,7 @@
 import type { ManuscriptChapter } from '../../domain/biography';
 import { articleChapter, changeArticleText, moveArticleModule, removeArticleModule, type ArticleChapter } from '../../services/articleModules';
 Component({
-  properties: { chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
+  properties: { backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
   data: { imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
   observers: {
     'chapter, paths, width': function(chapter: ManuscriptChapter, _paths: Record<string, string>, width: number) {

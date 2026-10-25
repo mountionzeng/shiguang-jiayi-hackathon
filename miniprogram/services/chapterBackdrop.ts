@@ -1,3 +1,5 @@
+import { articleChapter } from './articleModules';
+import { saveArticle } from './articleService';
 import { FamilyRoomState, ManuscriptChapter } from "../domain/biography";
 import { CHAPTER_BACKDROP_ID, chaptersOf, copyChapter, draftWithChapters } from "./chapters";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "./manuscript";
@@ -30,6 +32,14 @@ export async function saveChapterBackdrop(input: { storyId?: string; memberId?: 
   const chapter = chapters.find(item => item.id === input.chapterId);
   if (!chapter) throw new Error("没找到这一章，请重新打开书稿");
   if ((chapter.backdropImageId ?? "") === input.imageId) return state;
+  if (input.storyId && chapter.layout) {
+    const story = activeStory(state, input.storyId);
+    if (!story.currentRevisionId || !story.version) throw new Error('请重新打开文章');
+    await saveArticle({requestId:`request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`,
+      storyId:story.id,revisionId:story.currentRevisionId,expectedVersion:story.version,
+      chapter:{...articleChapter(chapter),backdropImageId:input.imageId}});
+    return loadRoomStateRemoteFirst();
+  }
   const next = withChapterBackdrop(chapters, input.chapterId, input.imageId);
   const revision = makeRevision(input.memberId || "", draftWithChapters(current.draft, next), current.sourceFingerprint,
     "draft", input.imageId ? "设置本章底图" : "不用本章底图");
