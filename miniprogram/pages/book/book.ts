@@ -1,4 +1,4 @@
-import { articleChapter, addArticlePhoto, type ArticleChapter } from '../../services/articleModules';
+import { articleChapter, addArticlePhoto, appendArticleText, type ArticleChapter } from '../../services/articleModules';
 import { saveArticle, type ArticleSaveRequest } from '../../services/articleService';
 import { ensurePhotoUploads } from '../../services/photoCloud';
 import { linePosition, splitLines, type LinePosition } from "../../domain/lineModules";
@@ -83,6 +83,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 
 Page({
   data: {
+    articleChatPhotos: [] as Array<{id:string;path:string}>,
     article: null as ArticleChapter | null, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
     openingChapter: null as { title: string; text: string } | null,
     photoMenu: "", photoAction: "", preparingPhoto: false, bookIntroduction: "", editIntroduction: "",
@@ -343,6 +344,7 @@ Page({
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
   onHide() {
+    this.saveArticleChat();
     if (this.articlePending) void this.flushArticle();
     this.connectionEpoch++;
     this.setData({ connectionBusy: false });
@@ -357,6 +359,7 @@ Page({
     }
   },
   onUnload() {
+    this.saveArticleChat();
     if (this.articleTimer) clearTimeout(this.articleTimer);
     if (this.articlePending) void this.flushArticle();
     // onUnload cannot await the network. The synchronous input backup is the guarantee.
@@ -377,7 +380,7 @@ Page({
       void this.refreshSelectedStoryImageUrl();
       return;
     }
-    if (!this.articlePending && !this.articleSaving && !this.organizeCandidate && !this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
+    if (!this.data.xiaoyiOpen && !this.articlePending && !this.articleSaving && !this.organizeCandidate && !this.data.editing && !this.data.generating && !this.data.saving && !this.data.pickingPhoto) {
       void this.refresh(staged, { projection: Boolean(staged) }).then(() => this.receiveSharedArticle()).catch((error) => { logLoadError("book", error); this.setData({ loadError: "书稿暂时加载失败，请重试。已有内容不会被清空。" }); });
     }
   },
@@ -502,6 +505,7 @@ Page({
       this.pendingSave = acknowledged ? undefined : backup.pendingSave;
     }
     if (this.activeChapterId !== activeChapterId || this.data.storyId !== (story?.id ?? "")) {
+      this.releaseArticleChat();
       resetXiaoyiPanel.call(this);
       this.xiaoyiContextCapturedText = "";
     }
@@ -691,6 +695,7 @@ Page({
       if (title) stories.set(title, (stories.get(title) ?? 0) + 1);
     });
     let article = active && this.story && CHAPTER_PACKAGE_ENABLED ? articleChapter(active) : null;
+    this.articleConflict = false;
     if (article) {
       const saved = wx.getStorageSync(this.articleKey());
       if (saved?.chapter?.id === active!.id) {
@@ -968,6 +973,8 @@ Page({
     if ((this.data.editing || this.editSave) && !await this.finishEditing(true)) return;
     if (!this.canLeaveEditor(true)) return;
     if (this.data.editing && !this.backupEdits("contents")) return;
+    this.releaseArticleChat();
+    resetXiaoyiPanel.call(this);
     this.setData({ openingChapter: null, view: "contents", moreOpen: false, panel: "", ...this.chapterData() });
   },
   async openChapter(event: { currentTarget: { dataset: { id: string } } }) {
@@ -989,6 +996,7 @@ Page({
       if (this.unloaded || refreshId !== this.refreshId || openId !== this.chapterOpenId ||
           sequence !== this.editSequence || panel !== this.data.panel || !this.canLeaveEditor(true)) return;
     }
+    this.releaseArticleChat();
     this.activeChapterId = id;
     resetXiaoyiPanel.call(this);
     this.xiaoyiContextCapturedText = "";
@@ -1240,13 +1248,79 @@ Page({
       fail: () => wx.showToast({ title: "没有读到选中的文字，请重新选择", icon: "none" }),
     });
   },
+  articleChatLoadedKey: '',
+  articleChatKey() { return `article-chat:${cachedAccountScope()}:${this.xiaoyiContextKey()}`; },
+  saveArticleChat() {
+    if(!this.articleChatLoadedKey) return;
+    try { wx.setStorageSync(this.articleChatLoadedKey, {messages:this.data.xiaoyiMessages,answer:this.data.xiaoyiAnswer,
+      draft:this.data.xiaoyiDraftText,instruction:this.data.xiaoyiWritingInstruction,conversation:this.xiaoyiConversation,
+      dimensions:this.xiaoyiAskedDimensions,photos:this.data.articleChatPhotos}); }
+    catch { this.setData({xiaoyiStatus:'本机空间不足，对话还在当前页面，请先复制保存。'}); }
+  },
+  releaseArticleChat() {
+    this.saveArticleChat();
+    this.articleChatLoadedKey = '';
+    this.setData({articleChatPhotos: []});
+  },
+  restoreArticleChat() {
+    const key=this.articleChatKey();if(key===this.articleChatLoadedKey)return;
+    this.saveArticleChat();
+    const saved=wx.getStorageSync(key);
+    resetXiaoyiPanel.call(this);
+    this.articleChatLoadedKey=key;
+    this.setData({xiaoyiMessages:saved?.messages || [],xiaoyiAnswer:saved?.answer || '',xiaoyiDraftText:saved?.draft || '',
+      xiaoyiWritingInstruction:saved?.instruction || '',articleChatPhotos:saved?.photos || []});
+    this.xiaoyiConversation=saved?.conversation || [];this.xiaoyiAskedDimensions=saved?.dimensions || [];
+  },
+  rememberXiaoyiAnswer() {
+    const text=this.data.xiaoyiAnswer.trim();if(!text || this.data.xiaoyiLoading)return;
+    xiaoyiMessagesAppend.call(this,{kind:'answer',text});
+    this.xiaoyiConversation=[...this.xiaoyiConversation,{role:'user',text}];
+    this.setData({xiaoyiStatus:'已记下，继续补充或点“写成一段”。'});this.saveArticleChat();
+  },
+  async addXiaoyiPhoto() {
+    if(this.data.xiaoyiLoading)return;
+    const key=this.articleChatLoadedKey;
+    try {
+      const result=await new Promise<WechatMiniprogram.ChooseMediaSuccessCallbackResult>((resolve,reject)=>wx.chooseMedia({count:1,mediaType:['image'],sizeType:['compressed'],success:resolve,fail:reject}));
+      if(!result.tempFiles[0] || this.unloaded || key!==this.articleChatLoadedKey)return;
+      const photo=await saveLocalPhoto(result.tempFiles[0].tempFilePath);
+      if (this.unloaded || key !== this.articleChatLoadedKey) return;
+      this.setData({articleChatPhotos:[...this.data.articleChatPhotos,photo]});
+      xiaoyiMessagesAppend.call(this,{kind:'status',text:'添加了一张图片，原图已保留。'});this.saveArticleChat();
+    } catch(error) { if (!this.unloaded && key === this.articleChatLoadedKey) this.setData({xiaoyiStatus:error instanceof Error?error.message:'这次没有添加图片'}); }
+  },
+  async describeXiaoyiPhotos() {
+    if(this.data.xiaoyiLoading || !this.data.articleChatPhotos.length)return;
+    const key=this.articleChatLoadedKey;this.setData({xiaoyiLoading:true});
+    try {
+      const ids=this.data.articleChatPhotos.slice(-3).map(photo=>photo.id);
+      await ensurePhotoUploads(ids);
+      const result=await storyImageApi.captionPhotos({photoIds:ids});
+      if(this.unloaded || key!==this.articleChatLoadedKey)return;
+      if(!result.aiGenerated || !result.caption)throw new Error(result.message || '这次没有整理出文字，图片仍保留。');
+      this.xiaoyiConversation = [...this.xiaoyiConversation, {role:'assistant',text:'图片整理（AI生成）：' + result.caption}];
+      this.setData({xiaoyiDraftText:result.caption,xiaoyiStatus:'这是图片整理稿，确认后再放进文章。'});
+      xiaoyiMessagesAppend.call(this,{kind:'draft',text:result.caption,label:'看图整理 · AI生成'});
+    } catch(error){if (!this.unloaded && key === this.articleChatLoadedKey) this.setData({xiaoyiStatus:error instanceof Error?error.message:'看图整理暂时失败'});}
+    finally {if (!this.unloaded && key === this.articleChatLoadedKey) {this.setData({xiaoyiLoading:false});this.saveArticleChat();}}
+  },
+  async illustrateXiaoyiText() {
+    const text=(this.data.xiaoyiDraftText || this.data.xiaoyiAnswer).trim();
+    if(!text || this.data.xiaoyiLoading || !this.data.article)return;
+    if(!await this.xiaoyiLand(text,'organized'))return;
+    const block=[...this.data.article.content].reverse().find(item=>item.text?.trim());
+    if(block)this.openImages('illustration',{blockId:block.blockId,text:block.text!});
+  },
   openXiaoyi() {
-    if (this.data.protectedCopy || this.data.view !== "chapter" || this.data.panel || this.data.saving || this.data.generating) return;
-    this.setData({ xiaoyiOpen: true, moreOpen: false, xiaoyiStatus: "", xiaoyiContextPreview: "正在读取当前正文…" });
+    if ((this.data.protectedCopy && !this.data.article) || this.data.view !== "chapter" || this.data.panel || this.data.saving || this.data.generating) return;
+    if (this.data.article) this.restoreArticleChat();
+    this.setData({ xiaoyiOpen: true, xiaoyiAnswer: this.data.xiaoyiAnswer, xiaoyiDraftText: this.data.xiaoyiDraftText, xiaoyiWritingInstruction: this.data.xiaoyiWritingInstruction, moreOpen: false, xiaoyiStatus: "", xiaoyiContextPreview: "正在读取当前正文…" });
     this.xiaoyiCapturePending = this.captureXiaoyiContext();
     return this.xiaoyiCapturePending;
   },
   closeXiaoyi() {
+    if (this.data.article) { this.saveArticleChat(); this.setData({xiaoyiOpen:false}); return; }
     this.xiaoyiCaptureId++;
     this.xiaoyiContextCapturedText = "";
     this.xiaoyiLineContext = "";
@@ -1266,10 +1340,10 @@ Page({
     const current = () => captureId === this.xiaoyiCaptureId && key === this.xiaoyiContextKey()
       && sequence === this.editSequence && ctx === this.editorContext
       && !this.unloaded && this.data.xiaoyiOpen && this.data.view === "chapter";
-    let plain = this.bodyBuffer || plainText(this.contentBuffer);
+    let plain = this.data.article ? this.xiaoyiContextText() : this.bodyBuffer || plainText(this.contentBuffer);
     let selected = "";
     let index: number | null = null;
-    if (ctx && this.data.editorReady) {
+    if (!this.data.article && ctx && this.data.editorReady) {
       // Snapshot native text/selection together. Never collect into a different chapter's buffers.
       const [contents, selection, range] = await Promise.all([
         new Promise<WechatMiniprogram.GetContentsSuccessCallbackResult | null>(resolve =>
@@ -1313,19 +1387,21 @@ Page({
       const matches = saved.length === lines.length && saved.every((item, i) => item.blockId && item.text === lines[i]);
       this.xiaoyiLinePosition = linePosition(this.activeChapterId, lines.map((text, i) => ({ id: matches ? saved[i].blockId! : `snapshot-line-${i}`, text })), index);
     }
-    this.setData({ xiaoyiContextPreview: text ? (text.length > 120 ? text.slice(0, 120) + "…" : text) : "这一章还没有正文，小忆会先从你接下来要说的话问起。" });
+    this.setData({ xiaoyiContextPreview: this.data.article && this.data.protectedCopy ? "只整理你接下来提供的想法和图片，保留原文。" : text ? (text.length > 120 ? text.slice(0, 120) + "…" : text) : "这一章还没有正文，小忆会先从你接下来要说的话问起。" });
   },
   /** 就地小忆共享机制要读的场景参数：故事名与是否走客观记录模式。 */
   xiaoyiConfig(): XiaoyiConfig {
     return {
       memoryType: "memoir",
       storyTitle: [this.data.editTitle, this.data.editChapterTitle].filter(Boolean).join(" · "),
-      storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
+      storyId: this.data.writingMode === "objective" || (this.data.article && this.data.protectedCopy) ? undefined : this.data.storyId,
       mode: "personal",
     };
   },
   /** 就地小忆共享机制要读的当前文本：选区优先，否则当前章节正文。 */
   xiaoyiContextText() {
+    if (this.data.article && this.data.protectedCopy) return "";
+    if(this.data.article) return (this.articlePending || this.data.article).content.map(block=>block.text || "").join("\n");
     if (this.xiaoyiCapturedKey !== this.xiaoyiContextKey() || this.xiaoyiCapturedSequence !== this.editSequence) {
       this.xiaoyiLineContext = "";
       this.xiaoyiLinePosition = null;
@@ -1341,22 +1417,34 @@ Page({
     const captureId = this.xiaoyiCaptureId;
     await this.xiaoyiCapturePending;
     if (this.unloaded || !this.data.xiaoyiOpen || key !== this.xiaoyiContextKey() || captureId !== this.xiaoyiCaptureId) return;
-    return askXiaoyiQuestion.call(this);
+    try { return await askXiaoyiQuestion.call(this); } finally { this.saveArticleChat(); }
   },
-  onXiaoyiAnswerInput,
-  onXiaoyiDraftInput,
-  onXiaoyiWritingInstruction,
-  useXiaoyiOriginal,
+  onXiaoyiAnswerInput(event: {detail:{value:string}}) { onXiaoyiAnswerInput.call(this,event); this.saveArticleChat(); },
+  onXiaoyiDraftInput(event: {detail:{value:string}}) { onXiaoyiDraftInput.call(this,event); this.saveArticleChat(); },
+  onXiaoyiWritingInstruction(event: {detail:{value:string}}) { onXiaoyiWritingInstruction.call(this,event); this.saveArticleChat(); },
+  async useXiaoyiOriginal() { await useXiaoyiOriginal.call(this); this.saveArticleChat(); },
   async organizeXiaoyiAnswer(event?: Parameters<typeof organizeXiaoyiAnswer>[0]) {
     const key = this.xiaoyiContextKey();
     const captureId = this.xiaoyiCaptureId;
     await this.xiaoyiCapturePending;
     if (this.unloaded || !this.data.xiaoyiOpen || key !== this.xiaoyiContextKey() || captureId !== this.xiaoyiCaptureId) return;
-    return organizeXiaoyiAnswer.call(this, event);
+    try { return await organizeXiaoyiAnswer.call(this, event); } finally { this.saveArticleChat(); }
   },
-  useXiaoyiDraft,
+  async useXiaoyiDraft() {
+    if(this.data.article) { if(!this.data.xiaoyiLoading && this.data.xiaoyiDraftText.trim()) await this.xiaoyiLand(this.data.xiaoyiDraftText,'organized'); }
+    else await useXiaoyiDraft.call(this);
+    this.saveArticleChat();
+  },
   /** 就地小忆共享机制的落回目标：本章的待确认新增，接受后才写入正文。 */
   async xiaoyiLand(text: string, kind: XiaoyiLandKind): Promise<boolean> {
+    if (this.data.article) {
+      if (this.data.xiaoyiLoading || !text.trim()) return false;
+      const chapter=appendArticleText(this.articlePending || this.data.article,text);
+      this.onArticleChange({detail:{chapter}});
+      const ok=await this.flushArticle();
+      this.setData({xiaoyiStatus:ok?'已放进文章，原来的文字保留。':'文字已保存在本机草稿，请处理保存提示。'});
+      this.saveArticleChat();return ok;
+    }
     const label = kind === "spoken" ? "小忆：原话待确认" : "小忆：整理稿待确认";
     if (!this.activeChapterId || this.data.protectedCopy || this.data.saving) return false;
     try {

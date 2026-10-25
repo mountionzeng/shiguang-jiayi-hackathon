@@ -3789,3 +3789,25 @@ test('人物入口在导航栈已满时仍打开同一记忆之家，失败也�
   const template=readFileSync('miniprogram/pages/index/index.wxml','utf8');
   assert.ok(template.indexOf('class="book-stats book-actions"')>template.indexOf('</swiper>'));
 });
+
+test('article bird keeps unsent thoughts and photos isolated across chapters and reopening', async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const page=instantiate(await pageDefinition('book'));
+  page.data.storyId='test-story';page.activeChapterId='chapter-a';
+  callPage(page,'restoreArticleChat');
+  callPage(page,'onXiaoyiAnswerInput',{detail:{value:'纸船的想法，还没有发送'}});
+  page.data.articleChatPhotos=[{id:'photo-a',path:'/saved/a.jpg'}];
+  callPage(page,'releaseArticleChat');
+  page.activeChapterId='chapter-b';callPage(page,'restoreArticleChat');
+  assert.equal(page.data.xiaoyiAnswer,'');assert.deepEqual(page.data.articleChatPhotos,[]);
+  callPage(page,'onXiaoyiAnswerInput',{detail:{value:'另一个章节'}});
+  callPage(page,'releaseArticleChat');page.activeChapterId='chapter-a';callPage(page,'restoreArticleChat');
+  assert.equal(page.data.xiaoyiAnswer,'纸船的想法，还没有发送');
+  assert.deepEqual(page.data.articleChatPhotos,[{id:'photo-a',path:'/saved/a.jpg'}]);
+  page.data.article={content:[{text:'来源受限的文字'}]};page.data.protectedCopy=true;
+  assert.equal(callPage(page,'xiaoyiContextText'),'');
+  assert.equal((callPage(page,'xiaoyiConfig') as any).storyId,undefined);
+  page.data.view='chapter';page.data.panel='';
+  await callPage(page,'openXiaoyi');
+  assert.equal(page.data.xiaoyiAnswer,'纸船的想法，还没有发送');
+});

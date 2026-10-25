@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {articleChapter,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto} from '../miniprogram/services/articleModules';
+import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto} from '../miniprogram/services/articleModules';
 import {groupAccountActivity} from '../miniprogram/services/accountActivity';
 const base=()=>articleChapter({id:'chapter-test',title:'纸船',memoryIds:[],content:[{text:'第一句'}]});
 test('return creates distinct editable blocks, including duplicate and empty lines',()=>{
@@ -41,3 +41,25 @@ test('generated image keeps AI attribution in the chapter package',()=>{
  assert.equal(Object.values(next.packageAssets!)[0].aiGenerated,true);
  assert.equal(base().content.length,1);
 });
+
+test('typing grows ordinary text space without mutating the previous version',()=>{
+ const before=base();
+ const after=changeArticleText(before,before.content[0].blockId,'纸船与灯塔'.repeat(35)).chapter;
+ assert.ok(after.layout.pages[0].modules[0].rect.height>before.layout.pages[0].modules[0].rect.height);
+ assert.equal(before.content[0].text,'第一句');
+});
+test('typing preserves manually arranged image and text geometry',()=>{
+ const initial=addArticlePhoto(base(),'photo-layout');
+ const positioned=moveArticleModule(initial,initial.layout.pages[0].modules[1].id,20,20);
+ const after=changeArticleText(positioned,positioned.content[0].blockId,'很长的文字'.repeat(40)).chapter;
+ assert.deepEqual(after.layout,positioned.layout);
+});
+
+ test('AI text appends without replacing original blocks or imported layout',()=>{
+ const before=base();before.layout.pages[0].modules[0].rect.x=64;
+ const after=appendArticleText(before,'新的故事'.repeat(30));
+ assert.deepEqual(after.content[0],before.content[0]);
+ assert.deepEqual(after.layout.pages[0].modules[0],before.layout.pages[0].modules[0]);
+ assert.ok(after.layout.pages.flatMap(p=>p.modules).at(-1)!.rect.height>110);
+ assert.equal(before.content.length,1);
+ });

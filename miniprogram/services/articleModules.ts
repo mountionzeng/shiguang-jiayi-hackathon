@@ -52,6 +52,7 @@ export function changeArticleText(input: ArticleChapter, blockId: string, value:
     next.content.splice(index + offset + 1, 0, { blockId: focused, text: line, parentBlockId: original.parentBlockId || blockId });
     place(next, textModule(focused, { x: 48, y: 48, width: 804, height: 130 }));
   }
+  fitArticleText(next, blockId);
   return { chapter: next, focused };
 }
 export function moveArticleModule(input: ArticleChapter, id: string, dx: number, dy: number, resize = false): ArticleChapter {
@@ -89,5 +90,30 @@ export function addArticlePhoto(input: ArticleChapter, photoId: string, aiGenera
   next.content.push({ blockId: id, photoId });
   next.packageAssets = { ...next.packageAssets, [assetId]: { photoId, aiGenerated } };
   place(next, { id: `image-${id.slice(6)}`, kind: 'image', assetId, rect: { x: 48, y: 48, width: 804, height: 420 }, crop: { x: 0, y: 0, width: 1, height: 1 } });
+  return next;
+}
+
+/** Grow ordinary text modules with their content; keep deliberately positioned layouts. */
+function fitArticleText(chapter: ArticleChapter, blockId: string) {
+  const module = chapter.layout.pages.flatMap(page => page.modules).find(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === blockId);
+  if (!module || module.kind !== 'text' || module.positioned) return;
+  // Imported or manually arranged pages retain their geometry.
+  if (chapter.layout.pages.some(page => page.modules.some(m => m.positioned || m.rect.x !== 48 || m.rect.width !== 804))) return;
+  const text = chapter.content.find(block => block.blockId === blockId)?.text || '';
+  const rows = Math.max(1, Math.ceil(text.length / Math.max(1, Math.floor(module.rect.width / module.fontSize))));
+  module.rect.height = Math.min(1000, Math.max(110, Math.ceil(rows * module.fontSize * 1.6 + 16)));
+  module.contentHeight = module.rect.height;
+  if (chapter.layout.pages.some(page => page.modules.some(m => m.positioned))) return;
+  const modules = chapter.layout.pages.flatMap(page => page.modules);
+  chapter.layout.pages = [{label:'1',modules:[]}];
+  for (const item of modules) place(chapter,item);
+}
+export function appendArticleText(input: ArticleChapter, text: string): ArticleChapter {
+  let next = clone(input);
+  for (const line of text.replace(/\r\n?/g,'\n').split('\n')) {
+    const id=freshId();next.content.push({blockId:id,text:line});
+    const height = Math.min(1000, Math.max(110, Math.ceil(line.length / 16) * 77 + 16));
+    place(next,textModule(id,{x:48,y:48,width:804,height}));
+  }
   return next;
 }

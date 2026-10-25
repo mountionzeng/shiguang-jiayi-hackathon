@@ -9,7 +9,7 @@
     <block wx:if="{{selected === module.id}}">
       <view class="move-handle" data-id="{{module.id}}" catchtouchstart="start" catchtouchmove="move" catchtouchend="end" catchtouchcancel="end" aria-label="拖动模块">移动</view>
       <view class="resize-handle" data-id="{{module.id}}" data-resize="true" catchtouchstart="start" catchtouchmove="move" catchtouchend="end" catchtouchcancel="end" aria-label="拖动调整大小">↘</view>
-      <button class="delete-handle" catchtap="remove" aria-label="删除选中的模块">删除</button>
+      <view class="delete-handle" role="button" catchtap="remove" aria-label="删除选中的模块">×</view>
     </block>
   </view>
 </view>

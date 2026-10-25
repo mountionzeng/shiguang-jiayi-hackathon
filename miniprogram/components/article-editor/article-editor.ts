@@ -14,7 +14,7 @@ Component({
     render() {
       const chapter = this.data.current as ArticleChapter | undefined; if (!chapter) return;
       const scale = this.data.scale;
-      this.setData({ pages: chapter.layout.pages.map((page, index) => ({ id: index, height: 1200 * scale,
+      this.setData({ pages: chapter.layout.pages.map((page, index) => ({ id: index, height: Math.max(220, ...page.modules.map(module => module.rect.y + module.rect.height + 36)) * scale,
         modules: page.modules.map(module => ({ ...module,
           style: `left:${module.rect.x * scale}px;top:${module.rect.y * scale}px;width:${module.rect.width * scale}px;height:${module.rect.height * scale}px;`,
           text: module.kind === 'text' ? ('blockId' in module.bind ? chapter.content.find(block => block.blockId === ('blockId' in module.bind ? module.bind.blockId : ''))?.text || '' : chapter.title) : '',

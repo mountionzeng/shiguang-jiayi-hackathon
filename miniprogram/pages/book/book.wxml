@@ -108,6 +108,7 @@
     <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
     <article-editor chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindaddimage="addArticleImage" />
   </scroll-view>
+  <button wx:if="{{article && !panel && view === 'chapter' && !xiaoyiOpen}}" class="article-bird" bindtap="openXiaoyi" aria-label="和小忆聊这篇文章"><image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" /><text>小忆帮我写</text></button>
   <view wx:if="{{articleShareUrl}}" class="article-share-mask" bindtap="closeArticleShare">
     <view class="article-share-sheet" catchtap="keepArticleShareOpen">
       <view class="serif">发给微信用户</view>
@@ -181,6 +182,8 @@
       </view>
       <button class="pending-finish" wx:if="{{!chapterPendingCount}}" bindtap="finishPendingEdits" disabled="{{saving}}">把已收下的写入正文</button>
     </view>
+
+  </view>
     <view wx:if="{{xiaoyiOpen}}" class="xiaoyi-panel">
       <view class="xiaoyi-head">
         <view>
@@ -192,7 +195,7 @@
       <view class="xiaoyi-options">
         <button class="xiaoyi-option" data-mode="ask" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">问我一个问题</button>
         <button class="xiaoyi-option" data-mode="compose" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">写成一段</button>
-        <button class="xiaoyi-option" bindtap="openXiaoyiMemories" disabled="{{xiaoyiLoading}}">看看这一章的记忆</button>
+        <button wx:if="{{!article}}" class="xiaoyi-option" bindtap="openXiaoyiMemories" disabled="{{xiaoyiLoading}}">看看这一章的记忆</button>
       </view>
       <scroll-view class="xiaoyi-thread" scroll-y wx:if="{{xiaoyiMessages.length}}">
         <view class="xiaoyi-message xiaoyi-message-{{item.kind}}" wx:for="{{xiaoyiMessages}}" wx:key="id" selectable>
@@ -200,22 +203,29 @@
           <view>{{item.text}}</view>
         </view>
       </scroll-view>
-      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="把刚想起来的事说给小忆听…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
-      <view class="xiaoyi-message-label">这次怎么写（可不填）</view>
-      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+      <view wx:if="{{article}}" class="xiaoyi-materials">
+        <image wx:for="{{articleChatPhotos}}" wx:key="id" src="{{item.path}}" mode="aspectFill" />
+        <button bindtap="addXiaoyiPhoto" disabled="{{xiaoyiLoading}}">＋ 图片</button>
+        <button wx:if="{{articleChatPhotos.length}}" bindtap="describeXiaoyiPhotos" disabled="{{xiaoyiLoading}}">看图整理文字</button>
+      </view>
+      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="想到什么就写什么，也可以用键盘语音输入…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+      <view wx:if="{{!article}}" class="xiaoyi-message-label">这次怎么写（可不填）</view>
+      <textarea wx:if="{{!article}}" class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
       <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
       <view class="xiaoyi-status" wx:elif="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
       <view class="xiaoyi-actions">
+        <button wx:if="{{article}}" class="xiaoyi-action" bindtap="rememberXiaoyiAnswer">记下想法</button>
         <button class="xiaoyi-action" bindtap="useXiaoyiOriginal" disabled="{{xiaoyiLoading}}">就用我的原话</button>
-        <button class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '整理原话'}}</button>
+        <button wx:if="{{!article}}" class="xiaoyi-action" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">{{xiaoyiLoading ? '小忆正在处理…' : '整理原话'}}</button>
       </view>
+      <button wx:if="{{article && (xiaoyiDraftText || xiaoyiAnswer)}}" class="xiaoyi-action" bindtap="illustrateXiaoyiText" disabled="{{xiaoyiLoading}}">把这段放进文章并配图</button>
+      <view wx:if="{{article}}" class="xiaoyi-context">这章的对话和未发送内容保存在当前设备。</view>
       <view wx:if="{{xiaoyiDraftText}}" class="xiaoyi-draft-box">
         <view class="xiaoyi-message-label">小忆草稿，可以改</view>
         <textarea class="xiaoyi-draft" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiDraftText}}" maxlength="800" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" bindinput="onXiaoyiDraftInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
-        <button class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{xiaoyiLoading}}">把这段放进正文待确认</button>
+        <button class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{xiaoyiLoading}}">{{article ? '把这段放进文章' : '把这段放进正文待确认'}}</button>
       </view>
     </view>
-  </view>
   <scroll-view class="reading-panel" scroll-y wx:if="{{panel}}">
     <view class="panel-content">
       <block wx:if="{{panel === 'version'}}">
