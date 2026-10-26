@@ -71,8 +71,9 @@ function buildChapterPackage(input: ExportInput, allowProtectedReturn: boolean):
     const safeReturn = allowProtectedReturn && Boolean(lineage?.rootPackageId && lineage.receivedPackageId) && sourceBlocks.every(item =>
       typeof item.blockId === "string" && /^block-[a-f0-9]{64}$/.test(item.blockId) &&
       item.sourceIds?.every(id => typeof id === "string" && id.length > 0 && id.length <= 160) &&
-      /^[a-f0-9]{64}$/.test(digests[item.blockId] ?? "") &&
-      /^block-[a-f0-9]{64}$/.test(input.chapter.packageSourceBlockIds?.[item.blockId] ?? "")
+      (typeof item.text === "string"
+        ? /^[a-f0-9]{64}$/.test(digests[item.blockId] ?? "") && /^block-[a-f0-9]{64}$/.test(input.chapter.packageSourceBlockIds?.[item.blockId] ?? "")
+        : Boolean(item.photoId && Object.values(input.chapter.packageAssets ?? {}).some(asset => asset.photoId === item.photoId)))
     );
     if (!safeReturn) throw new Error("这一章包含受来源权限保护的内容，暂不能导出章节包");
   }
