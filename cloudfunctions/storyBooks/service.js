@@ -125,7 +125,9 @@ function createStoryService(repo, options = {}) {
       return accountActivity(repo,ctx);
     }
     if (action === 'articleSave') {
-      if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      // Saving one's own article is core writing, independent of sharing rollout.
+      // saveArticle still checks space ownership, sources, moderation and versions.
+      if (!accessEnabled) throw accessError('STORY_ACCESS_DISABLED');
       return saveArticle(repo,ctx,event,{now:options.now,approveText:options.approveChapterText,
         approveImage:(c,id)=>approveArticleImage(repo,c,id,event.storyId,event.chapter?.id),
         approveBackdrop:(c,id)=>id.startsWith(c.familyId+'_img_') && approveArticleImage(repo,c,'photo-ai-'+id.slice(id.lastIndexOf('_img_')+5),event.storyId,event.chapter?.id,'backdrop')});

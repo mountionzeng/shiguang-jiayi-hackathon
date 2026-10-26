@@ -11,6 +11,19 @@ async function setup(){const f=fixture();f.account('owner');const ctx=await reso
  const chapter=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft.chapters[0];
  return {...f,ctx,chapter,input:{requestId:'request-article-001',storyId:'story-article',revisionId:result.revisionId,expectedVersion:1,chapter:{id:chapter.id,title:chapter.title,content:chapter.content.map(({blockId,text})=>({blockId,text})),layout:chapter.layout,packageAssets:{}}}};}
 const options={approveText:async()=>true,approveImage:async()=>true};
+test('own article saves outside sharing rollout while moderation and cross-account boundaries remain enforced',async()=>{
+ const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+ const f=await setup();
+ const config={accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:[],chapterPackageEnabled:false,approveChapterText:async()=>true};
+ const service=createStoryService(f.repo,config),context={APPID:'wx-original',OPENID:'owner'};
+ await assert.rejects(createStoryService(f.repo,{...config,approveChapterText:async()=>false})(context,{...f.input,action:'articleSave'}),{code:'CONTENT_REJECTED'});
+ f.account('other');
+ await assert.rejects(service({APPID:'wx-original',OPENID:'other'},{...f.input,action:'articleSave'}));
+ const result=await service(context,{...f.input,action:'articleSave'});
+ assert.equal(result.version,2);
+ assert.ok(f.tables.get('biography_drafts:family_owner_'+f.input.revisionId));
+ await assert.rejects(service(context,{action:'chapterPackageImport'}),{code:'STORY_ACCESS_DISABLED'});
+});
 test('direct edits, line splits and resize save one retry-safe version retaining source policies',async()=>{const f=await setup();
  f.input.chapter.content.push({blockId:bid('b'),parentBlockId:bid('a'),text:'新的一行'});f.input.chapter.content[0].text='改过的原文';f.input.chapter.layout=layout([bid('a'),bid('b')]);f.input.chapter.layout.pages[0].modules[0].rect.width=600;
  const result=await saveArticle(f.repo,f.ctx,f.input,options);assert.equal(result.version,2);
