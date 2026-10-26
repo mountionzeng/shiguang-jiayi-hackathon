@@ -3,6 +3,8 @@ const {summarizeChanges}=require('./revisionAttribution');
 const { identityError } = require('./identity');
 const SUMMARY_FIELDS = { familyId:true, storyId:true, 'revision.id':true, 'revision.storyId':true,
   'revision.kind':true, 'revision.label':true, 'revision.savedAt':true, 'revision.editedByPrincipalId':true, 'revision.editorName':true, 'revision.changeSummary':true, 'revision.receivedFromName':true };
+const COPY_FIELDS = {familyId:true,storyId:true,revisionId:true,senderName:true};
+const EDIT_FIELDS = {familyId:true,storyId:true,revisionId:true,'changes.kind':true,'changes.action':true};
 
 // Called inside the service's existing before/after owner guards. Every detail
 // read is authorized again; a list response never grants access to a revision.
@@ -20,9 +22,20 @@ async function readHistory(repo, ctx, input) {
   }
   const rows=await repo.all('biography_drafts',ctx.familyId,SUMMARY_FIELDS,{storyId:story.id});
   const selected=rows.filter(matches);
-  const names=await ownNamesByPrincipal(repo,selected.map(row=>row.revision.editedByPrincipalId));
-  const optionalRows=async table=>{try{return await repo.all(table,ctx.familyId);}catch(error){if(/collection.*(?:not exist|not found)|DATABASE_COLLECTION_NOT_EXIST/i.test(String(error?.message||error?.errMsg||error)))return [];throw error;}};
-  const [copies,edits]=await Promise.all([optionalRows('story_copies'),optionalRows('story_chapter_edits')]);
+  const optionalRows=async (table,fields)=>{
+    try{return await repo.all(table,ctx.familyId,fields,{storyId:story.id});}
+    catch(error){
+      if(/collection.*(?:not exist|not found)|DATABASE_COLLECTION_NOT_EXIST/i.test(String(error?.message||error?.errMsg||error)))return [];
+      throw error;
+    }
+  };
+  // Modern revisions carry these summaries. Only fill gaps from legacy
+  // receipts, without loading unrelated stories or before/after text bodies.
+  const [names,copies,edits]=await Promise.all([
+    ownNamesByPrincipal(repo,selected.map(row=>row.revision.editedByPrincipalId)),
+    selected.some(({revision})=>!revision.receivedFromName) ? optionalRows('story_copies',COPY_FIELDS) : [],
+    selected.some(({revision})=>!revision.changeSummary) ? optionalRows('story_chapter_edits',EDIT_FIELDS) : [],
+  ]);
   const copiesByRevision=new Map(copies.filter(c=>c.storyId===story.id).map(c=>[c.revisionId,c]));
   const editsByRevision=new Map(edits.filter(e=>e.storyId===story.id).map(e=>[e.revisionId,e]));
   const history=selected.map(({revision:r})=>({id:r.id,storyId:r.storyId,kind:r.kind,label:r.label,savedAt:r.savedAt,

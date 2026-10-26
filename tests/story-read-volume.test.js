@@ -5,6 +5,18 @@ const {readFamilyDocuments}=require('../cloudfunctions/storyBooks/repository');
 const {createHandlers}=require('../cloudfunctions/storyBooks/flow');
 const {readHistory}=require('../cloudfunctions/storyBooks/history');
 
+function copyProjectedPath(source,target,[key,...rest]) {
+  if(Array.isArray(source)) {
+    source.forEach((value,index)=>copyProjectedPath(value,target[index]??={},[key,...rest]));
+  } else if(source && Object.hasOwn(source,key)) {
+    if(!rest.length)target[key]=structuredClone(source[key]);
+    else if(source[key] && typeof source[key]==='object') {
+      target[key]??=Array.isArray(source[key])?[]:{};
+      copyProjectedPath(source[key],target[key],rest);
+    }
+  }
+}
+
 // Model the SDK's filtering, projection and 100-document page limit. Measure
 // database response rows/bytes, not elapsed network time or production latency.
 function measuredReads(f) {
@@ -30,14 +42,7 @@ function measuredReads(f) {
             return projected;
           }
           const projected={_id:row._id};
-          for(const key of Object.keys(fields)) {
-            const path=key.split('.');
-            const value=path.reduce((current,part)=>current?.[part],row);
-            if(value===undefined)continue;
-            let target=projected;
-            for(const part of path.slice(0,-1))target=target[part]??={};
-            target[path.at(-1)]=structuredClone(value);
-          }
+          for(const key of Object.keys(fields))copyProjectedPath(row,projected,key.split('.'));
           return projected;
         });
         reads.push({table,filter,fields,rows:data.length,bytes:Buffer.byteLength(JSON.stringify(data))});
@@ -109,4 +114,32 @@ test('filtered pagination retains every revision and cannot override authorized 
   assert.equal(new Set(rows.map(row=>row._id)).size,205);
   assert.ok(rows.every(row=>row.familyId==='family_owner'));
   assert.equal(m.reads.length,3);
+});
+
+test('legacy history attribution reads only the selected story metadata without diff bodies',async t=>{
+  const f=fixture();f.account('owner');
+  f.tables.set('stories:family_owner_story-0',{familyId:'family_owner',id:'story-0'});
+  f.tables.set('biography_drafts:family_owner_revision-0',{familyId:'family_owner',storyId:'story-0',
+    revision:{id:'revision-0',storyId:'story-0'}});
+  for(let index=0;index<300;index++) {
+    const storyId='story-'+index,revisionId='revision-'+index;
+    f.tables.set('story_copies:copy-'+index,{familyId:'family_owner',storyId,revisionId,senderName:'亲友小禾',
+      details:'无关旧资料'.repeat(500)});
+    f.tables.set('story_chapter_edits:edit-'+index,{familyId:'family_owner',storyId,revisionId,
+      changes:[{kind:'text',action:'changed',before:'虚构旧文'.repeat(1000),after:'虚构新文'.repeat(1000)},
+        {kind:'image',action:'added',after:'private-image-reference'}]});
+  }
+  const stored=structuredClone(f.tables),m=measuredReads(f);
+  await f.repo.all('story_copies','family_owner');
+  await f.repo.all('story_chapter_edits','family_owner');
+  const before={copies:m.totals('story_copies'),edits:m.totals('story_chapter_edits')};
+  m.reads.length=0;
+  const row=(await readHistory(f.repo,{familyId:'family_owner'},{action:'history',storyId:'story-0'})).history[0];
+  assert.equal(row.receivedFromName,'亲友小禾');
+  assert.equal(row.changeSummary,'修改 1 段文字，新增 1 张图片');
+  const after={copies:m.totals('story_copies'),edits:m.totals('story_chapter_edits')};
+  assert.equal(after.copies.rows,1);assert.equal(after.edits.rows,1);
+  assert.ok(after.copies.bytes<300);assert.ok(after.edits.bytes<300);
+  assert.deepEqual(f.tables,stored);
+  t.diagnostic('synthetic legacy attribution DB reads: '+JSON.stringify({before,after}));
 });
