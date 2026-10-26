@@ -299,3 +299,12 @@ test('export carries an available chapter backdrop as a portable layout asset wi
   assert.deepEqual(chapter,before);
   assert.doesNotThrow(()=>prepareImport(result.package));
 });
+
+test('native chapter with a backdrop and no fixed layout remains readable after export',()=>{
+  const chapter={...chapterWith(),layout:undefined,backdropImageId:'family_owner_img_req-abcdefgh'};
+  const result=exportChapterPackage({chapter,...meta,images:{'photo-ai-req-abcdefgh':{mime:'image/png',bytes:100,sha256:'b'.repeat(64),width:20,height:20,aiGenerated:true}}});
+  const imported=prepareImport(result.package);
+  assert.deepEqual(imported.chapter.content.map(b=>b.text),chapter.content.map(b=>b.text));
+  assert.ok(result.package.chapters[0].layout!.settings.bodyTextureAssetId);
+  assert.equal(chapter.layout,undefined);
+});

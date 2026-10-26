@@ -77,8 +77,14 @@ function buildChapterPackage(input: ExportInput, allowProtectedReturn: boolean):
   }
   if (input.chapter.backdropImageId) {
     const photoId = storyImageReferenceId(input.chapter.backdropImageId);
-    const layout = input.layout ?? input.chapter.layout;
-    if (!photoId || !layout || !input.images?.[photoId]) throw new Error('底图暂时无法读取，请重新打开后再发送');
+    // Native chapters have no fixed-page layout. Keep blocks unplaced so the
+    // receiver lays them out normally, carrying only the background setting.
+    const layout: PackageLayout = input.layout ?? input.chapter.layout ?? {
+      canvas: { width: 900, height: 1200 },
+      settings: { fontId: 'default', style: 'plain', texture: 'none', textureSeed: 0, includeCover: false, bodyTextureAssetId: null },
+      pages: [{ label: '1', modules: [] }],
+    };
+    if (!photoId || !input.images?.[photoId]) throw new Error('底图暂时无法读取，请重新打开后再发送');
     const assetId = Object.entries(input.chapter.packageAssets ?? {}).find(([, asset]) => asset.photoId === photoId)?.[0] ?? chapterPackageAssetId(photoId);
     input = { ...input, layout: { ...layout, settings: { ...layout.settings, bodyTextureAssetId: assetId } },
       chapter: { ...input.chapter, packageAssets: { ...input.chapter.packageAssets, [assetId]: { photoId, aiGenerated: true } } } };
