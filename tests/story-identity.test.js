@@ -56,3 +56,39 @@ test('legacy metadata cannot claim a space whose platform-owned author differs',
   await assert.rejects(resolveStoryIdentity(repo, { APPID: 'wx-original', OPENID: 'owner' }, options), { code: 'IDENTITY_UNLINKED' });
   assert.equal([...tables.keys()].filter(key => key.startsWith('story_')).length, 0);
 });
+
+test('first login provisions an empty canonical family before binding the story identity', async () => {
+  const {repo,tables,account}=fixture(); const owner=account('new-user');
+  tables.delete(`families:${owner.familyId}`);
+  const identities=await Promise.all([1,2,3].map(()=>resolveStoryIdentity(repo,{APPID:'wx-original',OPENID:'new-user'},options)));
+  assert.equal(new Set(identities.map(x=>x.principalId)).size,1);
+  const family=tables.get(`families:${owner.familyId}`);
+  assert.equal(family.ownerAccountId,owner.accountId);
+  assert.equal(family._openid,'new-user');
+  assert.equal(family.storyBooks.status,'active');
+  assert.equal(tables.get(`user_accounts:${owner.accountId}`).computeBalanceMicros,321);
+});
+
+test('first login cannot recreate a migrated or previously bound missing family', async () => {
+  for(const scenario of ['migrated','bound']) {
+    const {repo,tables,account}=fixture(); const owner=account('new-user',scenario==='migrated'?'family_other':'family_new-user');
+    tables.delete(`families:${owner.familyId}`);
+    if(scenario==='bound')tables.set(`story_principal_spaces:${owner.familyId}`,{status:'revoked'});
+    await assert.rejects(resolveStoryIdentity(repo,{APPID:'wx-original',OPENID:'new-user'},options),{code:'IDENTITY_UNLINKED'});
+    assert.equal(tables.has(`families:${owner.familyId}`),false);
+  }
+});
+
+test('a newly registered account can load the home and create a first story through the protected service',async()=>{
+  const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+  const {repo,tables,account}=fixture();const owner=account('first-story');
+  tables.delete(`families:${owner.familyId}`);
+  const service=createStoryService(repo,{accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original'});
+  const context={APPID:'wx-original',OPENID:'first-story'};
+  const home=await service(context,{action:'state',view:'home'});
+  assert.equal(home.roomStateVersion,1);assert.deepEqual(home.stories,[]);
+  assert.equal(home.storyMigration.status,'active');
+  await service(context,{action:'create',storyId:'story-first-book',title:'虚构第一篇',writingMode:'objective',memoryIds:[],requestId:'create-first-book'});
+  const reopened=await service(context,{action:'state',view:'home'});
+  assert.equal(reopened.stories.length,1);assert.equal(reopened.stories[0].title,'虚构第一篇');
+});

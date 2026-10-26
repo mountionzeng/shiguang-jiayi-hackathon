@@ -117,3 +117,11 @@ test('private configuration changed after acceptance blocks preview before any c
   await assert.rejects(run(f.args,{root:f.root,runner:async()=>{calls++;}}),/configuration/);
   assert.equal(calls,0);
 });
+
+test('release evidence refuses to skip new-account and page-availability checks',t=>{
+  const f=fixture(t);
+  for(const flow of ['fresh-account-home','returning-account-cold-start','primary-navigation','failure-recovery']) {
+    const flows={...f.acceptance.flows};delete flows[flow];
+    assert.throws(()=>validateEvidence({source:f.source,environment:'test-env',acceptance:{...f.acceptance,flows},cloud:f.cloud,functions:f.functions,configs:f.configs}),/Complete all acceptance/);
+  }
+});

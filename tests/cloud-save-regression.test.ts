@@ -69,7 +69,7 @@ function fixture() {
 
 const memory = () => createContribution({ authorMemberId: "owner", authorName: "测试者", relation: "自己", text: "仅供测试的虚构记录。", scope: "personal", visibility: "private" });
 
-test('initial identity and story reads overlap, but identity failure cannot return story data', async () => {
+test('initial story read waits for registration, and failed identity never requests story data', async () => {
   const f = fixture();
   try {
     for (const validIdentity of [false, true]) {
@@ -87,10 +87,11 @@ test('initial identity and story reads overlap, but identity failure cannot retu
       };
       const pending = loadRoomStateRemoteFirst();
       await new Promise(resolve => setImmediate(resolve));
-      assert.equal(stateStarted, true, 'the story request starts before slow identity resolves');
+      assert.equal(stateStarted, false, 'a new account must finish registration before story identity is resolved');
       releaseIdentity();
       if (validIdentity) assert.deepEqual((await pending).contributions, []);
       else await assert.rejects(pending, /OPENID_NOT_AVAILABLE/);
+      assert.equal(stateStarted, validIdentity);
     }
   } finally { f.restore(); }
 });

@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 export const requiredFunctions=['getOpenId','recordAiConsent','storyBooks','chatInterview','organizeMemory','generateBiography','storyImages'];
-export const requiredFlows=['book-read-write-restore','article-question','image-reference-and-layout','cover-and-spine'];
+export const requiredFlows=['book-read-write-restore','article-question','image-reference-and-layout','cover-and-spine','fresh-account-home','returning-account-cold-start','primary-navigation','failure-recovery'];
 export const sha256=value=>crypto.createHash('sha256').update(value).digest('hex');
 const git=(root,args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
 

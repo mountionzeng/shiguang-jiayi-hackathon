@@ -42,11 +42,21 @@ async function resolveStoryIdentity(repo, context, { bootstrapAppId } = {}) {
     if (!account || account.status !== 'active' || account.wxOpenId !== openid ||
         !ACCOUNT_ID.test(account.accountId) || !FAMILY_ID.test(account.primaryFamilyId)) throw identityError('IDENTITY_UNLINKED');
     const familyId = account.primaryFamilyId;
-    const family = await tx.get('families', familyId);
-    if (!family || family.ownerAccountId !== account.accountId || family._openid !== openid) throw identityError('IDENTITY_UNLINKED');
+    let family = await tx.get('families', familyId);
+    if (family && (family.ownerAccountId !== account.accountId || family._openid !== openid)) throw identityError('IDENTITY_UNLINKED');
     // A missing alias is not permission to claim a previously bound space, even
     // if an operator changes the configured bootstrap app after a migration.
     if (await tx.get('story_principal_spaces', familyId)) throw identityError('IDENTITY_UNLINKED');
+    // A newly registered account has no family yet. Provision only its original
+    // deterministic space, inside the same transaction as its first binding.
+    // Missing migrated/bound spaces remain errors; never recreate or claim them.
+    if (!family) {
+      if (familyId !== `family_${openid}` || account.accountId !== accountDocumentId) throw identityError('IDENTITY_UNLINKED');
+      family = { _openid: openid, ownerAccountId: account.accountId,
+        roomName: '我的拾光房间', protagonistName: '', deletedStories: [],
+        storyBooks: { status: 'active', version: 1 }, createdAt: new Date().toISOString() };
+      await tx.set('families', familyId, family);
+    }
     const principalId = `principal_${crypto.randomBytes(16).toString('hex')}`;
     const createdAt = new Date().toISOString();
     await tx.set('story_principals', principalId, { status: 'active', accountId: account.accountId, familyId, createdAt });

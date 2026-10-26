@@ -516,15 +516,14 @@ export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "
 }
 
 async function readCloudRoomState(options: { readOnly?: boolean; view?: "home" | "memories" }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
-  // Both endpoints authorize on the server; neither read depends on the other.
-  // Still require identity success before returning state or using client fallback.
-  const [familyId, serviceRead] = await Promise.all([
-    measurePerformance('room.identity', currentFamilyId),
-    measurePerformance('room.state', () => loadStoryServiceRoomState(options.view)).then(
-      state => ({ ok: true as const, state }),
-      error => ({ ok: false as const, error }),
-    ),
-  ]);
+  // The story identity requires the account registered by getOpenId. On a
+  // first visit these are dependent operations, even though returning users
+  // can make parallel reads appear safe.
+  const familyId = await measurePerformance('room.identity', currentFamilyId);
+  const serviceRead = await measurePerformance('room.state', () => loadStoryServiceRoomState(options.view)).then(
+    state => ({ ok: true as const, state }),
+    error => ({ ok: false as const, error }),
+  );
   metrics.route = 'story-service';
   let storyServiceState: StoryServiceRoomState | undefined;
   try {
