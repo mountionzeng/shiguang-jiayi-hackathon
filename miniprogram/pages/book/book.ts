@@ -440,8 +440,10 @@ Page({
       .filter(memory => !this.storyScopeMemoryIds || this.storyScopeMemoryIds.has(memory.id));
     const bookId = story?.id || member.id;
     let current = currentManuscript(state, bookId);
-    const localDraftKey = chapterDraftKey(draftScope, bookId);
-    let backup = story?.sourcePolicyRequired ? undefined : readChapterDraft(localDraftKey);
+    // A recipient can open a share before creating any story or profile.
+    // There is no local book draft to restore until an owned book exists.
+    const localDraftKey = bookId ? chapterDraftKey(draftScope, bookId) : "";
+    let backup = !localDraftKey || story?.sourcePolicyRequired ? undefined : readChapterDraft(localDraftKey);
     const acknowledged = backup?.pendingSave?.id === current.revisionId;
     if (backup && acknowledged && JSON.stringify(backup.draft) === JSON.stringify(backup.pendingSave?.draft)) {
       clearChapterDraft(localDraftKey, backup.token);

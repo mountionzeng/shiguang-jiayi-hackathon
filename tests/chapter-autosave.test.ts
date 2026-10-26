@@ -264,3 +264,15 @@ test('received layout backdrop resolves its imported photo while native backdrop
   assert.equal(p.activeBackdropUrl(),'https://example.test/native.jpg');
   p.activeChapterId = 'chapter-missing';assert.equal(p.activeBackdropUrl(),'');
 });
+
+test('a recipient without a story or profile can load the book shell before accepting a share', async () => {
+  const {p,stored} = await setup();
+  const state=stored.get('shiguang-family-room-v5');
+  state.members=[];state.stories=[];state.contributions=[];state.manuscriptRevisions=[];
+  stored.set('shiguang-family-room-v5',state);
+  p.requestedStoryKey='';p.requestedMemberId='';p.data.editing=false;
+  await p.refresh(state);
+  assert.equal(p.localDraftKey,'');
+  assert.equal(p.data.loadError,'');
+  assert.equal(p.chapters.length,0);
+});
