@@ -63,7 +63,13 @@ async function familyAccess(familyId, openid) {
   if (account && account.primaryFamilyId === familyId) {
     const members = await loadAll("family_members", { familyId });
     const owner = members.find(member => member.accountId === accountId) || members.find(member => member.memberId === "owner") || members.find(member => member.role === "owner");
-    return owner ? { role: "owner", memberId: owner.memberId } : undefined;
+    if (owner) return { role: "owner", memberId: owner.memberId };
+    // Receiving a story can provision the owner's space before any profile exists.
+    // Only the authoritative account and family binding can replace that profile.
+    const family = await getDoc("families", familyId);
+    return account.status === "active" && account.accountId === accountId && account.wxOpenId === openid &&
+      family && family.ownerAccountId === accountId && family._openid === openid
+      ? { role: "owner", memberId: "owner" } : undefined;
   }
   const access = await getDoc("family_access", `${familyId}_${accountId}`);
   if (!access || access.status !== "active") return undefined;
