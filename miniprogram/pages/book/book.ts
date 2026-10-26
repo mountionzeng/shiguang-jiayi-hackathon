@@ -1,3 +1,4 @@
+import { bookCoverSource } from "../../services/bookCoverSource";
 import { articleChatMaterial } from '../../services/articleChatMaterial';
 import { organizeInlineAnswer } from '../../services/memoryOrganizerService';
 import { articleChapter, addArticlePhoto, appendArticleText, type ArticleChapter } from '../../services/articleModules';
@@ -555,7 +556,7 @@ Page({
     }
     this.setData({
       openingChapter: null,
-      coverImageId: story?.coverImageId || "", coverUrl: "",
+      coverImageId: bookCoverSource(story?.coverImageId, current.draft), coverUrl: "",
       editTitle: this.titleBuffer, editBody: this.bodyBuffer, editChapterTitle: this.chapterTitleBuffer, view,
       organizeBooks, organizeBookKey, organizeBookTitle: organizeBooks.find(item => item.id === organizeBookKey)?.title || "",
       protagonistName: member.name, memberId: member.id, storyId: story?.id || "", savedRevisionId: current.revisionId || "", writingMode: story?.writingMode || "creative",
@@ -580,9 +581,12 @@ Page({
       const backdropUrl = this.activeBackdropUrl();
       if (backdropUrl !== this.data.backdropUrl) this.setData({ backdropUrl });
     }).catch(error => logLoadError('book.images', error));
-    if (story?.coverImageId) {
-      void cloudImages.then(images => {
-        const url = images.find(image => image.imageId === story.coverImageId && image.purpose === 'cover' && image.moderation === 'pass')?.url || '';
+    const coverSource = bookCoverSource(story?.coverImageId, current.draft);
+    if (coverSource) {
+      const coverUrl = story?.coverImageId ? cloudImages.then(images =>
+        images.find(image => image.imageId === story.coverImageId && image.purpose === 'cover' && image.moderation === 'pass')?.url || '')
+        : storyCoverApi.resolveUrl(bookId, coverSource);
+      void coverUrl.then(url => {
         if (!this.unloaded && refreshId === this.refreshId) this.setData({coverUrl:url});
       }).catch(() => undefined);
     }

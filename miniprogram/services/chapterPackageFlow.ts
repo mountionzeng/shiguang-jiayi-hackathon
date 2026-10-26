@@ -1,3 +1,4 @@
+import { loadRoomStateRemoteFirst } from "./roomRepository";
 import type { ManuscriptChapter } from "../domain/biography";
 import type { ChapterPackage } from "../domain/chapterPackage";
 import { isStoryImageReference, readLocalPhoto, storyImageReferenceId } from "./bookImages";
@@ -47,8 +48,13 @@ type SavedPackage = {
 /** Export one chapter. Source lineage is preserved locally when this chapter was imported from a package. */
 export async function exportChapterToCloud(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, purpose: "copy" | "return" | "forward" = "copy"): Promise<ExportedChapter> {
   if (!chapterPackageEnabled()) throw new Error("章节包功能暂未开放");
+  const state = storyId ? await loadRoomStateRemoteFirst({ view: "home" }) : undefined;
+  const selectedCoverId = state?.stories?.find(story => story.id === storyId && !story.deletedAt)?.coverImageId;
+  const coverPhotoId = selectedCoverId ? storyImageReferenceId(selectedCoverId) : undefined;
+  if (selectedCoverId && !coverPhotoId) throw new Error("封面图片引用无效，请重新选择封面后发送");
   const packageId = newPackageId();
   const photoIds = [...new Set([
+    ...(coverPhotoId ? [coverPhotoId] : []),
     ...chapter.content.flatMap(item => item.photoId ? [item.photoId] : []),
     ...Object.values(chapter.packageAssets ?? {}).map(asset => asset.photoId),
     ...(chapter.backdropImageId ? [storyImageReferenceId(chapter.backdropImageId)] : []),
@@ -78,7 +84,7 @@ export async function exportChapterToCloud(chapter: ManuscriptChapter, displayNa
     assertPackageImageTotal(images);
     const exporter = purpose === "return" ? exportChapterReturnPackage : purpose === "forward" ? exportChapterForwardPackage : exportChapterPackage;
     const { package: pkg, assetPhotos } = exporter({
-      chapter, images, packageId, displayName: displayName || "我", createdAt: new Date().toISOString(), storyTitle,
+      chapter, images, coverPhotoId, packageId, displayName: displayName || "我", createdAt: new Date().toISOString(), storyTitle,
       layout: chapter.layout ?? null,
     });
     const filePath = `${wx.env.USER_DATA_PATH}/${packageId}.json`;

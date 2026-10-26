@@ -185,7 +185,7 @@ function bookSlidesFor(input: {
       storyKey: story.key,
       storyId: story.storyId ?? "",
       manuscriptMemberId: story.manuscriptMemberId ?? "",
-      coverImageId: coverStory?.coverImageId ?? "",
+      coverImageId: story.coverImageId ?? coverStory?.coverImageId ?? "",
       coverUrl: "",
       memoryCount: story.memoryIds.length,
       chapterCount: story.chapterCount,
@@ -433,10 +433,9 @@ Page({
         ? cachedBookCover(bookCoverKey(slide.storyId, slide.coverImageId)) : '';
       if (cached) slide.bookArtUrl = cached;
     });
-    const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
     this.setData({
       homeLoading:false, homeLoadError:false,
-      coverUrl: activeBook?.coverUrl || "", coverImageId: coverStory?.coverImageId || "",
+      coverUrl: activeBook?.coverUrl || "", coverImageId: activeBook?.coverImageId || "",
       hasProfile: Boolean(owner),
       ownerAvatarText: owner?.avatarText ?? "",
       coverTitle: activeBook?.title || "先随便聊聊",

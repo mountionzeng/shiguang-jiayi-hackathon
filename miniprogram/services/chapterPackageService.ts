@@ -46,6 +46,7 @@ export function hasPhotos(chapter: ManuscriptChapter): boolean {
 }
 
 export interface ExportInput {
+  coverPhotoId?: string;
   chapter: ManuscriptChapter;
   /** Validated metadata for every referenced local photo; files are returned separately to the caller/06. */
   images?: Record<string, PackageImageInfo>;
@@ -100,7 +101,7 @@ function buildChapterPackage(input: ExportInput, allowProtectedReturn: boolean):
     assetIdByPhotoId[asset.photoId] = assetId;
     aiGeneratedByPhotoId[asset.photoId] = asset.aiGenerated;
   }
-  const coverPhotoId = input.chapter.packageCoverAssetId ? input.chapter.packageAssets?.[input.chapter.packageCoverAssetId]?.photoId : null;
+  const coverPhotoId = input.coverPhotoId ?? (input.chapter.packageCoverAssetId ? input.chapter.packageAssets?.[input.chapter.packageCoverAssetId]?.photoId : null);
   const result = toChapterPackage(
     allowProtectedReturn && savedLineage?.sourceChapterId
       ? { ...input.chapter, id: savedLineage.sourceChapterId } : input.chapter, input.images ?? {},
