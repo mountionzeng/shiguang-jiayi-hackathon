@@ -1,3 +1,4 @@
+import { loadCurrentAccount } from "./accountService";
 import { loadRoomStateRemoteFirst } from "./roomRepository";
 import type { ManuscriptChapter } from "../domain/biography";
 import type { ChapterPackage } from "../domain/chapterPackage";
@@ -58,6 +59,8 @@ export async function prepareChapterPackage(chapter: ManuscriptChapter, displayN
   const selectedCoverId = state?.stories?.find(story => story.id === storyId && !story.deletedAt)?.coverImageId;
   const coverPhotoId = selectedCoverId ? storyImageReferenceId(selectedCoverId) : undefined;
   if (selectedCoverId && !coverPhotoId) throw new Error("封面图片引用无效，请重新选择封面后发送");
+  // Freeze the account signature in this package: retries must keep identical content.
+  const senderName = (await loadCurrentAccount()).displayName || "未设置称呼的用户";
   const packageId = newPackageId();
   const photoIds = [...new Set([
     ...(coverPhotoId ? [coverPhotoId] : []),
@@ -90,7 +93,7 @@ export async function prepareChapterPackage(chapter: ManuscriptChapter, displayN
     assertPackageImageTotal(images);
     const exporter = purpose === "return" ? exportChapterReturnPackage : purpose === "forward" ? exportChapterForwardPackage : exportChapterPackage;
     const { package: pkg, assetPhotos } = exporter({
-      chapter, images, coverPhotoId, packageId, displayName: displayName || "我", createdAt: new Date().toISOString(), storyTitle,
+      chapter, images, coverPhotoId, packageId, displayName: senderName, createdAt: new Date().toISOString(), storyTitle,
       layout: chapter.layout ?? null,
     });
     const assetFiles = Object.fromEntries(Object.entries(assetPhotos).map(([assetId, photoId]) => [assetId, imageFiles[photoId]]));

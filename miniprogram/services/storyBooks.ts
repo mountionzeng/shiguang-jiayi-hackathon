@@ -8,7 +8,7 @@ import { newStoryId } from './storyRecords';
 import { classifyServiceFailure, logServiceFailure, SavedRefreshError } from './serviceFailure';
 import { readStoryState } from './storyStateTransport';
 
-export type StoryHistoryEntry = Pick<ManuscriptRevision,'id'|'storyId'|'kind'|'label'|'savedAt'>;
+export type StoryHistoryEntry = Pick<ManuscriptRevision,'id'|'storyId'|'kind'|'label'|'savedAt'|'editorName'|'receivedFromName'|'changeSummary'>;
 export async function loadStoryHistory(storyId:string): Promise<StoryHistoryEntry[]> {
   return measurePerformance('book.history',async()=>{
   if (usesCloudStorage() && (await call('capabilities')).ownerHistory === true) {

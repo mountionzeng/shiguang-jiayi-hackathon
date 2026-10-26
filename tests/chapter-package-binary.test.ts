@@ -19,6 +19,7 @@ test('export preserves image bytes returned from the native API realm', async ()
     exports: api,
     require(name: string) {
       const value = nativeRequire(name);
+      if (name === "./accountService") return {loadCurrentAccount: async () => ({displayName: "小禾"})};
       if (name === './bookImages') return { ...value, readLocalPhoto: async () => '/saved/test.jpg' };
       if (name === './chapterPackageService') return { ...value, chapterPackageEnabled: () => true };
       return value;
@@ -35,6 +36,7 @@ test('export preserves image bytes returned from the native API realm', async ()
   });
   const result = await api.exportChapterToCloud({ id: 'chapter-test', title: '测试', memoryIds: [],
     content: [{ text: '测试\n' }, { photoId: 'photo-test' }] }, '我', '测试故事');
+  assert.equal(result.package.sender.displayName, '小禾');
   assert.equal(result.package.assets[0].bytes, 4);
   assert.equal(result.package.assets[0].mime, 'image/jpeg');
   assert.equal(Object.values(result.assetFiles)[0], '/saved/test.jpg');
@@ -44,6 +46,7 @@ test('export reads chapter AI images from the authorized story list and preserve
   const api:any={}, calls:string[]=[];
   vm.runInNewContext(compiled, {exports:api,require(name:string){
     const value=nativeRequire(name);
+    if(name==="./accountService")return {loadCurrentAccount:async()=>({displayName:"小禾"})};
     if(name==='./bookImages')return {...value,readLocalPhoto:async()=>''};
     if(name==='./chapterPackageService')return {...value,chapterPackageEnabled:()=>true};
     if(name==='./roomRepository')return {loadRoomStateRemoteFirst:async()=>({stories:[]})};
@@ -65,6 +68,7 @@ test('export carries the selected book cover even when it is absent from chapter
   const api:any={};
   vm.runInNewContext(compiled,{exports:api,require(name:string){
     const value=nativeRequire(name);
+    if(name==="./accountService")return {loadCurrentAccount:async()=>({displayName:"小禾"})};
     if(name==='./chapterPackageService')return {...value,chapterPackageEnabled:()=>true};
     if(name==='./roomRepository')return {loadRoomStateRemoteFirst:async()=>({stories:[{id:'story-test',coverImageId:'family_owner_img_req-cover123'}]})};
     if(name==='./storyImageService')return {storyImageApi:{listStoryImages:async()=>({images:[{imageId:'family_owner_img_req-cover123',url:'https://example.test/cover.jpg',moderation:'pass',purpose:'cover'}]})}};

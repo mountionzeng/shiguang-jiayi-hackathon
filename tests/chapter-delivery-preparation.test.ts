@@ -10,6 +10,7 @@ function harness() {
   const stored = new Map<string, any>();
   const uploads: string[] = [], writes: string[] = [], sends: any[] = [];
   let failSend = false;
+  let displayName = '小禾';
   const wx = {
     env: { USER_DATA_PATH: '/saved' },
     getStorageSync: (key: string) => stored.get(key),
@@ -36,6 +37,7 @@ function harness() {
     }).outputText;
     vm.runInNewContext(source, {exports: api, wx, require(id: string) {
       if (id === './chapterPackageFlow') return flow;
+      if (id === './accountService') return {loadCurrentAccount: async () => ({displayName})};
       const value = nativeRequire(id);
       if (id === './chapterPackageService') return {...value, chapterPackageEnabled: () => true};
       if (id === '../config/runtime') return {...value, CHAPTER_DELIVERY_ENABLED: true};
@@ -45,7 +47,8 @@ function harness() {
   }
   const flow = load('chapterPackageFlow');
   return {flow, delivery: load('chapterDelivery', flow), stored, uploads, writes, sends,
-    fail(value: boolean) { failSend = value; }};
+    fail(value: boolean) { failSend = value; },
+    rename(value: string) { displayName = value; }};
 }
 
 const chapter = {id: 'chapter-text', title: '虚构纸船', memoryIds: [], content: [{text: '纸船从桥下经过。\n'}]};
@@ -58,6 +61,7 @@ test('sending a text chapter uses one business request without uploading a redun
   assert.deepEqual(h.writes, []);
   assert.equal(h.sends.length, 1);
   assert.equal(h.sends[0].action, 'sendChapter');
+  assert.equal(h.sends[0].package.sender.displayName, '小禾');
   assert.equal(h.stored.get('chapterPackage.lastExport').fileID, 'cloud://old/explicit-export');
   assert.equal(h.stored.get('chapterDelivery.outbox.v1').length, 0);
 });
@@ -69,9 +73,11 @@ test('failed delivery retains the same package and request for retry without cre
   const pending = h.stored.get('chapterDelivery.outbox.v1')[0];
   assert.ok(pending.package.packageId);
   h.fail(false);
+  h.rename('小满');
   await h.delivery.sendChapter({...chapter, content: [{text: '更晚的文字'}]}, '我', '虚构故事', undefined, 'contact-test');
   assert.equal(h.sends[1].requestId, pending.requestId);
   assert.deepEqual(h.sends[1].package, h.sends[0].package);
+  assert.equal(h.sends[1].package.sender.displayName, '小禾', 'retry keeps the original package signature');
   assert.deepEqual(h.uploads, []);
   assert.equal(h.stored.get('chapterDelivery.outbox.v1').length, 0);
 });

@@ -7,7 +7,6 @@ import {
   personalBookContributions,
 } from "../../domain/biography";
 import {
-  loadCurrentMemberRemoteFirst,
   loadRoomStateRemoteFirst,
   resetCurrentUserRoomRemoteFirst,
   saveRoomProfileRemoteFirst,
@@ -106,8 +105,8 @@ Page({
   async refresh(state?: FamilyRoomState) {
     const currentState = state ?? await loadRoomStateRemoteFirst({ view: "home" });
     // 「我的」就是账号主人，和首页左上角头像是同一个人。
-    const member = accountOwner(currentState.members) ?? await loadCurrentMemberRemoteFirst(currentState);
-    const personal = personalBookContributions(currentState.contributions, member.id);
+    const member = accountOwner(currentState.members);
+    const personal = personalBookContributions(currentState.contributions, member?.id || "");
     const sharedCount = personal.filter(
       (memory) => (memory.sharedWithMemberIds ?? []).length > 0,
     ).length;
@@ -116,18 +115,18 @@ Page({
     ).length;
 
     this.setData({
-      memberName: member.name,
+      memberName: member?.name || "",
       roomName: currentState.roomName ?? "",
       protagonistName: currentState.protagonistName ?? "",
-      memberRelation: member.relation,
-      memberAvatarText: member.avatarText,
+      memberRelation: member?.relation || "",
+      memberAvatarText: member?.avatarText || "忆",
       memoryCount: memoryPool(currentState.contributions).length,
       sharedCount,
       familyCount,
       pendingPhotoCount: pendingPhotoUploads().length,
     });
     if (!wx.cloud) {
-      this.setData({ accountName: member.name, accountAvatarText: member.avatarText });
+      this.setData({ accountName: member?.name || "", accountAvatarText: member?.avatarText || "忆" });
       return;
     }
     try {
@@ -143,10 +142,10 @@ Page({
       }
       const account = await loadCurrentAccount();
       this.setData({
-        accountName: account.displayName || member.name,
-        accountAvatarText: account.avatarText || member.avatarText,
-        accountNameInput: account.displayName || member.name,
-        accountAvatarPreview: account.avatarText || member.avatarText,
+        accountName: account.displayName || member?.name || "",
+        accountAvatarText: account.avatarText || member?.avatarText || "忆",
+        accountNameInput: account.displayName || member?.name || "",
+        accountAvatarPreview: account.avatarText || member?.avatarText || "忆",
       });
       try {
         this.setData({ joinedRooms: await loadJoinedFamilyRooms() });
@@ -155,7 +154,7 @@ Page({
       }
     } catch (error) {
       console.warn("拾光账号资料暂未加载", error);
-      this.setData({ accountName: member.name, accountAvatarText: member.avatarText });
+      this.setData({ accountName: member?.name || "", accountAvatarText: member?.avatarText || "忆" });
     }
   },
 

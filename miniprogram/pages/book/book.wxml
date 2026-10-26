@@ -299,7 +299,11 @@
         <view wx:if="{{historyLoading}}" class="panel-note">正在加载历史版本…</view>
         <view wx:elif="{{!history.length}}" class="panel-note">保存修改后，这里会保留版本记录。</view>
         <button class="version-row" wx:for="{{history}}" wx:key="id" data-id="{{item.id}}" bindtap="previewHistory">
-          <text>{{item.label}}</text><text class="version-date">{{item.savedAt}}</text>
+          <text>{{item.label}}</text>
+          <text class="version-date">{{item.editorName ? item.editorName + (item.receivedFromName ? ' · 接收' : ' · 编辑') : '旧版本未记录编辑者'}}</text>
+          <text wx:if="{{item.receivedFromName}}" class="version-date">来源署名：{{item.receivedFromName}}</text>
+          <text wx:if="{{item.changeSummary}}" class="version-date">{{item.changeSummary}}</text>
+          <text class="version-date">{{item.savedAt}}</text>
         </button>
         <view wx:if="{{revisionLoading}}" class="panel-note">正在读取这一版正文…</view>
         <view wx:if="{{previewVersion}}">

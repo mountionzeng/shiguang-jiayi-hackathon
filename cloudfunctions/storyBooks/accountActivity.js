@@ -16,15 +16,15 @@ async function accountActivity(repo,ctx){
     if(!pkg)continue;
     const previous=deliveries.find(item=>item.package?.packageId===pkg.lineage?.parentPackageId)?.package;
     const changes=[];
-    if(row.kind==='return'&&previous)for(const chapter of pkg.chapters||[]){
+    if(previous)for(const chapter of pkg.chapters||[]){
       const before=previous.chapters?.find(c=>c.chapterId===chapter.chapterId);
       if(before)changes.push(...moduleChanges({title:before.title,content:before.blocks.map(b=>({blockId:b.blockId,...(b.type==='text'?{text:b.text}:{photoId:b.assetId})})),layout:before.layout},
         {title:chapter.title,content:chapter.blocks.map(b=>({blockId:b.blockId,...(b.type==='text'?{text:b.text}:{photoId:b.assetId})})),layout:chapter.layout}));
     }
     events.push({id:row._id,deliveryId:row.deliveryId,accountKey:row.senderKey?'web:'+row.senderKey:'unknown:'+row._id,name:row.senderName||'未记录称呼的账号',verified:Boolean(row.senderKey),
-      at:row.createdAt,kind:row.kind==='return'?'发来修改':'发来文章',title:pkg.chapters?.[0]?.title||pkg.storyTitle||'文章',
+      at:row.createdAt,kind:row.kind==='return'||previous?'发来修改':'发来文章',title:pkg.chapters?.[0]?.title||pkg.storyTitle||'文章',
       text:clip(pkg.chapters?.flatMap(c=>c.blocks.filter(b=>b.type==='text').map(b=>b.text)).join('\n')),imageCount:pkg.assets?.length||0,
-      changes:changes.slice(0,30).map(c=>({...c,before:clip(c.before),after:clip(c.after)})),comparisonAvailable:row.kind!=='return'||Boolean(previous),revisionId:'',storyId:''});
+      changes:changes.slice(0,30).map(c=>({...c,before:clip(c.before),after:clip(c.after)})),comparisonAvailable:!pkg.lineage?.parentPackageId||Boolean(previous),revisionId:'',storyId:''});
   }
   for(const row of returns)events.push({id:row._id,accountKey:'principal:'+row.senderPrincipalId,name:row.senderName||'亲友',verified:Boolean(row.senderPrincipalId),at:row.createdAt,kind:'发来修改',title:'故事回信',text:clip((row.blocks||[]).map(b=>b.text).join('\n')),imageCount:0,changes:(row.sourceEdits||[]).map(b=>({kind:'text',action:'changed',before:'',after:clip(b.text)})),comparisonAvailable:false,storyId:row.sourceStoryId,revisionId:row.resultRevisionId||''});
   for(const row of copies){
