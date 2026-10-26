@@ -75,3 +75,11 @@ test('chapter backdrop saves a recoverable version without changing received tex
  const cleared=await saveArticle(f.repo,f.ctx,{...f.input,requestId:'request-clear-001',revisionId:result.revisionId,expectedVersion:result.version,chapter:{...f.input.chapter,backdropImageId:''}},options);
  assert.equal(f.tables.get('biography_drafts:family_owner_'+cleared.revisionId).revision.draft.chapters[0].backdropImageId,undefined);
 });
+test('saved edit records trusted editor and change summary, ignoring forged client attribution',async()=>{
+ const f=await setup();f.tables.get('user_accounts:'+f.ctx.accountId).displayName='小禾';
+ f.input.editorName='别人';f.input.editedByPrincipalId='principal_'+'f'.repeat(32);
+ f.input.chapter.content[0].text='修改后的纸船';
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ const r=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision;
+ assert.equal(r.editorName,'小禾');assert.equal(r.editedByPrincipalId,f.ctx.principalId);assert.match(r.changeSummary,/修改 1 段文字/);
+});

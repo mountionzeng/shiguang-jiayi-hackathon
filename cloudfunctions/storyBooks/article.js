@@ -1,3 +1,4 @@
+const {revisionAttribution,summarizeChanges}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
 const {assertSpaceOwner,identityError}=require('./identity');
@@ -91,7 +92,7 @@ async function saveArticle(repo,ctx,raw,{approveText,approveImage,approveBackdro
     draft.chapters=draft.chapters.map(c=>c.id===after.id?after:c);Object.assign(draft,core.flatten(draft.chapters));core.validateDraft(draft,story);
     if(Buffer.byteLength(JSON.stringify(draft))>240000)fail('文章太大，请分成不同章节');
     const revisionId='revision-'+hash([receipt]),version=story.version+1;
-    const revision={id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'自动保存',savedAt:stamp,sourceFingerprint:row.revision.sourceFingerprint||'',sourceRevisionId:input.revisionId,editedByPrincipalId:ctx.principalId,editedChapterIds:[after.id],draft};
+    const revision={...await revisionAttribution(tx,ctx,summarizeChanges(changes)),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'自动保存',savedAt:stamp,sourceFingerprint:row.revision.sourceFingerprint||'',sourceRevisionId:input.revisionId,editedByPrincipalId:ctx.principalId,editedChapterIds:[after.id],draft};
     const result={ok:true,storyId:story.id,revisionId,version};
     await tx.set('biography_drafts',`${ctx.familyId}_${revisionId}`,{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision});
     await tx.set('stories',`${ctx.familyId}_${story.id}`,{...story,version,currentRevisionId:revisionId,updatedAt:stamp});

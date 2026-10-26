@@ -1,3 +1,4 @@
+const {revisionAttribution}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
 const {assertSpaceOwner,identityError}=require('./identity');
@@ -168,7 +169,7 @@ async function decideReturn(repo,ctx,raw,{now=()=>new Date().toISOString()}={}){
     await tx.set('story_source_policies',policyId,{version:1,parents:[],permissions:{view:true,copy:false,forward:false,publish:false,ai:false,export:false},
       contributorPrincipalId:record.senderPrincipalId,sourceReturnId:input.returnId,createdAt:stamp});
     await tx.set('biography_drafts',docId(ctx.familyId,revisionId),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision:{
-      id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'收下亲友补充',savedAt:stamp,sourceFingerprint:'',draft}});
+      ...await revisionAttribution(tx,ctx,'采用亲友修改',record.senderName),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'收下亲友补充',savedAt:stamp,sourceFingerprint:'',draft}});
     await tx.set('stories',docId(ctx.familyId,story.id),{...story,version:story.version+1,currentRevisionId:revisionId,sourcePolicyRequired:true,updatedAt:stamp});
     await tx.set('story_returns',input.returnId,{...record,status:'accepted',decisionFingerprint,decidedAt:stamp,resultRevisionId:revisionId});
     return {ok:true,status:'accepted',revisionId,alreadyDecided:false};

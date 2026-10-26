@@ -321,6 +321,9 @@ export interface Story {
 }
 
 export interface ManuscriptRevision {
+  editorName?: string;
+  receivedFromName?: string;
+  changeSummary?: string;
   id: string;
   storyId?: string;
   expectedStoryVersion?: number;

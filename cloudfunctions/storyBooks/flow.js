@@ -1,3 +1,4 @@
+const {revisionAttribution,draftSummary}=require('./revisionAttribution');
 const core = require('./core');
 const { measurePerformance } = require('./performance');
 const { ownNamesByAccount } = require('./displayNames');
@@ -489,6 +490,8 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         await tx.set('story_migration_items',id,{familyId:ctx.familyId,item:next.storyMigration.pending.find(p=>p.id===input.pendingId)});
       }
       if(newRevision && await tx.get('biography_drafts',docId(ctx.familyId,newRevision.id)))throw new Error('版本编号冲突');
+      if(newRevision)delete newRevision.receivedFromName; // Own edits must not inherit a client-supplied source signature.
+      if(newRevision)Object.assign(newRevision,await revisionAttribution(tx,ctx,newRevision.kind==='restore'?'恢复历史版本':draftSummary(previous.manuscriptRevisions?.find(r=>r.id===before?.currentRevisionId)?.draft,newRevision.draft)));
       if(newRevision)await tx.set('biography_drafts',docId(ctx.familyId,newRevision.id),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision:newRevision});
       await tx.set('stories',docId(ctx.familyId,story.id),story);
       if (core.isEmptyStoryCreate(input) && family.storyBooks?.status!=='active') {

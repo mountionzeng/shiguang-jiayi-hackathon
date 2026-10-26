@@ -1,3 +1,4 @@
+const {revisionAttribution}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
 const {FAMILY_ID,assertSpaceOwner,identityError}=require('./identity');
@@ -147,7 +148,7 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     core.validateDraft(base,story);assertBounded(base);
     const revisionId='revision-'+digest([copyId,story.id]);
     if(await tx.get('biography_drafts',docId(ctx.familyId,revisionId)))conflict();
-    const revision={id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'收入亲友章节',savedAt:stamp,sourceFingerprint:'',draft:base};
+    const revision={...await revisionAttribution(tx,ctx,'接收亲友章节'),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'收入亲友章节',savedAt:stamp,sourceFingerprint:'',draft:base};
     story={...story,version:input.target.mode==='new'?1:story.version+1,currentRevisionId:revisionId,sourcePolicyRequired:true,
       receivedSources:[...(Array.isArray(story.receivedSources)?story.receivedSources:[]),...receivedSources],updatedAt:stamp};
     if(media){
@@ -199,7 +200,7 @@ async function appendOwnExperience(repo,ctx,raw,{now=()=>new Date().toISOString(
     core.validateDraft(draft,story);assertBounded(draft);
     const revisionId='revision-'+digest([operationId,story.id]);
     if(await tx.get('biography_drafts',docId(ctx.familyId,revisionId)))conflict();
-    const revision={id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'补充我的经历',savedAt:stamp,sourceFingerprint:'',draft};
+    const revision={...await revisionAttribution(tx,ctx,'补充文字'),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'补充我的经历',savedAt:stamp,sourceFingerprint:'',draft};
     await tx.set('biography_drafts',docId(ctx.familyId,revisionId),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision});
     await tx.set('stories',docId(ctx.familyId,story.id),{...story,version:story.version+1,currentRevisionId:revisionId,updatedAt:stamp});
     await tx.set('story_copy_edits',operationId,{familyId:ctx.familyId,principalId:ctx.principalId,status:'complete',fingerprint,

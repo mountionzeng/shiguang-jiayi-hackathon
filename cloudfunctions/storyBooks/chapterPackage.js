@@ -1,3 +1,4 @@
+const {revisionAttribution}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
 const {assertSpaceOwner,identityError}=require('./identity');
@@ -146,7 +147,7 @@ async function importChapterPackage(repo,ctx,raw,{now=()=>new Date().toISOString
     if(Buffer.byteLength(JSON.stringify(base),'utf8')>240000)throw error('STORY_COPY_LIMIT','这份章节超过接收上限，请减少章节后重试');
     const revisionId='revision-'+digest([copyId,story.id,'chapter-package']);
     if(await tx.get('biography_drafts',docId(ctx.familyId,revisionId)))conflict();
-    const revision={id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'导入章节包',savedAt:stamp,sourceFingerprint:'',draft:base};
+    const revision={...await revisionAttribution(tx,ctx,'接收章节及图片',input.senderName),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'导入章节包',savedAt:stamp,sourceFingerprint:'',draft:base};
     // 回信路由只在原章节属于本账号的同账号闭环里建立；跨账号投递留给文档06。
     const route=input.origin?{sourceFamilyId:ctx.familyId,sourceStoryId:input.origin.storyId,sourceChapterId:input.origin.chapterId,destinationChapterId:chapterId,
       sourceOwnerPrincipalId:ctx.principalId,senderName:String(input.senderName||'').slice(0,30),senderMemberId:''}:null;
@@ -223,7 +224,7 @@ async function reviseReceivedChapter(repo,ctx,raw,{now=()=>new Date().toISOStrin
     if(await tx.get('biography_drafts',docId(ctx.familyId,revisionId)))conflict();
     const version=story.version+1;
     await tx.set('biography_drafts',docId(ctx.familyId,revisionId),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision:{
-      id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'修改章节副本',savedAt:stamp,sourceFingerprint:'',draft}});
+      ...await revisionAttribution(tx,ctx,`修改 ${input.edits.length} 段文字${input.layout!==undefined?'，调整排版':''}`),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'修改章节副本',savedAt:stamp,sourceFingerprint:'',draft}});
     await tx.set('stories',docId(ctx.familyId,story.id),{...story,version,currentRevisionId:revisionId,sourcePolicyRequired:true,updatedAt:stamp});
     await tx.set('story_chapter_edits',requestKey,{familyId:ctx.familyId,principalId:ctx.principalId,fingerprint,storyId:story.id,revisionId,chapterId:input.chapterId,version,createdAt:stamp});
     return {ok:true,storyId:story.id,revisionId,chapterId:input.chapterId,version,alreadySaved:false};
