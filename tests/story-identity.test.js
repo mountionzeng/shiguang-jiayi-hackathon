@@ -92,3 +92,26 @@ test('a newly registered account can load the home and create a first story thro
   const reopened=await service(context,{action:'state',view:'home'});
   assert.equal(reopened.stories.length,1);assert.equal(reopened.stories[0].title,'虚构第一篇');
 });
+
+test('bootstrap retries transaction conflicts and reuses the identity committed by a competing request', async () => {
+  const f=fixture();f.account('new-user');
+  const context={APPID:'wx-original',OPENID:'new-user'};
+  let attempts=0,winning;
+  const repo={...f.repo,transaction:async fn=>{
+    attempts++;
+    if(attempts===1){winning=await resolveStoryIdentity(f.repo,context,options);throw new Error('document.set:fail [ResourceUnavailable.TransactionConflict] Transaction is conflict');}
+    return f.repo.transaction(fn);
+  }};
+  assert.deepEqual(await resolveStoryIdentity(repo,context,options),winning);
+  assert.equal(attempts,2);
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('story_principals:')).length,1);
+});
+
+test('bootstrap conflict retry is bounded and other errors are never retried',async()=>{
+  const context={APPID:'wx-original',OPENID:'owner'};
+  for(const [message,count] of [['ResourceUnavailable.TransactionConflict',3],['storage down',1]]){
+    let attempts=0;
+    await assert.rejects(resolveStoryIdentity({transaction:async()=>{attempts++;throw new Error(message);}},context,options),new RegExp(message));
+    assert.equal(attempts,count);
+  }
+});
