@@ -42,3 +42,6 @@
 - chapterPackageImport/Revise 与能力字段解除共享读取灰度名单耦合，仍要求身份、专用功能开关、本人空间、内容审核及版本校验；不授予共享读取权限，不新增灰度接纳记录。
 - npm run check：1566 项通过，git diff --check 通过。下载线上 drinkingTimeBridge 5 文件、storyBooks 36 文件与修复前 HEAD 全部一致。
 - 待部署和实际卡片/异账号接收验收；不作为已通过提审或手机验收证据。本轮未生成图片、未修改用户故事。
+
+### 15:16 部署与验收边界
+修复提交 e36f934052ad5612924a90c4de07c00b44e5a63c 已仅部署 drinkingTimeBridge、storyBooks（15:13 CST）；下载目录 outputs/review-availability-20261026/after-image-share 下的 5+36 文件与提交一致。工具原生点击仍异常，已请用户重开虚构故事发送入口；未生成好友卡片、未完成真实好友接收，未上传或提审。本机测试和部署不能代替手机验收。
