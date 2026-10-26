@@ -29,3 +29,16 @@
 - 用户已同意准备一个未使用过的真实微信账号。已打开开发工具→多账号调试→真实测试账号→添加，停在微信扫码登录页，等待用户扫码。此二维码是添加测试身份用，不是客户端预览二维码，不能当作新版本交付。
 - 证据目录：/Users/yuandai/Documents/Codex/2026-10-23/users-yuandai-documents-new-project-shiguang/outputs/review-availability-20261026/。含 new-account-before.png、new-account-save-before.png、new-account-reopened.png、new-account-cleaned.png；云源码 before/after/after-save-fix。
 - 后续：扫码添加真实新账号后首次进入并验证完整写作；按 RELEASE-ACCEPTANCE 补齐其余发布证据。0.1.1029 仍为被拒客户端；本轮不宣称可提审，不机械填 passed。
+
+## 2026-10-26 14:43 真实账号接入后的冲突修复
+
+用户已扫码登录真实测试账号；测试窗口 s3 首页出现 ResourceUnavailable.TransactionConflict，手动重新加载后首页正常。确认首次并行请求竞争初始化事务；补充仅针对此确切事务冲突的最多三次新事务重试，重新读取全部身份权限记录，不复用失败事务的 principal。新增测试先失败后通过，覆盖竞争请求已建立身份时复用、重试上限和其他错误不重试。全量 1560 项及类型检查通过。修复提交 61370de8e39fe266fcc596516c59e19ad2275f6a，标准脚本仅部署 storyBooks，下载 after-conflict-fix 的 36 个文件全部一致。此真实账号已初始化，不能用它重开冒充修复后的首次竞争实测；手机和完整首次创作验收仍待完成。当前已为用户打开“写下我的名字”后的个人书籍表单，未替用户填写称呼、未创建实际账号的故事。截图 real-account-start.png。
+
+## 图文分享阻塞修复（2026-10-26）
+
+- 用户点击“发给微信用户”后，实际报图片不可读取，尚未生成卡片、尚未发送。根因：导出只读记忆图片，故事图库图片无法读取；原逻辑还拒绝所有底图。
+- 客户端从鉴权故事图库解析审核通过图片，底图映射为章节包 bodyTextureAssetId；接收页解析对应本地照片。原图、原章和来源不修改。
+- drinkingTimeBridge 校验本人图库图片、审核状态、存储路径、存活故事和图片来源限制；允许本人在收到的故事中新生成且未受来源限制的图片。
+- chapterPackageImport/Revise 与能力字段解除共享读取灰度名单耦合，仍要求身份、专用功能开关、本人空间、内容审核及版本校验；不授予共享读取权限，不新增灰度接纳记录。
+- npm run check：1566 项通过，git diff --check 通过。下载线上 drinkingTimeBridge 5 文件、storyBooks 36 文件与修复前 HEAD 全部一致。
+- 待部署和实际卡片/异账号接收验收；不作为已通过提审或手机验收证据。本轮未生成图片、未修改用户故事。

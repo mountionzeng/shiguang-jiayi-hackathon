@@ -288,3 +288,14 @@ test("forward keeps received text, images and root chapter identity without open
   assert.throws(()=>exportChapterForwardPackage({chapter:{...chapter,packageLineage:undefined},...meta,images}),/来源/);
   assert.throws(()=>exportChapterForwardPackage({chapter:{...chapter,packageBlockDigests:{}},...meta,images}),/来源权限/);
 });
+
+test('export carries an available chapter backdrop as a portable layout asset without mutating the original',()=>{
+  const chapter={...chapterWith(layoutOf([])),backdropImageId:'family_owner_img_req-abcdefgh'};
+  const before=structuredClone(chapter),photoId='photo-ai-req-abcdefgh';
+  const result=exportChapterPackage({chapter,...meta,images:{[photoId]:{mime:'image/png',bytes:100,sha256:'b'.repeat(64),width:20,height:20,aiGenerated:true}}});
+  const assetId=result.package.chapters[0].layout!.settings.bodyTextureAssetId!;
+  assert.equal(result.assetPhotos[assetId],photoId);
+  assert.equal(result.package.assets.find(a=>a.assetId===assetId)?.aiGenerated,true);
+  assert.deepEqual(chapter,before);
+  assert.doesNotThrow(()=>prepareImport(result.package));
+});

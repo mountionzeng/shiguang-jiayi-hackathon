@@ -1,8 +1,9 @@
 import type { ManuscriptChapter } from "../domain/biography";
 import {
   ChapterPackage, ChapterPackageError, PackageAsset, PackageLayout, fromChapterPackage, parseChapterPackage, toChapterPackage,
-  CHAPTER_PACKAGE_LIMITS, PackageImageInfo, sha256Bytes,
+  CHAPTER_PACKAGE_LIMITS, PackageImageInfo, sha256Bytes, chapterPackageAssetId,
 } from "../domain/chapterPackage";
+import { storyImageReferenceId } from './bookImages';
 import { CHAPTER_PACKAGE_ENABLED } from "../config/runtime";
 
 /** 每章排版序列化后的上限；与 storyBookCore.validateDraft 的 60000 字节保持一致。 */
@@ -74,7 +75,14 @@ function buildChapterPackage(input: ExportInput, allowProtectedReturn: boolean):
     );
     if (!safeReturn) throw new Error("这一章包含受来源权限保护的内容，暂不能导出章节包");
   }
-  if (input.chapter.backdropImageId) throw new Error("这一章含有底图，暂时还不能打包");
+  if (input.chapter.backdropImageId) {
+    const photoId = storyImageReferenceId(input.chapter.backdropImageId);
+    const layout = input.layout ?? input.chapter.layout;
+    if (!photoId || !layout || !input.images?.[photoId]) throw new Error('底图暂时无法读取，请重新打开后再发送');
+    const assetId = Object.entries(input.chapter.packageAssets ?? {}).find(([, asset]) => asset.photoId === photoId)?.[0] ?? chapterPackageAssetId(photoId);
+    input = { ...input, layout: { ...layout, settings: { ...layout.settings, bodyTextureAssetId: assetId } },
+      chapter: { ...input.chapter, packageAssets: { ...input.chapter.packageAssets, [assetId]: { photoId, aiGenerated: true } } } };
+  }
   assertLayoutFits(input.layout);
   const savedLineage = input.chapter.packageLineage;
   const lineage = input.lineage ?? (savedLineage ? {

@@ -776,7 +776,10 @@ Page({
   },
   activeBackdropUrl() {
     const active = this.chapters.find(chapter => chapter.id === this.activeChapterId);
-    return active?.backdropImageId ? this.backdropUrls[active.backdropImageId] ?? "" : "";
+    if (active?.backdropImageId) return this.backdropUrls[active.backdropImageId] ?? "";
+    const assetId = active?.layout?.settings.bodyTextureAssetId;
+    const photoId = assetId ? active?.packageAssets?.[assetId]?.photoId : undefined;
+    return photoId ? this.photoPaths[photoId] ?? '' : '';
   },
   onEditorReady() {
     wx.createSelectorQuery().in(this).select("#manuscript-editor").context(result => {

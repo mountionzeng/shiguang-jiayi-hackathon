@@ -103,6 +103,16 @@ function validateManifest(pkg, assetMap) {
 }
 async function accountPhotoAllowed(openid, familyId, photoId, allowSource = false) {
   if (!/^family_[0-9A-Za-z_-]{1,120}$/.test(String(familyId || "")) || !/^photo-[0-9a-z-]{1,80}$/.test(String(photoId || ""))) return false;
+  if (/^photo-ai-req-[a-z0-9-]{8,60}$/.test(photoId)) {
+    const requestId = photoId.slice(9);
+    const image = await db.collection('story_images').doc(`${familyId}_img_${requestId}`).get().then(row => row.data).catch(() => null);
+    if (!image || image.familyId !== familyId || image.moderation !== 'pass' || image.deletedAtMs !== undefined ||
+      image.sourcePolicyRequired || image.sourceIds !== undefined || !/^story-[a-z0-9-]{1,100}$/.test(image.storyId || '') ||
+      typeof image.fileID !== 'string' || !image.fileID.startsWith('cloud://') ||
+      !['png','jpg','jpeg','webp'].some(ext => image.fileID.endsWith(`/story-images/${familyId}/${image.storyId}/${requestId}.${ext}`))) return false;
+    const story = await db.collection('stories').doc(`${familyId}_${image.storyId}`).get().then(row => row.data).catch(() => null);
+    return Boolean(story && story.familyId === familyId && !story.deletedAt);
+  }
   const photo = await db.collection("photos").doc(`${familyId}__${photoId}`).get().then(result => result.data).catch(() => null);
   return Boolean(photo && photo._openid === openid && photo.familyId === familyId && !photo.deletedAt &&
     (allowSource || (!photo.sourcePolicyRequired && photo.sourceIds === undefined)) && photo.moderation?.suggest !== "risky");

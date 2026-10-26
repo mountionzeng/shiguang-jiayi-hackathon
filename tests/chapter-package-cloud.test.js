@@ -380,3 +380,15 @@ test('moderation receives complete adjacent lines and page labels through one bo
   const g=await setup(),bad=layout();bad.pages[0].label='违规页名';
   await assert.rejects(importChapterPackage(g.repo,g.owner,g.input({layout:bad}),{...g.deps,approveText:async text=>!text.includes('违规页名')}),{code:'CONTENT_REJECTED'});
 });
+
+ test('a new recipient outside shared-read rollout can accept into their own space',async()=>{
+  const f=await setup(),ctx={APPID:'wx-original',OPENID:'owner'};
+  const service=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',
+    sharedReadFamilyIds:[],chapterPackageEnabled:true,approveChapterText:ok});
+  const capabilities=await service(ctx,{action:'capabilities'});
+  assert.equal(capabilities.sharedRead,false);assert.equal(capabilities.chapterPackage,true);
+  const result=await service(ctx,{action:'chapterPackageImport',...f.input()});
+  assert.equal(result.storyId,'story-imported');
+  assert.equal(stored(f).revision.draft.chapters[0].content[0].text,'第一行\n');
+  assert.equal(f.tables.has('story_rollout_admissions:family_owner'),false);
+});

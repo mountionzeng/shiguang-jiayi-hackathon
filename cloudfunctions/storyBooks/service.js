@@ -65,7 +65,7 @@ function createStoryService(repo, options = {}) {
         excerptShare: options.excerptSharingEnabled === true && inRollout,
         sharedEdit: options.sharedEditEnabled === true && inRollout,
         copy: options.copyReceiveEnabled === true && inRollout,
-        chapterPackage: options.chapterPackageEnabled === true && inRollout,
+        chapterPackage: accessEnabled && options.chapterPackageEnabled === true,
         // Owner-only book image export is locally rendered and resolves the
         // trusted WeChat identity again before preview, save, and share. It is
         // independent from both the public share-card and shared-read rollouts.
@@ -104,7 +104,8 @@ function createStoryService(repo, options = {}) {
       }
     }
     if (action === 'chapterPackageImport') {
-      if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      // Import/revise writes only to the authenticated owner's space; shared-read rollout is unrelated.
+      if (!accessEnabled || options.chapterPackageEnabled !== true) throw accessError('STORY_ACCESS_DISABLED');
       // Keep ownership/path checks ahead of the retryable moderation state.
       const approveImage = async (c, photoId) => {
         const photo = await repo.get('photos', `${c.familyId}__${photoId}`);
@@ -133,7 +134,8 @@ function createStoryService(repo, options = {}) {
         approveBackdrop:(c,id)=>id.startsWith(c.familyId+'_img_') && approveArticleImage(repo,c,'photo-ai-'+id.slice(id.lastIndexOf('_img_')+5),event.storyId,event.chapter?.id,'backdrop')});
     }
     if (action === 'chapterPackageRevise') {
-      if (!accessEnabled || options.chapterPackageEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
+      // Import/revise writes only to the authenticated owner's space; shared-read rollout is unrelated.
+      if (!accessEnabled || options.chapterPackageEnabled !== true) throw accessError('STORY_ACCESS_DISABLED');
       return reviseReceivedChapter(repo,ctx,{requestId:event.requestId,storyId:event.storyId,revisionId:event.revisionId,
         expectedVersion:event.expectedVersion,chapterId:event.chapterId,edits:event.edits,layout:event.layout},
       {now:options.now,approveText:options.approveChapterText});

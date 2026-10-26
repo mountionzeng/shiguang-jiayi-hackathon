@@ -39,3 +39,23 @@ test('export preserves image bytes returned from the native API realm', async ()
   assert.equal(result.package.assets[0].mime, 'image/jpeg');
   assert.equal(Object.values(result.assetFiles)[0], '/saved/test.jpg');
 });
+
+test('export reads chapter AI images from the authorized story list and preserves the AI label', async () => {
+  const api:any={}, calls:string[]=[];
+  vm.runInNewContext(compiled, {exports:api,require(name:string){
+    const value=nativeRequire(name);
+    if(name==='./bookImages')return {...value,readLocalPhoto:async()=>''};
+    if(name==='./chapterPackageService')return {...value,chapterPackageEnabled:()=>true};
+    if(name==='./storyImageService')return {storyImageApi:{listStoryImages:async(id:string)=>{calls.push(id);return {images:[{imageId:'family_owner_img_req-abcdefgh',url:'https://example.test/image.jpg',moderation:'pass',aiGenerated:true}]};}}};
+    return value;
+  },wx:{env:{USER_DATA_PATH:'/saved'},setStorageSync(){},
+    downloadFile:({success}:any)=>success({statusCode:200,tempFilePath:'/tmp/image.jpg'}),
+    getImageInfo:({success}:any)=>success({width:10,height:10}),
+    getFileSystemManager:()=>({saveFile:({success}:any)=>success({savedFilePath:'/saved/image.jpg'}),readFile:({success}:any)=>success({data:new Uint8Array([255,216,255,224]).buffer}),writeFile:({success}:any)=>success(),unlink(){}}),
+    cloud:{uploadFile:async()=>({fileID:'cloud://test/package'})}}});
+  const chapter={id:'chapter-test',title:'测试',memoryIds:[],content:[{photoId:'photo-ai-req-abcdefgh'}]};
+  const result=await api.exportChapterToCloud(chapter,'我','故事','story-test');
+  assert.deepEqual(calls,['story-test']);
+  assert.equal(result.package.assets[0].aiGenerated,true);
+  await assert.rejects(api.exportChapterToCloud({...chapter,content:[{photoId:'photo-ai-req-notlisted'}]},'我','故事','story-test'),/不可读取/);
+});

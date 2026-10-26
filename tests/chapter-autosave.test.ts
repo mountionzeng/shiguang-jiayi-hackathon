@@ -252,3 +252,15 @@ test('不支持的粘贴图像保留文字，不能自动提交旧正文', async
   assert.equal(display.chapterRows[0].photoCount,1);
   assert.deepEqual(chapter.content,before);
 });
+
+test('received layout backdrop resolves its imported photo while native backdrop keeps priority', async () => {
+  const {p} = await setup();
+  p.chapters[0].layout = {settings:{bodyTextureAssetId:'asset-backdrop'}};
+  p.chapters[0].packageAssets = {'asset-backdrop':{photoId:'photo-received'}};
+  p.photoPaths['photo-received'] = 'https://example.test/received.jpg';
+  assert.equal(p.activeBackdropUrl(),'https://example.test/received.jpg');
+  p.chapters[0].backdropImageId = 'native-backdrop';
+  p.backdropUrls['native-backdrop'] = 'https://example.test/native.jpg';
+  assert.equal(p.activeBackdropUrl(),'https://example.test/native.jpg');
+  p.activeChapterId = 'chapter-missing';assert.equal(p.activeBackdropUrl(),'');
+});
