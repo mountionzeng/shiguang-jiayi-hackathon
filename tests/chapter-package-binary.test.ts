@@ -57,5 +57,5 @@ test('export reads chapter AI images from the authorized story list and preserve
   const result=await api.exportChapterToCloud(chapter,'我','故事','story-test');
   assert.deepEqual(calls,['story-test']);
   assert.equal(result.package.assets[0].aiGenerated,true);
-  await assert.rejects(api.exportChapterToCloud({...chapter,content:[{photoId:'photo-ai-req-notlisted'}]},'我','故事','story-test'),/不可读取/);
+  await assert.rejects(api.exportChapterToCloud({...chapter,content:[{photoId:'photo-ai-req-notlisted'}]},'我','故事','story-test'),/第 1 张图片无法发送：故事图库暂未提供可用图片/);
 });

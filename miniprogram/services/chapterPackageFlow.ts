@@ -23,9 +23,9 @@ function readImageBytes(path: string): Promise<Uint8Array> {
     filePath: path, success: result => resolve(typeof result.data === "string" ? new Uint8Array() : new Uint8Array(result.data)), fail: reject,
   }));
 }
-async function persistentImagePath(photoId: string, authorizedUrl?: string): Promise<{ path: string; staged: boolean }> {
+async function persistentImagePath(photoId: string, authorizedUrl?: string, unavailableMessage = "图片文件暂不可读取"): Promise<{ path: string; staged: boolean }> {
   const source = authorizedUrl || await readLocalPhoto(photoId);
-  if (!source) throw new Error("有图片仅保存在原设备或暂时不可读取，请重新添加图片后再打包");
+  if (!source) throw new Error(unavailableMessage);
   if (!/^https:\/\//.test(source)) return { path: source, staged: false };
   const downloaded = await new Promise<{ statusCode: number; tempFilePath: string }>((resolve, reject) => wx.downloadFile({ url: source, success: resolve, fail: reject }));
   if (downloaded.statusCode !== 200 || !downloaded.tempFilePath) throw new Error("云端图片暂时下载失败，请重试");
@@ -58,12 +58,16 @@ export async function exportChapterToCloud(chapter: ManuscriptChapter, displayNa
   try {
     const storyImages = storyId && photoIds.some(isStoryImageReference)
       ? (await storyImageApi.listStoryImages(storyId)).images : [];
+    const listedImages = new Map(storyImages.map(image => [storyImageReferenceId(image.imageId), image]));
     const availableImages = new Map(storyImages.filter(image => image.moderation === 'pass' && image.url?.startsWith('https://'))
       .map(image => [storyImageReferenceId(image.imageId), image]));
     for (let offset = 0; offset < photoIds.length; offset += 2) {
       await Promise.all(photoIds.slice(offset, offset + 2).map(async photoId => {
         const storyImage = availableImages.get(photoId);
-        const resolved = await persistentImagePath(photoId, storyImage?.url);
+        const listed = listedImages.get(photoId);
+        const detail = listed && listed.moderation !== 'pass' ? '图片审核尚未通过' : isStoryImageReference(photoId) ? '故事图库暂未提供可用图片' : '照片文件暂不可读取';
+        const resolved = await persistentImagePath(photoId, storyImage?.url,
+          `第 ${photoIds.indexOf(photoId) + 1} 张图片无法发送：${detail}。原图和文章仍保留。`);
         if (resolved.staged) staged.add(resolved.path);
         const dimensions = await imageInfo(resolved.path), bytes = await readImageBytes(resolved.path);
         images[photoId] = packageImageInfo(bytes, dimensions.width, dimensions.height);
