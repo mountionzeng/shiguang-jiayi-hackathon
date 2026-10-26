@@ -3678,7 +3678,7 @@ function roomLetter(overrides: Record<string, unknown> = {}) {
   return { ...returnLetter(), senderMemberId: "wx_" + "a".repeat(24), ...overrides };
 }
 
-test("记忆之家：家人的回信归到 ta 名下，点「你」看全部，没有回信时什么都不显示", async context => {
+test("记忆之家：家人的回信归到 ta 名下，点「你」不混入回信，没有回信时什么都不显示", async context => {
   const state = createInitialRoomState();
   state.members = [...state.members, { id: "wx_" + "a".repeat(24), name: "小岚", relation: "家人", avatarText: "小", role: "contributor", kind: "person" } as any];
   const storage = installWxMock(state);
@@ -3690,8 +3690,8 @@ test("记忆之家：家人的回信归到 ta 名下，点「你」看全部，�
   await callPage(page, "refresh", state);
   const people = page.data.people as any[];
   assert.equal(people.find(person => person.name === "小岚").letters, 1);
-  assert.equal(people.find(person => person.id === "me").letters, 1);
-  assert.deepEqual((page.data.letters as any[]).map(item => item.where), ["小岚 · 回信给你的书"]);
+  assert.equal(people.find(person => person.id === "me").letters, 0);
+  assert.deepEqual(page.data.letters, []);
 
   page.setData({ activeId: "wx_" + "a".repeat(24) });
   await callPage(page, "refresh", state);
@@ -3737,11 +3737,11 @@ test("整合后记忆之家缓存首屏不等待回信，权威刷新再显示�
   assert.equal(calls, 0, "缓存首屏不发出回信请求");
   assert.equal(page.data.loading, false);
   assert.equal(page.data.loadingDetails, true);
-  assert.equal((page.data.people as any[])[0].count, memoryPool(state.contributions).length);
+  assert.equal((page.data.people as any[])[0].count, memoryPool(state.contributions).filter(m => m.authorMemberId === "owner").length);
   await callPage(page, "refresh", state);
   assert.equal(calls, 1);
   assert.equal(page.data.loadingDetails, false);
-  assert.equal((page.data.letters as any[]).length, 1);
+  assert.equal((page.data.letters as any[]).length, 0);
 });
 
 test("整合后回信迟到不能在记忆之家卸载后改写页面或快照", async context => {
@@ -4006,4 +4006,25 @@ test('article chat uses live source-only context instead of the legacy saved-boo
   assert.equal(callPage(page,'xiaoyiContextText'),'实时文字');
   page.data.protectedCopy=true;
   assert.equal(callPage(page,'xiaoyiContextText'),'');
+});
+
+ test("own avatar excludes other authors and received shares even after switching and refreshing", async context => {
+  const state = createInitialRoomState();
+  const storage = installWxMock(state);
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition("room"));
+  page.allActivity = [{id:"share-test",accountKey:"friend-key",name:"朋友",kind:"发来文章",at:"2026-10-26",title:"朋友的文章",text:"朋友的内容",changes:[],imageCount:0}];
+  await callPage(page,"refresh",state);
+  const ownIds=memoryPool(state.contributions).filter(m=>m.authorMemberId==="owner").map(m=>m.id).sort();
+  assert.deepEqual((page.data.memories as any[]).map(m=>m.id).sort(),ownIds);
+  assert.equal((page.data.people as any[])[0].count,ownIds.length);
+  assert.deepEqual(page.data.sharedArticles,[]);
+  callPage(page,"choosePerson",{currentTarget:{dataset:{id:"account:friend-key"}}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal((page.data.sharedArticles as any[])[0].id,"share-test");
+  callPage(page,"choosePerson",{currentTarget:{dataset:{id:"me"}}});
+  await new Promise(resolve=>setImmediate(resolve));
+  await callPage(page,"refresh",state);
+  assert.deepEqual(page.data.sharedArticles,[]);
+  assert.deepEqual((page.data.memories as any[]).map(m=>m.id).sort(),ownIds);
 });
