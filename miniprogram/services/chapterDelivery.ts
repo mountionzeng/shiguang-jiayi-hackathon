@@ -1,7 +1,7 @@
 import type { ManuscriptChapter } from "../domain/biography";
 import type { ChapterPackage } from "../domain/chapterPackage";
 import { enqueuePhotoUpload, ensurePhotoUploads } from "./photoCloud";
-import { exportChapterToCloud } from "./chapterPackageFlow";
+import { prepareChapterPackage } from "./chapterPackageFlow";
 import { chapterPackageEnabled, chapterPackages, prepareImport, type ImportTarget } from "./chapterPackageService";
 import { CHAPTER_DELIVERY_ENABLED } from "../config/runtime";
 
@@ -61,17 +61,17 @@ function removeOutbox(action: Outbox["action"], id: string) { writeOutbox(readOu
 
 async function createOutbox(action: Outbox["action"], chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, recipientContactId?: string) {
   if (chapter.packageLineage) chapter = chapterWithReturnSource(chapter, (wx.getStorageSync(READS_KEY) || {}) as Record<string, { package?: ChapterPackage }>);
-  const exported = await exportChapterToCloud(chapter, displayName, storyTitle, storyId, action === "returnChapter" ? "return" : chapter.packageLineage ? "forward" : "copy");
-  if (Object.keys(exported.assetPhotos).length !== Object.keys(exported.assetFiles).length)
+  const prepared = await prepareChapterPackage(chapter, displayName, storyTitle, storyId, action === "returnChapter" ? "return" : chapter.packageLineage ? "forward" : "copy");
+  if (Object.keys(prepared.assetPhotos).length !== Object.keys(prepared.assetFiles).length)
     throw new Error("章节图片来源映射不完整，请重新添加图片后再投递");
   if (action !== "returnChapter" && storyId && !chapter.packageLineage) {
     const roots = (wx.getStorageSync(ROOTS_KEY) || {}) as Record<string, { storyId: string; chapterId: string }>;
-    roots[exported.package.lineage.rootPackageId] = { storyId, chapterId: chapter.id };
+    roots[prepared.package.lineage.rootPackageId] = { storyId, chapterId: chapter.id };
     wx.setStorageSync(ROOTS_KEY, roots);
   }
   return {
-    action, requestId: requestId(), package: exported.package, assetFiles: exported.assetFiles,
-    assetPhotos: exported.assetPhotos, assetFileIDs: {}, cloudPaths: {}, ...(recipientContactId ? { recipientContactId } : {}),
+    action, requestId: requestId(), package: prepared.package, assetFiles: prepared.assetFiles,
+    assetPhotos: prepared.assetPhotos, assetFileIDs: {}, cloudPaths: {}, ...(recipientContactId ? { recipientContactId } : {}),
   } satisfies Outbox;
 }
 

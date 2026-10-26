@@ -16,7 +16,7 @@ async function readHistory(repo, ctx, input) {
     if (!matches(record) || record.revision.id!==input.revisionId || !record.revision.draft) throw identityError();
     return {revision:record.revision};
   }
-  const rows=await repo.all('biography_drafts',ctx.familyId,SUMMARY_FIELDS);
+  const rows=await repo.all('biography_drafts',ctx.familyId,SUMMARY_FIELDS,{storyId:story.id});
   const history=rows.filter(matches).map(({revision:r})=>({id:r.id,storyId:r.storyId,kind:r.kind,label:r.label,savedAt:r.savedAt}));
   history.sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)) || b.id.localeCompare(a.id));
   return {history};

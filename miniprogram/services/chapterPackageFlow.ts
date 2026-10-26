@@ -14,7 +14,13 @@ const LAST_PACKAGE_KEY = "chapterPackage.lastExport";
 const randomSuffix = () => Math.random().toString(36).slice(2, 12).padEnd(10, "0");
 export const newPackageId = () => `cp_${Date.now().toString(36)}${randomSuffix()}`;
 
-export interface ExportedChapter { package: ChapterPackage; packageId: string; cloudPath: string; fileID: string; assetFiles: Record<string, string>; assetPhotos: Record<string, string> }
+interface PreparedChapter {
+  package: ChapterPackage; packageId: string;
+  assetFiles: Record<string, string>; assetPhotos: Record<string, string>;
+  /** Downloaded copies only; original local photos must never be removed. */
+  stagedFiles: string[];
+}
+export interface ExportedChapter extends Omit<PreparedChapter, "stagedFiles"> { cloudPath: string; fileID: string }
 
 function imageInfo(src: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => wx.getImageInfo({ src, success: result => resolve({ width: result.width, height: result.height }), fail: reject }));
@@ -45,8 +51,8 @@ type SavedPackage = {
   importResult?: { storyId: string; revisionId: string; chapterId: string };
 };
 
-/** Export one chapter. Source lineage is preserved locally when this chapter was imported from a package. */
-export async function exportChapterToCloud(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, purpose: "copy" | "return" | "forward" = "copy"): Promise<ExportedChapter> {
+/** Prepare the payload and image files once; delivery persists its own retryable outbox. */
+export async function prepareChapterPackage(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, purpose: "copy" | "return" | "forward" = "copy"): Promise<PreparedChapter> {
   if (!chapterPackageEnabled()) throw new Error("章节包功能暂未开放");
   const state = storyId ? await loadRoomStateRemoteFirst({ view: "home" }) : undefined;
   const selectedCoverId = state?.stories?.find(story => story.id === storyId && !story.deletedAt)?.coverImageId;
@@ -87,6 +93,19 @@ export async function exportChapterToCloud(chapter: ManuscriptChapter, displayNa
       chapter, images, coverPhotoId, packageId, displayName: displayName || "我", createdAt: new Date().toISOString(), storyTitle,
       layout: chapter.layout ?? null,
     });
+    const assetFiles = Object.fromEntries(Object.entries(assetPhotos).map(([assetId, photoId]) => [assetId, imageFiles[photoId]]));
+    return { package: pkg, packageId, assetFiles, assetPhotos, stagedFiles: [...staged] };
+  } catch (error) {
+    removeStaged([...staged]);
+    throw error;
+  }
+}
+
+/** Explicit export retains the downloadable JSON and the existing import recovery handle. */
+export async function exportChapterToCloud(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, purpose: "copy" | "return" | "forward" = "copy"): Promise<ExportedChapter> {
+  const { stagedFiles, ...prepared } = await prepareChapterPackage(chapter, displayName, storyTitle, storyId, purpose);
+  const { package: pkg, packageId } = prepared;
+  try {
     const filePath = `${wx.env.USER_DATA_PATH}/${packageId}.json`;
     await new Promise<void>((resolve, reject) => wx.getFileSystemManager().writeFile({
       filePath, data: JSON.stringify(pkg), encoding: "utf8", success: () => resolve(), fail: reject,
@@ -96,10 +115,9 @@ export async function exportChapterToCloud(chapter: ManuscriptChapter, displayNa
     if (!uploaded.fileID) throw new Error("章节包没有保存成功，请重试");
     const record: SavedPackage = { packageId, fileID: uploaded.fileID, chapterId: chapter.id, ...(storyId ? { storyId } : {}) };
     wx.setStorageSync(LAST_PACKAGE_KEY, record);
-    const assetFiles = Object.fromEntries(Object.entries(assetPhotos).map(([assetId, photoId]) => [assetId, imageFiles[photoId]]));
-    return { package: pkg, packageId, cloudPath, fileID: uploaded.fileID, assetFiles, assetPhotos };
+    return { ...prepared, cloudPath, fileID: uploaded.fileID };
   } catch (error) {
-    removeStaged([...staged]);
+    removeStaged(stagedFiles);
     throw error;
   }
 }

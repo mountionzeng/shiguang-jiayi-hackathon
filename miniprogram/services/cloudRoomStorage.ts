@@ -411,7 +411,10 @@ function missingStoryService(error: unknown): boolean {
   return classifyServiceFailure(error) === 'missing';
 }
 
-async function loadStoryServiceRoomState(view?: "home" | "memories"): Promise<StoryServiceRoomState> {
+// Projections are read-only; only an unqualified read contains the full archive.
+export type RoomStateView = "home" | "memories" | "memory-sources";
+
+async function loadStoryServiceRoomState(view?: RoomStateView): Promise<StoryServiceRoomState> {
   return await readStoryState(async transport => {
     const finish = startPerformanceMeasure('room.request');
     let outcome: 'ok' | 'error' = 'error';
@@ -500,7 +503,7 @@ function normalizeStoryServiceRoomState(result: StoryServiceRoomState): FamilyRo
   return state;
 }
 
-export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "home" | "memories" } = {}): Promise<FamilyRoomState> {
+export async function loadCloudRoomState(options: { readOnly?: boolean; view?: RoomStateView } = {}): Promise<FamilyRoomState> {
   const finish = startPerformanceMeasure('room.cloud');
   const metrics: PerformanceMetrics = { route: 'identity', clientPageReads: 0 };
   let outcome: 'ok' | 'error' = 'error';
@@ -515,7 +518,7 @@ export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "
   }
 }
 
-async function readCloudRoomState(options: { readOnly?: boolean; view?: "home" | "memories" }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
+async function readCloudRoomState(options: { readOnly?: boolean; view?: RoomStateView }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
   // The story identity requires the account registered by getOpenId. On a
   // first visit these are dependent operations, even though returning users
   // can make parallel reads appear safe.

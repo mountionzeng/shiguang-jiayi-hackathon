@@ -38,3 +38,14 @@ test('history fails closed on deleted stories, mismatched revision ownership and
   f.repo.all=async (...args)=>{const rows=await all(...args); f.tables.get('story_principal_spaces:family_owner').status='revoked'; return rows;};
   await assert.rejects(f.call('history',{storyId:'story-one'}),{code:'STORY_FORBIDDEN'});
 });
+
+test('history scopes its database query to the selected story before loading revision metadata',async()=>{
+  const f=await setup();
+  const reads=[];const all=f.repo.all;
+  f.repo.all=async (...args)=>{reads.push(args);return all(...args)};
+  await f.call('history',{storyId:'story-one',familyId:'family_other'});
+  const read=reads.find(([table])=>table==='biography_drafts');
+  assert.equal(read[1],'family_owner');
+  assert.deepEqual(read[3],{storyId:'story-one'});
+  assert.equal(read[2]['revision.draft'],undefined);
+});

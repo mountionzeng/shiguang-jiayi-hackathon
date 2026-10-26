@@ -25,6 +25,7 @@ import {
   softDeleteCloudMemory,
   restoreCloudMemory,
   loadCloudRoomState,
+  type RoomStateView,
   replaceCloudContribution,
   editCloudContribution,
   resetCloudCurrentUserRoom,
@@ -121,7 +122,7 @@ export function roomDataModeLabel(): string {
   return shouldUseCloudDatabase() ? "数据：微信云端" : "数据：本机存储";
 }
 
-export async function loadRoomStateRemoteFirst(options: { view?: "home" | "memories" } = {}): Promise<FamilyRoomState> {
+export async function loadRoomStateRemoteFirst(options: { view?: RoomStateView } = {}): Promise<FamilyRoomState> {
   const finish = startPerformanceMeasure('room.load');
   let outcome: 'ok' | 'error' = 'error';
   let route: 'local' | 'cloud' | undefined;

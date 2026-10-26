@@ -13,4 +13,16 @@ function createDocumentAdapter(target) {
   };
 }
 
-module.exports={createDocumentAdapter,writableDocument};
+// Family scope comes from the authorized context, never from extra filters.
+async function readFamilyDocuments(db,table,familyId,fields,filter={}) {
+  const rows=[];
+  for(let offset=0;;offset+=100) {
+    let query=db.collection(table).where({...filter,familyId}).orderBy('_id','asc').skip(offset).limit(100);
+    if(fields)query=query.field(fields);
+    const result=await query.get();
+    rows.push(...result.data);
+    if(result.data.length<100)return rows;
+  }
+}
+
+module.exports={createDocumentAdapter,writableDocument,readFamilyDocuments};

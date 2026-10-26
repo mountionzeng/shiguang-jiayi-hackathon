@@ -761,25 +761,6 @@ Page({
       backdropUrl: this.activeBackdropUrl(),
     };
   },
-  /** Chapter backdrops are cloud pictures; a book without them never calls the cloud. */
-  async loadBackdrops(memberId: string, refreshId: number) {
-    const wanted = new Set(this.chapters.map(chapter => chapter.backdropImageId).filter((id): id is string => Boolean(id)));
-    if (!wanted.size) {
-      this.backdropUrls = {};
-      if (this.data.backdropUrl) this.setData({ backdropUrl: "" });
-      return;
-    }
-    try {
-      const list = await storyImageApi.listStoryImages(memberId);
-      if (this.unloaded || refreshId !== this.refreshId) return;
-      this.backdropUrls = Object.fromEntries(list.images
-        .filter(image => wanted.has(image.imageId) && image.url)
-        .map(image => [image.imageId, image.url]));
-      this.setData({ backdropUrl: this.activeBackdropUrl() });
-    } catch {
-      // Without the cloud the chapter simply shows no backdrop; its text is unaffected.
-    }
-  },
   activeBackdropUrl() {
     const active = this.chapters.find(chapter => chapter.id === this.activeChapterId);
     if (active?.backdropImageId) return this.backdropUrls[active.backdropImageId] ?? "";
@@ -1276,7 +1257,7 @@ Page({
     const key = this.articleChatKey();
     this.setData({articleMemoryOpen:true, articleMemoryLoading:true, articleMemoryNotice:'', articleMemoryRows:[]});
     try {
-      const state = await loadRoomStateRemoteFirst();
+      const state = await loadRoomStateRemoteFirst({view:"memory-sources"});
       if (this.unloaded || key !== this.articleChatKey() || !this.data.articleMemoryOpen) return;
       const owner = accountOwner(state.members);
       const memories = memoryPool(state.contributions).filter(memory => memory.authorMemberId === owner?.id && memory.text.trim());
@@ -1301,7 +1282,7 @@ Page({
     this.setData({articleMemoryLoading:true, articleMemoryNotice:''});
     try {
       // Re-read before using sources: removed or unavailable memories must not be sent to AI.
-      const state = await loadRoomStateRemoteFirst();
+      const state = await loadRoomStateRemoteFirst({view:"memory-sources"});
       if (this.unloaded || key !== this.articleChatKey()) return;
       const owner = accountOwner(state.members);
       const memories = memoryPool(state.contributions).filter(memory => ids.includes(memory.id) && memory.authorMemberId === owner?.id && memory.text.trim());

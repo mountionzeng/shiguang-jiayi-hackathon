@@ -106,6 +106,35 @@ function withApi(overrides: Partial<typeof storyImageApi>) {
 
 const BACKDROP_ID = "family_o-owner_img_req-bbbbbbbb";
 
+test("文章选记忆只读当前素材，确认时重新校验已删除的来源", async context => {
+  const state = {...createDemoRoomStateForTests(), roomStateVersion:1, stories:[], manuscriptRevisions:[],
+    deletedStories:[], personalDraftSourceFingerprints:{}};
+  const requests: Array<{view?: string}> = [];
+  const env = installWx({cloud:{callFunction:async ({name,data}:any)=>{
+    if(name==='getOpenId')return {result:{openid:'o-owner'}};
+    requests.push(data);
+    return {result:state};
+  }}});
+  env.setApp(true);
+  context.after(()=>env.restore());
+  // A real picker opens after its book has authenticated and populated the scope.
+  await loadRoomStateRemoteFirst({view:'home'});
+  requests.length=0;
+  const page=instantiate(await pageDefinition('book'));
+  page.setData({article:{id:'chapter-picker'},storyId:'story-picker'});
+  page.activeChapterId='chapter-picker';
+  await call(page,'openArticleMemories');
+  const rows=page.data.articleMemoryRows as Array<{id:string;checked:boolean}>;
+  assert.deepEqual(rows.map(row=>row.id),['demo-personal-rain']);
+  assert.equal(page.data.articleMemoryLoading,false);
+  await call(page,'onArticleMemories',{detail:{value:['demo-personal-rain']}});
+  state.contributions=[];
+  await call(page,'composeArticleMemories');
+  assert.match(String(page.data.articleMemoryNotice),/所选记忆已变化/);
+  assert.equal(page.data.articleMemoryOpen,true);
+  assert.deepEqual(requests.map(request=>request.view),['memory-sources','memory-sources']);
+});
+
 function stateWithBook(backdropImageId = ""): FamilyRoomState {
   const state = createDemoRoomStateForTests();
   const base: BiographyDraft = { title: "外婆的书", paragraphs: [], sourceCount: 0, generatedAt: "2026-09-13T00:00:00.000Z", generationMode: "local-demo" };
@@ -1315,13 +1344,13 @@ test("书稿里带底图的章节在正文区下方显示底图，没有底图�
 
   const page = instantiate(await pageDefinition("book"));
   await call(page, "refresh");
-  await call(page, "loadBackdrops", "owner", page.refreshId);
-  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
+  await page.bookImagesReady;
+  await call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
   assert.equal(page.data.backdropUrl, "https://tmp.example/b.png");
   call(page, "backToContents");
-  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-b" } } });
+  await call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-b" } } });
   assert.equal(page.data.backdropUrl, "", "第二章没有底图");
-  assert.ok(listCalls >= 1);
+  assert.equal(listCalls, 1, "正文、底图共用一次图片查询");
 
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
   assert.match(markup, /class="chapter-backdrop"[^>]*mode="aspectFill"/);
@@ -1335,7 +1364,7 @@ test("书稿里带底图的章节在正文区下方显示底图，没有底图�
   listCalls = 0;
   const plain = instantiate(await pageDefinition("book"));
   await call(plain, "refresh");
-  await call(plain, "loadBackdrops", "owner", plain.refreshId);
+  await plain.bookImagesReady;
   assert.equal(listCalls, 0);
   plainEnv.restore();
 });
@@ -1348,8 +1377,8 @@ test("云端取不到底图时书稿照常打开，只是不显示底图", async
 
   const page = instantiate(await pageDefinition("book"));
   await call(page, "refresh");
-  await call(page, "loadBackdrops", "owner", page.refreshId);
-  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
+  await page.bookImagesReady;
+  await call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
   assert.equal(page.data.backdropUrl, "");
   assert.equal(page.data.loadError, "");
 });

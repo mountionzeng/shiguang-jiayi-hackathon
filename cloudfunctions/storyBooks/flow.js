@@ -266,7 +266,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     legacyImageJobs:[...(source.legacyImageJobs || [])].filter(job=>!job.storyId).sort((a,b)=>String(a._id).localeCompare(String(b._id))),
   });
   const sourceDigest = source => core.hash(core.stable(legacySource(source)));
-  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false,home=false,keepMemoryHistory=false}={}) {
+  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false,home=false,keepMemoryHistory=false,memorySources=false}={}) {
     const measure = readState ? measurePerformance : (_operation,work)=>work();
     const readFamily = async () => {
       const family = await measure('state.query.families',()=>repo.get('families',ctx.familyId));
@@ -285,17 +285,17 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     // With access enabled, the service's owner check precedes these reads.
     // They only depend on ctx.familyId; keep command/migration ordering unchanged.
     let family, rows;
-    if (home) {
+    if (home || memorySources) {
       const initial = await Promise.all([
         readFamily(),
-        measure('state.query.stories',()=>repo.all('stories',ctx.familyId)),
-        measure('state.query.memories',()=>repo.all('memories',ctx.familyId)),
+        memorySources ? [] : measure('state.query.stories',()=>repo.all('stories',ctx.familyId)),
+        measure('state.query.memories',()=>repo.all('memories',ctx.familyId,keepMemoryHistory ? undefined : {aiRevisions:false})),
         measure('state.query.family_members',()=>repo.all('family_members',ctx.familyId)),
       ]);
       family = initial[0];
       // Legacy shelves still derive books from personal manuscripts. Keep their
       // full reader until migration is active; a home projection is read-only.
-      if (family.storyBooks?.status !== 'active') return load(ctx,{includeMemories,includeMembers,readState});
+      if (!memorySources && family.storyBooks?.status !== 'active') return load(ctx,{includeMemories,includeMembers,readState});
       const stories = initial[1].filter(story=>story.familyId===ctx.familyId && !story.deletedAt);
       const drafts = await measure('state.query.biography_drafts',()=>Promise.all(stories
         .filter(story=>story.currentRevisionId).map(async story=>{
@@ -335,7 +335,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     return state;
   }
   async function state(ctx,event={}) {
-    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true,home:['home','memories'].includes(event.view),keepMemoryHistory:event.view==='memories'});
+    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true,home:['home','memories'].includes(event.view),keepMemoryHistory:event.view==='memories',memorySources:event.view==='memory-sources'});
     const membersById=new Map(loaded.members.map(member=>[member.id,member]));
     // 投稿作者显示本人在「我的」里起的称呼；主人自己跳过。所有账号并行读取，失败时静默退回备注名。
     const accountOf=memberId=>membersById.get(memberId)?.role==='owner' ? undefined : loaded.memberAccountIds?.get(memberId);
