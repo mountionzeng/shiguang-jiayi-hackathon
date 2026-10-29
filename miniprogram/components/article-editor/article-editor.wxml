@@ -3,7 +3,7 @@
 <view wx:for="{{pages}}" wx:for-item="page" wx:key="id" class="article-page" style="height:{{page.height}}px;" bindtap="clear">
   <image wx:if="{{backdrop}}" class="article-backdrop" src="{{backdrop}}" mode="aspectFill" />
   <view wx:for="{{page.modules}}" wx:for-item="module" wx:key="id" class="article-module {{selected === module.id ? 'selected' : ''}}" style="{{module.style}}" data-id="{{module.id}}" data-block="{{module.blockId}}" catchtap="select">
-    <textarea wx:if="{{module.kind === 'text' && module.blockId}}" class="article-text" style="{{module.fontStyle}}" value="{{module.text}}" focus="{{focused === module.blockId}}" data-block="{{module.blockId}}" bindinput="change" maxlength="20000" placeholder="写点什么…" adjust-position cursor-spacing="100" />
+    <textarea wx:if="{{module.kind === 'text' && module.blockId}}" class="article-text" style="{{module.fontStyle}}" value="{{module.text}}" focus="{{focusRequest === module.blockId}}" cursor="{{focusRequest === module.blockId ? cursor : -1}}" data-block="{{module.blockId}}" bindinput="change" bindblur="finishEditing" maxlength="20000" placeholder="写点什么…" adjust-position cursor-spacing="100" />
     <text wx:elif="{{module.kind === 'text'}}" style="{{module.fontStyle}}">{{module.text}}</text>
     <image wx:elif="{{module.path}}" class="article-image" src="{{module.path}}" mode="aspectFill" />
     <view wx:else class="article-missing">图片正在加载</view>

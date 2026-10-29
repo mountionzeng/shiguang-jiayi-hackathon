@@ -47,12 +47,15 @@ export function changeArticleText(input: ArticleChapter, blockId: string, value:
   const lines = value.replace(/\r\n?/g, '\n').split('\n');
   next.content[index] = { ...original, text: lines[0] };
   let focused = blockId;
+  const changedBlocks = [blockId];
   for (const [offset, line] of lines.slice(1).entries()) {
     focused = freshId();
     next.content.splice(index + offset + 1, 0, { blockId: focused, text: line, parentBlockId: original.parentBlockId || blockId });
-    place(next, textModule(focused, { x: 48, y: 48, width: 804, height: 130 }));
+    const module = textModule(focused, { x: 48, y: 48, width: 804, height: 130 });
+    place(next, module);
+    changedBlocks.push(focused);
   }
-  fitArticleText(next, blockId);
+  changedBlocks.forEach(id => fitArticleText(next, id, id !== blockId));
   return { chapter: next, focused };
 }
 export function moveArticleModule(input: ArticleChapter, id: string, dx: number, dy: number, resize = false): ArticleChapter {
@@ -94,15 +97,20 @@ export function addArticlePhoto(input: ArticleChapter, photoId: string, aiGenera
 }
 
 /** Grow ordinary text modules with their content; keep deliberately positioned layouts. */
-function fitArticleText(chapter: ArticleChapter, blockId: string) {
+function fitArticleText(chapter: ArticleChapter, blockId: string, allowManualGrowth = false) {
   const module = chapter.layout.pages.flatMap(page => page.modules).find(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === blockId);
   if (!module || module.kind !== 'text' || module.positioned) return;
-  // Imported or manually arranged pages retain their geometry.
-  if (chapter.layout.pages.some(page => page.modules.some(m => m.positioned || m.rect.x !== 48 || m.rect.width !== 804))) return;
+  // Keep imported or manually arranged modules in place. A newly inserted,
+  // unpositioned paragraph may still grow inside its existing page slot.
+  const manualLayout = chapter.layout.pages.some(page => page.modules.some(m => m.positioned || m.rect.x !== 48 || m.rect.width !== 804));
+  if (manualLayout && !allowManualGrowth) return;
   const text = chapter.content.find(block => block.blockId === blockId)?.text || '';
-  const rows = Math.max(1, Math.ceil(text.length / Math.max(1, Math.floor(module.rect.width / module.fontSize))));
-  module.rect.height = Math.min(1000, Math.max(110, Math.ceil(rows * module.fontSize * 1.6 + 16)));
+  const charsPerRow = Math.max(1, Math.floor(module.rect.width / module.fontSize));
+  const rows = text.split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / charsPerRow)), 0);
+  const maxHeight = manualLayout ? Math.max(80, 1200 - module.rect.y) : 1000;
+  module.rect.height = Math.min(maxHeight, Math.max(110, Math.ceil(rows * module.fontSize * 1.6 + 16)));
   module.contentHeight = module.rect.height;
+  if (manualLayout) return;
   if (chapter.layout.pages.some(page => page.modules.some(m => m.positioned))) return;
   const modules = chapter.layout.pages.flatMap(page => page.modules);
   chapter.layout.pages = [{label:'1',modules:[]}];

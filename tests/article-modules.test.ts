@@ -11,6 +11,16 @@ test('return creates distinct editable blocks, including duplicate and empty lin
  assert.equal(chapter.content[0].blockId,id);assert.equal(chapter.content[1].parentBlockId,id);
  assert.equal(before.content.length,1);
 });
+test('each paragraph created by Return grows to fit wrapped text instead of clipping at the starter height',()=>{
+ const before=base(),originalId=before.content[0].blockId,longLine='上下移动和光标定位'.repeat(8);
+ const {chapter}=changeArticleText(before,originalId,`原文\n${longLine}`);
+ const added=chapter.content[1],module=chapter.layout.pages.flatMap(page=>page.modules).find(item=>item.kind==='text'&&'blockId'in item.bind&&item.bind.blockId===added.blockId);
+ if(!module||module.kind!=='text')throw new Error('expected the new paragraph to have a text module');
+ assert.equal(chapter.content[0].blockId,originalId);
+ assert.ok(module&&module.rect.height>130,'wrapped paragraph must be taller than the 130px starter box');
+ assert.equal(module.contentHeight,module.rect.height);
+ assert.equal(before.content.length,1,'the prior revision remains unchanged');
+});
 test('move and resize preserve content and clamp geometry to the page',()=>{
  const before=base(),id=before.layout.pages[0].modules[0].id;
  const moved=moveArticleModule(before,id,10000,-10000);assert.equal(moved.layout.pages[0].modules[0].rect.x,96);assert.equal(moved.layout.pages[0].modules[0].rect.y,0);
