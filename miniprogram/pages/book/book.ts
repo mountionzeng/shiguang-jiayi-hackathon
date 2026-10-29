@@ -1855,6 +1855,9 @@ Page({
       this.pendingSave = undefined;
       this.setData({ editing: false, canUndo: false, saveNotice: kind === "draft" ? "修改已保存" : "版本已保存，旧版仍然保留" });
       wx.disableAlertBeforeUnload();
+      // A save response may contain only the current revision. Reload the
+      // authoritative list when the history panel is still open.
+      if (this.data.panel === "history") await this.loadHistory();
       return true;
     } catch (error) {
       this.setData({ saveNotice: error instanceof Error ? error.message : "暂未确认保存，请重试；当前文字仍保留" });
