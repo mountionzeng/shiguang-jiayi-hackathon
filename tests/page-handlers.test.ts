@@ -1780,9 +1780,19 @@ test("AI organizing starts a book; edits, saved versions and source changes pres
   assert.ok((page.data.history as Array<{ id: string }>).some(item => item.id === first));
   const count = storage.roomState().manuscriptRevisions!.length;
   const revision = storage.roomState().manuscriptRevisions!.find(item => item.id === first)!;
+  const fullRefresh = page.refresh as (...args: unknown[]) => Promise<void>;
+  page.setData({panel: 'history'});
+  page.refresh = async (...args: unknown[]) => {
+    await fullRefresh.apply(page, args);
+    // Cloud save responses can contain only the new current revision.
+    page.setData({history: (page.data.history as Array<{ id: string }>).slice(0, 1)});
+  };
   await callPage(page, "persist", revision.draft, revision.sourceFingerprint, "restore", "恢复测试版");
   assert.equal(storage.roomState().manuscriptRevisions!.length, count + 1);
   assert.ok(storage.roomState().manuscriptRevisions!.some(item => item.draft.title === "我亲手改的标题"));
+  assert.ok((page.data.history as Array<{ id: string }>).some(item => item.id === first), 'restoring reloads old history even when the save response contains only the current revision');
+  page.refresh = fullRefresh;
+  page.setData({panel: ''});
   const { appendContribution } = await import("../miniprogram/services/roomStorage");
   appendContribution(createContribution({ authorMemberId: "owner", authorName: "测试者", relation: "自己", text: "新增的虚构记忆。", scope: "personal", visibility: "private" }));
   await callPage(page, "refresh");
