@@ -7,7 +7,59 @@ import {
   createDesktopStoryCode,
   desktopStorySnapshot,
   drinkingTimeAccountTest,
+  previewWebLogin,
+  decideWebLogin,
+  webLoginEntryEnabled,
 } from "../miniprogram/services/drinkingTimeAccount";
+
+test("网页登录确认的错误不误报故事传输，入口查询失败时隐藏", async () => {
+  const globals = globalThis as unknown as { wx: typeof wx };
+  const previous = globals.wx;
+  let errorCode = "web_login_disabled";
+  globals.wx = { cloud: { async callFunction() { throw new Error(errorCode); } } } as unknown as typeof wx;
+  try {
+    for (const [code, message] of [
+      ["web_login_disabled", "电脑登录暂时没有开放"],
+      ["bridge_not_configured", "电脑连接服务还没有配置好"],
+      ["invalid_input", "码无效或已过期"],
+      ["invalid_code", "码无效或已过期"],
+      ["rate_limited", "尝试得太频繁了，请稍后再试"],
+      ["replayed_request", "这次请求已经处理，请重新输入电脑上的码"],
+    ]) {
+      errorCode = code;
+      await assert.rejects(previewWebLogin("000000"), { message });
+      await assert.rejects(decideWebLogin("ABC234", "confirm"), { message });
+      assert.equal(await webLoginEntryEnabled(), false);
+    }
+    assert.equal(drinkingTimeAccountTest.friendlyBridgeError(new Error("invalid_input")).message,
+      "这篇故事暂时无法传到电脑，请刷新后重试");
+  } finally { globals.wx = previous; }
+});
+
+test("网页登录预览、拒绝和账号冲突透传，客户端只发送码和决定", async () => {
+  const globals = globalThis as unknown as { wx: typeof wx };
+  const previous = globals.wx;
+  const calls: unknown[] = [];
+  let result: unknown = { enabled: true };
+  globals.wx = { cloud: { async callFunction(input: unknown) { calls.push(input); return { result }; } } } as unknown as typeof wx;
+  try {
+    assert.equal(await webLoginEntryEnabled(), true);
+    result = { enabled: "true" };
+    assert.equal(await webLoginEntryEnabled(), false);
+    result = { outcome: "preview", clientHint: "Mac · Chrome", mode: "login" };
+    assert.deepEqual(await previewWebLogin("ABC234"), { clientHint: "Mac · Chrome", mode: "login" });
+    assert.deepEqual(calls[calls.length - 1], { name: "drinkingTimeBridge", data: { action: "confirmWebLogin", code: "ABC234", decision: "preview" } });
+    for (const outcome of ["confirmed", "denied", "merge_required"] as const) {
+      result = { outcome };
+      const decision = outcome === "denied" ? "deny" : "confirm";
+      assert.equal(await decideWebLogin("ABC234", decision), outcome);
+      assert.deepEqual(calls[calls.length - 1], { name: "drinkingTimeBridge", data: { action: "confirmWebLogin", code: "ABC234", decision } });
+    }
+    result = { outcome: "ok" };
+    await assert.rejects(previewWebLogin("ABC234"), /暂时无法连接/);
+    await assert.rejects(decideWebLogin("ABC234", "confirm"), /暂时无法连接/);
+  } finally { globals.wx = previous; }
+});
 
 test("新版传电脑只发送故事版本引用，不发送本地正文，失败不降级", async () => {
   const room=state();

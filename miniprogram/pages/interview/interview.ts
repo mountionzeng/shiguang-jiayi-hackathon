@@ -33,7 +33,7 @@ import {
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
 import {
-  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer,
+  askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
   resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
 } from "../../services/xiaoyiCompanion";
 import {
@@ -223,21 +223,24 @@ Page({
 
   messageSeq: 0,
   pendingContribution: undefined as MemoryContribution | undefined,
+  persistedContributionId: "",
+  interviewUnloaded: false,
   xiaoyiAskedDimensions: [] as InterviewDimension[],
   xiaoyiConversation: [] as InterviewTurn[],
 
   async onLoad(options: InterviewLoadOptions = {}) {
+    this.interviewUnloaded = false;
     try {
     const sharedFamilyId = decodeQueryValue(options.familyId);
     const shared = sharedFamilyId ? await loadSharedFamilyRoom(sharedFamilyId) : undefined;
-    const state = shared?.state ?? await loadRoomStateRemoteFirst();
+    const state = shared?.state ?? await loadRoomStateRemoteFirst({ view: "home" });
     const member = shared
       ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
       : authorFor(state, await loadCurrentMemberRemoteFirst(state));
     if (!member) throw new Error("成员身份已失效，请重新接受邀请");
     if (!member.id) {
       wx.showToast({ title: "先写下你的名字，就可以开始聊了", icon: "none" });
-      wx.redirectTo({ url: "/pages/profiles/profiles" });
+      wx.redirectTo({ url: "/pages/profiles/profiles?mode=new-book" });
       return;
     }
     const question = pickInterviewQuestion(sharedQuestionSeed(), sharedFamilyId ? "family" : "personal");
@@ -315,6 +318,7 @@ Page({
    * 未完成归档时先存为只有自己可见的片段，避免强迫用户过早分类。
    */
   onUnload() {
+    this.interviewUnloaded = true;
     wx.disableAlertBeforeUnload();
     if (this.data.importDraftOpen) {
       void discardLocalPhotos(this.data.importPhotoIds.map((id, index) => ({ id, path: this.data.importPhotoPaths[index] })));
@@ -336,6 +340,12 @@ Page({
       // 已经先存过原话/整理稿（finish() persist-first）：更新同一条记忆，不再新建，
       // 避免退出时把「刚整理完」和「又聊了几句」拆成两条。超长时仍走下面的分片新建。
       if (this.pendingContribution && recoverableText.length <= MAX_MEMORY_LENGTH) {
+        if (!this.data.sharedFamilyId) {
+          const state = await loadRoomStateRemoteFirst();
+          const saved = state.contributions.find(item => item.id === this.pendingContribution!.id && !item.deletedAt);
+          if (!saved && this.persistedContributionId === this.pendingContribution.id) return;
+          if (saved) this.pendingContribution = {...this.pendingContribution, photoIds:saved.photoIds};
+        }
         const updated = { ...this.pendingContribution, text: recoverableText };
         if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, updated);
         else await appendContributionRemoteFirst(updated);
@@ -400,7 +410,7 @@ Page({
   },
 
   async send() {
-    if (this.data.asking || this.data.organizing) return;
+    if (this.data.asking || this.data.organizing || this.data.importing || this.data.saving) return;
     const answer = this.data.inputText.trim();
     if (!answer) {
       wx.showToast({ title: "先说一句吧，短一点也行", icon: "none" });
@@ -462,6 +472,11 @@ Page({
     if (!member) throw new Error("成员身份已失效，请重新接受邀请");
 
     const spokenText = normalizeMemoryText(answers.join(" "));
+    if (this.pendingContribution && !this.data.sharedFamilyId) {
+      const saved = state.contributions.find(item => item.id === this.pendingContribution!.id && !item.deletedAt);
+      if (!saved && this.persistedContributionId === this.pendingContribution.id) throw new Error('这段记忆已变动，请重新打开');
+      if (saved) this.pendingContribution = {...this.pendingContribution, photoIds:saved.photoIds};
+    }
     const base = this.pendingContribution ?? createContribution({
       authorMemberId: member.id,
       authorName: member.name,
@@ -482,11 +497,12 @@ Page({
     if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, contribution);
     else await appendContributionRemoteFirst(contribution, {learn:false});
     this.pendingContribution = contribution;
+    this.persistedContributionId = contribution.id;
     return contribution;
   },
 
   async finish() {
-    if (this.data.organizing || this.data.asking) return;
+    if (this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
     const unsentText = this.data.inputText.trim();
     const answers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (answers.length === 0) {
@@ -499,12 +515,19 @@ Page({
     try {
       const spoken = await this.persistSpokenAnswers(answers);
       const draft = await organizeMemory({
-        transcript: answers,
+        transcript: [spoken.text],
         memoryType: this.data.memoryType,
         memberName: this.data.memberName,
         storyTitle: this.data.storyTitle,
-        useAi: this.data.writingMode === "creative",
+        // The organizer authorizes personal memories; shared-family records stay as spoken text.
+        useAi: this.data.writingMode === "creative" && !this.data.sharedFamilyId,
         memoryId: spoken.id,
+        expectedSavedText: spoken.text,
+        writingMode: "compose",
+        conversation: this.data.messages.slice(-10).map(message => ({
+          role: message.kind === "answer" ? "user" as const : "assistant" as const,
+          content: message.text,
+        })),
       });
       const covered = detectCoveredDimensions(draft.body);
 
@@ -564,10 +587,12 @@ Page({
   xiaoyiContextText() {
     return this.data.draftText.trim();
   },
+  xiaoyiContextKey() { return [this.data.storyId, this.data.sharedFamilyId, this.pendingContribution?.id ?? "new"].join(":"); },
   xiaoyiMessagesAppend,
   askXiaoyiQuestion,
   onXiaoyiAnswerInput,
   onXiaoyiDraftInput,
+  onXiaoyiWritingInstruction,
   useXiaoyiOriginal,
   organizeXiaoyiAnswer,
   useXiaoyiDraft,
@@ -679,12 +704,49 @@ Page({
       return;
     }
     wx.showActionSheet({
-      itemList: ["从相册或拍照选照片", "从微信聊天选文件"],
+      itemList: ["从相册或拍照选照片", "从微信聊天选文件", "AI生成配图"],
       success: result => {
         if (result.tapIndex === 0) void this.importFromAlbum();
         if (result.tapIndex === 1) void this.importFromMessage();
+        if (result.tapIndex === 2) void this.generateMemoryPhotos();
       },
     });
+  },
+
+  async generateMemoryPhotos() {
+    if (this.data.importing || this.data.organizing || this.data.asking || this.data.saving || this.data.sharedFamilyId) return;
+    this.setData({importing:true});
+    try {
+      const unsent = this.data.inputText.trim();
+      const answers = this.data.answers.concat(unsent ? [unsent] : []);
+      if (this.data.stage !== 'save' && !answers.length) {
+        wx.showToast({title:'先写几句回忆，再请小忆配图', icon:'none'}); return;
+      }
+      if (!this.data.saved) {
+        const confirmed = await new Promise<boolean>(resolve => wx.showModal({
+          title:'先保存这段回忆', content:'配图会根据保存的文字生成。这段回忆会独立保存，之后还能继续修改。',
+          confirmText:'保存配图', success:result => resolve(result.confirm), fail:() => resolve(false),
+        }));
+        if (!confirmed || this.interviewUnloaded) return;
+      }
+      if (this.data.stage === 'save') {
+        await this.save({stayOnPage:true});
+        if (!this.data.saved || this.interviewUnloaded) return;
+      } else {
+        // Saving continues if the user leaves; onUnload must not start a duplicate save.
+        this.setData({saving:true});
+        try { await this.persistSpokenAnswers(answers); }
+        finally { if (!this.interviewUnloaded) this.setData({saving:false}); }
+        if (this.interviewUnloaded) return;
+        if (unsent) this.pushMessage('answer', unsent);
+        this.setData({answers, inputText:''});
+      }
+      if (this.pendingContribution) await new Promise<void>((resolve, reject) => wx.navigateTo({
+        url:`/pages/story-images/story-images?memoryId=${encodeURIComponent(this.pendingContribution!.id)}`,
+        success:() => resolve(), fail:() => reject(new Error('回忆已保存，配图页暂时打不开，请从记忆列表重试')),
+      }));
+    } catch (error) { if (!this.interviewUnloaded) this.showImportError(error); }
+    finally { if (!this.interviewUnloaded) this.setData({importing:false}); }
   },
 
   async importFromAlbum() {
@@ -872,7 +934,7 @@ Page({
     }
   },
 
-  async save() {
+  async save(options: {stayOnPage?: boolean} = {}) {
     if (this.data.saving || this.data.saved) return;
     this.setData({ saving: true, saveError: "" });
 
@@ -901,6 +963,11 @@ Page({
       // 已经先存过原话（finish() persist-first），这里更新同一条记忆而不是新建：
       // 若草稿文字跟最后一条历史不一样，说明用户手改过，补一条 manual 记录；
       // 没改过（比如 AI 整理失败走本地兜底，草稿=原话）就不重复追加历史。
+      if (this.pendingContribution && !this.data.sharedFamilyId) {
+        const saved = state.contributions.find(item => item.id === this.pendingContribution!.id && !item.deletedAt);
+        if (!saved && this.persistedContributionId === this.pendingContribution.id) throw new Error('这段记忆已变动，请重新打开');
+        if (saved) this.pendingContribution = {...this.pendingContribution, photoIds:saved.photoIds};
+      }
       const base = this.pendingContribution ?? createContribution({
         authorMemberId: member.id,
         authorName: member.name,
@@ -942,6 +1009,7 @@ Page({
       if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
       else {
         const savedState = await appendContributionRemoteFirst(this.pendingContribution);
+        this.persistedContributionId = this.pendingContribution.id;
         if (this.data.storyId) await linkStoryMemories(activeStory(savedState, this.data.storyId), [this.pendingContribution.id]);
       }
 
@@ -966,7 +1034,7 @@ Page({
         icon: "none",
         duration: 2400,
       });
-      if (this.data.selectedStoryKey) this.continueToChapter();
+      if (this.data.selectedStoryKey && !options.stayOnPage) this.continueToChapter();
     } catch (error) {
       this.setData({
         saving: false,

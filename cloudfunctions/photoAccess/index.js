@@ -63,7 +63,13 @@ async function familyAccess(familyId, openid) {
   if (account && account.primaryFamilyId === familyId) {
     const members = await loadAll("family_members", { familyId });
     const owner = members.find(member => member.accountId === accountId) || members.find(member => member.memberId === "owner") || members.find(member => member.role === "owner");
-    return owner ? { role: "owner", memberId: owner.memberId } : undefined;
+    if (owner) return { role: "owner", memberId: owner.memberId };
+    // Receiving a story can provision the owner's space before any profile exists.
+    // Only the authoritative account and family binding can replace that profile.
+    const family = await getDoc("families", familyId);
+    return account.status === "active" && account.accountId === accountId && account.wxOpenId === openid &&
+      family && family.ownerAccountId === accountId && family._openid === openid
+      ? { role: "owner", memberId: "owner" } : undefined;
   }
   const access = await getDoc("family_access", `${familyId}_${accountId}`);
   if (!access || access.status !== "active") return undefined;
@@ -151,6 +157,12 @@ async function read(event, context) {
     // Only the trusted storyImages function needs provenance to validate a direct phone import.
     return result.status === "ok" && input.purpose === "ai-reference" && isInternalContext(context)
       ? { ...result, source: photo.source } : result;
+  });
+  const uploaderIds = [...new Set(records.filter((photo, index) => photo && results[index].status === 'ok' && photo.source === 'book' && photo._openid).map(photo => accountIdFor(photo._openid)))];
+  const accounts = await Promise.all(uploaderIds.map(async id => [id, await getDoc('user_accounts', id)]));
+  const names = new Map(accounts.map(([id, account]) => [id, String(account?.displayName || '').slice(0, 80)]));
+  results.forEach((result, index) => {
+    if (result.status === 'ok' && records[index]._openid && records[index].source === 'book') result.uploaderLabel = names.get(accountIdFor(records[index]._openid)) || result.uploaderLabel;
   });
   const urls = await tempUrls(results.filter(result => result.status === "ok").map(result => result.fileID));
   return {

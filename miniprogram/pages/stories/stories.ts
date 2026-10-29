@@ -7,6 +7,9 @@ import {
   restoreMemoryRemoteFirst,
   restoreStoryRemoteFirst,
   saveCurrentMemberIdLocal,
+  stageRoomStateForBook,
+  stageRoomStateForRoom,
+  takeStagedRoomStateForStories,
   usesCloudStorage,
 } from "../../services/roomRepository";
 import { recentlyDeletedItems } from "../../services/recentlyDeleted";
@@ -54,6 +57,7 @@ Page({
     stories: [] as StoryRow[],
     deletedStories: [] as DeletedStoryRow[],
     trashOpen: false,
+    trashLoading: false,
     deletedItems: [] as DeletedItemRow[],
     deletedMemoryCount: 0,
     selectedKey: "", selectedTitle: "", selectedBookTitle: "", selectedWritingMode: "objective" as "objective" | "creative",
@@ -68,10 +72,14 @@ Page({
     if (options.key) try { this.setData({ selectedKey: decodeURIComponent(options.key) }); } catch { /* 显示全部故事 */ }
   },
 
-  onShow() { this.roomSnapshot = undefined; void this.refresh().then(() => { if (this.openCreateOnShow) { this.openCreateOnShow = false; this.openCreate(); } }).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); }); },
+  onShow() {
+    const staged = takeStagedRoomStateForStories();
+    // Keep the visible snapshot usable while a return visit refreshes it.
+    void this.refresh(staged).then(() => { if (this.openCreateOnShow) { this.openCreateOnShow = false; this.openCreate(); } }).catch((error) => { logLoadError("stories", error); this.setData({ loadError: "故事暂时未加载成功，请重试。" }); });
+  },
   async refresh(nextState?: Awaited<ReturnType<typeof loadRoomStateRemoteFirst>>) {
     const refreshId = ++this.spineRefreshId;
-    const state = nextState ?? (usesCloudStorage() ? await ensureStoryBooks() : await loadRoomStateRemoteFirst());
+    const state = nextState ?? (this.data.trashOpen ? await loadRoomStateRemoteFirst() : usesCloudStorage() ? await ensureStoryBooks() : await loadRoomStateRemoteFirst());
     if (refreshId !== this.spineRefreshId) return;
     this.roomSnapshot = state;
     const pool = memoryPool(state.contributions);
@@ -138,11 +146,13 @@ Page({
   },
   openManuscript(storyId: string) {
     saveCurrentStoryId(storyId);
+    stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(storyId) });
   },
   openLegacyManuscript(memberId: string) {
     saveCurrentStoryId("");
     saveCurrentMemberIdLocal(memberId);
+    stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(memberId) });
   },
   openSelectedManuscript() { this.openManuscript(this.data.selectedKey); },
@@ -182,7 +192,17 @@ Page({
       wx.showToast({ title: error instanceof Error ? error.message : "恢复没有完成，请重试", icon: "none" });
     }
   },
-  openTrash() { this.setData({ trashOpen: true }); },
+  async openTrash() {
+    if (this.data.trashLoading) return;
+    this.setData({ trashLoading: true });
+    try {
+      // Shelf projections exclude deleted records. Read them only on demand.
+      await this.refresh(await loadRoomStateRemoteFirst());
+      this.setData({ trashOpen: true });
+    } catch (error) {
+      wx.showToast({title: "最近删除暂未加载，请重试", icon: "none"});
+    } finally { this.setData({trashLoading: false}); }
+  },
   /** 最近删除里的一行：故事按 key 恢复，记忆按 id 恢复。 */
   async restoreItem(event: { currentTarget: { dataset: { type: "story" | "memory"; id: string } } }) {
     const { type, id } = event.currentTarget.dataset;
@@ -277,17 +297,22 @@ Page({
     this.setData({ creating: true });
     try {
       const memoryIds = this.data.createMemories.filter(memory => memory.checked).map(memory => memory.id);
-      const { story } = await createStoryBook({
+      const { story, state } = await createStoryBook({
         title, writingMode: this.data.createMode,
         memoryIds,
       });
       saveCurrentStoryId(story.id);
+      stageRoomStateForBook(state);
       this.setData({ createOpen: false, createTitle: "", createMode: "objective", createMemories: [] });
       const organizeQuery = memoryIds.length ? "&memoryIds=" + memoryIds.map(encodeURIComponent).join(",") : "";
       wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(story.id) + organizeQuery });
     } catch (error) {
       wx.showToast({ title: error instanceof Error ? error.message : "创建失败，请重试", icon: "none" });
     } finally { this.setData({ creating: false }); }
+  },
+  openMemoryHome() {
+    stageRoomStateForRoom(this.roomSnapshot);
+    wx.reLaunch({ url: "/pages/room/room" });
   },
   onShareAppMessage() { return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" }; },
   onShareTimeline() { return { title: "拾光家忆｜把重要的故事慢慢写下来" }; },

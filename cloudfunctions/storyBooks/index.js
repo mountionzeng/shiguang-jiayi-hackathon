@@ -1,6 +1,6 @@
 const cloud=require('wx-server-sdk');
 const {createStoryService}=require('./service');
-const {createDocumentAdapter}=require('./repository');
+const {createDocumentAdapter,readFamilyDocuments}=require('./repository');
 const {createCopyStorage}=require('./copyStorage');
 const {createTextModerator}=require('./moderation');
 cloud.init({env:cloud.DYNAMIC_CURRENT_ENV});
@@ -8,7 +8,7 @@ const db=cloud.database();
 const ensuredCollections=new Set();
 const moderate=createTextModerator(cloud.openapi.security,cloud.callFunction.bind(cloud));
 const repo={...createDocumentAdapter(db),
-  async all(table,familyId){const rows=[];for(let offset=0;;offset+=100){const result=await db.collection(table).where({familyId}).orderBy('_id','asc').skip(offset).limit(100).get();rows.push(...result.data);if(result.data.length<100)return rows;}},
+  all:(table,familyId,fields,filter)=>readFamilyDocuments(db,table,familyId,fields,filter),
   async transaction(fn){return db.runTransaction(async transaction=>fn(createDocumentAdapter(transaction)));},
   // 惰性建集合：快照集合不该依赖 bootstrap token 才能存在，否则第一次写快照就会失败。
   // createCollection 已存在时会报错，忽略即可；每个冷启动最多尝试一次。
@@ -28,6 +28,8 @@ const dispatch=createStoryService(repo,{
   sharedEditEnabled:process.env.STORY_SHARED_EDIT_ENABLED==='true',
   copyReceiveEnabled:process.env.STORY_COPY_RECEIVE_ENABLED==='true',
   shareCardEnabled:process.env.STORY_SHARE_CARD_ENABLED==='true',
+  chapterPackageEnabled:process.env.CHAPTER_PACKAGE_ENABLED==='true',
+  approveChapterText:(text,openid,title)=>moderate(text,openid,title),
   copyStorage:createCopyStorage(cloud),
   approveExcerpt:(text,openid)=>moderate(text,openid,'故事选段'),
   approveSharedEdit:(text,openid)=>moderate(text,openid,'亲友编辑故事'),

@@ -3,7 +3,7 @@
   <view class="story-content">
     <view class="archive-eyebrow">{{selectedKey ? '人生之书 · 一个故事' : '人生之书'}}</view>
     <view class="archive-title serif">{{selectedTitle || '你所有的故事'}}</view>
-    <view class="archive-intro">{{selectedKey ? '《' + selectedBookTitle + '》 · ' + (selectedWritingMode === 'creative' ? 'AI 共创' : '客观记录') : '每个故事就是一本独立的书。'}}</view>
+    <view class="archive-intro">{{selectedKey ? '《' + selectedBookTitle + '》 · ' + (selectedWritingMode === 'creative' ? 'AI 创作' : '自己写') : '每个故事就是一本独立的书。'}}</view>
     <view wx:if="{{loadError}}" class="archive-empty">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
     <block wx:elif="{{selectedKey}}">
       <view class="story-actions">
@@ -59,7 +59,7 @@
         <view class="memory-organize-copy"><text class="memory-organize-title serif">待确认的旧内容</text><text class="memory-organize-note">{{pendingMigrationCount}} 项需要确认去向</text></view>
         <text class="memory-organize-arrow">›</text>
       </button>
-      <button class="trash-entry" bindtap="openTrash" hover-class="none">最近删除{{deletedItems.length ? ' · ' + deletedItems.length : ''}}</button>
+      <button class="trash-entry" bindtap="openTrash" loading="{{trashLoading}}" disabled="{{trashLoading}}" hover-class="none">{{trashLoading ? '正在打开' : '最近删除'}}</button>
     </block>
   </view>
 </view>
@@ -70,8 +70,8 @@
     <view class="trash-heading serif">新建一本故事书</view>
     <input class="create-title" value="{{createTitle}}" bindinput="onCreateTitle" maxlength="40" placeholder="故事名称（默认也是书名）" disabled="{{creating}}" />
     <radio-group class="create-modes" bindchange="onCreateMode">
-      <label><radio value="objective" checked="{{createMode === 'objective'}}" />客观记录</label>
-      <label><radio value="creative" checked="{{createMode === 'creative'}}" />AI 共创</label>
+      <label><radio value="objective" checked="{{createMode === 'objective'}}" />自己写</label>
+      <label><radio value="creative" checked="{{createMode === 'creative'}}" />AI 创作</label>
     </radio-group>
     <view class="trash-note">可以空白开始，也可选记忆作为这本书的素材。</view>
     <scroll-view class="create-memory-list" scroll-y>
@@ -108,6 +108,6 @@
   </view>
 </view>
 
-<story-switcher current="personal"></story-switcher>
+<story-switcher bind:openfamily="openMemoryHome" current="personal"></story-switcher>
 
 <canvas type="2d" id="book-spine-canvas" class="book-spine-canvas" aria-hidden="true"></canvas>

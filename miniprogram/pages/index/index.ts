@@ -1,4 +1,6 @@
+import { loadAccountActivity, type AccountActivity } from '../../services/accountActivity';
 import {dailyQuestionAvailable, dailyQuestionCache, generateDailyQuestion} from "../../services/dailyQuestion";
+import {homeReturnNotice, loadPendingReturns} from "../../services/storyReturnsInbox";
 import {hasAiConsent} from "../../services/aiConsent";
 import { storyCoverApi } from "../../services/storyCoverService";
 import { bookCoverKey, renderBookCover } from "../../services/bookFrameColor";
@@ -23,8 +25,12 @@ import {
   loadCurrentMemberRemoteFirst,
   loadRoomStateRemoteFirst,
   saveCurrentMemberIdLocal,
+  stageRoomStateForBook,
+  stageRoomStateForRoom,
+  stageRoomStateForStories,
 } from "../../services/roomRepository";
 import { ShelfStory, shelfStoryLabel, storyShelf } from "../../services/storyShelf";
+import { stageBookPeople } from "../../services/bookPeopleEntry";
 import { bookmarkDateParts } from "../../services/memoryDates";
 import { loadCurrentStoryId, loadCurrentStoryTitle, saveCurrentStoryId, saveCurrentStoryTitle } from "../../services/storySelection";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -179,7 +185,7 @@ function bookSlidesFor(input: {
       storyKey: story.key,
       storyId: story.storyId ?? "",
       manuscriptMemberId: story.manuscriptMemberId ?? "",
-      coverImageId: coverStory?.coverImageId ?? "",
+      coverImageId: story.coverImageId ?? coverStory?.coverImageId ?? "",
       coverUrl: "",
       memoryCount: story.memoryIds.length,
       chapterCount: story.chapterCount,
@@ -335,21 +341,34 @@ Page({
     recommendedStoryTitle: "",
     recommendedDimension: "",
     hasRecommendedQuestion: false,
+    returnNotice: "",
+    returnNoticeChapterId: "",
+    sharedArticles: [] as AccountActivity[], sharesError: '',
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
   },
 
+  sharesSequence: 0,
+  async refreshShares() {
+    const sequence = ++this.sharesSequence;
+    try { const events = await loadAccountActivity(); if (sequence === this.sharesSequence) this.setData({ sharedArticles: events.slice(0, 3), sharesError: '' }); }
+    catch { if (sequence === this.sharesSequence) this.setData({ sharesError: '亲友分享暂时没加载出来' }); }
+  },
+  openSharedPerson(event: { currentTarget: { dataset: { account: string } } }) {
+    wx.navigateTo({ url: '/pages/room/room?account=' + encodeURIComponent(event.currentTarget.dataset.account) });
+  },
   onShow() {
+    void this.refreshShares();
     this.setData({ bookOpening: false });
     void this.refresh().catch(() => undefined);
   },
 
-  onHide() { this.dailyRequestId += 1; },
+  onHide() { this.sharesSequence++; this.dailyRequestId += 1; },
 
   async refresh(state?: FamilyRoomState) {
     this.dailyRequestId += 1;
     const coverRefreshId = ++this.coverRefreshId;
-    this.setData({homeLoading:true, homeLoadError:false});
+    this.setData({homeLoading:!this.roomSnapshot, homeLoadError:false});
     let currentState: FamilyRoomState;
     try {
       currentState = state ?? await loadRoomStateRemoteFirst({view:"home"});
@@ -414,10 +433,9 @@ Page({
         ? cachedBookCover(bookCoverKey(slide.storyId, slide.coverImageId)) : '';
       if (cached) slide.bookArtUrl = cached;
     });
-    const coverStory = (currentState.stories || []).find(story => story.id === activeBook?.storyId && !story.deletedAt);
     this.setData({
       homeLoading:false, homeLoadError:false,
-      coverUrl: activeBook?.coverUrl || "", coverImageId: coverStory?.coverImageId || "",
+      coverUrl: activeBook?.coverUrl || "", coverImageId: activeBook?.coverImageId || "",
       hasProfile: Boolean(owner),
       ownerAvatarText: owner?.avatarText ?? "",
       coverTitle: activeBook?.title || "先随便聊聊",
@@ -449,7 +467,26 @@ Page({
 
     this.preloadBookCovers(activeBookIndex);
     void this.updateDailyQuestion();
+    void this.updateReturnNotice(coverRefreshId, activeBook?.storyId ?? "", activeBook?.storyTitle || currentStoryTitle);
     // 称呼由用户在“我的”中主动修改，首页浏览不要求完善账号资料。
+  },
+
+  /** 朋友的回信：只显示一行提示，失败或没有回信就什么都不显示。 */
+  async updateReturnNotice(refreshId: number, storyId: string, storyTitle: string) {
+    if (!storyId) { this.setData({returnNotice: "", returnNoticeChapterId: ""}); return; }
+    const notice = homeReturnNotice(await loadPendingReturns(), storyId, storyTitle);
+    if (refreshId !== this.coverRefreshId) return;
+    this.setData({
+      returnNotice: notice ? notice.text + (notice.extra > 0 ? `，还有 ${notice.extra} 封` : "") : "",
+      returnNoticeChapterId: notice?.chapterId ?? "",
+    });
+  },
+
+  openReturnNotice() {
+    const storyId = this.data.storyId;
+    if (!storyId) return;
+    const chapter = this.data.returnNoticeChapterId;
+    wx.navigateTo({url: "/pages/book/book?storyId=" + encodeURIComponent(storyId) + (chapter ? "&chapterId=" + encodeURIComponent(chapter) : "")});
   },
 
   retryHomeLoad() {
@@ -559,14 +596,14 @@ Page({
   startInterview() {
     if (!this.data.hasProfile) {
       wx.showToast({ title: "先写下你的名字", icon: "none" });
-      wx.navigateTo({ url: "/pages/profiles/profiles" });
+      wx.navigateTo({ url: "/pages/profiles/profiles?mode=new-book" });
       return;
     }
     wx.navigateTo({ url: "/pages/interview/interview" });
   },
 
   createFirstProfile() {
-    wx.navigateTo({ url: "/pages/profiles/profiles" });
+    wx.navigateTo({ url: "/pages/profiles/profiles?mode=new-book" });
   },
 
   toggleStoryChooser() {
@@ -636,6 +673,7 @@ Page({
   openStoryChapters() {
     if (this.data.storyId) {
       saveCurrentStoryId(this.data.storyId);
+      stageRoomStateForBook(this.roomSnapshot);
       wx.navigateTo({ url: "/pages/book/book?storyId=" + encodeURIComponent(this.data.storyId) });
       return;
     }
@@ -646,15 +684,33 @@ Page({
     }
     saveCurrentStoryId("");
     saveCurrentMemberIdLocal(memberId);
+    stageRoomStateForBook(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/book/book?memberId=" + encodeURIComponent(memberId) });
   },
 
-  /** 人都在记忆之家：先看人，再看和这个人有关的记忆。 */
+  openStoryImages() {
+    const query = this.data.storyId ? 'storyId=' + encodeURIComponent(this.data.storyId)
+      : this.data.storyManuscriptMemberId ? 'memberId=' + encodeURIComponent(this.data.storyManuscriptMemberId) : '';
+    if (!query) { wx.showToast({title:'先为这个故事整理一个章节，再添加图像',icon:'none'}); return; }
+    wx.navigateTo({url:'/pages/story-images/story-images?' + query,
+      fail:()=>wx.showToast({title:'图像页未能打开，请重试',icon:'none'})});
+  },
+
+  openPersonalStories() {
+    stageRoomStateForStories(this.roomSnapshot);
+    wx.reLaunch({ url: "/pages/stories/stories" });
+  },
+
+  /** 人物名单与正在查看的书绑定，授权由云端重新确认。 */
   openPeople() {
-    wx.navigateTo({ url: "/pages/room/room" });
+    stageRoomStateForRoom(this.roomSnapshot);
+    if (this.data.storyId) stageBookPeople(this.roomSnapshot,this.data.storyId);
+    const url = "/pages/room/room" + (this.data.storyId ? "?storyId=" + encodeURIComponent(this.data.storyId) : "");
+    wx.navigateTo({ url, fail: () => wx.redirectTo({ url, fail: () => wx.showToast({title:"人物页未能打开，请重试",icon:"none"}) }) });
   },
 
   openMemoryHome() {
+    stageRoomStateForRoom(this.roomSnapshot);
     wx.navigateTo({ url: "/pages/room/room" });
   },
 

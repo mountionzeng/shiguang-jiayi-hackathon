@@ -12,7 +12,7 @@ function instance(source:Definition){const value:Definition={...source,data:stru
 test('share card is registered in the isolated sharing package and linked from the book',()=>{
   const app=JSON.parse(readFileSync('miniprogram/app.json','utf8'));
   assert.ok(app.subPackages.find((item:any)=>item.root==='packages/story-sharing').pages.includes('pages/card/index'));
-  assert.match(readFileSync('miniprogram/pages/book/book.wxml','utf8'),/data-action="share-card"/);
+  assert.match(readFileSync('miniprogram/pages/book/book.wxml','utf8'),/class="send-option" data-destination="card" bindtap="chooseSend">制作公开故事卡/);
 });
 
 test('old cloud versions show unavailable without submitting an unsupported action',async()=>{
@@ -49,4 +49,17 @@ test('page previews the authorized descriptor and a denied album save is never r
     await p.save();assert.match(p.data.notice,/没有保存成功/);assert.doesNotMatch(p.data.notice,/已发布/);assert.equal(JSON.stringify(p.onShareAppMessage()).includes('井水'),false);
     const sent=calls.find(call=>call.action==='shareCardPreview');assert.equal(JSON.stringify(sent).includes('井水'),false);
   }finally{(globalThis as any).wx=previous;}
+});
+
+test('sending a card re-verifies material and opens the WeChat image menu',async()=>{
+  const previous=(globalThis as any).wx,calls:string[]=[];let shared='';
+  (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{calls.push(data.action);return {result:{descriptor:{id:'card-a'},media:[]}};}},
+    showShareImageMenu:({path,success}:any)=>{shared=path;success();}};
+  try{const p=instance(await page());p.selection={};p.descriptor={id:'card-a'};p.draw=async()=>'/tmp/card.jpg';
+    await p.share();assert.equal(shared,'/tmp/card.jpg');assert.ok(calls.length>=1);assert.match(p.data.notice,/分享菜单/);assert.equal(p.data.busy,false);}
+  finally{(globalThis as any).wx=previous;}
+});
+
+test('book send menu offers the paragraph card',()=>{
+  assert.match(readFileSync('miniprogram/pages/book/book.wxml','utf8'),/data-destination="card"/);
 });

@@ -58,7 +58,7 @@ Page({
   },
 
   async refresh() {
-    const state = await loadRoomStateRemoteFirst();
+    const state = await loadRoomStateRemoteFirst({ view: "home" });
     const items = recallRows(state.contributions, state.storyMigration?.status === "active" ? state.stories ?? [] : [], loadCurrentStoryId());
     this.setData({ items, hasItems: items.length > 0, loadError: "" });
   },

@@ -43,6 +43,9 @@ const MESSAGES = {
 };
 
 const SCENE_FAILURE_MESSAGES = {
+  MEMORY_NOT_FOUND: "这段回忆已不可用于配图，请重新打开",
+  MEMORY_EMPTY: "先保存几句回忆，再请小忆配图",
+  REVISION_CHANGED: "文字已修改，请按新内容重新配图",
   SCENE_TIMEOUT: "读取章节超时，还没有开始画图，请稍后重试",
   SCENE_REQUEST_FAILED: "暂时无法读取章节画面，还没有开始画图，请稍后重试",
   SCENE_PARSE_FAILED: "没能提炼出这一章的画面，还没有开始画图，请稍后重试",
@@ -114,14 +117,21 @@ function normalizeSubmitInput(event) {
   const familyId = String(input.familyId || "").trim();
   const memberId = String(input.memberId || "").trim();
   const storyId = String(input.storyId || "").trim();
-  const chapterId = input.purpose === "cover" ? COVER_CHAPTER_ID : String(input.chapterId || "").trim();
+  const memoryId = input.memoryId === undefined ? "" : String(input.memoryId).trim();
+  if (input.memoryId !== undefined && (typeof input.memoryId !== "string" || !/^[0-9A-Za-z_-]{1,160}$/.test(memoryId) || storyId || memberId || (input.purpose && input.purpose !== "illustration"))) throw new StoryImageError("INVALID_MEMORY", "记忆配图来源无效");
+  const chapterId = memoryId ? "memory" : input.purpose === "cover" ? COVER_CHAPTER_ID : String(input.chapterId || "").trim();
   const requestId = String(input.requestId || "").trim();
   const purpose = String(input.purpose || "illustration");
   const referenceImageId = String(input.referenceImageId || "").trim();
   const referencePhotoIds = normalizeReferencePhotoIds(input.referencePhotoIds);
   const phoneReferencePhotoIds = normalizeReferencePhotoIds(input.phoneReferencePhotoIds);
   const artDirection = normalizeArtDirection(input.artDirection);
-  if (!ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
+  const selectedText = input.selectedText === undefined ? '' : String(input.selectedText).trim();
+  const selectedBlockId = input.selectedBlockId === undefined ? '' : String(input.selectedBlockId);
+  if ((input.selectedText !== undefined || input.selectedBlockId !== undefined) &&
+      (typeof input.selectedText !== 'string' || !selectedText || selectedText.length > 12000 || !selectedBlockId || selectedBlockId.length > 160 || !storyId || !['illustration', 'backdrop'].includes(purpose)))
+    throw new StoryImageError('INVALID_SELECTION', '请先选择一块已保存的文字');
+  if (!memoryId && !ID_PATTERN.test(storyId) && !ID_PATTERN.test(memberId)) throw new StoryImageError("INVALID_STORY", "故事信息不完整");
   if (!ID_PATTERN.test(chapterId)) throw new StoryImageError("INVALID_CHAPTER", "章节信息不完整");
   if (!REQUEST_ID_PATTERN.test(requestId)) throw new StoryImageError("INVALID_REQUEST", "请求编号无效，请重试");
   if (!PURPOSES.includes(purpose)) throw new StoryImageError("INVALID_PURPOSE", "不支持这种配图");
@@ -156,7 +166,7 @@ function normalizeSubmitInput(event) {
     }
     return { familyId, memberId: "", storyId, chapterId, requestId, purpose, referenceImageId: "", referenceImageIds, referencePhotoIds, phoneReferencePhotoIds, artDirection };
   }
-  return { familyId, memberId, storyId, chapterId, requestId, purpose, referenceImageId, referencePhotoIds, phoneReferencePhotoIds, artDirection };
+  return { familyId, memberId, storyId, ...(selectedText ? { selectedText, selectedBlockId } : {}), ...(memoryId ? { memoryId } : {}), chapterId, requestId, purpose, referenceImageId, referencePhotoIds, phoneReferencePhotoIds, artDirection };
 }
 
 function normalizeMemberInput(event) {
@@ -195,11 +205,25 @@ function latestDraftForStory(records, storyId) {
 }
 
 function assertUnrestrictedStory(story,draft) {
+  // The article editor gives every block an ID. Only provenance metadata marks
+  // source-controlled content; an editing identity alone is not a permission.
   const marked=item=>item&&typeof item==='object'&&
-    (item.sourcePolicyRequired||['sourceIds','blockId','provenanceVersion'].some(key=>Object.prototype.hasOwnProperty.call(item,key)));
+    (item.sourcePolicyRequired||['sourceIds','provenanceVersion'].some(key=>Object.prototype.hasOwnProperty.call(item,key)));
   if(marked(story)||marked(draft)||(draft?.content||[]).some(marked)||
     (draft?.chapters||[]).some(chapter=>marked(chapter)||(chapter.content||[]).some(marked)))
     throw new StoryImageError("STORY_PROTOCOL_REQUIRED","这份故事包含来源限制，暂不支持生成配图");
+}
+
+function selectedTextSource(story, draft, chapterId, blockId, selectedText) {
+  const restricted = value => value && (value.sourcePolicyRequired || (Array.isArray(value.sourceIds) ? value.sourceIds.length > 0 : !!value.sourceIds));
+  const chapter = draft?.chapters?.find(item => item.id === chapterId);
+  const block = chapter?.content?.find(item => item.blockId === blockId);
+  if (!chapter || !block || typeof block.text !== 'string') throw new StoryImageError('CHAPTER_NOT_FOUND', '选中的文字已变化，请重新选择');
+  if ([story, draft, chapter, block].some(restricted)) throw new StoryImageError('STORY_PROTOCOL_REQUIRED', '这段文字包含来源限制，暂不支持生成配图');
+  const text = String(selectedText || '').trim();
+  if (!text || text.length > 12000 || !block.text.includes(text)) throw new StoryImageError('REVISION_CHANGED', '选中的文字已变化，请保存后重新选择');
+  return { title: '', text, textLength: text.length, artText: text, artTextLength: text.length,
+    fullTextHash: textHash(text), characterContext: '', photoIds: [], storyImageReferenceIds: [] };
 }
 
 function memoryIdOf(memory) {
@@ -717,6 +741,7 @@ function sweepAction(job, nowMs) {
 function publicJob(job) {
   return {
     jobId: job._id,
+    ...(job.memoryId ? { memoryId: job.memoryId } : {}),
     status: job.status,
     message: (job.status === "failed" && SCENE_FAILURE_MESSAGES[job.errorCode]) || MESSAGES[job.status] || "",
     chapterId: job.chapterId,
@@ -733,6 +758,7 @@ function publicJob(job) {
 function publicImage(image, url) {
   return {
     imageId: image._id,
+    ...(image.memoryId ? { memoryId: image.memoryId } : {}),
     chapterId: image.chapterId || "",
     purpose: image.purpose,
     url: url || "",
@@ -742,7 +768,11 @@ function publicImage(image, url) {
     qualityIssues: (Array.isArray(image.qualityIssues) ? image.qualityIssues : [])
       .map(key => QUALITY_ISSUE_LABELS[key])
       .filter(Boolean),
-    aiGenerated: true,
+    aiGenerated: image.aiGenerated !== false,
+    originImageId: image.originImageId || "",
+    ...(image.crop ? {crop:image.crop,parentImageId:image.parentImageId || "",width:image.width,height:image.height} : {}),
+    sourceText: typeof image.sourceText === 'string' ? image.sourceText.slice(0, 12000) : '',
+    sourceKind: ['selection', 'memory', 'chapter', 'upload'].includes(image.sourceKind) ? image.sourceKind : '',
     createdAtMs: image.createdAtMs,
   };
 }
@@ -754,6 +784,7 @@ function extensionFor(contentType) {
 }
 
 module.exports = {
+  selectedTextSource,
   assertUnrestrictedStory,
   ACTIVE_STATUSES,
   COUNTED_STATUSES,

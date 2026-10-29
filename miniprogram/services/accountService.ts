@@ -10,11 +10,15 @@ export interface ShiguangAccount {
 
 interface AccountResponse {
   accountLinked?: unknown;
+  profileError?: { message?: unknown };
   account?: Partial<ShiguangAccount>;
 }
 
 function parseAccount(result: unknown): ShiguangAccount {
   const response = (result ?? {}) as AccountResponse;
+  // 称呼被内容安全拒绝或检查不可用：服务端没有保存，把原因原样告诉用户。
+  const rejection = response.profileError?.message;
+  if (typeof rejection === "string" && rejection.trim()) throw new Error(rejection.trim());
   const account = response.account ?? {};
   const parsed: ShiguangAccount = {
     accountId: String(account.accountId ?? ""),
@@ -70,9 +74,12 @@ export async function loadSharedComputeBalance(): Promise<number> {
   return Number(result.availableMicros);
 }
 
-export function saveCurrentAccountName(displayName: string): Promise<ShiguangAccount> {
+export async function saveCurrentAccountName(displayName: string): Promise<ShiguangAccount> {
+  const normalized = displayName.trim().replace(/\s+/g, " ");
+  if (!normalized) throw new Error("请告诉我们怎么称呼你");
+  if (Array.from(normalized).length > 8) throw new Error("称呼最多 8 个字");
   pendingAccount = undefined;
-  return callAccount("updateProfile", displayName);
+  return callAccount("updateProfile", normalized);
 }
 
 export const accountServiceTest = { parseAccount };

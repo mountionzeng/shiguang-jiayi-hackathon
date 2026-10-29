@@ -36,8 +36,8 @@ function materializeOwnedDraft(draft, scope) {
   validateShape(draft);requireValid(draft.provenanceVersion===undefined);
   const result=clone(draft);
   for(const chapter of result.chapters) chapter.content=chapter.content.map((item,index)=>{
-    requireValid(item.blockId===undefined && item.sourceIds===undefined);
-    return {...item,blockId:blockId([scope.familyId,scope.storyId,scope.revisionId,chapter.id,index]),sourceIds:[]};
+    requireValid((item.blockId===undefined || BLOCK.test(item.blockId)) && item.sourceIds===undefined);
+    return {...item,blockId:item.blockId || blockId([scope.familyId,scope.storyId,scope.revisionId,chapter.id,index]),sourceIds:[]};
   });
   result.provenanceVersion=1;Object.assign(result,core.flatten(result.chapters));
   return result;
@@ -66,13 +66,22 @@ function applyBlockEdits(base, edits, scope) {
       chapter.content.push({text:edit.text,blockId:blockId([scope.familyId,scope.storyId,scope.requestId,operationIndex]),sourceIds:[]});
     }
   });
+  // A merge retires the source block IDs. Remove only their layout references;
+  // the replacement block remains authoritative and falls back to auto layout.
+  for(const chapter of result.chapters){
+    if(!chapter.layout)continue;
+    const textIds=new Set(chapter.content.filter(block=>typeof block.text==='string').map(block=>block.blockId));
+    chapter.layout.pages=chapter.layout.pages.map(page=>({...page,modules:page.modules.filter(module=>module.kind!=='text'||module.bind.chapterTitle===true||textIds.has(module.bind.blockId))}));
+    if(chapter.layout.pages.every(page=>!page.modules.length))delete chapter.layout;
+  }
   Object.assign(result,core.flatten(result.chapters));validateProtected(result);
   return result;
 }
 // Legacy full-draft writes cannot safely preserve provenance. Fail before any
 // update rather than silently treating a stripped received block as own text.
 function assertLegacyWritable(story, draft) {
-  const marked=value=>value&&(value.blockId!==undefined||value.sourceIds!==undefined||value.provenanceVersion!==undefined);
+  // A stable editing ID is geometry identity, not a source-policy marker.
+  const marked=value=>value&&(value.sourceIds!==undefined||value.provenanceVersion!==undefined);
   if (story?.sourcePolicyRequired || marked(story) || marked(draft) || draft?.content?.some(marked) ||
       draft?.chapters?.some(c=>marked(c)||c.content?.some(marked))) throw protocolError();
 }

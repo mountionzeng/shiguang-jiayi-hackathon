@@ -7,14 +7,28 @@ function runtime(options: {path: string; width: number; height: number} | ((text
   const imageInfo=typeof options==='function'?{path:'local-cover',width:600,height:800}:options;
   const measureWidth=typeof options==='function'?options:(text:string)=>Array.from(text).length*32;
   let currentSize=32;
-  const files:string[]=[],removed:string[]=[],drawn:string[]=[],images:any[][]=[],requested:string[]=[];let number=0;
-  const ctx:any=new Proxy({measureText:(text:string)=>({width:measureWidth(text,currentSize)}),fillText:(text:string)=>drawn.push(text),drawImage:(...args:any[])=>images.push(args),},{get:(target:any,key)=>target[key]||(()=>{}),set:(target:any,key,value)=>{if(key==='font')currentSize=Number(String(value).match(/^(\d+)/)?.[1]||32);target[key]=value;return true;}});
+  const files:string[]=[],removed:string[]=[],drawn:string[]=[],drawCalls:any[][]=[],images:any[][]=[],requested:string[]=[];let number=0;
+  const ctx:any=new Proxy({measureText:(text:string)=>({width:measureWidth(text,currentSize)}),fillText:(text:string,x:number,y:number)=>{drawn.push(text);drawCalls.push([text,x,y]);},drawImage:(...args:any[])=>images.push(args),},{get:(target:any,key)=>target[key]||(()=>{}),set:(target:any,key,value)=>{if(key==='font')currentSize=Number(String(value).match(/^(\d+)/)?.[1]||32);target[key]=value;return true;}});
   const wx:any={createCanvasContext:()=>ctx,getFileSystemManager:()=>({unlink:({filePath}:any)=>removed.push(filePath)}),getImageInfo:({src,success}:any)=>{requested.push(src);success(imageInfo);},canvasToTempFilePath:({success}:any)=>{const path='temp-'+(++number);files.push(path);success({tempFilePath:path});}};
   (globalThis as any).wx=wx;
   const canvas={getContext:()=>ctx,createImage:()=>{const image:any={};Object.defineProperty(image,'src',{set:()=>image.onload()});return image;}};
   const page:any={setData:(_:any,done:()=>void)=>done(),createSelectorQuery:()=>{const query:any={select:()=>query,fields:()=>query,exec:(done:any)=>done([{node:canvas}])};return query;}};
-  return {wx,page,files,removed,drawn,images,requested};
+  return {wx,page,files,removed,drawn,drawCalls,images,requested};
 }
+test('remote image download retries once without restarting rendering, and stops on repeated failure or leaving',async()=>{
+  const remote={...material,coverUrl:'https://media.example/approved.jpg'};
+  for(const mode of ['recover','fail','leave']) {
+    const f=runtime();let calls=0,active=true;
+    f.wx.getImageInfo=({success,fail}:any)=>{
+      calls++;
+      if(calls===1 || mode==='fail') {if(mode==='leave')active=false;fail({errMsg:'getImageInfo:fail TLS'});}
+      else success({path:'local-cover',width:600,height:800});
+    };
+    const rendering=renderBookImages(remote,'pages',32,f.page,()=>active,()=>{});
+    if(mode==='recover'){assert.ok((await rendering).length>1);assert.equal(calls,2);}
+    else {await assert.rejects(rendering,mode==='leave'?/已停止/:/读取封面/);assert.equal(calls,mode==='leave'?1:2);assert.deepEqual(f.files,[]);}
+  }
+});
 test('renderer exports cover plus complete text pages at requested dimensions',async()=>{
   const f=runtime(),progress:number[]=[];
   const paths=await renderBookImages(material,'pages',32,f.page,()=>true,done=>progress.push(done));
@@ -28,6 +42,12 @@ test('renderer exports every selected cover before text pages',async()=>{
   assert.ok(paths.length>=4);
   assert.ok(f.drawn.includes('封面 1 / 2'));
   assert.ok(f.drawn.includes('封面 2 / 2'));
+});
+test('renderer draws complete text modules at their chapter-layout positions',async()=>{
+  const f=runtime();
+  const chapter={id:'chapter-one',title:'第一章',text:'排版文字',layout:{pages:[{label:'1',modules:[{text:'排版文字',rect:{x:90,y:120,width:700,height:100},fontSize:36,alignment:'start' as const}]}]}};
+  await renderBookImages({...material,descriptor:{...material.descriptor,chapters:[chapter]}},'pages',32,f.page,()=>true,()=>{});
+  assert.ok(f.drawCalls.some(([text,x,y])=>text==='排版文字'&&Math.abs(x-105)<0.001&&Math.abs(y-180)<0.001),JSON.stringify(f.drawCalls));
 });
 test('renderer refuses to fake the requested text image count',async()=>{
   const f=runtime(),targeted={...material,descriptor:{...material.descriptor,targetTextImageCount:1}};
@@ -97,4 +117,13 @@ test('multiple cover pages keep the chapter backdrop aligned only with text page
   assert.equal(f.images[0][5], 60); assert.equal(f.images[1][5], 60);
   assert.equal(f.images.filter(args => args.length === 9 && args[5] === 0).length, paths.length - 2);
   assert.equal(f.drawn.filter(text => text === '拾光家忆 · AI 章节底图').length, paths.length - 2);
+});
+
+test('memory exports render uncropped own photos and complete text, without a book cover',async()=>{
+ const f=runtime({path:'local-photo',width:1600,height:600});
+ const memory:any={...material,descriptor:{...material.descriptor,sourceKind:'memory',photoIds:['photo-one','photo-two']},photoUrls:['https://example.test/one','https://example.test/two']};
+ await renderBookImages(memory,'pages',32,f.page,()=>true,()=>{});
+ assert.deepEqual(f.requested,memory.photoUrls);assert.equal(f.images[0].length,5);assert.ok(f.drawn.includes('配图 1 / 2'));assert.ok(f.drawn.some(text=>text.includes('测试正文')));
+ const text=runtime();await renderBookImages({...memory,descriptor:{...memory.descriptor,photoIds:[]},photoUrls:[]},'pages',32,text.page,()=>true,()=>{});assert.deepEqual(text.requested,[]);assert.ok(text.files.length>0);
+ const missing=runtime();await assert.rejects(renderBookImages({...memory,photoUrls:[]},'pages',32,missing.page,()=>true,()=>{}),/配图不完整/);assert.deepEqual(missing.files,[]);
 });

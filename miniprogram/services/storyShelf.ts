@@ -1,3 +1,4 @@
+import { bookCoverSource } from "./bookCoverSource";
 import {
   contributionStoryTitle,
   FamilyRoomState,
@@ -14,6 +15,7 @@ import { startPerformanceMeasure } from './performanceLog';
  * 这里只读现有数据，不写库；故事以后有了自己的记录，只需要换掉这里的来源。
  */
 export interface ShelfStory {
+  coverImageId?: string;
   storyId?: string;
   writingMode?: "objective" | "creative";
   bookTitle?: string;
@@ -60,7 +62,7 @@ function buildStoryShelf(state: FamilyRoomState): ShelfStory[] {
       const memory = firstMemories.get(id);
       if (memory && (!firstMemory || memory.index < firstMemory.index)) firstMemory = memory;
     }
-    return {key:story.id,storyId:story.id,title:story.title,bookTitle:story.bookTitle || story.title,writingMode:story.writingMode || 'objective',memoryIds,latestAt:story.updatedAt,
+    return {coverImageId:bookCoverSource(story.coverImageId,draft),key:story.id,storyId:story.id,title:story.title,bookTitle:story.bookTitle || story.title,writingMode:story.writingMode || 'objective',memoryIds,latestAt:story.updatedAt,
       excerpt:(draft?.paragraphs[0] || firstMemory?.text || '').slice(0,64),
       manuscriptMemberId:story.id,chapterCount:draft?.chapters?.length ?? 0};
   }).sort((a,b)=>b.latestAt.localeCompare(a.latestAt));

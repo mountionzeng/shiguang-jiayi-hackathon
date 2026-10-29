@@ -22,8 +22,15 @@ export function textAiReadyForVersion(envVersion?: string): boolean {
 // provider, billing, moderation, and metadata path have been verified without
 // also exposing text or audio AI.
 export const CLOUD_IMAGE_AI_RELEASE_READY = true;
+// 用户于2026-10-25要求正式发布图文分享；客户端开放，云端仍独立检查开关与权限。
+// 投递额外受 CHAPTER_PACKAGE_ENABLED 约束；与 STORY_ACCESS_ENABLED 等故事开关无关。
+export const CHAPTER_PACKAGE_ENABLED = true;
+export const CHAPTER_DELIVERY_ENABLED = true;
 export const BACKEND_API_ENABLED = false;
 export const BACKEND_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
 // Bump when the AI-consent disclosure text materially changes; existing users
 // must re-confirm before online AI runs again.
 export const AI_CONSENT_VERSION = 1;
+
+// 当前行对话上下文：默认关闭。只改变用户发起小忆聊天时附带的文字，不新增模型调用。
+export const LINE_CONTEXT_CHAT_ENABLED = false;

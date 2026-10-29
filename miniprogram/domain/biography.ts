@@ -155,6 +155,8 @@ export interface BiographyDraft {
   /** Unknown versions must never be flattened and saved by legacy editors. */
   provenanceVersion?: 1;
   title: string;
+  /** User-editable story introduction; older drafts derive a short excerpt from the body. */
+  introduction?: string;
   paragraphs: string[];
   sourceCount: number;
   generatedAt: string;
@@ -205,6 +207,19 @@ export interface ManuscriptChapter {
    * 一章可以同时「含 AI 文字」又「被手改过」。只会被置为 true，不会自动退回 false。
    */
   containsAiText?: boolean;
+  /**
+   * 章节包带来的排版层（网页的模块排版）。字只存在 content 里，模块用 blockId 指向正文块；
+   * 单章序列化后不得超过 60 KB。规则来源：docs/integrations/chapter-package-contract.md。
+   */
+  layout?: import("./chapterPackage").PackageLayout;
+  /** Server-side lineage for a received chapter package; not exported as private package data. */
+  packageLineage?: { rootPackageId: string; receivedPackageId: string; sourceChapterId?: string };
+  /** Package asset links stay outside the public package JSON and point to locally/cloud-registered photos. */
+  packageAssets?: Record<string, { photoId: string; aiGenerated: boolean }>;
+  packageCoverAssetId?: string;
+  /** Original v1 source blocks and text fingerprints used to form safe return edits without copying source text. */
+  packageSourceBlockIds?: Record<string, string>;
+  packageBlockDigests?: Record<string, string>;
 }
 
 export type ChapterEditSource = "ai" | "memory";
@@ -306,6 +321,9 @@ export interface Story {
 }
 
 export interface ManuscriptRevision {
+  editorName?: string;
+  receivedFromName?: string;
+  changeSummary?: string;
   id: string;
   storyId?: string;
   expectedStoryVersion?: number;

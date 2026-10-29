@@ -31,6 +31,7 @@ const CORE_COLLECTIONS = [
   "story_invitations",
   "story_invite_indexes",
   "story_invite_rates",
+  "story_rollout_admissions",
   "story_migration_items",
   "families",
   "family_members",

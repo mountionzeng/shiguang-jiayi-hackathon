@@ -1,11 +1,14 @@
+import {imageCropFrame, type ImageCrop} from '../../services/imageCrop';
+import { storyCoverApi } from '../../services/storyCoverService';
+import { chapterPhotoIds, galleryPhotos, type GalleryPhoto } from "../../services/storyImageGallery";
 import { illustrationAnchor, illustrationPoints, IllustrationPoint, saveChapterIllustration } from "../../services/chapterIllustrations";
 import { saveChapterBackdrop } from "../../services/chapterBackdrop";
 import { chapterLabel, chaptersOf } from "../../services/chapters";
-import { FamilyRoomState, isRecordingProfile, ManuscriptChapter } from "../../domain/biography";
+import { FamilyRoomState, isRecordingProfile, ManuscriptChapter, memoryPool } from "../../domain/biography";
 import { currentManuscript } from "../../services/manuscript";
 import { loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst } from "../../services/roomRepository";
 import {
-  formatBytes, isActiveJob, moderationLabel, nextPollDelayMs, qualityLabel, StoryImage, StoryImageJob, StoryImagePurpose,
+  callStoryImages, formatBytes, isActiveJob, moderationLabel, nextPollDelayMs, qualityLabel, StoryImage, StoryImageJob, StoryImagePurpose,
   StoryImageServiceError, storyImageApi,
 } from "../../services/storyImageService";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -14,6 +17,7 @@ import { activeStory } from "../../services/storyBooks";
 import { choosePhoneReferencePhotos, isPhotoPickerCancel, PhoneReferencePhoto } from "../../services/phoneReferencePhotos";
 
 interface ImageCard {
+  uploaded?: boolean; isCover?: boolean; sourceLabel: string; sourceText: string; uploaderLabel: string;
   imageId: string; url: string; sizeLabel: string; purposeLabel: string;
   isBackdrop: boolean; referenceReady: boolean; inUse: boolean; inText: boolean; moderationLabel: string; qualityLabel: string; qualityFlawed: boolean;
 }
@@ -33,12 +37,21 @@ const chapterReferencePhotoIds = (chapter: ManuscriptChapter): string[] =>
     .filter((id): id is string => LOCAL_PHOTO_ID.test(id)))].slice(0, 3);
 
 const card = (image: StoryImage, backdropImageId = "", textImageReferences = new Set<string>()): ImageCard => ({
+  isCover: image.purpose === 'cover',
+  sourceLabel: image.sourceKind === 'upload' ? '上传的图片' : image.sourceKind === 'selection' ? '选中文字生成' : image.sourceKind === 'chapter' ? '根据整章文字生成' : image.sourceKind === 'memory' ? '根据回忆生成' : '生成原文未记录',
+  sourceText: (image.crop ? '裁切版本 · ' : '') + (image.sourceText || ''), uploaderLabel: '',
   imageId: image.imageId, url: image.url, sizeLabel: formatBytes(image.bytes),
   purposeLabel: PURPOSE_LABELS[image.purpose] ?? "配图",
   isBackdrop: image.purpose === "backdrop", referenceReady: image.purpose === "illustration" && image.moderation === "pass",
   inUse: !!backdropImageId && image.imageId === backdropImageId,
   inText: Array.from(textImageReferences).some(reference => storyImageMatchesReference(image.imageId, reference)),
   moderationLabel: moderationLabel(image.moderation), qualityLabel: qualityLabel(image), qualityFlawed: image.quality === "flawed",
+});
+const photoCard = (photo: GalleryPhoto, aiGenerated = false): ImageCard => ({
+  imageId: photo.photoId, url: photo.url, uploaded:true,
+  sourceLabel: aiGenerated ? '接收的 AI 图像 · 生成原文未记录' : '上传或接收的图片', sourceText:'', uploaderLabel:photo.uploaderLabel,
+  sizeLabel:'', purposeLabel:aiGenerated ? 'AI 图像' : '照片', isBackdrop:false, referenceReady:false,
+  inUse:false, inText:true, moderationLabel:photo.url ? '' : '图片暂不可读取', qualityLabel:'', qualityFlawed:false,
 });
 const jobRow = (job: StoryImageJob): JobRow => ({
   jobId: job.jobId, message: job.message, active: isActiveJob(job), purposeLabel: PURPOSE_LABELS[job.purpose] ?? "配图",
@@ -55,10 +68,12 @@ const imageLimitLabel = (limits: { daily: number | null; book: number | null; un
  */
 Page({
   data: {
-    storyId: "", memberId: "", bookTitle: "", focusChapterId: "", focusPurpose: "" as "" | "illustration" | "backdrop",
-    groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
+    memoryId: "", storyId: "", memberId: "", bookTitle: "", focusChapterId: "", focusPurpose: "" as "" | "illustration" | "backdrop",
+    cropRole:'', cropWidth:220, cropHeight:330, cropStyle:'', cropZoom:100,
+    roleChapterIndex:0, libraryImages: [] as ImageCard[], groups: [] as ChapterGroup[], otherImages: [] as ImageCard[],
     usageLabel: "", limitsLabel: "", loading: true, loadError: "", notice: "", noticeChapterId: "",
     submitting: "", removingId: "", savingBackdrop: false,
+    selectedText: '', selectedBlockId: '', selectionExpanded:false, coverImages: [] as ImageCard[], coverJobs: [] as JobRow[], storyVersion:0,
     artDirections: {} as Record<string, string>,
     useChapterPhotos: {} as Record<string, boolean>,
     phoneReferences: {} as Record<string, PhoneReferencePhoto[]>, pickingReference: "",
@@ -77,10 +92,22 @@ Page({
   pollTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   requestedMemberId: "",
   requestedStoryId: "",
+  requestedMemoryId: "",
   referenceBookId: "",
+  selectionGenerationPending: false,
+  confirmingGeneration: false,
 
-  onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; purpose?: string } = {}) {
+  onLoad(options: { memoryId?: string; storyId?: string; memberId?: string; chapterId?: string; purpose?: string } = {}) {
     this.unloaded = false;
+    this.getOpenerEventChannel?.().on?.('selectedText', (selection: { blockId: string; text: string; generate?: boolean }) => {
+      this.setData({ selectedText: selection.text, selectedBlockId: selection.blockId });
+      this.selectionGenerationPending = selection.generate === true;
+      void this.startSelectionGeneration();
+    });
+    if (options.memoryId) {
+      try { this.requestedMemoryId = decodeURIComponent(options.memoryId); } catch { this.requestedMemoryId = '!invalid'; }
+      this.setData({memoryId:this.requestedMemoryId, focusChapterId:'memory', focusPurpose:'illustration'});
+    }
     if (options.memberId) {
       try { this.requestedMemberId = decodeURIComponent(options.memberId); } catch { this.requestedMemberId = ""; }
     }
@@ -109,8 +136,35 @@ Page({
   async refresh(imagesOnly = false) {
     if (imagesOnly && (this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId)) return;
     const refreshId = ++this.refreshId;
-    const state = imagesOnly && this.roomState ? this.roomState : await loadRoomStateRemoteFirst();
+    const state = imagesOnly && this.roomState ? this.roomState : await loadRoomStateRemoteFirst({ view: "home" });
+    if (this.requestedMemoryId) {
+      const memory = memoryPool(state.contributions).find(item => item.id === this.requestedMemoryId);
+      if (!memory) throw new Error('这段记忆已不可用，请返回记忆列表');
+      const list = await storyImageApi.listStoryImages('', memory.id);
+      if (this.unloaded || refreshId !== this.refreshId) return;
+      this.roomState = state;
+      this.activeJobIds = list.pending.filter(isActiveJob).map(job => job.jobId);
+      this.pendingImageChecks = list.images.some(image => image.moderation === 'pending' || image.quality === 'pending');
+      if (!this.activeJobIds.length && !this.pendingImageChecks) this.pollStartedAt = 0;
+      const refs = new Set(memory.photoIds || []);
+      const referencePhotoIds = (memory.photoIds || []).filter(id => LOCAL_PHOTO_ID.test(id)).slice(0,3);
+      this.setData({memoryId:memory.id, bookTitle:memory.title || '一段回忆',
+        groups:[{id:'memory', label:'这段回忆', title:memory.title || '', backdropImageId:'', backdropMissing:false,
+          referencePhotoIds, referencePhotoLabel:referencePhotoIds.length ? `默认参考这段回忆的${referencePhotoIds.length}张照片，可关闭` : '可以选参考照片，也可以只根据回忆文字生成',
+          images:list.images.map(image => card(image, '', refs)), pending:list.pending.map(jobRow)}],
+        useChapterPhotos:{...this.data.useChapterPhotos, memory:this.data.useChapterPhotos.memory ?? referencePhotoIds.length > 0},
+        otherImages:[], usageLabel:`共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
+        limitsLabel:'生成成功会产生供应商用量和费用。', loading:false, loadError:''});
+      const selected = this.data.preview;
+      if (selected) {
+        const latest = this.data.groups[0].images.find(image => image.imageId === selected.imageId);
+        this.setData({preview:latest ? {...latest, chapterId:'memory'} : null});
+      }
+      this.schedulePoll();
+      return;
+    }
     const story = this.requestedStoryId ? activeStory(state, this.requestedStoryId) : undefined;
+    if (this.requestedStoryId && !story) throw new Error("这本书已不可用，请重新选择");
     const member = story ? undefined : (this.requestedMemberId
       ? state.members.find(item => item.id === this.requestedMemberId && isRecordingProfile(item))
       : await loadCurrentMemberRemoteFirst(state));
@@ -119,7 +173,11 @@ Page({
     const current = currentManuscript(state, bookId);
     const chapters = current.draft ? chaptersOf(current.draft, current.sourceFingerprint) : [];
     const chapterIds = new Set(chapters.map(chapter => chapter.id));
-    const list = await storyImageApi.listStoryImages(bookId);
+    const [list, photos, library] = await Promise.all([
+      storyImageApi.listStoryImages(bookId),
+      galleryPhotos(chapters.flatMap(chapterPhotoIds), !!story?.sourcePolicyRequired),
+      story ? callStoryImages<{images:StoryImage[]}>("listLibrary", {}) : Promise.resolve({images:[] as StoryImage[]}),
+    ]);
     if (this.unloaded || refreshId !== this.refreshId) return;
     this.roomState = state;
     const phoneReferences = this.referenceBookId === bookId ? this.data.phoneReferences : {};
@@ -130,6 +188,10 @@ Page({
     this.pendingImageChecks = list.images.some(image => image.moderation === "pending" || image.quality === "pending");
     if (!this.activeJobIds.length && !this.pendingImageChecks) this.pollStartedAt = 0;
     this.setData({
+      libraryImages:library.images.filter(image=>!listed.has(image.imageId)).map(image=>card(image)),
+      storyVersion:story?.version || 0,
+      coverImages:list.images.filter(image=>image.purpose === 'cover').map(image=>({...card(image),inUse:image.imageId === story?.coverImageId})),
+      coverJobs:list.pending.filter(job=>job.purpose === 'cover').map(jobRow),
       storyId: story?.id || "", memberId: member?.id || this.requestedMemberId,
       bookTitle: current.draft?.title ?? story?.bookTitle ?? story?.title ?? "",
       groups: chapters.map((chapter, index) => {
@@ -139,27 +201,39 @@ Page({
         return {
           id: chapter.id, label: chapterLabel(index + 1), title: chapter.title, backdropImageId,
           referencePhotoIds,
-          referencePhotoLabel: referencePhotoIds.length ? `可选参考本章 ${referencePhotoIds.length} 张照片` : "本章没有正文照片，可从手机选择或只根据文字生成",
+          referencePhotoLabel: referencePhotoIds.length ? `默认参考本章 ${referencePhotoIds.length} 张照片，可关闭` : "本章没有正文照片，可从手机选择或只根据文字生成",
           // The chosen picture was deleted or failed the platform check.
           backdropMissing: !!backdropImageId && !listed.has(backdropImageId),
-          images: list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
+          images: [...list.images.filter(image => image.chapterId === chapter.id).map(image => card(image, backdropImageId, textImageReferences)),
+            ...chapterPhotoIds(chapter).map(id => photoCard(photos[id], Object.values(chapter.packageAssets || {}).some(asset => asset.photoId === id && asset.aiGenerated)))],
           pending: list.pending.filter(job => job.chapterId === chapter.id).map(jobRow),
         };
       }),
       // A chapter can be deleted after it got pictures; its pictures stay manageable here.
       otherImages: list.images.filter(image => image.purpose !== "cover" && !known.has(image.chapterId)).map(image => card(image)),
-      usageLabel: `共 ${list.usage.count} 张 · ${formatBytes(list.usage.bytes)}`,
+      usageLabel: `共 ${list.images.length + Object.keys(photos).length} 张 · AI 配图占用 ${formatBytes(list.usage.bytes)}`,
       limitsLabel: imageLimitLabel(list.limits),
       phoneReferences: Object.fromEntries(Object.entries(phoneReferences).filter(([id]) => chapterIds.has(id))),
+      useChapterPhotos: Object.fromEntries(chapters.map(chapter => [chapter.id,
+        this.data.useChapterPhotos[chapter.id] ?? chapterReferencePhotoIds(chapter).length > 0])),
       loading: false,
       loadError: "",
     });
     const selected = this.data.preview;
     if (selected) {
-      const latest = this.data.groups.find(group => group.id === selected.chapterId)?.images.find(image => image.imageId === selected.imageId);
+      const latest = [...this.data.coverImages,...this.data.groups.flatMap(group=>group.images),...this.data.otherImages,...this.data.libraryImages].find(image=>image.imageId === selected.imageId);
       this.setData({ preview: latest ? { ...latest, chapterId: selected.chapterId } : null });
     }
     this.schedulePoll();
+    void this.startSelectionGeneration();
+  },
+  async startSelectionGeneration() {
+    if (!this.selectionGenerationPending || this.data.loading || this.hidden || this.unloaded
+      || !this.data.selectedText || !this.data.selectedBlockId
+      || !this.data.groups.some(group => group.id === this.data.focusChapterId)) return;
+    // Consume before awaiting confirmation: refresh/onShow must never submit twice.
+    this.selectionGenerationPending = false;
+    await this.generate({currentTarget:{dataset:{id:this.data.focusChapterId,purpose:this.data.focusPurpose}}});
   },
   clearPoll() {
     if (this.pollTimer !== undefined) clearTimeout(this.pollTimer);
@@ -186,7 +260,7 @@ Page({
         if (this.unloaded || this.hidden) return;
         await Promise.all(jobs.slice(offset, offset + 2).map(async jobId => {
           try {
-            const { job } = await storyImageApi.checkImageJob(jobId, this.data.storyId || this.data.memberId);
+            const { job } = await storyImageApi.checkImageJob(jobId, this.data.storyId || this.data.memberId, this.data.memoryId || undefined);
             if (this.unloaded || this.hidden) return;
             this.setData({
               groups: this.data.groups.map(group => ({ ...group,
@@ -211,21 +285,54 @@ Page({
       this.schedulePoll();
     }
   },
+  toggleSelection() { this.setData({selectionExpanded:!this.data.selectionExpanded}); },
+  async generateCover() {
+    if (!this.data.storyId || this.data.submitting || this.data.savingBackdrop || this.data.savingPlacement) return;
+    this.setData({submitting:'cover',noticeChapterId:'',notice:''});
+    try {
+      const job = await storyCoverApi.submit({storyId:this.data.storyId,referenceImageIds:[],referencePhotoIds:[]});
+      if(this.unloaded)return;
+      this.setData({coverJobs:[jobRow(job),...this.data.coverJobs],notice:job.message});
+      if(isActiveJob(job))this.activeJobIds=[...new Set([...this.activeJobIds,job.jobId])];
+      this.schedulePoll(true);
+    } catch(error) { if(!this.unloaded)this.setData({notice:messageOf(error,'封面暂时没生成成功')}); }
+    finally { if(!this.unloaded)this.setData({submitting:''}); }
+  },
+  async usePreviewCover() {
+    const image=this.data.preview;
+    if(!image?.isCover || !this.data.storyId || this.data.savingBackdrop || this.data.submitting)return;
+    this.setData({savingBackdrop:true});
+    try {
+      await storyCoverApi.select(this.data.storyId,image.inUse ? '' : image.imageId,this.data.storyVersion);
+      this.setData({preview:null});
+      await this.refresh();
+    } catch(error) { this.setData({previewNotice:messageOf(error,'封面未能保存')}); }
+    finally { this.setData({savingBackdrop:false}); }
+  },
   async generate(event: { currentTarget: { dataset: { id: string; purpose?: string; reference?: string } } }) {
     const chapterId = event.currentTarget.dataset.id;
     const referenceImageId = event.currentTarget.dataset.reference;
     const purpose: StoryImagePurpose = event.currentTarget.dataset.purpose === "backdrop" ? "backdrop" : "illustration";
     const group = this.data.groups.find(item => item.id === chapterId);
-    if (this.data.submitting || this.data.pickingReference || this.data.removingId || this.data.savingBackdrop || this.data.savingPlacement || !chapterId) return;
+    if (this.confirmingGeneration || this.data.submitting || this.data.pickingReference || this.data.removingId || this.data.savingBackdrop || this.data.savingPlacement || !chapterId) return;
+    if (this.data.selectedText) {
+      this.confirmingGeneration = true;
+      const confirmed = await new Promise<boolean>(resolve => wx.showModal({ title: '根据这段文字生成图片',
+        content: this.data.selectedText + '\n\n生成成功会产生供应商费用，确认后开始。',
+        confirmText: '确认生成', success: result => resolve(result.confirm), fail: () => resolve(false) }));
+      this.confirmingGeneration = false;
+      if (!confirmed || this.unloaded || this.data.submitting) return;
+    }
     const phoneIds = (this.data.phoneReferences[chapterId] || []).map(photo => photo.id);
-    const referencePhotoIds = [...new Set([...phoneIds, ...(this.data.useChapterPhotos[chapterId] ? group?.referencePhotoIds || [] : [])])].slice(0, 3);
+    const referencePhotoIds = this.data.selectedText ? [] : [...new Set([...phoneIds, ...(this.data.useChapterPhotos[chapterId] ? group?.referencePhotoIds || [] : [])])].slice(0, 3);
     this.setData({
       submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"),
-      notice: "正在读取这一章，准备配图…", noticeChapterId: chapterId,
+      notice: this.data.memoryId ? "正在读取这段回忆，准备配图…" : "正在读取这一章，准备配图…", noticeChapterId: chapterId,
     });
     try {
       const job = await storyImageApi.submitChapterImage({
-        ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
+        ...(this.data.memoryId ? {memoryId:this.data.memoryId} : this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
+        ...(this.data.selectedText ? { selectedText: this.data.selectedText, selectedBlockId: this.data.selectedBlockId } : {}),
         ...(referenceImageId ? { referenceImageId } : {}),
         ...(!referenceImageId && referencePhotoIds.length ? { referencePhotoIds,
           ...(phoneIds.length ? { phoneReferencePhotoIds: phoneIds.filter(id => referencePhotoIds.includes(id)) } : {}) } : {}),
@@ -284,7 +391,7 @@ Page({
   async setBackdrop(event: { currentTarget: { dataset: { chapter: string; image?: string } } }) {
     const chapterId = event.currentTarget.dataset.chapter;
     const imageId = event.currentTarget.dataset.image ?? "";
-    if (this.data.savingBackdrop || this.data.savingPlacement || this.data.removingId || this.data.submitting || !chapterId) return;
+    if (this.data.memoryId || this.data.savingBackdrop || this.data.savingPlacement || this.data.removingId || this.data.submitting || !chapterId) return;
     ++this.refreshId;
     this.setData({ savingBackdrop: true, notice: "", noticeChapterId: chapterId });
     try {
@@ -301,16 +408,82 @@ Page({
   previewImage(event: { currentTarget: { dataset: { url: string } } }) {
     const url = event.currentTarget.dataset.url;
     if (!url || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
+    const cover = this.data.coverImages.find(image=>image.url === url);
+    if(cover){this.setData({preview:{...cover,chapterId:'cover'},roleChapterIndex:0,previewNotice:''});return;}
     const group = this.data.groups.find(item => item.images.some(image => image.url === url));
-    const image = group?.images.find(item => item.url === url);
-    if (!image || !group || !this.roomState) {
+    const image = group?.images.find(item => item.url === url) || [...this.data.otherImages,...this.data.libraryImages].find(item=>item.url === url);
+    if (!image || !this.roomState) {
       wx.previewImage({ current: url, urls: [url] }); return;
     }
-    this.updatePreviewImage(image, group.id);
+    const chapterId = group?.id || this.data.focusChapterId || this.data.groups[0]?.id || '';
+    this.setData({roleChapterIndex:Math.max(0,this.data.groups.findIndex(item=>item.id === chapterId))});
+    if (image.uploaded || !group) { this.setData({preview:{...image,chapterId},previewNotice:''}); return; }
+    this.updatePreviewImage(image, chapterId);
     this.setData({ previewNotice: "" });
   },
+  cropSource: {width:0,height:0,x:.5,y:.5},
+  cropGesture:null as {x:number;y:number;positionX:number;positionY:number} | null,
+  onRoleChapterChange(event: {detail:{value:string}}) {
+    if (!this.data.savingPlacement) this.setData({roleChapterIndex:Number(event.detail.value)});
+  },
+  async useImageRole(event: {currentTarget:{dataset:{role:string}}}) {
+    const image = this.data.preview, purpose = event.currentTarget.dataset.role;
+    if (!image || !this.data.storyId || this.data.savingPlacement || this.data.savingBackdrop || this.data.submitting) return;
+    if (purpose === 'cover' || purpose === 'backdrop') {
+      try {
+        const info = await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve,reject)=>wx.getImageInfo({src:image.url,success:resolve,fail:reject}));
+        if (this.unloaded || this.data.preview?.imageId !== image.imageId) return;
+        this.cropSource={width:info.width,height:info.height,x:.5,y:.5};
+        this.setData({cropRole:purpose,cropZoom:100,previewNotice:''}); this.updateCropFrame();
+      } catch { if (!this.unloaded) this.setData({previewNotice:'暂时读不到图片，请重新打开再试'}); }
+      return;
+    }
+    await this.saveImageRole(purpose);
+  },
+  updateCropFrame() {
+    const source=this.cropSource, frame=imageCropFrame(source.width,source.height,this.data.cropRole,this.data.cropZoom/100,source.x,source.y);
+    this.setData({cropWidth:frame.width,cropHeight:frame.height,cropStyle:frame.style});
+  },
+  startCrop(event:WechatMiniprogram.TouchEvent) {
+    const point=event.touches[0]; if (!point || this.data.savingPlacement) return;
+    this.cropGesture={x:point.clientX,y:point.clientY,positionX:this.cropSource.x,positionY:this.cropSource.y};
+  },
+  moveCrop(event:WechatMiniprogram.TouchEvent) {
+    const point=event.touches[0],start=this.cropGesture;if(!point || !start || this.data.savingPlacement)return;
+    const source=this.cropSource,frame=imageCropFrame(source.width,source.height,this.data.cropRole,this.data.cropZoom/100);
+    source.x=Math.max(0,Math.min(1,start.positionX-(point.clientX-start.x)/Math.max(1,frame.imageWidth-frame.width)));
+    source.y=Math.max(0,Math.min(1,start.positionY-(point.clientY-start.y)/Math.max(1,frame.imageHeight-frame.height)));
+    this.updateCropFrame();
+  },
+  endCrop() { this.cropGesture=null; },
+  zoomCrop(event:{detail:{value:number}}) { if(!this.data.savingPlacement){this.setData({cropZoom:event.detail.value});this.updateCropFrame();} },
+  cancelCrop() { if(!this.data.savingPlacement)this.setData({cropRole:''}); },
+  async confirmCrop() {
+    const source=this.cropSource, frame=imageCropFrame(source.width,source.height,this.data.cropRole,this.data.cropZoom/100,source.x,source.y);
+    await this.saveImageRole(this.data.cropRole,frame.crop);
+  },
+  async saveImageRole(purpose:string,crop?:ImageCrop) {
+    const image=this.data.preview;
+    if (!image || this.data.savingPlacement || this.data.savingBackdrop || this.data.submitting) return;
+    const group = this.data.groups[this.data.roleChapterIndex];
+    if (purpose !== 'cover' && !group) return;
+    this.setData({savingPlacement:true,previewNotice:''});
+    try {
+      const selected = await callStoryImages<{imageId:string}>('prepareImageRole', {
+        storyId:this.data.storyId,chapterId:group?.id || '',imageId:image.imageId,purpose,...(crop?{crop}:{}),
+      });
+      if (purpose === 'cover') await storyCoverApi.select(this.data.storyId,selected.imageId,this.data.storyVersion);
+      else if (purpose === 'backdrop') await saveChapterBackdrop({storyId:this.data.storyId,chapterId:group.id,imageId:selected.imageId});
+      else await saveChapterIllustration({storyId:this.data.storyId,chapterId:group.id,imageId:selected.imageId,after:null});
+      if (this.unloaded) return;
+      this.setData({preview:null,cropRole:'',notice:`已设为${purpose === 'cover' ? '整本书的封面' : group.label + (purpose === 'backdrop' ? '底图' : '插图')}，原图已保留`,noticeChapterId:''});
+      await this.refresh();
+    } catch(error) {
+      if (!this.unloaded) this.setData({previewNotice:messageOf(error,'没有保存，请重新选择')});
+    } finally { if (!this.unloaded) this.setData({savingPlacement:false}); }
+  },
   closePreview() {
-    if (!this.data.savingPlacement && !this.data.savingBackdrop && !this.data.removingId && !this.data.submitting) this.setData({ preview: null, previewNotice: "" });
+    if (!this.data.savingPlacement && !this.data.savingBackdrop && !this.data.removingId && !this.data.submitting) this.setData({ preview: null, cropRole:'', previewNotice: "" });
   },
   keepPreviewOpen() {},
   onPlacementChange(event: { detail: { value: string } }) {
@@ -321,17 +494,18 @@ Page({
   async savePlacement(event: { currentTarget?: { dataset?: { remove?: boolean | string } } } = {}) {
     const image = this.data.preview, point = this.data.placementOptions[this.data.placementIndex];
     const remove = event.currentTarget?.dataset?.remove === true || event.currentTarget?.dataset?.remove === 'true';
-    if (!image || image.isBackdrop || (!remove && (!point || !image.referenceReady)) || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
+    if (!image || image.isBackdrop || (!remove && ((!this.data.memoryId && !point) || !image.referenceReady)) || this.data.savingPlacement || this.data.savingBackdrop || this.data.removingId || this.data.submitting) return;
     ++this.refreshId;
     this.setData({ savingPlacement: true, previewNotice: '' });
     try {
-      await saveChapterIllustration({ ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }),
+      if (this.data.memoryId) await storyImageApi.selectMemoryImage(this.data.memoryId, image.imageId, remove);
+      else await saveChapterIllustration({ ...(this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }),
         chapterId: image.chapterId, imageId: image.imageId, after: point?.after || null, remove });
       if (this.unloaded) return;
       await this.refresh();
       const latest = this.data.groups.find(group => group.id === image.chapterId)?.images.find(item => item.imageId === image.imageId);
       if (latest) this.updatePreviewImage(latest, image.chapterId);
-      this.setData({ previewNotice: remove ? '已从正文移除，原图仍保留' : '位置已保存，回到书稿就能看到' });
+      this.setData({ previewNotice: this.data.memoryId ? (remove ? '已从这段记忆移除，原图仍保留' : '已加入这段记忆，返回就能看到') : remove ? '已从正文移除，原图仍保留' : '位置已保存，回到书稿就能看到' });
     } catch (error) {
       // Refresh the paragraph choices after a stale anchor/version, without silently choosing a different position.
       await this.refresh().catch(() => undefined);
@@ -344,8 +518,17 @@ Page({
   },
   updatePreviewImage(image: ImageCard, chapterId: string) {
     if (!this.roomState) return;
+    if (this.data.memoryId) {
+      this.setData({preview:{...image, chapterId}, placementOptions:[], placementIndex:0});
+      return;
+    }
     const current = currentManuscript(this.roomState, this.data.storyId || this.data.memberId);
-    const content = current.draft && chaptersOf(current.draft, current.sourceFingerprint).find(item => item.id === chapterId)?.content || [];
+    const chapter = current.draft && chaptersOf(current.draft, current.sourceFingerprint).find(item => item.id === chapterId);
+    const content = chapter?.content || [];
+    if (this.data.storyId && chapter?.layout) {
+      this.setData({preview:{...image,chapterId},placementOptions:[{label:'放入文章后，可以直接拖动图片调整位置',after:null,block:0,offset:0}],placementIndex:0});
+      return;
+    }
     const options = illustrationPoints(content, image.imageId);
     const anchor = image.inText ? illustrationAnchor(content, image.imageId) : null;
     this.setData({ preview: { ...image, chapterId }, placementOptions: options,

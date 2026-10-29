@@ -45,7 +45,36 @@ function safeId(value) {
 
 function createTextMeter({ db, identity, kind, model, baseUrl, fetcher, env = process.env, now = Date.now }) {
   const enabled = env.TEXT_COMPUTE_USAGE_ENABLED === 'true';
-  if (!enabled) return { fetch: fetcher, snapshot: () => null };
+  // Wall-clock diagnostics are separate from the billing clock and contain no
+  // request text, URLs, account identifiers, response bodies or raw errors.
+  function timings() { return { pendingWriteMs: null, providerMs: null, receiptWriteMs: null }; }
+  function elapsed(start) { return Math.max(0, Date.now() - start); }
+  function logTiming(timing) {
+    try { console.info('TEXT_AI_STAGE_TIMING', JSON.stringify({
+      kind: KINDS.includes(kind) ? kind : 'unknown', meteringEnabled: enabled,
+      pendingWriteMs: timing.pendingWriteMs, providerMs: timing.providerMs,
+      receiptWriteMs: timing.receiptWriteMs,
+    })); } catch { /* Diagnostics must never change the request outcome. */ }
+  }
+  if (!enabled) return {
+    snapshot: () => null,
+    async fetch(url, options) {
+      const timing = timings();
+      const started = Date.now();
+      let response;
+      try { response = await fetcher(url, options); }
+      catch (error) { timing.providerMs = elapsed(started); logTiming(timing); throw error; }
+      if (!response.ok) { timing.providerMs = elapsed(started); logTiming(timing); return response; }
+      // Match the metered response contract; include body delivery/parsing in
+      // provider latency, which is significant for non-streaming completions.
+      return { ok: response.ok, status: response.status, headers: response.headers,
+        async json() {
+          try { return await response.json(); }
+          finally { timing.providerMs = elapsed(started); logTiming(timing); }
+        },
+      };
+    },
+  };
   if (!db || !/^account_[0-9a-f]{24}$/.test(identity?.accountId || '') || !KINDS.includes(kind))
     throw new Error('TEXT_COMPUTE_IDENTITY_REQUIRED');
   const operationId = randomUUID();
@@ -62,26 +91,36 @@ function createTextMeter({ db, identity, kind, model, baseUrl, fetcher, env = pr
         startedAt: now(), completedAt: null, httpStatus: null, usage: null,
         estimatedMicros: null, providerRequestId: null, responseId: null };
       record.attempts.push(attempt);
-      // Durable pending record BEFORE submission. A crash/timeout is not free.
-      await persist();
-      if (options.signal?.aborted) {
-        const error = new Error('The operation was aborted'); error.name = 'AbortError'; throw error;
-      }
+      const timing = timings();
       let response, payload, parsed = false;
       try {
-        response = await fetcher(url, { ...options, headers: { ...options.headers, 'X-Request-ID': attempt.requestId } });
-        attempt.httpStatus = response.status;
-        attempt.providerRequestId = safeId(response.headers?.get('x-request-id'));
-        payload = await response.json(); parsed = true;
-        attempt.usage = tokenUsage(payload);
-        attempt.responseId = safeId(payload?.id);
-        attempt.completedAt = now();
-        attempt.estimatedMicros = estimate(attempt.usage, model, baseUrl, attempt.startedAt, attempt.completedAt);
-      } finally {
-        // Never persist prompts, generated text, raw errors or credentials.
+        // Durable pending record BEFORE submission. A crash/timeout is not free.
+        const pendingStarted = Date.now();
         try { await persist(); }
-        catch { recordingFailed = true; console.warn('TEXT_COMPUTE_RECEIPT_WRITE_PENDING'); }
-      }
+        finally { timing.pendingWriteMs = elapsed(pendingStarted); }
+        if (options.signal?.aborted) {
+          const error = new Error('The operation was aborted'); error.name = 'AbortError'; throw error;
+        }
+        const providerStarted = Date.now();
+        try {
+          response = await fetcher(url, { ...options, headers: { ...options.headers, 'X-Request-ID': attempt.requestId } });
+          attempt.httpStatus = response.status;
+          attempt.providerRequestId = safeId(response.headers?.get('x-request-id'));
+          payload = await response.json(); parsed = true;
+          attempt.usage = tokenUsage(payload);
+          attempt.responseId = safeId(payload?.id);
+          attempt.completedAt = now();
+          attempt.estimatedMicros = estimate(attempt.usage, model, baseUrl, attempt.startedAt, attempt.completedAt);
+        } finally {
+          timing.providerMs = elapsed(providerStarted);
+          // Never persist prompts, generated text, raw errors or credentials.
+          const receiptStarted = Date.now();
+          try { await persist(); }
+          catch { recordingFailed = true; console.warn('TEXT_COMPUTE_RECEIPT_WRITE_PENDING'); }
+          finally { timing.receiptWriteMs = elapsed(receiptStarted); }
+        }
+      } finally { logTiming(timing); }
+
       return { ok: response.ok, status: response.status, headers: response.headers,
         json: async () => { if (!parsed) throw new Error('INVALID_MODEL_RESPONSE'); return payload; } };
     },

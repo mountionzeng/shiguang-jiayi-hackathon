@@ -1,3 +1,4 @@
+const {moderateTextWithTencent}=require('./tencentModeration');
 const OPENID=/^[0-9A-Za-z_-]{1,128}$/;
 /*
  * 内容安全检测的三态语义（2026-09-20 修正）：
@@ -30,7 +31,20 @@ async function checkWithSharedFunction(callFunction,{content,title,scene,openid}
   if(result?.error)unavailable('共享内容安全云函数不可用',result.error);
   return false;
 }
-function createTextModerator(security,callFunction){
+async function checkWithFallback(callFunction,input,paidModeration){
+  try { return await checkWithSharedFunction(callFunction,input); }
+  catch(error){
+    if(error?.code!=='MODERATION_UNAVAILABLE')throw error;
+    try{
+      const result=await paidModeration({content:input.title ? `${input.title}\n${input.content}` : input.content});
+      if(result?.available===true)return result.status==='pass';
+    }catch(paidError){
+      console.warn('[moderation] paid-provider-unavailable', {code:String(paidError?.code || 'UNAVAILABLE').slice(0,80)});
+    }
+    throw error;
+  }
+}
+function createTextModerator(security,callFunction,paidModeration=moderateTextWithTencent){
   return async (text,openid,title)=>{
     if(!OPENID.test(openid || ''))unavailable('调用方 openid 无效');
     const content=Array.from(String(text || '').trim());
@@ -44,10 +58,10 @@ function createTextModerator(security,callFunction){
           try{
             passed=interpretResponse(await security.msgSecCheck({content:chunk,version:2,scene:4,openid,...(safeTitle?{title:safeTitle}:{})}));
           }catch(error){
-            passed=await checkWithSharedFunction(callFunction,{content:chunk,title:safeTitle,scene:4,openid});
+            passed=await checkWithFallback(callFunction,{content:chunk,title:safeTitle,scene:4,openid},paidModeration);
           }
         }else{
-          passed=await checkWithSharedFunction(callFunction,{content:chunk,title:safeTitle,scene:4,openid});
+          passed=await checkWithFallback(callFunction,{content:chunk,title:safeTitle,scene:4,openid},paidModeration);
         }
         if(passed!==true)return false;
       }

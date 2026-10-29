@@ -70,11 +70,10 @@ function createCoverServices({ repo, storage, readPhotos }) {
 /** Called inside the same database transaction that reads the story and candidate. */
 function coverSelectionPatch(story, image, {familyId, storyId, imageId, expectedVersion}, now = new Date().toISOString()) {
   if (!story || story.familyId !== familyId || story.deletedAt) throw new core.StoryImageError('STORY_NOT_FOUND', '这本书已不可用');
-  core.assertUnrestrictedStory(story);
   if ((story.coverImageId || '') === imageId) return undefined;
   if (story.version !== expectedVersion) throw new core.StoryImageError('REVISION_CHANGED', '这本书刚有更新，请重新打开封面页再选用');
   if (imageId && (!image || image.familyId !== familyId || image.storyId !== storyId || image.purpose !== 'cover' ||
-      image.deletedAtMs !== undefined || image.moderation !== 'pass')) {
+      image.deletedAtMs !== undefined || image.sourcePolicyRequired || image.sourceIds !== undefined || image.moderation !== 'pass')) {
     throw new core.StoryImageError('IMAGE_NOT_READY', '这张封面尚未通过审核或已不可用，请稍后再试');
   }
   if (imageId && (image.quality === 'flawed' || image.quality === 'pending')) {

@@ -119,3 +119,12 @@ test("云端照片管理只允许小程序本人操作，确认后先删文件�
   assert.match(page, /还没存到云端的照片只在这台手机上/);
   assert.match(page, /看照片会另外询问/);
 });
+
+
+test('照片来源不暴露账号标识，拒绝读取时也不返回上传者', () => {
+  const photo={familyId:FAMILY,source:'book',_openid:'owner-openid',displayFileID:'cloud://photo',moderation:{ok:true,suggest:'pass'}};
+  const input={familyId:FAMILY,photoId:PHOTO,purpose:'view',variant:'display'};
+  const own=core.publicPhoto(photo,input,'owner-openid',[]);
+  assert.equal(own.uploaderLabel,'你');assert.equal(own._openid,undefined);
+  assert.equal(core.publicPhoto({...photo,sourcePolicyRequired:true},input,'owner-openid',[]).uploaderLabel,undefined);
+});

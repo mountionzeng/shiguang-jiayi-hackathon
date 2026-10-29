@@ -68,7 +68,6 @@ Page({
     invitation: null as FamilyInvitation | null,
     invitationAvatarText: "忆",
     posterPath: "",
-    codeReady: false,
     albumSaving: false,
     errorMessage: "",
   },
@@ -242,7 +241,6 @@ Page({
         invitationAvatarText: firstCharacter(result.invitation.inviteeName),
       });
       const codeResult = await createFamilyInvitationCode(result.invitation.token, environmentVersion());
-      this.setData({ codeReady: true });
       const codePath = await writeBase64Image(codeResult.codeBase64);
       const posterPath = await this.drawPoster(result.invitation, codePath);
       this.setData({ posterPath, step: "ready" });
@@ -266,19 +264,19 @@ Page({
       context.setGlobalAlpha(0.24);
       context.drawImage("/assets/illustrations/story-book-cover.png", 505, -40, 260, 404);
       context.setGlobalAlpha(0.82);
-      context.drawImage("/assets/illustrations/memory-bird.png", 548, 58, 94, 63);
+      context.drawImage("/assets/illustrations/memory-bird.webp", 548, 58, 94, 63);
     } else if (style === "nest") {
       context.setGlobalAlpha(0.68);
-      context.drawImage("/assets/illustrations/memory-nest.png", 35, 42, 164, 109);
-      context.drawImage("/assets/illustrations/memory-bird.png", 558, 38, 108, 72);
+      context.drawImage("/assets/illustrations/memory-nest.webp", 35, 42, 164, 109);
+      context.drawImage("/assets/illustrations/memory-bird.webp", 558, 38, 108, 72);
       context.setGlobalAlpha(0.2);
     } else {
       context.setGlobalAlpha(0.74);
-      context.drawImage("/assets/illustrations/memory-branch.png", 360, 16, 438, 146);
+      context.drawImage("/assets/illustrations/memory-branch.webp", 360, 16, 438, 146);
       context.setGlobalAlpha(0.9);
-      context.drawImage("/assets/illustrations/memory-bird.png", 574, 47, 100, 67);
+      context.drawImage("/assets/illustrations/memory-bird.webp", 574, 47, 100, 67);
       context.setGlobalAlpha(0.42);
-      context.drawImage("/assets/illustrations/memory-nest.png", 52, 720, 138, 92);
+      context.drawImage("/assets/illustrations/memory-nest.webp", 52, 720, 138, 92);
     }
     context.setGlobalAlpha(1);
 
@@ -402,10 +400,6 @@ Page({
 
   openRoom(familyId: string) {
     wx.redirectTo({ url: `/pages/room/room?familyId=${encodeURIComponent(familyId)}` });
-  },
-
-  goBack() {
-    wx.navigateBack({ fail: () => wx.reLaunch({ url: "/pages/index/index" }) });
   },
 
   onShareAppMessage() {

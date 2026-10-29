@@ -138,3 +138,18 @@ test("organizeMemory stays local until AI release readiness is enabled", async (
   assert.equal(draft.generationMode, "local-demo");
   assert.equal(cloudCalls, 0);
 });
+
+test('inline dialogue organization sends all explicit user segments as editable material', async context => {
+  const { organizeInlineAnswer } = await import('../miniprogram/services/memoryOrganizerService');
+  let sent: any;
+  const restoreApp = installGlobal('getApp', () => ({globalData:{cloudReady:true,aiReady:true}}));
+  const restoreWx = installGlobal('wx', {cloud:{callFunction:async (request:any) => {
+    sent=request.data; return {result:{body:'【虚构】雨后放纸船。',generationMode:'cloud-ai'}};
+  }}});
+  context.after(()=>{restoreWx();restoreApp();});
+  const material = ['【虚构】'+'纸'.repeat(490), '灯塔是黄色的。'];
+  const result = await organizeInlineAnswer({answer:'',transcript:material,writingMode:'compose'});
+  assert.equal(result?.generationMode,'cloud-ai');
+  assert.deepEqual(sent.transcript,material);
+  assert.equal(sent.inlineAnswer,true);
+});

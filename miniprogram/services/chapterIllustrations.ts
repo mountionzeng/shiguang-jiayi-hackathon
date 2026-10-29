@@ -5,6 +5,8 @@ import { currentManuscript, makeRevision, saveManuscriptRevision } from './manus
 import { loadRoomStateRemoteFirst } from './roomRepository';
 import { activeStory } from './storyBooks';
 import { storyImageApi } from './storyImageService';
+import { articleChapter, addArticlePhoto, removeArticleModule } from './articleModules';
+import { saveArticle } from './articleService';
 
 export interface IllustrationAnchor { text: string; occurrence: number; matches: number }
 export interface IllustrationPoint { label: string; after: IllustrationAnchor | null; block: number; offset: number }
@@ -86,6 +88,28 @@ export async function saveChapterIllustration(input: {
     if (!list.images.some(image => image.imageId === input.imageId && image.chapterId === input.chapterId && image.purpose === 'illustration' && image.moderation === 'pass')) {
       throw new Error('这张插图暂时不可用，请重新选图');
     }
+  }
+  // Module articles use the source-aware save protocol and keep every existing
+  // layout binding. The reader can drag the newly appended image in the article.
+  if (input.storyId && chapter.layout) {
+    const story = activeStory(state, input.storyId);
+    if (!story.currentRevisionId || !story.version) throw new Error('文章版本已变化，请重新打开');
+    const photoId = storyImageReferenceId(input.imageId);
+    if (!photoId) throw new Error('插图引用无效');
+    let article = articleChapter(chapter);
+    const present = article.content.some(block => block.photoId === photoId);
+    if (input.remove) {
+      const assetIds = new Set(Object.entries(article.packageAssets || {}).filter(([, asset]) => asset.photoId === photoId).map(([id]) => id));
+      const modules = article.layout.pages.flatMap(page => page.modules).filter(module => module.kind === 'image' && assetIds.has(module.assetId));
+      for (const module of modules) article = removeArticleModule(article, module.id);
+      if (!modules.length) return state;
+    } else {
+      if (present) return state;
+      article = addArticlePhoto(article, photoId, true);
+    }
+    await saveArticle({requestId:`request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`,
+      storyId:story.id,revisionId:story.currentRevisionId,expectedVersion:story.version,chapter:article});
+    return loadRoomStateRemoteFirst();
   }
   const content = placeIllustration(chapter.content, input.imageId, input.after, input.remove);
   if (JSON.stringify(content) === JSON.stringify(chapter.content)) return state;

@@ -6,7 +6,7 @@ export interface ReceiveStoryCopyInput {
   target:{mode:'new';storyId:string;title:string}|{mode:'append';storyId:string;expectedVersion:number;expectedRevisionId:string};
 }
 export interface AppendOwnExperienceInput {storyId:string;revisionId:string;expectedVersion:number;chapterId:string;text:string;requestId:string}
-export interface StoryReturn {returnId:string;status:'pending'|'accepted'|'rejected';sourceStoryId:string;sourceChapterId:string;blocks:Array<{blockId:string;text:string}>;createdAt:string;decidedAt:string;resultRevisionId:string}
+export interface StoryReturn {returnId:string;status:'pending'|'accepted'|'rejected';sourceStoryId:string;sourceChapterId:string;blocks:Array<{blockId:string;text:string}>;sourceEdits?:Array<{text:string}>;createdAt:string;decidedAt:string;resultRevisionId:string}
 
 async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T>{
   if(!wx.cloud)throw new Error('当前版本暂不支持接收故事');

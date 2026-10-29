@@ -46,6 +46,10 @@ function resolveFromMemory(memory, ctx, input) {
   const selectedIndex = selected.revisionId
     ? selected.revisions.findIndex(item => item?.id === selected.revisionId)
     : selected.revisions.length - 1;
+  const photoIds = Array.isArray(memory.photoIds) ? memory.photoIds : [];
+  if (photoIds.length > 9 || new Set(photoIds).size !== photoIds.length || photoIds.some(id => typeof id !== 'string' || !/^photo-(?!ai-)[a-z0-9-]{1,80}$/.test(id) && !/^photo-ai-req-[0-9a-z-]{8,60}$/.test(id))) {
+    fail('记忆配图引用无效，请重新打开后核对', 'VERSION_CONFLICT');
+  }
   const authorizationSnapshot = {
     familyId: memory.familyId,
     memoryId: input.memoryId,
@@ -54,6 +58,7 @@ function resolveFromMemory(memory, ctx, input) {
     visibility: memory.visibility || '',
     reviewStatus: memory.reviewStatus,
     deletedAt: memory.deletedAt || '',
+    ...(photoIds.length ? { photoIds } : {}),
   };
   const currentSnapshot = input.revisionId !== undefined ? {
     ...authorizationSnapshot,
@@ -87,6 +92,7 @@ function resolveFromMemory(memory, ctx, input) {
     source: {
       kind: 'memory', memoryId: input.memoryId, revisionId: selected.revisionId,
       sourceVersion, title: selected.title, text: selected.text, containsAiText,
+      ...(photoIds.length ? { photoIds } : {}),
     },
   };
 }

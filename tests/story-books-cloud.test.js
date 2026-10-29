@@ -416,3 +416,44 @@ test('later migration preserves independently created books and disambiguates ol
   assert.deepEqual(tables.get('stories:family_test_story-new'),original);
   assert.equal(tables.get('story_names:family_test_'+core.hash('童年')).storyId,'story-new');
 });
+
+
+test('saving current edits avoids manuscript scans and retains idempotency, old IDs and restore',async()=>{
+  const {handlers:h,repo,tables}=fixture(),ctx={familyId:'family_test'};
+  await h.command(ctx,{action:'create',storyId:'story-perf',title:'性能',writingMode:'objective',memoryIds:[],requestId:'create-perf-test'});
+  const revision=id=>({id,storyId:'story-perf',memberId:'owner',kind:'version',label:'保存',savedAt:'',sourceFingerprint:'',
+    draft:{title:'性能',chapters:[],content:[],paragraphs:[],sourceCount:0,generatedAt:'',generationMode:'local-demo'}});
+  const save=(id,expectedRevisionId,expectedVersion)=>({action:'save',storyId:'story-perf',revision:revision(id),expectedRevisionId,expectedVersion,requestId:id});
+  const scans=[];const all=repo.all;
+  repo.all=async(table,id)=>{scans.push(table);return all(table,id)};
+  const first=save('revision-perf-one','',1);
+  await h.command(ctx,first);await h.command(ctx,first);
+  await h.command(ctx,save('revision-perf-two','revision-perf-one',2));
+  assert.ok(!scans.includes('biography_drafts'));
+  assert.ok(!scans.includes('story_migration_items'));
+  await assert.rejects(h.command(ctx,{...save('revision-perf-one','revision-perf-two',3),requestId:'collision-perf-new'}),/版本编号冲突/);
+  const original=tables.get('biography_drafts:family_test_revision-perf-one');
+  await h.command(ctx,{...save('revision-perf-three','revision-perf-two',3),restoreRevisionId:'revision-perf-one'});
+  assert.deepEqual(tables.get('biography_drafts:family_test_revision-perf-three').revision.draft,original.revision.draft);
+});
+
+
+test('opt-in request timing stays outside state chunks and does not relax authentication', async()=>{
+  const {repo,tables}=fixture();
+  const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+  const service=createStoryService(repo);
+  const normal=await service({OPENID:'test'},{action:'state'});
+  assert.equal(normal.performance,undefined);
+  const measured=await service({OPENID:'test'},{action:'state',performanceDiagnostics:1});
+  assert.ok(Number.isFinite(measured.performance.serverDurationMs));
+  assert.ok(Number.isFinite(measured.performance.phases['state.load']));
+  const {performance,...state}=measured;
+  assert.deepEqual(state,normal);
+  assert.ok(Object.values(performance.phases).every(value=>Number.isFinite(value)&&value>=0));
+  await assert.rejects(service({}, {action:'state',performanceDiagnostics:1}),{code:'AUTH_REQUIRED'});
+  tables.set('biography_drafts:timing-large',{familyId:'family_test',revision:{id:'large',draft:{text:'测试'.repeat(300000)}}});
+  const chunk=await service({OPENID:'test'},{action:'state',stateTransport:1,performanceDiagnostics:1});
+  const next=await service({OPENID:'test'},{action:'state',stateTransport:1,performanceDiagnostics:1,stateOffset:chunk.nextOffset,stateDigest:chunk.digest});
+  assert.equal(next.digest,chunk.digest,'per-request timings do not affect chunk fingerprints');
+  assert.equal(next.offset,chunk.nextOffset);
+});

@@ -256,7 +256,8 @@ test("共享页面隐藏被邀请人的名单管理入口", () => {
     path.join(__dirname, "../miniprogram/pages/room/room.wxml"),
     "utf8",
   );
-  assert.match(markup, /room-manage[^>]+wx:if="\{\{canInvite\}\}"/);
+  assert.match(markup, /wx:if="\{\{!sharedFamilyId\}\}" class="person-add/);
+  assert.match(markup, /editorOpen && !sharedFamilyId/);
 });
 
 test("邀请页为系统顶部留出空间并允许小屏滚动", () => {

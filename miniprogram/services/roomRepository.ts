@@ -1,3 +1,4 @@
+import { storyCommand, operationId, activeStory } from './storyBooks';
 import { learnFromSavedMemory } from './personalMemory';
 import { startPerformanceMeasure } from './performanceLog';
 import type { ShiguangAppOptions } from "../app";
@@ -24,7 +25,9 @@ import {
   softDeleteCloudMemory,
   restoreCloudMemory,
   loadCloudRoomState,
+  type RoomStateView,
   replaceCloudContribution,
+  editCloudContribution,
   resetCloudCurrentUserRoom,
   saveCloudDraftIfSourcesUnchanged,
   saveCloudPersonalDraftIfSourcesUnchanged,
@@ -60,13 +63,66 @@ function shouldUseCloudDatabase(): boolean {
   return true;
 }
 
+// The shelf and home already have a read-only, current-version projection in
+// memory when a person taps a book. Hand it to the next book page once instead
+// of making that page wait for the same state (and every historical revision)
+// again. It is deliberately single-use: reopening a book always reads fresh
+// cloud state, and an account switch cannot inherit an old snapshot.
+let stagedBookState: FamilyRoomState | undefined;
+let stagedStoriesState: FamilyRoomState | undefined;
+let stagedRoomState: FamilyRoomState | undefined;
+
+let stagedArchiveState: {id: string; state: FamilyRoomState} | undefined;
+
+export function stageRoomStateForArchive(id: string, state: FamilyRoomState | undefined): void {
+  stagedArchiveState = state ? {id, state} : undefined;
+}
+
+export function takeStagedRoomStateForArchive(id: string): FamilyRoomState | undefined {
+  const staged = stagedArchiveState;
+  stagedArchiveState = undefined;
+  return staged?.id === id ? staged.state : undefined;
+}
+
+export function stageRoomStateForRoom(state: FamilyRoomState | undefined): void {
+  stagedRoomState = state;
+}
+
+export function takeStagedRoomStateForRoom(): FamilyRoomState | undefined {
+  const state = stagedRoomState;
+  stagedRoomState = undefined;
+  return state;
+}
+
+export function stageRoomStateForBook(state: FamilyRoomState | undefined): void {
+  stagedBookState = state;
+}
+
+export function takeStagedRoomStateForBook(): FamilyRoomState | undefined {
+  const state = stagedBookState;
+  stagedBookState = undefined;
+  return state;
+}
+
+// The two top-level story views can also share the state that is already on
+// screen. This is single-use for the same reason as the book handoff above.
+export function stageRoomStateForStories(state: FamilyRoomState | undefined): void {
+  stagedStoriesState = state;
+}
+
+export function takeStagedRoomStateForStories(): FamilyRoomState | undefined {
+  const state = stagedStoriesState;
+  stagedStoriesState = undefined;
+  return state;
+}
+
 export const usesCloudStorage = shouldUseCloudDatabase;
 
 export function roomDataModeLabel(): string {
   return shouldUseCloudDatabase() ? "数据：微信云端" : "数据：本机存储";
 }
 
-export async function loadRoomStateRemoteFirst(options: { view?: "home" } = {}): Promise<FamilyRoomState> {
+export async function loadRoomStateRemoteFirst(options: { view?: RoomStateView } = {}): Promise<FamilyRoomState> {
   const finish = startPerformanceMeasure('room.load');
   let outcome: 'ok' | 'error' = 'error';
   let route: 'local' | 'cloud' | undefined;
@@ -118,9 +174,10 @@ export async function addFamilyMemberRemoteFirst(
   name: string,
   relation: string,
   kind?: FamilyMember["kind"],
+  options: { view?: "home" } = {},
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    return await addCloudFamilyMember(name, relation, kind);
+    return await addCloudFamilyMember(name, relation, kind, options);
   }
 
   return addFamilyMember(name, relation, loadRoomState(), kind);
@@ -128,14 +185,31 @@ export async function addFamilyMemberRemoteFirst(
 
 export async function replaceContributionRemoteFirst(
   contribution: MemoryContribution,
+  options: { view?: "memories" } = {},
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    const state = await replaceCloudContribution(contribution);
+    const state = await replaceCloudContribution(contribution, options);
     learnFromSavedMemory(contribution);
     return state;
   }
 
   return replaceContribution(contribution, loadRoomState());
+}
+
+/** Read latest once, check conflicts in edit(), then save through the normal moderation path. */
+export async function editContributionRemoteFirst(id: string, edit: (latest: MemoryContribution) => MemoryContribution, proposed?: MemoryContribution): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) {
+    const state = await editCloudContribution(id, edit, proposed);
+    const saved = state.contributions.find(item => item.id === id);
+    if (saved) learnFromSavedMemory(saved);
+    return state;
+  }
+  const state = loadRoomState();
+  const latest = state.contributions.find(item => item.id === id && !item.deletedAt);
+  if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
+  const next = edit(latest);
+  if (next.id !== id) throw new Error("记忆编号发生变化，请重新打开");
+  return replaceContribution(next, state);
 }
 
 export async function deleteContributionRemoteFirst(
@@ -184,7 +258,6 @@ export async function purgeAllDeletedMemoriesRemoteFirst(): Promise<FamilyRoomSt
 
 export async function deleteStoryRemoteFirst(key: string, title: string): Promise<FamilyRoomState> {
   if (key.startsWith('story-')) {
-    const {storyCommand,operationId,activeStory} = await import('./storyBooks');
     const story = activeStory(await loadRoomStateRemoteFirst(),key);
     return storyCommand({action:'delete',storyId:key,expectedVersion:story.version,requestId:operationId()});
   }
@@ -194,7 +267,6 @@ export async function deleteStoryRemoteFirst(key: string, title: string): Promis
 
 export async function restoreStoryRemoteFirst(key: string): Promise<FamilyRoomState> {
   if (key.startsWith('story-')) {
-    const {storyCommand,operationId,activeStory} = await import('./storyBooks');
     const story = activeStory(await loadRoomStateRemoteFirst(),key,true);
     return storyCommand({action:'restore',storyId:key,expectedVersion:story.version,requestId:operationId()});
   }
@@ -249,8 +321,8 @@ export async function classifyMemberRemoteFirst(memberId: string, kind: MemberKi
 }
 
 /** Soft delete; safe to retry. The current profile is refused. */
-export async function deleteMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) return await deleteCloudMember(memberId);
+export async function deleteMemberRemoteFirst(memberId: string, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await deleteCloudMember(memberId, undefined, options);
   return deleteMember(memberId);
 }
 
@@ -264,8 +336,8 @@ export async function saveRoomProfileRemoteFirst(
   return next;
 }
 
-export async function restoreMemberRemoteFirst(memberId: string): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) return await restoreCloudMember(memberId);
+export async function restoreMemberRemoteFirst(memberId: string, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
+  if (shouldUseCloudDatabase()) return await restoreCloudMember(memberId, options);
   return restoreMember(memberId);
 }
 
@@ -273,8 +345,9 @@ export async function updateMemberRemoteFirst(
   memberId: string,
   name: string,
   relation: string,
+  options: { view?: "home" } = {},
 ): Promise<FamilyRoomState> {
-  if (shouldUseCloudDatabase()) return await updateCloudMember(memberId, name, relation);
+  if (shouldUseCloudDatabase()) return await updateCloudMember(memberId, name, relation, options);
   return updateMember(memberId, name, relation);
 }
 

@@ -1,0 +1,52 @@
+{
+  "kind": "chapter-package",
+  "version": 1,
+  "packageId": "cp_fixture-0004",
+  "lineage": {
+    "rootPackageId": "cp_fixture-0004",
+    "parentPackageId": null
+  },
+  "createdAt": "2026-10-22T00:00:00.000Z",
+  "sender": {
+    "platform": "miniprogram",
+    "displayName": "本人"
+  },
+  "storyTitle": "梦里的家",
+  "chapters": [
+    {
+      "chapterId": "chapter-ai",
+      "title": "梦里的家",
+      "containsAiText": true,
+      "cover": null,
+      "blocks": [
+        {
+          "blockId": "block-c2944ee2c7213ed6107667ad1d05f2dd8be2e11c0fdac62468ac7f7a5e522d13",
+          "type": "text",
+          "text": "我梦见老屋。"
+        },
+        {
+          "blockId": "block-f1b0407ba510c27d83b3208a4c0c5041bc816be915d3e8f6356ad404b4e894d8",
+          "type": "image",
+          "assetId": "asset-9e1e8ec4d7ae68db69ac0f52aec185f2"
+        },
+        {
+          "blockId": "block-f6a469bacc454116a81b02488ce0e33926f2699695bdfaef662780c74f0f6d91",
+          "type": "text",
+          "text": "院子里有一棵枣树。"
+        }
+      ],
+      "layout": null
+    }
+  ],
+  "assets": [
+    {
+      "assetId": "asset-9e1e8ec4d7ae68db69ac0f52aec185f2",
+      "mime": "image/jpeg",
+      "bytes": 120000,
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "width": 1200,
+      "height": 800,
+      "aiGenerated": true
+    }
+  ]
+}

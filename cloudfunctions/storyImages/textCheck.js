@@ -1,3 +1,4 @@
+const { moderateTextWithTencent } = require("./tencentModeration");
 const MAX_LENGTH = 2500;
 const VALID_SCENES = new Set([1, 2, 3, 4]);
 
@@ -25,7 +26,17 @@ function interpretResult(result) {
  * user's OPENID in DevTools, while storyImages already has it from its caller.
  * The fallback keeps unit tests and older deployments fail-closed.
  */
-function createTextChecker({ callFunction, msgSecCheck, scene = 3 }) {
+function createTextChecker({ callFunction, msgSecCheck, scene = 3, paidCheck = moderateTextWithTencent }) {
+  async function unavailable(input, errorCode) {
+    try {
+      const verdict = await paidCheck({ content: input.content });
+      if (verdict && verdict.available && verdict.status === "pass") return { ok: true, suggest: "pass" };
+      if (verdict && verdict.available && verdict.status === "reject") return { ok: false, risky: true, errorCode: "TEXT_RISKY" };
+    } catch (_) {
+      // Unavailable paid moderation must never turn an unchecked caption into a pass.
+    }
+    return { ok: false, errorCode };
+  }
   async function check({ text, openid }) {
     const input = cleanInput({ text, scene });
     if (!input.content) return { ok: true, suggest: "pass" };
@@ -39,7 +50,8 @@ function createTextChecker({ callFunction, msgSecCheck, scene = 3 }) {
           label: result && result.label,
         });
       } catch (error) {
-        return { ok: false, errorCode: String((error && (error.errCode || error.errMsg || error.message)) || "TEXT_CHECK_FAILED").slice(0, 40) };
+        if (Number(error && (error.errCode || error.code)) === 87014) return { ok: false, risky: true, errorCode: "TEXT_RISKY" };
+        return unavailable(input, String((error && (error.errCode || error.errMsg || error.message)) || "TEXT_CHECK_FAILED").slice(0, 40));
       }
     }
     if (!callFunction) return { ok: false, errorCode: "TEXT_CHECK_NOT_CONFIGURED" };
@@ -47,7 +59,7 @@ function createTextChecker({ callFunction, msgSecCheck, scene = 3 }) {
       const response = await callFunction({ name: "contentSecurityCheck", data: { content: input.content, scene: input.scene, openid } });
       return interpretResult(response && response.result);
     } catch (error) {
-      return { ok: false, errorCode: String((error && (error.errCode || error.errMsg || error.message)) || "TEXT_CHECK_FAILED").slice(0, 40) };
+      return unavailable(input, String((error && (error.errCode || error.errMsg || error.message)) || "TEXT_CHECK_FAILED").slice(0, 40));
     }
   }
   return { check };

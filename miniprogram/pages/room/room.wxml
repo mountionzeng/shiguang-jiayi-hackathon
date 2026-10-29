@@ -1,21 +1,14 @@
 <view class="shell shell-with-bar page-enter">
   <view class="room-head">
-    <view class="room-sub">点一个人，看和 ta 有关的记忆。写没写进书的都在。</view>
-    <button class="room-manage" wx:if="{{canInvite}}" bindtap="openPeople" hover-class="none">人员管理 · 可删除</button>
-    <button class="room-invite" wx:if="{{canInvite}}" bindtap="inviteFamilyMember" hover-class="room-invite-pressed">
-      <text class="room-invite-mark">＋</text>
-      <view class="room-invite-copy">
-        <text class="room-invite-title">邀请亲友一起写</text>
-        <text class="room-invite-note">生成一张邀请图片，发给微信好友</text>
-      </view>
-      <text class="room-invite-arrow">›</text>
-    </button>
+    <view class="room-sub">点头像，看记忆和亲友分享的文章。</view>
     <view wx:if="{{loadError}}" class="room-sub">{{loadError}}<button class="room-manage" bindtap="retryLoad">重新加载</button></view>
   </view>
 
+  <view class="room-sub" wx:if="{{loading}}">正在打开记忆…</view>
+  <view class="room-sub" wx:elif="{{loadingDetails}}">正在同步记忆详情…</view>
   <scroll-view class="filter-strip" scroll-x enhanced show-scrollbar="{{false}}">
     <view class="filter-row">
-      <view
+      <button
         class="filter {{activeId === item.id ? 'filter-on' : ''}}"
         wx:for="{{people}}"
         wx:key="id"
@@ -29,10 +22,53 @@
           <text class="filter-avatar-letter">{{item.avatarText}}</text>
         </view>
         <text class="filter-name">{{item.name}}</text>
-        <text class="filter-count">{{item.count}}</text>
-      </view>
+        <text class="filter-count">{{item.account ? '分享 ' : ''}}{{item.count}}</text>
+        <view class="filter-letter-dot" wx:if="{{item.letters}}" aria-label="有新的回信"></view>
+      </button>
+      <button wx:if="{{!sharedFamilyId}}" class="person-add filter" bindtap="addPersonForm" aria-label="添加人物">＋<text>添加</text></button>
     </view>
   </scroll-view>
+
+  <view class="person-actions" wx:if="{{!sharedFamilyId}}">
+    <button wx:if="{{canEditPerson}}" class="quiet-action" bindtap="editPerson">{{activeId === 'me' ? '我的称呼' : '编辑'}}</button>
+    <button wx:if="{{activeId === 'me'}}" class="quiet-action" bindtap="inviteFamilyMember">邀请亲友</button>
+  </view>
+  <view class="person-editor" wx:if="{{editorOpen && !sharedFamilyId}}">
+    <view class="serif">{{editingId ? '修改称呼' : '添加人物'}}</view>
+    <input value="{{nameInput}}" bindinput="onNameInput" maxlength="{{editingId === 'me' ? 8 : 12}}" placeholder="名字" />
+    <input wx:if="{{editingId !== 'me'}}" value="{{relationInput}}" bindinput="onRelationInput" maxlength="12" placeholder="关系，例如妈妈、朋友" />
+    <view class="person-actions">
+      <button class="quiet-action" bindtap="closePersonEditor" disabled="{{personSaving}}">取消</button>
+      <button class="quiet-action" wx:if="{{editingId && editingId !== 'me' && editingId !== viewerId}}" bindtap="removePerson" disabled="{{personSaving}}">移除</button>
+      <button class="btn btn-jade" bindtap="savePerson" disabled="{{personSaving}}">{{personSaving ? '保存中…' : '保存'}}</button>
+    </view>
+  </view>
+
+  <view wx:if="{{accessStoryId && !sharedFamilyId}}"><button class="quiet-action" bindtap="closeAccess">收起阅读权限</button><book-people id="book-access" story-id="{{accessStoryId}}" /></view>
+
+  <view class="room-sub" wx:if="{{activityLoading}}">正在同步亲友分享…</view>
+  <view class="room-sub" wx:if="{{activityError}}">{{activityError}}<button class="quiet-action" bindtap="refreshActivity">重试</button></view>
+  <view class="shared-article" wx:for="{{sharedArticles}}" wx:key="id">
+    <view class="room-sub">{{item.name}} · {{item.kind}} · {{item.at}}</view>
+    <view class="tl-title serif">{{item.title}}</view>
+    <view class="tl-text serif">{{item.text}}</view>
+    <view class="room-sub" wx:if="{{item.imageCount}}">附 {{item.imageCount}} 张图片</view>
+    <view class="shared-change" wx:for="{{item.changes}}" wx:for-item="change" wx:key="index">
+      <view>{{change.kind === 'layout' ? '调整排版' : change.kind === 'image' ? '修改图片' : '修改文字'}}</view>
+      <view wx:if="{{change.before}}" class="room-sub">原来：{{change.before}}</view>
+      <view wx:if="{{change.after}}">现在：{{change.after}}</view>
+    </view>
+    <view class="room-sub" wx:if="{{!item.comparisonAvailable}}">没有前一版，仅显示收到的内容。</view>
+    <button class="quiet-action" wx:if="{{item.storyId || item.deliveryId}}" data-id="{{item.id}}" bindtap="openShared" disabled="{{openingShare}}">打开文章 ›</button>
+  </view>
+
+  <view class="letters" wx:if="{{letters.length}}">
+    <view class="letters-title serif">等你决定的回信</view>
+    <view class="letter" wx:for="{{letters}}" wx:key="returnId" data-id="{{item.returnId}}" bindtap="openLetter" role="button" aria-label="打开这封回信">
+      <view class="letter-text serif">{{item.text}}</view>
+      <view class="letter-foot"><text>{{item.where}}</text><text>{{item.dateLabel}} · 在书里决定 ›</text></view>
+    </view>
+  </view>
 
   <view class="timeline" wx:if="{{hasMemories}}">
     <view class="tl-item" wx:for="{{memories}}" wx:key="id" data-id="{{item.id}}" bindtap="openMemory">
@@ -52,20 +88,24 @@
     </view>
   </view>
 
-  <view class="empty-filter" wx:elif="{{hasAnyMemory}}">
-    <view class="empty-filter-title">还没有和{{activeName}}有关的记忆</view>
-    <view class="empty-filter-note">聊完一段记忆时选上 ta，这段就会出现在这里。</view>
+  <view class="empty-filter" wx:elif="{{hasAnyMemory && !sharedArticles.length && !activityLoading}}">
+    <view class="empty-filter-title">{{activeId === 'me' ? '还没有你写下的记忆' : '还没有和' + activeName + '有关的记忆'}}</view>
+    <view class="empty-filter-note">{{activeId === 'me' ? '你自己写下的内容会出现在这里；亲友分享请点对方头像。' : '聊完一段记忆时选上 ta，这段就会出现在这里。'}}</view>
   </view>
 
-  <view class="empty-room wash" wx:else>
+  <view class="empty-room wash" wx:elif="{{!loading && !loadError && !sharedArticles.length && !activityLoading}}">
     <view class="empty-room-title serif">还没有记忆</view>
     <view class="empty-room-note">先和 AI 聊一段，聊完就会收在这里。</view>
     <button class="btn btn-jade empty-room-btn" bindtap="startInterview">开始聊聊</button>
   </view>
 
+  <view wx:if="{{!sharedFamilyId && trash.length && activeId === 'me'}}">
+    <button class="quiet-action" bindtap="toggleTrash">最近移除{{trashOpen ? ' · 收起' : ''}}</button>
+    <view wx:if="{{trashOpen}}" class="person-actions" wx:for="{{trash}}" wx:key="id"><text>{{item.name}}</text><button class="quiet-action" bindtap="restorePerson" data-id="{{item.id}}" disabled="{{personSaving}}">恢复</button></view>
+  </view>
   <view class="invite-note" wx:if="{{sharedFamilyId}}">
     你正在以“{{viewerName}}”的身份参与这个记忆之家。写下的内容会先交给主人确认。
   </view>
 </view>
 
-<story-switcher current="family"></story-switcher>
+<story-switcher current="family" bind:openpersonal="openPersonalStories"></story-switcher>

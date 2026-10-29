@@ -82,6 +82,7 @@
 }
 
 .filter {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -505,3 +506,30 @@
 /* 微信按钮默认 width:184px 的选择器带属性，优先级高于单个类名；这里用双写类名把按钮宽度和左右外边距压回设计值。 */
 .room-invite.room-invite { width: 100%; }
 .room-manage.room-manage { width: auto; margin-left: 0; margin-right: 0; }
+
+/* 家人的回信：放在时间线上方，颜色跟章节里的回信卡片一致。 */
+.filter-letter-dot { position: absolute; top: 6rpx; right: 10rpx; width: 14rpx; height: 14rpx; border-radius: 50%; background: var(--apricot); }
+.letters { margin: 8rpx 0 24rpx; padding: 20rpx 24rpx; border: 1rpx solid rgba(176,130,57,.3); border-radius: 18rpx; background: var(--apricot-soft); }
+.letters-title { margin-bottom: 12rpx; font-size: 28rpx; color: var(--ink); }
+.letter { padding: 14rpx 0; border-top: 1rpx solid rgba(176,130,57,.18); }
+.letter:first-of-type { border-top: 0; }
+.letter-text { font-size: 28rpx; line-height: 1.6; color: var(--ink); white-space: pre-wrap; }
+.letter-foot { display: flex; justify-content: space-between; gap: 12rpx; margin-top: 8rpx; font-size: 22rpx; color: var(--ink-soft); }
+
+.person-actions { display:flex;align-items:center;gap:20rpx;margin:12rpx 0; }
+.quiet-action { width:auto;margin:0;padding:12rpx 20rpx;background:transparent;color:var(--jade);font-size:28rpx;line-height:1.5; }
+.quiet-action::after { border:0; }
+.person-add { min-width:100rpx;background:transparent;color:var(--jade);display:flex;flex-direction:column;justify-content:center;align-items:center;font-size:44rpx; }
+.person-add text { font-size:26rpx; }.person-add::after { border:0; }
+.person-editor,.shared-article { padding:28rpx;margin:24rpx 0;background:rgba(255,254,250,.95);border-radius:24rpx;border:1rpx solid var(--paper-edge,#e8e2d4); }
+.person-editor input { background:#fff;border:1rpx solid #d8dfd5;border-radius:14rpx;padding:20rpx;margin:18rpx 0;font-size:32rpx; }
+.shared-article .tl-text { white-space:pre-wrap; }.shared-change { margin:20rpx 0;padding-left:18rpx;border-left:3rpx solid #9ab2a4;font-size:28rpx;line-height:1.7; }
+/* 长账号名不挤占相邻头像；原生 input 明确高度，避免文字被裁切。 */
+.filter-name { display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.person-editor input { height:88rpx;line-height:88rpx;box-sizing:border-box;padding:0 20rpx; }
+.quiet-action.quiet-action { width:auto;margin-left:0;margin-right:0; }
+.person-add.person-add { width:128rpx;margin-left:0;margin-right:12rpx;padding:14rpx 6rpx; }
+
+.filter.filter.filter { width:128rpx;margin-left:0;margin-right:12rpx;line-height:1.5;background:transparent;font-weight:normal; }
+.filter.filter.filter-on { background:var(--jade-soft); }
+.filter.filter::after { border:0; }

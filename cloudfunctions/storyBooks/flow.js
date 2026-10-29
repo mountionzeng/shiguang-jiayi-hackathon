@@ -1,5 +1,7 @@
+const {revisionAttribution,draftSummary}=require('./revisionAttribution');
 const core = require('./core');
 const { measurePerformance } = require('./performance');
+const { ownNamesByAccount } = require('./displayNames');
 const { assertLegacyWritable, protocolError } = require('./provenance');
 const docId = (familyId,id) => familyId+'_'+id;
 const MIGRATION_BATCH_SIZE=80;
@@ -13,10 +15,10 @@ const memberForClient = member => ({
   ...(typeof member.deletedAt==='string' && member.deletedAt ? {deletedAt:member.deletedAt} : {}),
 });
 const contributionId = memory => memory.frontendContributionId || memory.id || memory.sourceRecordId?.replace(/^src_/,'')?.replace(memory.familyId+'_','') || memory._id?.replace(memory.familyId+'_','');
-const contributionForClient = (memory,member) => ({
+const contributionForClient = (memory,member,ownName) => ({
   id:contributionId(memory),
   authorMemberId:memory.authorMemberId,
-  authorName:member?.name || memory.authorName,
+  authorName:ownName || member?.name || memory.authorName,
   relation:member?.relation || memory.relation,
   text:memory.text,
   title:memory.title,
@@ -265,7 +267,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     legacyImageJobs:[...(source.legacyImageJobs || [])].filter(job=>!job.storyId).sort((a,b)=>String(a._id).localeCompare(String(b._id))),
   });
   const sourceDigest = source => core.hash(core.stable(legacySource(source)));
-  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false,home=false}={}) {
+  async function load(ctx,{includeMemories=true,includeMembers=false,includeMigrationSources=false,readState=false,home=false,keepMemoryHistory=false,memorySources=false}={}) {
     const measure = readState ? measurePerformance : (_operation,work)=>work();
     const readFamily = async () => {
       const family = await measure('state.query.families',()=>repo.get('families',ctx.familyId));
@@ -284,17 +286,17 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     // With access enabled, the service's owner check precedes these reads.
     // They only depend on ctx.familyId; keep command/migration ordering unchanged.
     let family, rows;
-    if (home) {
+    if (home || memorySources) {
       const initial = await Promise.all([
         readFamily(),
-        measure('state.query.stories',()=>repo.all('stories',ctx.familyId)),
-        measure('state.query.memories',()=>repo.all('memories',ctx.familyId)),
+        memorySources ? [] : measure('state.query.stories',()=>repo.all('stories',ctx.familyId)),
+        measure('state.query.memories',()=>repo.all('memories',ctx.familyId,keepMemoryHistory ? undefined : {aiRevisions:false})),
         measure('state.query.family_members',()=>repo.all('family_members',ctx.familyId)),
       ]);
       family = initial[0];
       // Legacy shelves still derive books from personal manuscripts. Keep their
       // full reader until migration is active; a home projection is read-only.
-      if (family.storyBooks?.status !== 'active') return load(ctx,{includeMemories,includeMembers,readState});
+      if (!memorySources && family.storyBooks?.status !== 'active') return load(ctx,{includeMemories,includeMembers,readState});
       const stories = initial[1].filter(story=>story.familyId===ctx.familyId && !story.deletedAt);
       const drafts = await measure('state.query.biography_drafts',()=>Promise.all(stories
         .filter(story=>story.currentRevisionId).map(async story=>{
@@ -302,7 +304,8 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
           return record?.familyId===ctx.familyId && record.storyId===story.id &&
             record.revision?.id===story.currentRevisionId && record.revision.storyId===story.id ? record : undefined;
         })));
-      const memories = initial[2].filter(memory=>!memory.deletedAt).map(({aiRevisions,...memory})=>memory);
+      const memories = initial[2].filter(memory=>!memory.deletedAt)
+        .map(memory=>{if(keepMemoryHistory)return memory;const {aiRevisions,...current}=memory;return current;});
       rows = [stories,drafts.filter(Boolean),[],memories,initial[3],[],[]];
     } else {
       [family,rows] = readState
@@ -327,18 +330,26 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       personalDraftSourceFingerprints:Object.fromEntries(drafts.filter(d=>d.draftType==='personal' && d.memberId).map(d=>[d.memberId,d.sourceFingerprint || ''])),
       manuscriptRevisions:drafts.filter(d=>d.revision).map(d=>d.revision),
       legacyPersonalDrafts:Object.fromEntries(drafts.filter(d=>d.draftType==='personal' && d.memberId && d.draft).map(d=>[d.memberId,d.draft])),legacyImages,legacyImageJobs};
+    // 仅供 state() 解析署名：成员 -> accountId。不可枚举，不会进入响应、复制或摘要。
+    Object.defineProperty(state,'memberAccountIds',{value:new Map(members.filter(member=>member.accountId).map(member=>[storedMemberId(member),member.accountId]))});
     if (family.storyBooks) state.storyMigration={...family.storyBooks,pending:pending.map(p=>p.item)};
     return state;
   }
   async function state(ctx,event={}) {
-    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true,home:event.view==='home'});
+    const loaded=await load(ctx,{includeMemories:true,includeMembers:true,readState:true,home:['home','memories'].includes(event.view),keepMemoryHistory:event.view==='memories',memorySources:event.view==='memory-sources'});
     const membersById=new Map(loaded.members.map(member=>[member.id,member]));
+    // 投稿作者显示本人在「我的」里起的称呼；主人自己跳过。所有账号并行读取，失败时静默退回备注名。
+    const accountOf=memberId=>membersById.get(memberId)?.role==='owner' ? undefined : loaded.memberAccountIds?.get(memberId);
+    const authorAccounts=[...new Set(loaded.contributions.map(memory=>accountOf(memory.authorMemberId)).filter(Boolean))];
+    const ownNames=authorAccounts.length
+      ? await measurePerformance('state.query.self_names',()=>ownNamesByAccount(repo,authorAccounts))
+      : new Map();
     return {
       roomStateVersion:1,
       roomName:loaded.roomName,
       protagonistName:loaded.protagonistName,
       members:loaded.members,
-      contributions:loaded.contributions.map(memory=>contributionForClient(memory,membersById.get(memory.authorMemberId))),
+      contributions:loaded.contributions.map(memory=>contributionForClient(memory,membersById.get(memory.authorMemberId),ownNames.get(accountOf(memory.authorMemberId)))),
       draft:loaded.draft,
       draftSourceFingerprint:loaded.draftSourceFingerprint,
       personalDrafts:loaded.personalDrafts,
@@ -370,7 +381,16 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     });
   }
   async function command(ctx,event) {
-    const input={...event,familyId:ctx.familyId}, previous=await load(ctx);
+    const input={...event,familyId:ctx.familyId};
+    // Saving edits only needs current manuscripts. Keep all memory provenance,
+    // and point-read the submitted revision ID to preserve collision rejection.
+    const previous=await load(ctx,{home:input.action==='save' && !input.restoreRevisionId,keepMemoryHistory:true});
+    if(input.action==='save' && typeof input.revision?.id==='string') {
+      const existing=await repo.get('biography_drafts',docId(ctx.familyId,input.revision.id));
+      if(existing?.revision && !previous.manuscriptRevisions.some(r=>r.id===existing.revision.id)) {
+        previous.manuscriptRevisions.push(existing.revision);
+      }
+    }
     const previousStory=previous.stories.find(story=>story.id===input.storyId);
     const guardsContent=!['delete','restore'].includes(input.action);
     if (guardsContent && previousStory) assertLegacyWritable(previousStory,core.current(previous,previousStory.id).draft);
@@ -439,7 +459,22 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       for(const id of imageRefs) {
         const image=await tx.get('story_images',id);
         const link=await tx.get('story_image_links',docId(ctx.familyId,core.hash(story.id+'|'+id)));
-        if(!image || image.familyId!==ctx.familyId || (image.storyId!==story.id && !(story.imageIds || []).includes(id) && link?.storyId!==story.id) || image.deletedAtMs!==undefined)throw Object.assign(new Error('书稿引用了不可用或其他故事的插图'),{code:'STORY_NOT_FOUND'});
+        let belongs = image && (image.storyId===story.id || (before?.imageIds || []).includes(id) || link?.storyId===story.id);
+        if (image?.memoryId && !belongs) {
+          const source = await tx.get('memories',docId(ctx.familyId,image.memoryId));
+          const owner = source?.authorMemberId ? await tx.get('family_members',docId(ctx.familyId,source.authorMemberId)) : undefined;
+          const reference = 'photo-ai-' + id.slice(id.lastIndexOf('_img_')+5);
+          const inChapter = newRevision.draft.chapters.some(chapter => chapter.memoryIds.includes(image.memoryId) && chapter.content.some(block => block.photoId===reference));
+          belongs = source?.familyId===ctx.familyId && !source.deletedAt && source.scope==='personal' && source.reviewStatus==='confirmed' &&
+            !source.sourcePolicyRequired && source.sourceIds===undefined && !source.sourceSystem &&
+            owner?.familyId===ctx.familyId && !owner.deletedAt && owner.kind!=='person' && (owner.role==='owner' || owner.relation==='自己') &&
+            story.memoryIds.includes(image.memoryId) && inChapter && (source.photoIds || []).includes(reference) &&
+            !image.storyId && image.purpose==='illustration' && !image.sourcePolicyRequired && image.sourceIds===undefined &&
+            image.requestId===reference.slice(9) && typeof image.fileID==='string' && image.fileID.startsWith('cloud://') &&
+            ['png','jpg','jpeg','webp'].some(ext=>image.fileID.endsWith(`/story-images/${ctx.familyId}/memory-${image.memoryId}/${image.requestId}.${ext}`));
+        }
+        if(!image || image.familyId!==ctx.familyId || !belongs || image.deletedAtMs!==undefined || (image.memoryId && image.moderation!=='pass'))throw Object.assign(new Error('书稿引用了不可用或其他故事的插图'),{code:'STORY_NOT_FOUND'});
+        if(image.memoryId && !link) await tx.set('story_image_links',docId(ctx.familyId,core.hash(story.id+'|'+id)),{familyId:ctx.familyId,storyId:story.id,imageId:id});
       }
       if(imageRefs.size)story.imageIds=[...new Set([...(story.imageIds || []),...imageRefs])];
       const nameId=docId(ctx.familyId,core.hash(story.title)),name=await tx.get('story_names',nameId);
@@ -454,6 +489,9 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         if(!pending || pending.item.resolvedStoryId)throw new Error('此章节已处理，请刷新');
         await tx.set('story_migration_items',id,{familyId:ctx.familyId,item:next.storyMigration.pending.find(p=>p.id===input.pendingId)});
       }
+      if(newRevision && await tx.get('biography_drafts',docId(ctx.familyId,newRevision.id)))throw new Error('版本编号冲突');
+      if(newRevision)delete newRevision.receivedFromName; // Own edits must not inherit a client-supplied source signature.
+      if(newRevision)Object.assign(newRevision,await revisionAttribution(tx,ctx,newRevision.kind==='restore'?'恢复历史版本':draftSummary(previous.manuscriptRevisions?.find(r=>r.id===before?.currentRevisionId)?.draft,newRevision.draft)));
       if(newRevision)await tx.set('biography_drafts',docId(ctx.familyId,newRevision.id),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision:newRevision});
       await tx.set('stories',docId(ctx.familyId,story.id),story);
       if (core.isEmptyStoryCreate(input) && family.storyBooks?.status!=='active') {

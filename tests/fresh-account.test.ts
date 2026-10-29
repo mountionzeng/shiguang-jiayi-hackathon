@@ -114,7 +114,7 @@ test("a brand-new WeChat account opens every memory, the people list and home", 
   await call(recall, "refresh");
   assert.equal(recall.data.hasItems, false);
 
-  const profiles = await capturePage("../miniprogram/pages/profiles/profiles");
+  const profiles = await capturePage("../miniprogram/pages/room/room");
   call(profiles, "onLoad", {});
   await call(profiles, "refresh");
   assert.equal(profiles.data.loadError, "");
@@ -158,4 +158,21 @@ test("when loading fails, the page stays friendly but the real error code reache
   const logged = env.errors.find(args => String(args[0]).includes("room"));
   assert.ok(logged, "the swallowed error is written to console.error");
   assert.equal((logged[1] as { errCode?: unknown }).errCode, -502003);
+});
+
+ test("an account without a member profile can read its name and open the existing name form", async (context) => {
+  const env = freshAccount();
+  context.after(env.restore);
+  const wx = (globalThis as any).wx;
+  const original = wx.cloud.callFunction;
+  wx.cloud.callFunction = async (input: { name: string }) => input.name === "getOpenId"
+    ? { result: { openid: "fresh-reviewer", accountLinked: true, account: { accountId: "account-reviewer", primaryFamilyId: "family-reviewer", displayName: "小禾", avatarText: "禾" } } }
+    : original(input);
+  let url = "";
+  wx.navigateTo = (input: { url: string }) => { url = input.url; };
+  const me = await capturePage("../miniprogram/pages/me/me");
+  await call(me, "refresh");
+  assert.equal(me.data.accountName, "小禾");
+  call(me, "editAccountProfile");
+  assert.equal(url, "/pages/room/room?edit=me");
 });

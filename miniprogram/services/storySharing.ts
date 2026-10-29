@@ -1,7 +1,12 @@
+import { measurePerformance } from './performanceLog';
 export interface Applicant { applicantId:string; displayName:string; verificationCode:string; status:string }
-export interface Invitation { invitationId:string; status:string; expiresAtMs:number; chapterIds:string[]; permissions:{read:boolean;forward:boolean;edit?:boolean;copy?:boolean}; applicants:Applicant[] }
+export interface InvitedMember { name:string; active:boolean; chapterIds:string[]; permissions:{read:boolean;edit?:boolean;copy?:boolean} }
+export interface Invitation { invitationId:string; status:string; expiresAtMs:number; chapterIds:string[]; permissions:{read:boolean;forward:boolean;edit?:boolean;copy?:boolean}; applicants:Applicant[]; member?:InvitedMember; memberId?:string; inviteeName?:string; relation?:string }
 export interface ManagedStory { story:{id:string;title:string}; chapters:Array<{id:string;title:string}>; invitations:Invitation[] }
-export interface InviteStatus { status:string; expiresAtMs:number; applicantId?:string; verificationCode?:string; familyId?:string; storyId?:string }
+export interface BookPerson { id:string; name:string; relation:string; avatarText:string; isOwner:boolean }
+export interface ManagedBookPeople extends ManagedStory { bookPeople?:boolean; familyId:string; copyAvailable:boolean; people:BookPerson[]; availablePeople:BookPerson[] }
+export interface InviteStatus { status:string; expiresAtMs:number; inviteeName?:string; relation?:string; displayName?:string; applicantId?:string; verificationCode?:string; familyId?:string; storyId?:string }
+export interface ChapterChange { revisionId:string; by:string; savedAt:string; title?:{before:string;after:string}; blocks:Array<{index:number;before:string;after:string}> }
 export interface SharedChapter { id:string; title:string; content:Array<{text:string;blockIndex?:number}>; textBlocks:Array<{index:number;text:string}> }
 export interface SharedStory { story:{id:string;title:string;version:number}; revisionId:string; draftScope:string; chapters:SharedChapter[]; capabilities?:{requestInvitation?:boolean;sharedEdit?:boolean;copy?:boolean} }
 export interface SharedExcerptInput {storyId:string;revisionId:string;expectedVersion:number;chapterId:string;text:string;recipientMemberIds:string[];requestId:string}
@@ -17,13 +22,22 @@ async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> 
   return result as T;
 }
 export const storySharing = {
-  capabilities:()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string}>('capabilities'),
+  capabilities:()=>measurePerformance('invite.capabilities',()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string;preparedInvitation?:boolean}>('capabilities')),
+  prepare:(selection:import('./bookExport').StoryBookExportSelection,descriptorId:string,expectedAccountScope:string,inviteeName:string)=>
+    measurePerformance('invite.create',()=>call<{token:string;invitationId:string;descriptorId:string;imageUrl:string}>('invitePrepare',{selection:{...selection,descriptorId},expectedAccountScope,inviteeName})),
   manage:(familyId:string,storyId:string)=>call<ManagedStory>('inviteManage',{familyId,storyId}),
-  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false)=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy}}),
+  people:(storyId:string,familyId?:string)=>measurePerformance('book.people',()=>call<ManagedBookPeople>('inviteManage',{storyId,familyId,includePeople:true})),
+  updatePerson:(memberId:string,name:string,relation:string)=>call<{ok:true}>('memberUpdate',{memberId,name,relation}),
+  invitePerson:(familyId:string,storyId:string,chapterIds:string[],copy:boolean,person:{memberId?:string;name:string;relation:string})=>
+    measurePerformance('invite.create',()=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,
+      permissions:{read:true,forward:false,edit:false,copy},inviteeName:person.name,relation:person.relation || '家人',
+      ...(person.memberId?{targetMemberId:person.memberId}:{})})),
+  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string,relation?:string)=>measurePerformance('invite.create',()=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{}),...(relation?{relation}:{})})),
   status:(token:string)=>call<InviteStatus>('inviteGet',{token}),
-  apply:(token:string,displayName:string)=>call<InviteStatus>('inviteApply',{token,displayName}),
-  decide:(familyId:string,storyId:string,invitationId:string,applicantId:string,decision:'approve'|'reject',verificationCode:string)=>call('inviteDecide',{familyId,storyId,invitationId,applicantId,decision,verificationCode}),
+  accept:(token:string)=>call<InviteStatus>('inviteAccept',{token}),
   revoke:(familyId:string,storyId:string,invitationId:string)=>call('inviteRevoke',{familyId,storyId,invitationId}),
+  chapterChanges:(familyId:string,storyId:string,chapterId:string)=>call<{changes:ChapterChange[]}>('chapterChanges',{familyId,storyId,chapterId}),
+  setAccess:(familyId:string,storyId:string,invitationId:string,permissions:{read:true;edit:boolean;copy:boolean},chapterIds?:string[])=>call('inviteSetAccess',{familyId,storyId,invitationId,permissions,...(chapterIds?{chapterIds}:{})}),
   read:(familyId:string,storyId:string)=>call<SharedStory>('sharedRead',{familyId,storyId}),
   edit:(input:{familyId:string;storyId:string;chapterId:string;revisionId:string;expectedVersion:number;requestId:string;title:string;textBlocks:Array<{index:number;text:string}>})=>
     call<{ok:true;storyId:string;chapterId:string;revisionId:string;version:number}>('sharedEdit',input),

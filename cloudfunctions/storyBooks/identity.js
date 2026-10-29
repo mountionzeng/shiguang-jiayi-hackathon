@@ -33,7 +33,7 @@ async function resolveStoryIdentity(repo, context, { bootstrapAppId } = {}) {
   if (typeof appId !== 'string' || !/^wx[0-9A-Za-z_-]{1,80}$/.test(appId) ||
       typeof openid !== 'string' || !/^[0-9A-Za-z_-]{1,128}$/.test(openid)) throw identityError('AUTH_REQUIRED');
   const aliasId = aliasIdFor(appId, openid);
-  return repo.transaction(async tx => {
+  const resolve = () => repo.transaction(async tx => {
     const alias = await tx.get('story_identity_aliases', aliasId);
     if (alias) return identityFromAlias(tx, aliasId, appId);
     if (!bootstrapAppId || appId !== bootstrapAppId) throw identityError('IDENTITY_UNLINKED');
@@ -42,11 +42,21 @@ async function resolveStoryIdentity(repo, context, { bootstrapAppId } = {}) {
     if (!account || account.status !== 'active' || account.wxOpenId !== openid ||
         !ACCOUNT_ID.test(account.accountId) || !FAMILY_ID.test(account.primaryFamilyId)) throw identityError('IDENTITY_UNLINKED');
     const familyId = account.primaryFamilyId;
-    const family = await tx.get('families', familyId);
-    if (!family || family.ownerAccountId !== account.accountId || family._openid !== openid) throw identityError('IDENTITY_UNLINKED');
+    let family = await tx.get('families', familyId);
+    if (family && (family.ownerAccountId !== account.accountId || family._openid !== openid)) throw identityError('IDENTITY_UNLINKED');
     // A missing alias is not permission to claim a previously bound space, even
     // if an operator changes the configured bootstrap app after a migration.
     if (await tx.get('story_principal_spaces', familyId)) throw identityError('IDENTITY_UNLINKED');
+    // A newly registered account has no family yet. Provision only its original
+    // deterministic space, inside the same transaction as its first binding.
+    // Missing migrated/bound spaces remain errors; never recreate or claim them.
+    if (!family) {
+      if (familyId !== `family_${openid}` || account.accountId !== accountDocumentId) throw identityError('IDENTITY_UNLINKED');
+      family = { _openid: openid, ownerAccountId: account.accountId,
+        roomName: '我的拾光房间', protagonistName: '', deletedStories: [],
+        storyBooks: { status: 'active', version: 1 }, createdAt: new Date().toISOString() };
+      await tx.set('families', familyId, family);
+    }
     const principalId = `principal_${crypto.randomBytes(16).toString('hex')}`;
     const createdAt = new Date().toISOString();
     await tx.set('story_principals', principalId, { status: 'active', accountId: account.accountId, familyId, createdAt });
@@ -54,6 +64,16 @@ async function resolveStoryIdentity(repo, context, { bootstrapAppId } = {}) {
     await tx.set('story_identity_aliases', aliasId, { status: 'active', appId, principalId, createdAt });
     return { principalId, accountId: account.accountId, familyId, aliasId, appId };
   });
+  // Concurrent first-page requests may bootstrap the same account. Re-read all
+  // authority records in a fresh transaction; never reuse a losing principal.
+  for (let attempt = 0; ; attempt++) {
+    try { return await resolve(); }
+    catch (error) {
+      const conflict = /ResourceUnavailable\.TransactionConflict/.test(String(error?.errMsg || error?.message || ''));
+      if (!conflict || attempt >= 2) throw error;
+      await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
 }
 
 async function assertCurrentIdentity(reader, ctx) {

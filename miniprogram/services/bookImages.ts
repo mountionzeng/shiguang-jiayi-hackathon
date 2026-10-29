@@ -117,6 +117,15 @@ export async function readLocalPhotos(ids: string[]): Promise<{
 }
 
 export async function readLocalPhoto(id: string): Promise<string> {
+  if (isStoryImageReference(id)) {
+    if (!wx.cloud) return '';
+    try {
+      const familyId = await currentFamilyId();
+      const response = await wx.cloud.callFunction({name:'storyImages', data:{action:'readMemoryImage', familyId, imageId:`${familyId}_img_${id.slice(9)}`}});
+      const result = response.result as {url?: string};
+      return typeof result?.url === 'string' && result.url.startsWith('https://') ? result.url : '';
+    } catch { return ''; }
+  }
   if (!LOCAL_PHOTO_ID.test(id)) return "";
   try {
     const path: unknown = wx.getStorageSync("shiguang-local-" + id);

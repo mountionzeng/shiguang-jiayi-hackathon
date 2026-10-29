@@ -63,6 +63,17 @@ Page({
     }catch(error){if(!this.hidden && epoch===this.epoch)this.setData({notice:'没有保存成功：'+(error instanceof Error?error.message:'请检查相册权限后重试')});}
     finally{if(!this.hidden && epoch===this.epoch)this.setData({busy:false});}
   },
+  // 直接发送前与保存一样重新核对许可并重画，避免发出已撤销或已修改的内容。
+  async share(){if(this.data.busy || !this.selection || !this.descriptor)return;const epoch=this.epoch;this.setData({busy:true,notice:'发送前正在重新核对权限…'});
+    try{const material=await storyShareCard.material(this.selection,this.descriptor.id);if(this.hidden || epoch!==this.epoch)return;const path=await this.draw(material.descriptor,material.media);
+      if(this.hidden || epoch!==this.epoch)return;
+      const menu=(wx as typeof wx & {showShareImageMenu?:(options:{path:string;success:()=>void;fail:(error:unknown)=>void})=>void}).showShareImageMenu;
+      if(typeof menu!=='function')throw new Error('当前微信版本暂不支持直接发送图片，请先保存到相册');
+      await new Promise<void>((resolve,reject)=>menu({path,success:resolve,fail:reject}));if(!this.hidden && epoch===this.epoch)this.setData({previewPath:path,notice:'已打开微信分享菜单，可发给朋友或分享到朋友圈。'});
+    }catch(error){if(this.hidden || epoch!==this.epoch)return;const reason=error instanceof Error?error.message:String((error as {errMsg?:string})?.errMsg || '');
+      this.setData({notice:/cancel/i.test(reason)?'已取消发送，卡片仍保留在预览中。':'没有发送成功：'+(reason || '请先保存到相册')});}
+    finally{if(!this.hidden && epoch===this.epoch)this.setData({busy:false});}
+  },
   onShareAppMessage(){return sharingHome;},
 });
 

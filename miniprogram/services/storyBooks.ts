@@ -1,9 +1,31 @@
+import { cloudPerformanceMetrics, measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
 import { FamilyRoomState, Story, ManuscriptRevision } from '../domain/biography';
 import * as core from '../domain/storyBookCore';
 import { loadRoomStateRemoteFirst, usesCloudStorage } from './roomRepository';
 import { saveRoomState } from './roomStorage';
+import { roomStateFromStoryResponse } from './cloudRoomStorage';
 import { newStoryId } from './storyRecords';
 import { classifyServiceFailure, logServiceFailure, SavedRefreshError } from './serviceFailure';
+import { readStoryState } from './storyStateTransport';
+
+export type StoryHistoryEntry = Pick<ManuscriptRevision,'id'|'storyId'|'kind'|'label'|'savedAt'|'editorName'|'receivedFromName'|'changeSummary'>;
+export async function loadStoryHistory(storyId:string): Promise<StoryHistoryEntry[]> {
+  return measurePerformance('book.history',async()=>{
+  if (usesCloudStorage() && (await call('capabilities')).ownerHistory === true) {
+    const result=await readStoryState(data=>call('history',{...data,storyId})) as {history:StoryHistoryEntry[]};
+    if (!Array.isArray(result.history)) throw new Error('历史版本暂时加载失败，请重试');
+    return result.history;
+  }
+  return core.history(await loadRoomStateRemoteFirst(),storyId);
+  });
+}
+export async function loadStoryRevision(storyId:string,revisionId:string): Promise<ManuscriptRevision> {
+  return measurePerformance('book.revision',async()=>{
+  const result=await readStoryState(data=>call('revision',{...data,storyId,revisionId})) as {revision:ManuscriptRevision};
+  if (result.revision?.id!==revisionId || result.revision.storyId!==storyId || !result.revision.draft) throw new Error('这一版暂时加载失败，请重试');
+  return result.revision;
+  });
+}
 
 export { activeStory, current as currentStoryManuscript, history as storyManuscriptHistory, fingerprint as storySourceFingerprint } from '../domain/storyBookCore';
 export const operationId = () => 'op-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);
@@ -13,17 +35,27 @@ function canReadLegacyStories(error: unknown): boolean {
   return classifyServiceFailure(error) === 'missing' || /MIGRATION_NOT_READY|故事库.*(?:准备|迁移测试范围)|新版故事库正在准备/i.test(text);
 }
 async function call(action: string, data: Record<string,unknown> = {}): Promise<Record<string,unknown>> {
-  const response = await wx.cloud.callFunction({name:'storyBooks',data:{...data,action}});
-  const result = response.result as {error?:string;code?:string;message?:string;[key:string]:unknown};
-  if (!result || typeof result !== 'object' || Array.isArray(result) || result.error) {
-    const error = new Error(result?.message || '故事服务暂不可用，请重试') as Error & { code?: string };
-    if (result?.code) error.code = result.code;
-    throw error;
-  }
-  return result;
+  const finish = startPerformanceMeasure('story.request');
+  let outcome: 'ok' | 'error' = 'error';
+  let metrics: PerformanceMetrics = {};
+  try {
+    const response = await wx.cloud.callFunction({name:'storyBooks',data:{...data,action,...(action==='save'?{performanceDiagnostics:1}:{})}});
+    const result = response.result as {error?:string;code?:string;message?:string;[key:string]:unknown};
+    if (!result || typeof result !== 'object' || Array.isArray(result) || result.error) {
+      const error = new Error(result?.message || '故事服务暂不可用，请重试') as Error & { code?: string };
+      if (result?.code) error.code = result.code;
+      throw error;
+    }
+    metrics = cloudPerformanceMetrics(result.performance);
+    outcome = 'ok';
+    return result;
+  } finally { finish(outcome, metrics); }
 }
 export async function ensureStoryBooks(): Promise<FamilyRoomState> {
-  let state = await loadRoomStateRemoteFirst();
+  // The shelf only needs each story's current revision. Avoid serialising every
+  // historical manuscript before it can paint; the editor fetches history only
+  // when the reader opens the history panel.
+  let state = await loadRoomStateRemoteFirst({view:'home'});
   if (state.storyMigration?.status === 'active') return state;
   if (usesCloudStorage()) {
     // Each bounded invocation resumes the same migration cursor. No paid model calls.
@@ -37,17 +69,17 @@ export async function ensureStoryBooks(): Promise<FamilyRoomState> {
         if (canReadLegacyStories(error)) return state;
         throw error;
       }
-      if (result.status === 'active') return loadRoomStateRemoteFirst();
+      if (result.status === 'active') return loadRoomStateRemoteFirst({view:'home'});
     }
     throw new Error('旧书整理仍在继续，请稍后再次打开书架');
   }
   state = core.migrate(state,'local'); saveRoomState(state); return state;
 }
-export async function storyCommand(command: Record<string,unknown>): Promise<FamilyRoomState> {
+export async function storyCommand(command: Record<string,unknown>, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
   if (usesCloudStorage()) {
     let receipt: Record<string, unknown>;
     try {
-      receipt = await call(String(command.action), command);
+      receipt = await call(String(command.action), {...command, ...(command.action === 'save' && options.view === 'home' ? {returnState:'home'} : {})});
       if (receipt.ok !== true || typeof receipt.storyId !== 'string' || !receipt.storyId || receipt.storyId !== command.storyId) {
         throw Object.assign(new Error('暂未确认保存结果，请重新打开书籍核对；当前草稿仍保留'), { code: 'WRITE_UNCONFIRMED' });
       }
@@ -55,7 +87,13 @@ export async function storyCommand(command: Record<string,unknown>): Promise<Fam
       logServiceFailure('storyBooks', 'write', error);
       throw error;
     }
-    try { return await loadRoomStateRemoteFirst(); }
+    try {
+      if (command.action === 'save' && options.view === 'home') {
+        const state = roomStateFromStoryResponse(receipt.savedState);
+        if (state) return state;
+      }
+      return await loadRoomStateRemoteFirst(options);
+    }
     catch (error) {
       logServiceFailure('storyBooks', 'refresh', error);
       throw new SavedRefreshError(String(command.requestId || ''));
@@ -77,7 +115,7 @@ export function linkStoryMemories(story:Story,memoryIds:string[],requestId = ope
   return storyCommand({action:'link',storyId:story.id,expectedVersion:story.version,memoryIds,requestId});
 }
 export function saveStoryRevision(revision:ManuscriptRevision,expectedRevisionId:string) {
-  return storyCommand({action:'save',storyId:revision.storyId,expectedVersion:revision.expectedStoryVersion,expectedRevisionId,revision,requestId:revision.id});
+  return measurePerformance('story.save', () => storyCommand({action:'save',storyId:revision.storyId,expectedVersion:revision.expectedStoryVersion,expectedRevisionId,revision,requestId:revision.id}, {view:'home'}));
 }
 export function resolveStoryChapter(story:Story,pendingId:string,revision:ManuscriptRevision) {
   return storyCommand({action:'resolve',storyId:story.id,expectedVersion:story.version,expectedRevisionId:story.currentRevisionId || '',pendingId,revision,requestId:revision.id});

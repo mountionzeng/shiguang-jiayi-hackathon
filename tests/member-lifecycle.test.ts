@@ -317,6 +317,44 @@ test("versioned story state and member actions fail closed on malformed service 
   } finally { cloud.restore(); }
 });
 
+test("人物管理轻量读写只取名单，新增改名删除恢复仍由服务端执行", async () => {
+  const cloud = installCloud();
+  try {
+    cloud.seed("owner", "测试者", "recording-profile");
+    const writes: string[] = [];
+    let stateReads = 0;
+    (globalThis as any).wx.cloud.callFunction = async ({ name, data }: { name: string; data: Record<string, unknown> }) => {
+      if (name === "getOpenId") return { result: { openid: "fixture-user" } };
+      assert.equal(name, "storyBooks");
+      if (data.action === "state") {
+        assert.equal(data.view, "home", "人物管理不得下载整本正文和所有版本");stateReads++;
+        return { result: { roomStateVersion: 1, roomName: "测试房间", protagonistName: "", members:
+          [...cloud.records("family_members").values()].map(member => ({...member,id:member.memberId})),
+          contributions: [], stories: [], manuscriptRevisions: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {} } };
+      }
+      const key = `${FAMILY}_${data.memberId}`;
+      const current = cloud.records("family_members").get(key);
+      writes.push(String(data.action));
+      if (data.action === "memberAdd") cloud.records("family_members").set(key, {familyId:FAMILY,memberId:data.memberId,name:data.name,relation:data.relation,kind:data.kind,role:"contributor"});
+      else if (data.action === "memberUpdate") cloud.records("family_members").set(key, {...current,name:data.name,relation:data.relation});
+      else if (data.action === "memberDelete") cloud.records("family_members").set(key, {...current,deletedAt:"2026-10-18"});
+      else if (data.action === "memberRestore") cloud.records("family_members").set(key, {...current,deletedAt:undefined});
+      else throw new Error(`unexpected action ${String(data.action)}`);
+      return { result: { ok:true } };
+    };
+    cloud.failures.add("family_members:set");
+    const options = {view:"home" as const};
+    const created = await addCloudFamilyMember("联调人物", "测试", "person", options);
+    const id = created.members.find(member => member.name === "联调人物")!.id;
+    const updated = await updateCloudMember(id,"联调改名","测试朋友",options);
+    assert.equal(updated.members.find(member=>member.id===id)?.name,"联调改名");
+    assert.ok((await deleteCloudMember(id,undefined,options)).members.find(member=>member.id===id)?.deletedAt);
+    assert.equal((await restoreCloudMember(id,options)).members.find(member=>member.id===id)?.deletedAt,undefined);
+    assert.deepEqual(writes,["memberAdd","memberUpdate","memberDelete","memberRestore"]);
+    assert.equal(stateReads,6);
+  } finally { cloud.restore(); }
+});
+
 test("cloud member editing writes attribution before the member and survives reload", async () => {
   const cloud = installCloud();
   try {

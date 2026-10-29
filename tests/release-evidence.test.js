@@ -48,6 +48,7 @@ test('preview records exact code/config/cloud/acceptance and a unique QR artifac
   assert.notEqual(first.directory,second.directory);
   assert.equal(first.source.commit,f.source.commit);
   assert.equal(first.cloud.functions.storyBooks.digest,f.functions.storyBooks.digest);
+  assert.equal(first.cloud.functions.generateBiography.digest,f.functions.generateBiography.digest);
   assert.equal(first.qr.sha256.length,64);
   assert.ok(fs.existsSync(path.join(first.directory,'manifest.json')));
   assert.equal(first.checks.passed,true);
@@ -115,4 +116,12 @@ test('private configuration changed after acceptance blocks preview before any c
   fs.writeFileSync(path.join(f.root,'project.private.config.json'),'{"setting":{"urlCheck":false}}');
   await assert.rejects(run(f.args,{root:f.root,runner:async()=>{calls++;}}),/configuration/);
   assert.equal(calls,0);
+});
+
+test('release evidence refuses to skip new-account and page-availability checks',t=>{
+  const f=fixture(t);
+  for(const flow of ['fresh-account-home','returning-account-cold-start','primary-navigation','failure-recovery']) {
+    const flows={...f.acceptance.flows};delete flows[flow];
+    assert.throws(()=>validateEvidence({source:f.source,environment:'test-env',acceptance:{...f.acceptance,flows},cloud:f.cloud,functions:f.functions,configs:f.configs}),/Complete all acceptance/);
+  }
 });

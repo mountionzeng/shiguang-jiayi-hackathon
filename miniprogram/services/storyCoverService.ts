@@ -1,3 +1,4 @@
+import { readLocalPhoto } from "./bookImages";
 import { prepareReferencePhotos } from "./referencePhotos";
 import { resumePhotoUploads } from "./photoCloud";
 import { callStoryImages, newImageRequestId, StoryImageJob, StoryImageServiceError, storyImageApi } from './storyImageService';
@@ -50,6 +51,7 @@ async function select(storyId: string, imageId: string, expectedVersion: number)
 }
 async function resolveUrl(storyId: string, imageId?: string): Promise<string> {
   if (!storyId || !imageId) return '';
+  if (/^photo-(?!ai-)[a-z0-9-]{1,120}$/.test(imageId)) return readLocalPhoto(imageId);
   const list = await storyImageApi.listStoryImages(storyId);
   return list.images.find(image => image.imageId === imageId && image.purpose === 'cover' && image.moderation === 'pass')?.url || '';
 }

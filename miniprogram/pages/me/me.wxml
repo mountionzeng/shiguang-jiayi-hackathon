@@ -10,14 +10,14 @@
     <view class="me-title serif">我的</view>
   </view>
 
-  <view class="me-profile">
+  <view class="me-profile" bindtap="editAccountProfile" role="button" aria-label="修改我的称呼">
     <view class="me-avatar serif">
       <image class="me-avatar-backdrop" src="/assets/illustrations/avatar-watercolor.png" mode="aspectFill" aria-hidden="true"></image>
       <text class="me-avatar-letter">{{accountAvatarText}}</text>
     </view>
     <view class="me-profile-copy">
-      <view class="me-name serif">{{accountName || memberName}}</view>
-      <view class="me-relation">微信已关联 · 拾光记录者</view>
+      <view class="me-name serif">{{accountName || memberName || "设置我的称呼"}}</view>
+      <view class="me-relation">微信已关联 · 点这里修改称呼</view>
     </view>
   </view>
 
@@ -133,6 +133,7 @@
   <view class="me-section-title">账号</view>
   <view class="me-list">
     <button class="me-row" bindtap="openAccountLink" hover-class="none"><text class="me-row-icon">屏</text><view class="me-row-copy"><text class="me-row-title">在电脑上继续</text><text class="me-row-note">选择微信故事，生成一次性电脑登录码</text></view><text class="me-row-arrow">›</text></button>
+    <button class="me-row" wx:if="{{webLoginEnabled}}" bindtap="openWebLogin" hover-class="none"><text class="me-row-icon">登</text><view class="me-row-copy"><text class="me-row-title">登录电脑</text><text class="me-row-note">输入电脑网页上显示的码并确认</text></view><text class="me-row-arrow">›</text></button>
     <button class="me-row" bindtap="editAccountProfile" hover-class="none">
       <text class="me-row-icon">称</text>
       <view class="me-row-copy"><text class="me-row-title">修改个人信息</text><text class="me-row-note">称呼与一个字头像</text></view>

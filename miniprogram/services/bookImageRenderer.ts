@@ -1,5 +1,6 @@
 import { BookExportMaterial } from './bookExport';
 import { ImageLayoutMode, ImageFontSize, IMAGE_WIDTH, PAGE_HEIGHT, TEXT_WIDTH, layoutTextImages, wrapImageText } from './bookImageLayout';
+import { measurePerformance } from './performanceLog';
 
 export function removeImageFiles(paths: string[]) {
   for (const filePath of paths) wx.getFileSystemManager().unlink({ filePath, fail: () => undefined });
@@ -32,6 +33,19 @@ function drawImageCover(ctx: any, image: any,
   ctx.drawImage(image, (imageWidth - sourceWidth) / 2, (imageHeight - sourceHeight) / 2,
     sourceWidth, sourceHeight, x, y, width, height);
 }
+class ImageReadFailure extends Error {}
+async function readImage(src:string,label:string,assertActive:()=>void): Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult> {
+  const read=()=>measurePerformance('book.image-download',()=>timed<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve,reject)=>
+    wx.getImageInfo({src,success:resolve,fail:()=>reject(new ImageReadFailure(label+'失败，请检查网络后重试'))}),label));
+  try {return await read();}
+  catch(error) {
+    assertActive();
+    // Retry only after a completed remote read failure. A timeout can leave its
+    // native request running, so never start an overlapping retry in that case.
+    if (!(error instanceof ImageReadFailure) || !/^https:\/\//.test(src)) throw error;
+    return read();
+  }
+}
 export async function renderBookImages(material: BookExportMaterial, mode: ImageLayoutMode, fontSize: ImageFontSize,
   page: WechatMiniprogram.Page.TrivialInstance, isActive: () => boolean, progress: (done: number, total: number) => void): Promise<string[]> {
   const assertActive = () => { if (!isActive()) throw new Error('已停止本次图片生成'); };
@@ -45,18 +59,31 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
   const ctx = canvas.getContext('2d');
   const measure = (text: string, size: number) => { ctx.font = size + 'px sans-serif'; return ctx.measureText(text).width; };
   const descriptor = material.descriptor;
-  const pages = layoutForTarget(descriptor.title, descriptor.chapters, mode, fontSize, descriptor.targetTextImageCount, measure);
+  const modulePages = mode === 'pages' && !descriptor.targetTextImageCount && descriptor.chapters.every(chapter => chapter.layout)
+    ? descriptor.chapters.flatMap(chapter => chapter.layout!.pages.map(page => ({ chapterId: chapter.id, modules: page.modules })))
+    : undefined;
+  // Reserve the existing header/footer bands while fitting the 900×1200 layout
+  // uniformly into the remaining page area.
+  const moduleScale = Math.min(IMAGE_WIDTH / 900, (PAGE_HEIGHT - 180) / 1200);
+  const moduleLeft = (IMAGE_WIDTH - 900 * moduleScale) / 2, moduleTop = (PAGE_HEIGHT - 1200 * moduleScale) / 2;
+  const fitsModulePages = !!modulePages?.length && modulePages.every(page => page.modules.every(module => {
+    const size = module.fontSize * moduleScale;
+    const lines = wrapImageText(module.text, size, measure, module.rect.width * moduleScale);
+    return lines.length * Math.ceil(size * 1.25) <= module.rect.height * moduleScale;
+  }));
+  const pages = fitsModulePages ? modulePages! : layoutForTarget(descriptor.title, descriptor.chapters, mode, fontSize, descriptor.targetTextImageCount, measure);
   const titleLines = wrapImageText(descriptor.title, 42, measure);
   if (titleLines.length > 10) throw new Error('书名过长，无法完整排版，请缩短书名后重试');
   const headerLines = wrapImageText(descriptor.title, 24, measure);
   const paths: string[] = [];
   try {
     assertActive();
-    const coverUrls = material.coverUrls?.length ? material.coverUrls : [material.coverUrl || ''];
+    const memoryExport = descriptor.sourceKind === 'memory';
+    const coverUrls = memoryExport ? material.photoUrls || [] : material.coverUrls?.length ? material.coverUrls : [material.coverUrl || ''];
+    if (memoryExport && coverUrls.length !== (descriptor.photoIds?.length || 0)) throw new Error('记忆配图不完整，请重新生成');
     const covers = [];
     for (const url of coverUrls) {
-      const cover = await timed<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve, reject) => wx.getImageInfo({
-        src: url || '/assets/illustrations/story-book-cover.png', success: resolve, fail: reject }), '读取封面');
+      const cover = await readImage(url || '/assets/illustrations/story-book-cover.png','读取封面',assertActive);
       const coverImage = canvas.createImage();
       await timed<void>((resolve, reject) => {
         coverImage.onload = () => resolve();
@@ -71,9 +98,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
     const backdropImages = new Map<string, { info: WechatMiniprogram.GetImageInfoSuccessCallbackResult; image: any }>();
     for (const [chapterId, url] of Object.entries(material.backdropUrls || {})) {
       if (!url) continue;
-      const info = await timed<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve, reject) => wx.getImageInfo({
-        src: url, success: resolve, fail: reject,
-      }), '读取章节底图');
+      const info = await readImage(url,'读取章节底图',assertActive);
       const image = canvas.createImage();
       await timed<void>((resolve, reject) => {
         image.onload = () => resolve();
@@ -88,7 +113,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
       assertActive();
       const coverIndex = index < covers.length ? index : -1;
       const textIndex = index - covers.length;
-      const height = coverIndex >= 0 ? PAGE_HEIGHT : pages[textIndex].height;
+      const height = coverIndex >= 0 || 'modules' in pages[textIndex] ? PAGE_HEIGHT : pages[textIndex].height;
       await timed<void>(resolve => page.setData({ canvasHeight: height }, () => resolve()), '准备画布');
       assertActive();
       canvas.width = IMAGE_WIDTH; canvas.height = height;
@@ -109,7 +134,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
         ctx.fillStyle = '#2a2e2b'; ctx.font = 42 + 'px sans-serif';
         titleLines.forEach((line, i) => ctx.fillText(line.text, 60, 80 + i * 58));
         const top = 100 + titleLines.length * 58, available = height - top - 130;
-        if (coverUrls[coverIndex]) {
+        if (coverUrls[coverIndex] && !memoryExport) {
           drawImageCover(ctx, coverImage, cover.width, cover.height, 60, top, TEXT_WIDTH, available);
         } else {
           const scale = Math.min(TEXT_WIDTH / cover.width, available / cover.height);
@@ -118,15 +143,27 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
       } else {
         ctx.fillStyle = '#6a6e68'; ctx.font = 24 + 'px sans-serif';
         headerLines.forEach((line, i) => ctx.fillText(line.text, 60, 66 + i * 34));
-        for (const row of pages[textIndex].rows) {
+        if ('modules' in pages[textIndex]) {
+          for (const module of pages[textIndex].modules) {
+            const size = module.fontSize * moduleScale, x = moduleLeft + module.rect.x * moduleScale;
+            ctx.fillStyle = '#2a2e2b'; ctx.font = size + 'px sans-serif';
+            ctx.textAlign = module.alignment === 'center' ? 'center' : 'left';
+            const left = module.alignment === 'center' ? x + module.rect.width * moduleScale / 2 : x;
+            const lineHeight = Math.ceil(size * 1.25);
+            wrapImageText(module.text, size, measure, module.rect.width * moduleScale).forEach((line, lineIndex) => {
+              ctx.fillText(line.text, left, moduleTop + module.rect.y * moduleScale + lineIndex * lineHeight);
+            });
+          }
+          ctx.textAlign = 'left';
+        } else for (const row of pages[textIndex].rows) {
           ctx.fillStyle = row.heading ? '#4f7f6b' : '#2a2e2b'; ctx.font = row.fontSize + 'px sans-serif'; ctx.fillText(row.text, 60, row.y);
         }
       }
       ctx.fillStyle = '#d7d6ca'; ctx.fillRect(60, height - 78, TEXT_WIDTH, 1);
       ctx.fillStyle = '#6a6e68'; ctx.font = 20 + 'px sans-serif';
-      ctx.fillText(coverIndex >= 0 ? '拾光家忆' + (descriptor.coverImageId ? ' · AI 生成封面' : '')
+      ctx.fillText(coverIndex >= 0 ? '拾光家忆' + (memoryExport ? (descriptor.photoIds?.[coverIndex]?.startsWith('photo-ai-') ? ' · AI 生成配图' : ' · 记忆配图') : descriptor.coverImageId ? ' · AI 生成封面' : '')
         : '拾光家忆' + (backdrop ? ' · AI 章节底图' : '') + (descriptor.containsAiText ? ' · 含 AI 生成文字' : ''), 60, height - 52);
-      ctx.textAlign = 'right'; ctx.fillText(coverIndex >= 0 ? (covers.length > 1 ? '封面 ' + (coverIndex + 1) + ' / ' + covers.length : '封面') : (textIndex + 1) + ' / ' + pages.length, 690, height - 52);
+      ctx.textAlign = 'right'; ctx.fillText(coverIndex >= 0 ? (memoryExport ? '配图 ' + (coverIndex + 1) + ' / ' + covers.length : covers.length > 1 ? '封面 ' + (coverIndex + 1) + ' / ' + covers.length : '封面') : (textIndex + 1) + ' / ' + pages.length, 690, height - 52);
       assertActive();
       const path = await new Promise<string>((resolve, reject) => {
         let settled = false;

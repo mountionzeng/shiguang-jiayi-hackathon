@@ -82,52 +82,51 @@
                   <text class="book-kicker typewriter">拾 光 录</text>
                   <view class="book-copy">
                     <view class="book-slip">
+                      <image wx:if="{{item.bookArtUrl}}" class="book-label-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true" />
                       <view class="book-title typewriter">{{item.title}}</view>
                       <view class="book-subtitle">{{item.subtitle}}</view>
                     </view>
-                    <view class="book-stats" role="group" aria-label="这本书的记忆、章节和人物">
-                      <button
-                        class="book-stat-action book-stat-note"
-                        catchtap="openStoryMemories"
-                        hover-class="none"
-                        aria-label="这本书里的记忆"
-                      >
-                        <text class="book-stat-num">{{item.memoryCount}}</text>
-                        <text class="book-stat-label">段记忆</text>
-                      </button>
-                      <button
-                        class="book-stat-action book-stat-memoir"
-                        catchtap="openStoryChapters"
-                        hover-class="none"
-                        aria-label="这本书整理好的章节"
-                      >
-                        <text class="book-stat-num">{{item.chapterCount}}</text>
-                        <text class="book-stat-label">章节</text>
-                      </button>
-                      <button
-                        class="book-stat-action book-stat-home"
-                        catchtap="openPeople"
-                        hover-class="none"
-                        aria-label="这本书里的人物，在记忆之家查看"
-                      >
-                        <text class="book-stat-num">{{item.peopleCount}}</text>
-                        <text class="book-stat-label">人物</text>
-                      </button>
-                    </view>
+
                   </view>
                 </view>
               </view>
             </view>
+      <view class="book-stats book-actions" role="group" aria-label="这本书的记忆、章节、人物和图像">
+        <image class="book-label-paper" src="/assets/illustrations/home-paper.jpg" mode="scaleToFill" aria-hidden="true" />
+        <button
+          class="book-stat-action book-stat-note"
+          bindtap="openStoryMemories"
+          hover-class="none"
+          aria-label="这本书里的记忆"
+        >
+          <text class="book-stat-num">{{item.memoryCount}}</text>
+          <text class="book-stat-label">段记忆</text>
+        </button>
+        <button
+          class="book-stat-action book-stat-memoir"
+          bindtap="openStoryChapters"
+          hover-class="none"
+          aria-label="这本书整理好的章节"
+        >
+          <text class="book-stat-num">{{item.chapterCount}}</text>
+          <text class="book-stat-label">章节</text>
+        </button>
+        <button
+          class="book-stat-action book-stat-home"
+          bindtap="openPeople"
+          hover-class="none"
+          aria-label="这本书里的人物与章节权限"
+        >
+          <text class="book-stat-num">{{item.peopleCount}}</text>
+          <text class="book-stat-label">人物</text>
+        </button>
+        <button class="book-stat-action" bindtap="openStoryImages" hover-class="none" aria-label="这本书的图像与来源">
+          <text class="book-stat-label">图像</text>
+        </button>
+      </view>
           </view>
         </swiper-item>
       </swiper>
-      <view class="book-rail" wx:if="{{bookSlides.length > 1}}" aria-hidden="true">
-        <text class="book-rail-word">左滑</text>
-        <view class="book-rail-dots">
-          <text class="book-rail-dot {{index === activeBookIndex ? 'book-rail-dot-on' : ''}}" wx:for="{{bookSlides}}" wx:key="key"></text>
-        </view>
-        <text class="book-rail-word">右滑</text>
-      </view>
       <view class="book-open-label typewriter">{{bookSlides.length > 1 ? '左右滑动换一本书 · 轻触打开' : '轻触打开这个故事'}}</view>
     </view>
 
@@ -153,6 +152,11 @@
           hover-class="none"
           aria-label="换一个推荐问题"
         >{{dailyLoading ? '正在更新…' : '换一个问题'}}</button>
+      </view>
+      <view wx:if="{{returnNotice}}" class="return-notice" bindtap="openReturnNotice" role="button" aria-label="{{returnNotice}}，点开查看">
+        <view class="return-notice-dot" aria-hidden="true"></view>
+        <view class="return-notice-text serif">{{returnNotice}}</view>
+        <view class="return-notice-go" aria-hidden="true">看看 ›</view>
       </view>
       <generation-status wx:if="{{dailyLoading}}" text="正在读你的故事，想一个新问题…" />
       <view wx:elif="{{dailyStatus}}" class="daily-status">{{dailyStatus}}</view>
@@ -181,13 +185,23 @@
       </view>
     </view>
 
-    <view class="recent" wx:if="{{hasRecentStories}}">
+    <view class="recent" wx:if="{{hasRecentStories || sharedArticles.length || sharesError}}">
       <view class="recent-head">
         <text class="recent-title serif">最近聊过</text>
-        <text class="recent-note">点开就能接着说</text>
+        <text class="recent-note">接着聊，也看看亲友的分享</text>
       </view>
 
-      <view class="recent-timeline">
+      <view class="home-shares" wx:if="{{sharedArticles.length || sharesError}}">
+        <view wx:if="{{sharesError}}" class="home-share-note">{{sharesError}}<button bindtap="refreshShares">重试</button></view>
+        <button class="home-share" wx:for="{{sharedArticles}}" wx:key="id" data-account="{{item.accountKey}}" bindtap="openSharedPerson" role="button" aria-label="查看{{item.name}}分享的{{item.title}}">
+          <view class="home-share-note">{{item.name}} · {{item.kind}}</view>
+          <view class="home-share-title serif">{{item.title}}</view>
+          <view class="home-share-preview">{{item.text}}</view>
+          <view wx:if="{{item.imageCount}}" class="home-share-note">附 {{item.imageCount}} 张图片</view>
+        </button>
+      </view>
+
+      <view class="recent-timeline" wx:if="{{hasRecentStories}}">
         <view
           class="timeline-row"
           wx:for="{{recentStories}}"
@@ -265,5 +279,6 @@
   </button>
 </scroll-view>
 
-<story-switcher current="home"></story-switcher>
+<story-switcher bind:openfamily="openMemoryHome" current="home" bind:openpersonal="openPersonalStories"></story-switcher>
+<first-login-intro></first-login-intro>
 <canvas type="2d" id="book-frame-canvas" class="book-frame-canvas" aria-hidden="true"></canvas>

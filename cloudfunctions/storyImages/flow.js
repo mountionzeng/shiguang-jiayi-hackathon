@@ -1,4 +1,5 @@
 const core = require("./core");
+const memory = require("./memory");
 const { classifyAigcMetadataError } = require("./aigcMetadata");
 
 const RECENT_JOB_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -41,7 +42,8 @@ function createStoryImageHandlers(deps) {
   } = deps;
   const qualityEnabled = Boolean(qualityChecker && qualityChecker.configured);
   const assertSameRequest = (existing,input) => {
-    if (String(existing.storyId || "") !== input.storyId || existing.memberId !== input.memberId || existing.chapterId !== input.chapterId ||
+    if (String(existing.memoryId || "") !== String(input.memoryId || "") || String(existing.storyId || "") !== input.storyId || existing.memberId !== input.memberId || existing.chapterId !== input.chapterId ||
+      String(existing.selectedText || '') !== String(input.selectedText || '') || String(existing.selectedBlockId || '') !== String(input.selectedBlockId || '') ||
       existing.purpose !== input.purpose || String(existing.referenceImageId || "") !== input.referenceImageId ||
       String(existing.artDirectionHash || "") !== (input.artDirection ? core.textHash(input.artDirection) : "") ||
       JSON.stringify(existing.referenceImageIds || []) !== JSON.stringify(input.referenceImageIds || []) ||
@@ -51,6 +53,14 @@ function createStoryImageHandlers(deps) {
     }
   };
   async function assertStorySource(job) {
+    if (job.memoryId) {
+      try { await repo.assertMemoryImageSource(job); return ''; }
+      catch (error) {
+        if (!['MEMORY_NOT_FOUND', 'MEMORY_EMPTY', 'REVISION_CHANGED'].includes(error?.code)) throw error;
+        await repo.updateJob(job._id, {status:'failed', errorCode:error.code, prompt:'', updatedAtMs:now()});
+        return error.code;
+      }
+    }
     if(!job.storyId)return "";
     if(typeof repo.assertStoryImageSource!=='function')throw new core.StoryImageError("IMAGE_REPOSITORY_CONFIG_REQUIRED","故事配图服务尚未准备好");
     try{await repo.assertStoryImageSource(job);return "";}
@@ -106,7 +116,7 @@ function createStoryImageHandlers(deps) {
       const memberMatches = job.storyId || image?.memberId === job.memberId;
       const chapterMatches = !options.sameChapter || image?.chapterId === job.chapterId;
       const purposeMatches = !options.purpose || image?.purpose === options.purpose;
-      if (!image || image.familyId !== job.familyId || !storyMatches || !memberMatches || !chapterMatches || !purposeMatches ||
+      if (!image || String(image.memoryId || "") !== String(job.memoryId || "") || image.familyId !== job.familyId || !storyMatches || !memberMatches || !chapterMatches || !purposeMatches ||
         image.deletedAtMs !== undefined || !image.fileID) {
         throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "这张参考图已不可用，请重新选择");
       }
@@ -160,11 +170,16 @@ function createStoryImageHandlers(deps) {
       if(typeof repo.getActiveStoryDraft!=='function')throw new core.StoryImageError("IMAGE_REPOSITORY_CONFIG_REQUIRED","故事配图服务尚未准备好");
       storyContext=await repo.getActiveStoryDraft(input.familyId,input.storyId);
       if(!storyContext)throw new core.StoryImageError("STORY_NOT_FOUND","这本故事书已不可用，请返回书架");
-      core.assertUnrestrictedStory(storyContext.story,storyContext.draft);
+      if (!input.selectedText) core.assertUnrestrictedStory(storyContext.story,storyContext.draft);
     }
-    const draft = input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
+    const draft = input.memoryId ? undefined : input.storyId?storyContext.draft:core.latestDraftForMember(await repo.listDraftRecords(input.familyId, input.memberId),input.memberId);
     const artMemories = await storyArtMemories(input.familyId, storyContext);
-    const source = input.purpose === "cover" ? core.bookSource(draft, artMemories) : core.chapterSource(draft, input.chapterId, artMemories);
+    const source = input.selectedText ? core.selectedTextSource(storyContext.story, draft, input.chapterId, input.selectedBlockId, input.selectedText) : input.memoryId ? await repo.getMemorySource(input.familyId, memory.memoryId(input.memoryId))
+      : input.purpose === "cover" ? core.bookSource(draft, artMemories) : core.chapterSource(draft, input.chapterId, artMemories);
+    if (input.memoryId || input.selectedText) {
+      const verdict = textChecker && await textChecker.check({text: [source.title, source.text].join('\n'), openid: ctx.openid});
+      if (!verdict?.ok) throw new core.StoryImageError('MEMORY_CHECK_FAILED', '这段回忆暂时未通过内容检查，请稍后再试');
+    }
     const chapterImageReferenceIds = input.purpose === "cover" ? [] : (source.storyImageReferenceIds || [])
       .map(referenceId => core.storyImageIdFromReference(input.familyId, referenceId))
       .filter(Boolean);
@@ -190,7 +205,7 @@ function createStoryImageHandlers(deps) {
       const referenceImage = await repo.getImage(input.referenceImageId);
       const linkedReference=!referenceImage?.storyId && input.storyId && repo.isImageLinkedToStory
         ? await repo.isImageLinkedToStory(input.familyId,input.storyId,input.referenceImageId) : false;
-      if (!referenceImage || referenceImage.familyId !== input.familyId || (String(referenceImage.storyId || "") !== input.storyId && !linkedReference) || (!input.storyId && referenceImage.memberId !== input.memberId) ||
+      if (!referenceImage || String(referenceImage.memoryId || "") !== String(input.memoryId || "") || referenceImage.familyId !== input.familyId || (String(referenceImage.storyId || "") !== input.storyId && !linkedReference) || (!input.storyId && referenceImage.memberId !== input.memberId) ||
         referenceImage.chapterId !== input.chapterId || referenceImage.purpose !== "illustration" ||
         referenceImage.deletedAtMs !== undefined || !referenceImage.fileID) {
         throw new core.StoryImageError("REFERENCE_IMAGE_NOT_FOUND", "这张参考图已不可用，请重新选择");
@@ -228,6 +243,8 @@ function createStoryImageHandlers(deps) {
       requestId: input.requestId,
       memberId: input.memberId,
       storyId: input.storyId,
+      ...(input.memoryId ? {memoryId: input.memoryId} : {}),
+      ...(input.selectedText ? { selectedText: input.selectedText, selectedBlockId: input.selectedBlockId } : {}),
       ...(storyContext?{sourceRevisionId:storyContext.revision.id}:{}),
       chapterId: input.chapterId,
       purpose: input.purpose,
@@ -257,7 +274,7 @@ function createStoryImageHandlers(deps) {
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
     };
-    const raced=input.storyId && repo.createJobForActiveStory
+    const raced=input.memoryId ? await repo.createJobForMemory(jobId,job) : input.storyId && repo.createJobForActiveStory
       ? await repo.createJobForActiveStory(jobId,job)
       : (await repo.createJob(jobId,job),undefined);
     if(raced) {
@@ -405,7 +422,7 @@ function createStoryImageHandlers(deps) {
     }
 
     const imageId = `${job.familyId}_img_${job.requestId}`;
-    const cloudPath = `story-images/${job.familyId}/${job.storyId || job.memberId}/${job.requestId}.${core.extensionFor(markedImage.contentType)}`;
+    const cloudPath = `story-images/${job.familyId}/${job.memoryId ? "memory-" + job.memoryId : job.storyId || job.memberId}/${job.requestId}.${core.extensionFor(markedImage.contentType)}`;
     let fileID;
     try {
       fileID = await storage.upload(cloudPath, markedImage.buffer);
@@ -419,6 +436,7 @@ function createStoryImageHandlers(deps) {
       familyId: job.familyId,
       memberId: job.memberId,
       storyId: job.storyId || "",
+      ...(job.memoryId ? {memoryId: job.memoryId, requestId: job.requestId, sourceTextHash: job.source.textHash} : {}),
       chapterId: job.chapterId,
       purpose: job.purpose,
       fileID,
@@ -431,6 +449,8 @@ function createStoryImageHandlers(deps) {
       quality: qualityEnabled ? "pending" : "unchecked",
       qualityIssues: [],
       aiGenerated: true,
+      sourceText: typeof job.selectedText === 'string' ? job.selectedText : '',
+      sourceKind: job.selectedText ? 'selection' : job.memoryId ? 'memory' : 'chapter',
       jobId: job._id,
       ...(core.normalizeArtRecipe(job.scene?.art) ? { art: core.normalizeArtRecipe(job.scene.art) } : {}),
       createdAtMs: nowMs,
@@ -466,6 +486,10 @@ function createStoryImageHandlers(deps) {
     const jobId = String((event && event.jobId) || "");
     const job = jobId.startsWith(`${familyId}_`) ? await repo.getJob(jobId) : undefined;
     if (!job || job.familyId !== familyId) throw new core.StoryImageError("JOB_NOT_FOUND", "没找到这次配图");
+    if (job.memoryId || event.memoryId) {
+      if (job.memoryId !== event.memoryId || storyId || memberId) throw new core.StoryImageError('JOB_NOT_FOUND', '没找到这次配图');
+      await repo.getMemorySource(familyId, memory.memoryId(event.memoryId));
+    }
     if(job.storyId) {
       if(storyId!==job.storyId)throw new core.StoryImageError("JOB_NOT_FOUND", "没找到这次配图");
     } else if(storyId) {
@@ -481,7 +505,9 @@ function createStoryImageHandlers(deps) {
     if (job.status !== "stored" || !job.imageId) return { job: core.publicJob(job) };
     const image = await repo.getImage(job.imageId);
     if (!image || image.deletedAtMs !== undefined) return { job: core.publicJob(job) };
+    if (job.memoryId && (image.memoryId !== job.memoryId || image.familyId !== job.familyId || image.moderation === 'risky')) return { job: core.publicJob(job) };
     const urls = await storage.tempUrls([image.fileID]);
+    if (job.memoryId) await repo.getMemorySource(job.familyId, job.memoryId);
     return { job: core.publicJob(job), image: core.publicImage(image, urls[image.fileID]) };
   }
 
@@ -489,13 +515,17 @@ function createStoryImageHandlers(deps) {
     const familyId = String((event && event.familyId) || "").trim();
     core.requireOwner(ctx.openid, familyId);
     const storyId = String((event && event.storyId) || "").trim();
-    const memberId = storyId ? "" : core.normalizeMemberInput(event);
+    const memoryId = event.memoryId === undefined ? '' : memory.memoryId(event.memoryId);
+    if (memoryId && (storyId || event.memberId)) throw new core.StoryImageError('INVALID_MEMORY', '记忆配图来源无效');
+    if (memoryId) await repo.getMemorySource(familyId, memoryId);
+    const memberId = storyId || memoryId ? "" : core.normalizeMemberInput(event);
     const [images, jobs] = await Promise.all([
-      storyId ? repo.listStoryImages(familyId, core.normalizeStoryInput(event)) : repo.listImages(familyId, memberId),
-      storyId ? repo.listRecentStoryJobs(familyId, storyId, now() - RECENT_JOB_WINDOW_MS) : repo.listRecentJobs(familyId, memberId, now() - RECENT_JOB_WINDOW_MS),
+      memoryId ? repo.listMemoryImages(familyId, memoryId) : storyId ? repo.listStoryImages(familyId, core.normalizeStoryInput(event)) : repo.listImages(familyId, memberId),
+      memoryId ? repo.listMemoryJobs(familyId, memoryId, now() - RECENT_JOB_WINDOW_MS) : storyId ? repo.listRecentStoryJobs(familyId, storyId, now() - RECENT_JOB_WINDOW_MS) : repo.listRecentJobs(familyId, memberId, now() - RECENT_JOB_WINDOW_MS),
     ]);
     const visible = images.filter(image => image.deletedAtMs === undefined && image.moderation !== "risky");
     const urls = await storage.tempUrls(visible.map(image => image.fileID));
+    if (memoryId) await repo.getMemorySource(familyId, memoryId);
     return {
       images: visible
         .sort((a, b) => Number(b.createdAtMs) - Number(a.createdAtMs))
@@ -517,6 +547,7 @@ function createStoryImageHandlers(deps) {
     if (!image || image.familyId !== familyId || image.deletedAtMs !== undefined) {
       throw new core.StoryImageError("IMAGE_NOT_FOUND", "没找到这张图");
     }
+    if (image.memoryId) throw new core.StoryImageError('IMAGE_IN_MEMORY', '请从记忆中移除配图，原图会保留');
     const requestedStoryId=String((event && event.storyId) || '').trim(), requestedMemberId=String((event && event.memberId) || '').trim();
     const linkedStoryIds=repo.listImageStoryIds ? await repo.listImageStoryIds(familyId,imageId) : [];
     if(image.storyId) {

@@ -21,6 +21,7 @@
     "story_invitations": { "read": false, "write": false },
     "story_invite_indexes": { "read": false, "write": false },
     "story_invite_rates": { "read": false, "write": false },
+    "story_rollout_admissions": { "read": false, "write": false },
     "user_accounts": { "read": false, "write": false }
   },
   "note": "部署清单模板，不是可直接整体上传的云平台规则文件。将每个集合的 read/write 规则分别应用并验证；服务端 SDK 使用受控服务身份。既有 families/stories/biography_drafts 规则需单独核验，不能放宽为全员可读。"

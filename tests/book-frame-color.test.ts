@@ -49,9 +49,12 @@ test('cover seam blends into book texture without softening the cord, outer rim 
   assert.ok(red(75) < red(82) && red(82) < red(90), 'the transition is gradual');
   assert.equal(red(110), 200, 'the artwork is clear past the narrow seam');
   assert.equal(red(240), 200, 'cover centre is untouched');
-  assert.equal(red(70, 19), 200, 'top rim does not gain a dark band');
+  assert.equal(red(70, 19), 100, 'top corner retains book texture');
+  assert.equal(red(240, 19), 100, 'top edge is texture, not a straight artwork cut');
+  assert.ok(red(240, 24) < red(240, 30), 'top edge blends gradually into the artwork');
+  assert.ok(red(240, 725) < red(240, 715), 'bottom edge blends back into the original texture');
   assert.equal(red(70, 40), 100, 'left seam is blended below the top edge');
-  assert.equal(red(455), 200, 'right paper edge stays sharp');
+  assert.ok(red(455) < 105, 'right inner edge retains the original texture');
   assert.equal(red(250, 0), 200, 'outer rim is untouched');
 });
 

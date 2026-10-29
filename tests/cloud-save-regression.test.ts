@@ -5,8 +5,8 @@ import { createContribution, createEmptyRoomState, personalBookSourceFingerprint
 import { addCloudFamilyMember, appendCloudContribution as appendContributionRemoteFirst, appendCloudContributions, deleteCloudContribution as deleteContributionRemoteFirst, loadCloudRoomState as loadRoomStateRemoteFirst } from "../miniprogram/services/cloudRoomStorage";
 import * as localRepository from "../miniprogram/services/roomRepository";
 import { currentManuscript, makeRevision, saveManuscriptRevision } from "../miniprogram/services/manuscript";
-import { ensureStoryBooks, storyCommand } from "../miniprogram/services/storyBooks";
-import { jsonUtf8ByteLength } from "../miniprogram/services/performanceLog";
+import { ensureStoryBooks, storyCommand, saveStoryRevision } from "../miniprogram/services/storyBooks";
+import { cloudPerformanceMetrics, jsonUtf8ByteLength } from "../miniprogram/services/performanceLog";
 import { SavedRefreshError } from '../miniprogram/services/serviceFailure';
 
 // Synthetic wx I/O only: repository, cloud storage and domain code all run unmocked.
@@ -68,6 +68,33 @@ function fixture() {
 }
 
 const memory = () => createContribution({ authorMemberId: "owner", authorName: "测试者", relation: "自己", text: "仅供测试的虚构记录。", scope: "personal", visibility: "private" });
+
+test('initial story read waits for registration, and failed identity never requests story data', async () => {
+  const f = fixture();
+  try {
+    for (const validIdentity of [false, true]) {
+      let releaseIdentity!: () => void;
+      let stateStarted = false;
+      const identity = new Promise<void>(resolve => { releaseIdentity = resolve; });
+      (globalThis as any).wx.cloud.callFunction = async ({ name }: any) => {
+        if (name === 'getOpenId') {
+          await identity;
+          return { result: validIdentity ? { openid: 'fixture-user' } : {} };
+        }
+        stateStarted = true;
+        return { result: { ...createEmptyRoomState(), roomStateVersion: 1,
+          manuscriptRevisions: [], stories: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {} } };
+      };
+      const pending = loadRoomStateRemoteFirst();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(stateStarted, false, 'a new account must finish registration before story identity is resolved');
+      releaseIdentity();
+      if (validIdentity) assert.deepEqual((await pending).contributions, []);
+      else await assert.rejects(pending, /OPENID_NOT_AVAILABLE/);
+      assert.equal(stateStarted, validIdentity);
+    }
+  } finally { f.restore(); }
+});
 
 test('cloud story commands perform one authoritative read after the write and preserve failure boundaries', async () => {
   const f = fixture();
@@ -470,8 +497,24 @@ test('only explicit home loads request a projection; editors still request compl
     };
     await localRepository.loadRoomStateRemoteFirst({view:'home'});
     await localRepository.loadRoomStateRemoteFirst();
-    assert.deepEqual(calls,[{action:'state',view:'home',stateTransport:1},{action:'state',stateTransport:1}]);
+    assert.deepEqual(calls,[{action:'state',performanceDiagnostics:1,view:'home',stateTransport:1},{action:'state',performanceDiagnostics:1,stateTransport:1}]);
   } finally {f.restore();}
+});
+
+test('a visible shelf snapshot hands off to one book opening only', () => {
+  const visible = createEmptyRoomState();
+  localRepository.stageRoomStateForBook(visible);
+  assert.equal(localRepository.takeStagedRoomStateForBook(), visible);
+  assert.equal(localRepository.takeStagedRoomStateForBook(), undefined,
+    'a later visit must fetch fresh cloud state instead of reusing an old account snapshot');
+});
+
+test('a visible room snapshot hands off to one stories opening only', () => {
+  const visible = createEmptyRoomState();
+  localRepository.stageRoomStateForStories(visible);
+  assert.equal(localRepository.takeStagedRoomStateForStories(), visible);
+  assert.equal(localRepository.takeStagedRoomStateForStories(), undefined,
+    'a later visit must fetch fresh cloud state instead of reusing an old room snapshot');
 });
 
 test('response size errors never masquerade as missing story service or an empty room', async () => {
@@ -482,5 +525,138 @@ test('response size errors never masquerade as missing story service or an empty
       throw new Error('errCode: -501000 | response size exceeded 1048576 bytes');
     };
     await assert.rejects(localRepository.loadRoomStateRemoteFirst(), /response size exceeded/);
+  } finally {f.restore();}
+});
+
+
+test('story revision confirmation reads current versions without downloading historical manuscripts', async () => {
+  const f = fixture();
+  try {
+    const reads: unknown[] = [];
+    (globalThis as any).wx.cloud.callFunction = async ({name, data}: any) => {
+      if (name === 'getOpenId') return {result: {openid: 'fixture-user'}};
+      if (data.action !== 'state') return {result: {ok: true, storyId: 'story-fixture'}};
+      reads.push(data.view);
+      return {result: {...createEmptyRoomState(), roomStateVersion: 1, stories: [],
+        manuscriptRevisions: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {}}};
+    };
+    await saveStoryRevision({id: 'revision-confirm', storyId: 'story-fixture'} as any, 'previous');
+    await storyCommand({action: 'delete', storyId: 'story-fixture'});
+    assert.deepEqual(reads, ['home', undefined], 'only manuscript saves opt into the current-version projection');
+  } finally { f.restore(); }
+});
+
+test('memory editing reads complete histories and photos without loading all manuscript revisions', async () => {
+  const f = fixture();
+  try {
+    const m = {...memory(), id: 'memory-editor', photoIds: ['photo-kept'],
+      aiRevisions: [{id: 'revision-kept', kind: 'manual', text: '虚构修改记录'}]};
+    f.records('memories').set('family_fixture-user_memory-editor', {...m, frontendContributionId: m.id, familyId: 'family_fixture-user'});
+    const reads: unknown[] = [];
+    (globalThis as any).wx.cloud.callFunction = async ({name, data}: any) => {
+      if (name === 'getOpenId') return {result: {openid: 'fixture-user'}};
+      reads.push(data.view);
+      return {result: {...createEmptyRoomState(), contributions: [m],
+        roomStateVersion: 1, stories: [], manuscriptRevisions: [], deletedStories: [], personalDrafts: {}, personalDraftSourceFingerprints: {}}};
+    };
+    const state = await loadRoomStateRemoteFirst({view: 'memories'} as any);
+    assert.deepEqual(reads, ['memories']);
+    assert.deepEqual(state.contributions[0].aiRevisions, m.aiRevisions);
+    assert.deepEqual(state.contributions[0].photoIds, m.photoIds);
+    (globalThis as any).wx.cloud.callFunction = async () => { throw new Error('permission denied'); };
+    await assert.rejects(loadRoomStateRemoteFirst({view: 'memories'}), /permission denied/);
+  } finally { f.restore(); }
+});
+
+
+test('memory edit reads latest once, preserves photos and refuses a conflicting edit before writing', async () => {
+  const f=fixture();
+  try {
+    const m={...memory(),id:'edit-once',photoIds:['photo-keep'],aiRevisions:[]};
+    let reads=0;
+    (globalThis as any).wx.cloud.callFunction=async ({name,data}:any)=>{
+      if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+      if(data.action!=='state')return {result:{}};
+      reads++;
+      return {result:{...createEmptyRoomState(),roomStateVersion:1,contributions:[m],stories:[],manuscriptRevisions:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}}};
+    };
+    const result=await localRepository.editContributionRemoteFirst(m.id,latest=>({...latest,text:'虚构编辑文本'}));
+    assert.equal(reads,1);
+    assert.deepEqual(result.contributions[0].photoIds,m.photoIds);
+    const before=JSON.stringify([...f.records('memories')]);
+    await assert.rejects(localRepository.editContributionRemoteFirst(m.id,()=>{throw new Error('已有新修改')}),/已有新修改/);
+    assert.equal(JSON.stringify([...f.records('memories')]),before);
+    await assert.rejects(localRepository.editContributionRemoteFirst(m.id,latest=>({...latest,id:'other'})),/编号/);
+    assert.equal(JSON.stringify([...f.records('memories')]),before);
+  } finally {f.restore();}
+});
+
+test('complete archive navigation snapshot is single-use and restricted to its selected memory',()=>{
+  const state=createEmptyRoomState();
+  localRepository.stageRoomStateForArchive('m',state);
+  assert.equal(localRepository.takeStagedRoomStateForArchive('other'),undefined);
+  assert.equal(localRepository.takeStagedRoomStateForArchive('m'),undefined);
+  localRepository.stageRoomStateForArchive('m',state);
+  assert.equal(localRepository.takeStagedRoomStateForArchive('m'),state);
+  assert.equal(localRepository.takeStagedRoomStateForArchive('m'),undefined);
+});
+
+
+test('memory edit overlaps moderation with fresh state and binds approval to exact saved text', async () => {
+  const f=fixture();
+  try {
+    const m={...memory(),id:'overlap-edit',relatedMemberIds:['relative'],sharedWithMemberIds:['relative']};
+    let releaseState!:()=>void;
+    const stateGate=new Promise<void>(resolve=>{releaseState=resolve;});
+    const checked:string[]=[];
+    (globalThis as any).wx.cloud.callFunction=async ({name,data}:any)=>{
+      if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+      if(name==='contentSecurityCheck') { checked.push(data.content); return {result:{ok:data.content!=='must-review'}}; }
+      await stateGate;
+      return {result:{...createEmptyRoomState(),roomStateVersion:1,contributions:[m],stories:[],manuscriptRevisions:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}}};
+    };
+    const next={...m,text:'approved-preview'};
+    const pending=localRepository.editContributionRemoteFirst(m.id,latest=>({...latest,text:next.text}),next);
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(checked,['approved-preview'],'moderation starts before fresh state returns');
+    assert.equal(f.records('memories').size,0,'no write before conflict check');
+    releaseState();
+    await pending;
+    assert.equal(checked.length,1,'reuse this request approval for identical text');
+    const changed=await localRepository.editContributionRemoteFirst(m.id,latest=>({...latest,text:'must-review'}),next);
+    assert.equal(checked[checked.length - 1],'must-review','changed text must be checked again');
+    assert.equal(changed.contributions[0].sharedWithMemberIds,undefined,'failed moderation cannot reuse earlier approval');
+  } finally {f.restore();}
+});
+
+
+test('cloud timing logs contain only bounded whitelisted numbers',()=>{
+  assert.deepEqual(cloudPerformanceMetrics({serverDurationMs:15,secret:'never log',phases:{'state.load':7,'state.identity':2,'state.authorize.before':1,'state.authorize.after':3,userText:'never log'}}),{serverDurationMs:15,serverLoadMs:7,serverIdentityMs:2,serverAuthorizeMs:4});
+  assert.deepEqual(cloudPerformanceMetrics({serverDurationMs:Infinity,phases:{'state.load':-1,'state.identity':'secret'}}),{serverDurationMs:undefined,serverLoadMs:undefined,serverIdentityMs:undefined,serverAuthorizeMs:undefined});
+});
+
+
+test('save uses a complete inline state and falls back safely for old or incomplete receipts', async () => {
+  const f=fixture();
+  try {
+    const complete={...createEmptyRoomState(),roomStateVersion:1,roomName:'保存之后',
+      manuscriptRevisions:[],stories:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}};
+    for(const inline of [complete,undefined,{roomStateVersion:1}]) {
+      const calls:string[]=[];
+      (globalThis as any).wx.cloud.callFunction=async({name,data}:any)=>{
+        if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+        calls.push(data.action);
+        if(data.action==='save') {
+          assert.equal(data.returnState,'home');
+          return {result:{ok:true,storyId:'story-fixture',savedState:inline}};
+        }
+        return {result:complete};
+      };
+      const state=await saveStoryRevision({id:'revision-inline',storyId:'story-fixture'} as any,'previous');
+      assert.equal(state.roomName,'保存之后');
+      assert.deepEqual(calls,inline===complete?['save']:['save','state']);
+    }
+    (globalThis as any).wx.cloud.callFunction=async()=>({result:{ok:false,storyId:'story-fixture',savedState:complete}});
+    await assert.rejects(saveStoryRevision({id:'revision-inline',storyId:'story-fixture'} as any,'previous'),(error:any)=>error.code==='WRITE_UNCONFIRMED');
   } finally {f.restore();}
 });

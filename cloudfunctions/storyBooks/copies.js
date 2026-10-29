@@ -1,3 +1,4 @@
+const {revisionAttribution}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
 const {FAMILY_ID,assertSpaceOwner,identityError}=require('./identity');
@@ -40,6 +41,13 @@ function assertBounded(draft){
   // Bound one transaction/document rather than silently splitting a chapter.
   if(Buffer.byteLength(JSON.stringify(draft),'utf8')>240000)throw error('STORY_COPY_LIMIT','这份章节超过接收上限，请减少章节后重试');
 }
+const FALLBACK_SENDER='一位亲友';
+function senderName(invitation,principalId){
+  const name=invitation?.applicants?.find(item=>item.principalId===principalId)?.displayName;
+  return typeof name==='string'&&name.trim()?name.trim().slice(0,30):FALLBACK_SENDER;
+}
+// 与 invitations.js 的 memberIdFor 同一个推导：邀请编号 -> 主人名单里这位家人的成员编号。
+const senderMemberId=invitationId=>typeof invitationId==='string' && /^[a-f0-9]{64}$/.test(invitationId)?'wx_'+invitationId.slice(0,24):'';
 function copyKeys(ctx,input){
   return {copyId:'copy-'+digest([ctx.principalId,input.sourceFamilyId,input.sourceStoryId,input.sourceRevisionId,input.chapterIds,'receive-text-v1']),
     requestId:'request-'+digest([ctx.principalId,input.requestId]),fingerprint:digest(input)};
@@ -53,11 +61,12 @@ async function loadCopySource(tx,ctx,input){
   const permitted=action=>evaluateStoryAccess({principalId:ctx.principalId,ownerPrincipalId:space.principalId,story:source,grant,action,chapterIds:input.chapterIds});
   if(!permitted('copy'))throw identityError();
   if(source.currentRevisionId!==input.sourceRevisionId)conflict();
+  const invitation=grant?.invitationId?await tx.get('story_invitations',grant.invitationId):undefined;
   const sourceRevision=await loadRevision(tx,input.sourceFamilyId,source);
   const prepared=protectedDraft(sourceRevision.draft,{familyId:input.sourceFamilyId,storyId:source.id,revisionId:sourceRevision.id},source.sourcePolicyRequired);
   const selected=prepared.chapters.filter(chapter=>input.chapterIds.includes(chapter.id));
   if(selected.length!==input.chapterIds.length)throw identityError();
-  return {sourceFamily,space,source,grant,sourceRevision,selected,permitted};
+  return {sourceFamily,space,source,grant,sourceRevision,selected,permitted,invitation};
 }
 
 // Internal-only until U5 closes ALL legacy export/generation paths. This is not
@@ -121,7 +130,9 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
         sourceOwnerPrincipalId:space.principalId,recipientPrincipalId:ctx.principalId,grantVersion:grant.version,createdAt:stamp}]);
       const destinationChapterId='chapter-'+digest([copyId,chapter.id]).slice(0,40);
       receivedSources.push({copyId,sourceId,destinationChapterId,sourceFamilyId:input.sourceFamilyId,sourceStoryId:source.id,
-        sourceRevisionId:sourceRevision.id,sourceChapterId:chapter.id,sourceOwnerPrincipalId:space.principalId});
+        sourceRevisionId:sourceRevision.id,sourceChapterId:chapter.id,sourceOwnerPrincipalId:space.principalId,
+        senderName:senderName(sourceContext.invitation,ctx.principalId),
+        senderMemberId:senderMemberId(grant.invitationId)});
       base.chapters.push({id:destinationChapterId,title:chapter.title,memoryIds:[],
         content:chapter.content.map((block,index)=>({...(typeof block.text==='string'?{text:block.text}:{photoId:media.assets.find(asset=>asset.sourcePhotoId===block.photoId).photoId}),blockId:'block-'+digest([copyId,chapter.id,index]),sourceIds:[sourceId]}))});
     }
@@ -137,7 +148,7 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     core.validateDraft(base,story);assertBounded(base);
     const revisionId='revision-'+digest([copyId,story.id]);
     if(await tx.get('biography_drafts',docId(ctx.familyId,revisionId)))conflict();
-    const revision={id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'收入亲友章节',savedAt:stamp,sourceFingerprint:'',draft:base};
+    const revision={...await revisionAttribution(tx,ctx,'接收亲友章节'),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'收入亲友章节',savedAt:stamp,sourceFingerprint:'',draft:base};
     story={...story,version:input.target.mode==='new'?1:story.version+1,currentRevisionId:revisionId,sourcePolicyRequired:true,
       receivedSources:[...(Array.isArray(story.receivedSources)?story.receivedSources:[]),...receivedSources],updatedAt:stamp};
     if(media){
@@ -151,7 +162,7 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     await tx.set('biography_drafts',docId(ctx.familyId,revisionId),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision});
     await tx.set('story_names',nameId,{familyId:ctx.familyId,storyId:story.id,title:story.title});
     await tx.set('stories',targetId,story);
-    await tx.set('story_copies',copyId,{familyId:ctx.familyId,principalId:ctx.principalId,status:'complete',storyId:story.id,revisionId,createdAt:stamp});
+    await tx.set('story_copies',copyId,{familyId:ctx.familyId,principalId:ctx.principalId,sourcePrincipalId:receivedSources[0]?.sourceOwnerPrincipalId||'',senderName:receivedSources[0]?.senderName||'',status:'complete',storyId:story.id,revisionId,createdAt:stamp});
     await tx.set('story_copy_requests',requestId,{familyId:ctx.familyId,principalId:ctx.principalId,fingerprint,copyId});
     return {ok:true,storyId:story.id,revisionId,alreadyReceived:false};
   });
@@ -189,7 +200,7 @@ async function appendOwnExperience(repo,ctx,raw,{now=()=>new Date().toISOString(
     core.validateDraft(draft,story);assertBounded(draft);
     const revisionId='revision-'+digest([operationId,story.id]);
     if(await tx.get('biography_drafts',docId(ctx.familyId,revisionId)))conflict();
-    const revision={id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'补充我的经历',savedAt:stamp,sourceFingerprint:'',draft};
+    const revision={...await revisionAttribution(tx,ctx,'补充文字'),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'补充我的经历',savedAt:stamp,sourceFingerprint:'',draft};
     await tx.set('biography_drafts',docId(ctx.familyId,revisionId),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision});
     await tx.set('stories',docId(ctx.familyId,story.id),{...story,version:story.version+1,currentRevisionId:revisionId,updatedAt:stamp});
     await tx.set('story_copy_edits',operationId,{familyId:ctx.familyId,principalId:ctx.principalId,status:'complete',fingerprint,

@@ -106,6 +106,35 @@ function withApi(overrides: Partial<typeof storyImageApi>) {
 
 const BACKDROP_ID = "family_o-owner_img_req-bbbbbbbb";
 
+test("文章选记忆只读当前素材，确认时重新校验已删除的来源", async context => {
+  const state = {...createDemoRoomStateForTests(), roomStateVersion:1, stories:[], manuscriptRevisions:[],
+    deletedStories:[], personalDraftSourceFingerprints:{}};
+  const requests: Array<{view?: string}> = [];
+  const env = installWx({cloud:{callFunction:async ({name,data}:any)=>{
+    if(name==='getOpenId')return {result:{openid:'o-owner'}};
+    requests.push(data);
+    return {result:state};
+  }}});
+  env.setApp(true);
+  context.after(()=>env.restore());
+  // A real picker opens after its book has authenticated and populated the scope.
+  await loadRoomStateRemoteFirst({view:'home'});
+  requests.length=0;
+  const page=instantiate(await pageDefinition('book'));
+  page.setData({article:{id:'chapter-picker'},storyId:'story-picker'});
+  page.activeChapterId='chapter-picker';
+  await call(page,'openArticleMemories');
+  const rows=page.data.articleMemoryRows as Array<{id:string;checked:boolean}>;
+  assert.deepEqual(rows.map(row=>row.id),['demo-personal-rain']);
+  assert.equal(page.data.articleMemoryLoading,false);
+  await call(page,'onArticleMemories',{detail:{value:['demo-personal-rain']}});
+  state.contributions=[];
+  await call(page,'composeArticleMemories');
+  assert.match(String(page.data.articleMemoryNotice),/所选记忆已变化/);
+  assert.equal(page.data.articleMemoryOpen,true);
+  assert.deepEqual(requests.map(request=>request.view),['memory-sources','memory-sources']);
+});
+
 function stateWithBook(backdropImageId = ""): FamilyRoomState {
   const state = createDemoRoomStateForTests();
   const base: BiographyDraft = { title: "外婆的书", paragraphs: [], sourceCount: 0, generatedAt: "2026-09-13T00:00:00.000Z", generationMode: "local-demo" };
@@ -226,11 +255,13 @@ test('opening an illustrated chapter waits for image mappings and a later chapte
   const opening = call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-a' } } });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(page.data.view, 'contents', 'do not mount an image editor before its URL-to-ID mapping exists');
+  assert.equal((page.data.openingChapter as { text: string }).text, '院子里晒着被子。\n', 'show readable text while image URLs are pending');
   await call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-b' } } });
   resolveImages(listWith());
   await opening;
   await loading;
   assert.equal(page.activeChapterId, 'chapter-b', 'late image response cannot undo the newer selection');
+  assert.equal(page.data.openingChapter, null);
   await call(page, 'openChapter', { currentTarget: { dataset: { id: 'chapter-a' } } });
   assert.equal(page.activeChapterId, 'chapter-a');
   assert.equal((page.photoPaths as Record<string, string>)['photo-ai-req-aaaaaaaa'], 'https://tmp.example/a.png');
@@ -253,6 +284,7 @@ test('direct entry to an illustrated chapter still waits before seeding the nati
   const loading = Promise.resolve(call(page, 'refresh')).then(() => { completed = true; });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(completed, false);
+  assert.equal((page.data.openingChapter as { title: string }).title, '老院子');
   assert.equal(deltas.length, 0);
   resolveImages(listWith());
   await loading;
@@ -279,6 +311,7 @@ test('late image mappings preserve newly inserted photos and a cancelled chapter
   await opening;
   await page.bookImagesReady;
   assert.equal(page.data.view, 'contents');
+  assert.equal(page.data.openingChapter, null, 'cancelling also removes the pending preview');
   assert.equal((page.photoPaths as Record<string, string>)['photo-new'], 'wxfile://usr/new.jpg');
   assert.equal((page.imageIds as Record<string, string>)['wxfile://usr/new.jpg'], 'photo-new');
 });
@@ -754,7 +787,7 @@ test("这本书的图：按章节分组，显示占用空间和正在画的图�
   assert.equal(groups[0].images[1].inUse, false);
   assert.equal(groups[1].pending[0].purposeLabel, "插图");
   assert.equal(groups[1].pending[0].active, true);
-  assert.equal(page.data.usageLabel, "共 2 张 · 3 KB");
+  assert.equal(page.data.usageLabel, "共 2 张 · AI 配图占用 3 KB");
   assert.equal(timers.scheduled.length, 1);
   assert.equal(timers.scheduled[0].delay, 3000);
 });
@@ -831,7 +864,7 @@ test("给一章配图会提交这一章并刷新；删除要确认，删完刷�
   assert.equal(page.data.preview, null, "setData uses explicit null to close the native sheet");
 });
 
-test("本章照片可选，默认只按文字生成，选择和取消参考都生效", async context => {
+test("默认参考本章用户照片，取消参考后刷新仍保持只用文字", async context => {
   const state = stateWithBook();
   state.manuscriptRevisions![0].draft.chapters![0].content.push(
     { photoId: "photo-cat" },
@@ -853,7 +886,7 @@ test("本章照片可选，默认只按文字生成，选择和取消参考都�
   const groups = page.data.groups as Array<{ referencePhotoIds: string[] }>;
   assert.deepEqual(groups[0].referencePhotoIds, ["photo-cat"]);
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "backdrop" } } });
-  assert.deepEqual(submitted.pop(), { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop" });
+  assert.deepEqual(submitted.pop(), { memberId: "owner", chapterId: "chapter-a", purpose: "backdrop", referencePhotoIds: ["photo-cat"] });
   call(page, "onReferenceModeChange", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: true } });
   await call(page, "refresh"); // Polling/refresh must preserve the explicit choice.
 
@@ -868,6 +901,7 @@ test("本章照片可选，默认只按文字生成，选择和取消参考都�
     { memberId: "owner", chapterId: "chapter-a", purpose: "illustration", referenceImageId: "family_o-owner_img_req-aaaaaaaa" },
   ]);
   call(page, "onReferenceModeChange", { currentTarget: { dataset: { id: "chapter-a" } }, detail: { value: false } });
+  await call(page, "refresh");
   await call(page, "generate", { currentTarget: { dataset: { id: "chapter-a", purpose: "illustration" } } });
   assert.deepEqual(submitted[submitted.length - 1], { memberId: "owner", chapterId: "chapter-a", purpose: "illustration" });
 });
@@ -987,7 +1021,7 @@ test("提交配图失败时把原因显示出来，按钮恢复可点", async co
   assert.equal(page.data.submitting, "");
 });
 
-test("书稿页「更多」里能打开这一章的配图，未保存的修改不能带过去", async context => {
+test("书稿页「图片」里的已有图片保留本章与全书入口，未保存的修改不能带过去", async context => {
   const env = installWx({ hideKeyboard: () => undefined }, stateWithBook());
   env.setApp(false);
   context.after(env.restore);
@@ -1007,8 +1041,8 @@ test("书稿页「更多」里能打开这一章的配图，未保存的修改�
   assert.equal(env.navigations.length, 2, "有未保存的修改时不跳转");
 
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
-  assert.match(markup, /data-action="images"[^>]*>.*给本章配图/);
-  assert.match(markup, /data-action="images"[^>]*>.*这本书的图/);
+  assert.match(markup, /class="photo-option" data-action="images" bindtap="selectTool">已有图片/);
+  assert.equal((markup.match(/data-action="images"/g) || []).length, 1, "本章与全书共用一个图片库入口");
   const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as { pages: string[] };
   assert.ok(app.pages.includes("pages/story-images/story-images"));
 });
@@ -1124,22 +1158,24 @@ test("照片菜单不会在保存失败、离页或受保护副本时启动图�
   assert.deepEqual(env.navigations, []);
 });
 
-test("目录页用封面背景和正文摘录展示书的简介，不再显示制作封面小书壳", async () => {
+test("目录页展示可编辑的故事简介和封面背景，不再显示制作封面小书壳", async () => {
   const page = instantiate(await pageDefinition("book"));
   const longText = Array.from({ length: 180 }, (_, index) => index % 2 ? "春" : "🌿").join("");
   page.chapters = [
     { id: "chapter-a", title: "老院子", memoryIds: [], content: [{ text: `  ${longText}  ` }, { photoId: "photo-secret" }] },
     { id: "chapter-b", title: "渡口", memoryIds: [], content: [{ text: "第二章会继续写下去。\n" }] },
   ];
+  page.introductionBuffer = "这是用户编辑后保存的故事简介。";
 
   const data = call(page, "chapterData") as { bookIntroduction: string };
-  assert.equal(Array.from(data.bookIntroduction).length, 161);
-  assert.ok(data.bookIntroduction.endsWith("…"));
+  assert.equal(data.bookIntroduction, "这是用户编辑后保存的故事简介。");
   assert.equal(data.bookIntroduction.includes("photo-secret"), false);
 
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
   assert.match(markup, /class="contents-cover-background"/);
-  assert.match(markup, /内容简介/);
+  assert.match(markup, /内容简介<text wx:if="\{\{!protectedCopy\}\}"> · 可编辑<\/text>/);
+  assert.match(markup, /class="intro-edit" bindtap="editIntroduction"/);
+  assert.match(readFileSync("miniprogram/pages/book/book.wxss", "utf8"), /backdrop-filter: blur\(14px\)/);
   assert.match(markup, /图片导入/);
   assert.match(markup, /生成插图/);
   assert.match(markup, /生成底图/);
@@ -1308,13 +1344,13 @@ test("书稿里带底图的章节在正文区下方显示底图，没有底图�
 
   const page = instantiate(await pageDefinition("book"));
   await call(page, "refresh");
-  await call(page, "loadBackdrops", "owner", page.refreshId);
-  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
+  await page.bookImagesReady;
+  await call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
   assert.equal(page.data.backdropUrl, "https://tmp.example/b.png");
   call(page, "backToContents");
-  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-b" } } });
+  await call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-b" } } });
   assert.equal(page.data.backdropUrl, "", "第二章没有底图");
-  assert.ok(listCalls >= 1);
+  assert.equal(listCalls, 1, "正文、底图共用一次图片查询");
 
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
   assert.match(markup, /class="chapter-backdrop"[^>]*mode="aspectFill"/);
@@ -1328,7 +1364,7 @@ test("书稿里带底图的章节在正文区下方显示底图，没有底图�
   listCalls = 0;
   const plain = instantiate(await pageDefinition("book"));
   await call(plain, "refresh");
-  await call(plain, "loadBackdrops", "owner", plain.refreshId);
+  await plain.bookImagesReady;
   assert.equal(listCalls, 0);
   plainEnv.restore();
 });
@@ -1341,8 +1377,8 @@ test("云端取不到底图时书稿照常打开，只是不显示底图", async
 
   const page = instantiate(await pageDefinition("book"));
   await call(page, "refresh");
-  await call(page, "loadBackdrops", "owner", page.refreshId);
-  call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
+  await page.bookImagesReady;
+  await call(page, "openChapter", { currentTarget: { dataset: { id: "chapter-a" } } });
   assert.equal(page.data.backdropUrl, "");
   assert.equal(page.data.loadError, "");
 });
@@ -1706,7 +1742,7 @@ test('大图下选择段落、保存、重新打开和移除都保留历史与�
   assert.deepEqual(currentManuscript(after, 'owner').draft!.chapters![0].content, state.manuscriptRevisions![0].draft.chapters![0].content);
   assert.equal(after.manuscriptRevisions!.length, 3);
   assert.equal((page.data.preview as any).inText, false);
-  assert.equal((page.data.groups as any[])[0].images.length, 2, '从正文移除仍保留原图');
+  assert.equal((page.data.groups as any[])[0].images.filter((image:any)=>!image.uploaded).length, 2, '从正文移除仍保留原图');
 });
 
 test('段落在其他页面更新后不按旧序号插入，刷新选项等待重选', async context => {
@@ -1775,4 +1811,158 @@ test('封面大图跟随选用结果更新，关闭发送 null 且选用期间�
   page.setData({ selecting: false });
   call(page, 'closePreview');
   assert.equal(page.data.previewCover, null);
+});
+
+test('article image menu opens upload directly or passes saved selected text, without a paid call',async()=>{
+ const env=installWx({showActionSheet:({success}:any)=>success({tapIndex:1})});
+ try {
+  const page=instantiate(await pageDefinition('book'));
+  page.data.article={id:'chapter-1',content:[{blockId:'block-1',text:'蓝色纸船'}]}; page.unloaded=false;
+  page.chapters=[{id:'chapter-1',content:[{text:'蓝色纸船'}]}];page.activeChapterId='chapter-1';
+  let staged=false;page.onArticleChange=({detail}:any)=>{staged=true;page.articlePending=detail.chapter;};
+  let saved=0;let selection:any;
+  page.flushArticle=async()=>{saved++;return true;};
+  page.openImages=(purpose:string,value:unknown)=>{selection={purpose,value};};
+  await call(page,'addArticleImage',{detail:{blockId:'block-1',text:'蓝色纸船'}});
+  assert.equal(staged,true);assert.equal(saved,1);assert.deepEqual(selection,{purpose:'illustration',value:{blockId:'block-1',text:'蓝色纸船'}});
+  selection=undefined;await call(page,'addArticleImage',{detail:{}});assert.equal(selection,undefined);
+  (wx.showActionSheet as any)=({success}:any)=>success({tapIndex:0});
+  let uploaded=0;page.uploadArticleImage=async()=>{uploaded++;};
+  await call(page,'addArticleImage');assert.equal(uploaded,1);
+ } finally {env.restore();}
+});
+
+test('article send offers return, web and WeChat without sending on cancellation', async () => {
+  const menus: string[][] = [];
+  let selection = -1;
+  const env = installWx({ showActionSheet: (options: {itemList:string[];success:(r:{tapIndex:number})=>void;fail:()=>void}) => {
+    menus.push(options.itemList); selection < 0 ? options.fail() : options.success({tapIndex:selection});
+  }});
+  try {
+    const page = instantiate(await pageDefinition('book'));
+    Object.assign(page.data, {chapterDeliveryOn:true,protectedHasDeliveryLineage:true});
+    const calls: string[] = [];
+    page.returnChapterDelivery = async () => { calls.push('return'); };
+    page.openChapterDeliveryClaimLink = async (channel:string) => { calls.push(channel); };
+    await call(page,'sendArticle');
+    assert.deepEqual(menus[0],['发回原作者','发给网页用户','发给微信用户']);
+    assert.deepEqual(calls,[]);
+    selection = 0; await call(page,'sendArticle');
+    selection = 2; await call(page,'sendArticle');
+    selection = 1; await call(page,'sendArticle');
+    assert.deepEqual(calls,['return','wechat','web']);
+    Object.assign(page.data,{protectedHasDeliveryLineage:false});
+    selection = -1; await call(page,'sendArticle');
+    assert.deepEqual(menus[menus.length - 1],['发给网页用户','发给微信用户']);
+  } finally { env.restore(); }
+});
+
+test('article share card is scoped to explicit button, chapter and saved revision', async () => {
+  const env = installWx();
+  try {
+    const page = instantiate(await pageDefinition('book'));
+    const token = 'a'.repeat(43);
+    Object.assign(page,{revisionId:'r1',activeChapterId:'chapter1'});
+    Object.assign(page.data,{articleShareUrl:`https://www.drinkingtime.top/chapter/claim/${token}`,articleShareTitle:'测试文章',articleShareRevision:'r1',articleShareChapterId:'chapter1'});
+    const button = {from:'button',target:{dataset:{chapterShare:true}}};
+    assert.deepEqual(call(page,'onShareAppMessage',button),{title:'测试文章',path:`/pages/book/book?chapterClaim=${token}`});
+    assert.equal((call(page,'onShareAppMessage',{from:'menu'}) as {path:string}).path,'/pages/index/index');
+    page.activeChapterId = 'chapter2';
+    assert.equal((call(page,'onShareAppMessage',button) as {path:string}).path,'/pages/index/index');
+    page.activeChapterId = 'chapter1'; page.revisionId = 'r2';
+    assert.equal((call(page,'onShareAppMessage',button) as {path:string}).path,'/pages/index/index');
+  } finally { env.restore(); }
+});
+
+test('receiving a shared article asks before claiming and cancel does not write', async () => {
+  const env = installWx({cloud:{callFunction:()=>{throw new Error('must not claim');}}});
+  try {
+    const page = instantiate(await pageDefinition('book'));
+    page.pendingChapterClaim = 'a'.repeat(43); page.unloaded = false;
+    page.data.chapterDeliveryOn = true;
+    let asked = false; page.confirm = async () => {asked=true;return false;};
+    await call(page,'receiveSharedArticle');
+    assert.equal(asked,true); assert.equal(page.pendingChapterClaim,'');
+    assert.equal(page.data.loadError,'');
+  } finally { env.restore(); }
+});
+
+
+test('图片列表展示正文照片且预览不提供 AI 原图操作', async context => {
+  const state = stateWithBook();
+  state.manuscriptRevisions![0].draft.chapters![0].content.push({photoId:'photo-original'});
+  const env=installWx({},state);env.setApp(false);context.after(()=>env.restore());
+  context.after(withApi({listStoryImages:async()=>listWith({pending:[]})}));
+  const page=instantiate(await pageDefinition('story-images'));await call(page,'refresh');
+  const photo=(page.data.groups as any[])[0].images.find((image:any)=>image.imageId==='photo-original');
+  assert.equal(photo.uploaded,true);assert.equal(photo.uploaderLabel,'未记录');
+  assert.equal(photo.referenceReady,false);
+});
+
+test('selected image action waits for chapter load and starts only once, including cancellation', async () => {
+  let confirmation: ((result: {confirm:boolean}) => void) | undefined;
+  let prompts=0;
+  const env=installWx({showModal:({success}:any)=>{prompts++;confirmation=success;}});
+  try {
+    const page=instantiate(await pageDefinition('story-images'));
+    let receive: ((selection:unknown)=>void) | undefined;
+    page.getOpenerEventChannel=()=>({on:(_name:string,callback:any)=>{receive=callback;}});
+    call(page,'onLoad',{chapterId:'chapter-a',purpose:'illustration'});
+    receive!({text:'蓝色纸船',blockId:'block-a',generate:true});
+    assert.equal(prompts,0);
+    page.setData({loading:false,groups:[{id:'chapter-a'}]});
+    const start=call(page,'startSelectionGeneration');
+    assert.equal(prompts,1);
+    await call(page,'startSelectionGeneration');
+    await call(page,'generate',{currentTarget:{dataset:{id:'chapter-a'}}});
+    assert.equal(prompts,1);
+    confirmation!({confirm:false});
+    await start;
+    await call(page,'startSelectionGeneration');
+    assert.equal(prompts,1);
+    assert.equal(page.data.submitting,'');
+  } finally {env.restore();}
+});
+
+test('late selection event starts after loaded chapter; browsing gallery does not generate',async()=>{
+ const env=installWx();
+ try {
+  const page=instantiate(await pageDefinition('story-images'));
+  let receive:any;let starts=0;
+  page.getOpenerEventChannel=()=>({on:(_name:string,callback:any)=>{receive=callback;}});
+  page.generate=async()=>{starts++;};
+  call(page,'onLoad',{chapterId:'chapter-a'});
+  page.setData({loading:false,groups:[{id:'chapter-a'}]});
+  await call(page,'startSelectionGeneration');assert.equal(starts,0);
+  receive({text:'蓝色纸船',blockId:'block-a',generate:true});assert.equal(starts,1);
+  await call(page,'startSelectionGeneration');assert.equal(starts,1);
+ } finally {env.restore();}
+});
+
+test('module article illustration saves through article protocol without changing text IDs or layout', async () => {
+ const {articleChapter}=await import('../miniprogram/services/articleModules');
+ const {saveChapterIllustration}=await import('../miniprogram/services/chapterIllustrations');
+ const state=stateWithBook();
+ const revision=state.manuscriptRevisions![0]; revision.storyId='story-images-test';
+ const chapter=articleChapter(revision.draft.chapters![0]);
+ revision.draft.chapters![0]=chapter;
+ state.stories=[{id:revision.storyId,familyId:'family-test',title:'测试',version:3,currentRevisionId:revision.id,
+ protagonistMemberIds:[],memoryIds:[],createdAt:'2026-10-25',updatedAt:'2026-10-25'}];
+ const requests:any[]=[];
+ const env=installWx({},state);
+ env.setApp(false);
+ const images=listWith({pending:[]}).images.map(image=>({...image,moderation:'pass' as const}));
+ const restore=withApi({listStoryImages:async()=>{
+  (wx as any).cloud={callFunction:async({data}:any)=>{requests.push(data);delete (wx as any).cloud;return {result:{revisionId:'revision-new',version:4}};}};
+  return listWith({images,pending:[]});
+ }});
+ try {
+  await saveChapterIllustration({storyId:revision.storyId,chapterId:chapter.id,imageId:images[0].imageId,after:null});
+  assert.equal(requests.length,1);const saved=requests[0];
+  assert.equal(saved.action,'articleSave');assert.equal(saved.expectedVersion,3);assert.equal(saved.revisionId,revision.id);
+  assert.deepEqual(saved.chapter.content[0],{blockId:chapter.content[0].blockId,text:chapter.content[0].text});
+  assert.deepEqual(saved.chapter.layout.pages[0].modules[0],chapter.layout.pages[0].modules[0]);
+  assert.equal(saved.chapter.content[1].photoId,'photo-ai-req-aaaaaaaa');
+  assert.equal(Object.values(saved.chapter.packageAssets).some((asset:any)=>asset.aiGenerated===true),true);
+ } finally {restore();env.restore();}
 });

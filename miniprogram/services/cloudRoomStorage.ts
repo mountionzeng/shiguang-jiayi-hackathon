@@ -31,8 +31,8 @@ import {
 import { planDeleteStory, planRestoreStory } from "./storyLifecycle";
 import { planDeleteMemory, planRestoreMemory } from "./memoryLifecycle";
 import { loadCurrentMember } from "./roomStorage";
-import { checkTextContent } from "./contentSecurityService";
-import { jsonUtf8ByteLength, measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
+import { checkTextContent, ContentCheckResult } from "./contentSecurityService";
+import { cloudPerformanceMetrics, jsonUtf8ByteLength, measurePerformance, PerformanceMetrics, startPerformanceMeasure } from './performanceLog';
 
 export const CLOUD_COLLECTIONS = {
   families: "families",
@@ -106,6 +106,8 @@ function serverDate() {
 
 let cachedOpenId: string | undefined;
 let cachedFamilyId: string | undefined;
+let cachedPrimaryFamilyId: string | undefined;
+let pendingOpenId: Promise<string> | undefined;
 
 function sanitizeDocumentPart(value: string): string {
   return value.replace(/[^0-9A-Za-z_-]/g, "_");
@@ -113,21 +115,36 @@ function sanitizeDocumentPart(value: string): string {
 
 async function loadOpenId(): Promise<string> {
   if (cachedOpenId) return cachedOpenId;
-  const response = await wx.cloud.callFunction({ name: "getOpenId" });
-  const result = response.result as { openid?: unknown; account?: { primaryFamilyId?: unknown } } | undefined;
-  const openid = String(result?.openid ?? "").trim();
-  if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
-  cachedOpenId = openid;
-  const linkedFamilyId = String(result?.account?.primaryFamilyId ?? "").trim();
-  cachedFamilyId = /^family_[0-9A-Za-z_-]{1,120}$/.test(linkedFamilyId)
-    ? linkedFamilyId
-    : `family_${sanitizeDocumentPart(openid)}`;
-  return cachedOpenId;
+  if (pendingOpenId) return pendingOpenId;
+  const request = wx.cloud.callFunction({ name: "getOpenId" }).then(response => {
+    const result = response.result as { openid?: unknown; account?: { primaryFamilyId?: unknown } } | undefined;
+    const openid = String(result?.openid ?? "").trim();
+    if (!openid) throw new Error("OPENID_NOT_AVAILABLE");
+    cachedOpenId = openid;
+    const linkedFamilyId = String(result?.account?.primaryFamilyId ?? "").trim();
+    cachedPrimaryFamilyId = linkedFamilyId;
+    cachedFamilyId = /^family_[0-9A-Za-z_-]{1,120}$/.test(linkedFamilyId)
+      ? linkedFamilyId
+      : `family_${sanitizeDocumentPart(openid)}`;
+    return cachedOpenId;
+  });
+  pendingOpenId = request;
+  try { return await request; }
+  finally { if (pendingOpenId === request) pendingOpenId = undefined; }
 }
 
 export async function currentFamilyId(): Promise<string> {
   const openid = await loadOpenId();
   return cachedFamilyId ?? `family_${sanitizeDocumentPart(openid)}`;
+}
+
+// A book reached from a visible shelf was just read under this identity. The
+// caller may use this value for that one navigation only; direct page opens
+// still revalidate before touching a locally stored draft.
+export function cachedAccountScope(): string | undefined {
+  if (!cachedOpenId) return undefined;
+  // Preserve the existing draft-key shape so saved local drafts remain readable.
+  return JSON.stringify([cachedOpenId, cachedPrimaryFamilyId ?? ""]);
 }
 
 function familyMemberDocId(familyId: string, memberId: string): string {
@@ -246,7 +263,7 @@ async function saveContribution(
   contribution: MemoryContribution,
 ): Promise<void> {
   const sourceRecordId = sourceRecordDocId(familyId, contribution.id);
-  await collection(CLOUD_COLLECTIONS.sourceRecords).doc(sourceRecordId).set({
+  await measurePerformance('memory.source-write', () => collection(CLOUD_COLLECTIONS.sourceRecords).doc(sourceRecordId).set({
     data: definedFields({
       familyId,
       contributorMemberId: contribution.authorMemberId,
@@ -271,9 +288,9 @@ async function saveContribution(
       submittedAt: contribution.createdAt,
       updatedAt: serverDate(),
     }),
-  });
+  }));
 
-  await collection(CLOUD_COLLECTIONS.memories).doc(memoryDocId(familyId, contribution.id)).set({
+  await measurePerformance('memory.record-write', () => collection(CLOUD_COLLECTIONS.memories).doc(memoryDocId(familyId, contribution.id)).set({
     data: definedFields({
       familyId,
       sourceRecordId,
@@ -302,7 +319,7 @@ async function saveContribution(
       photoIds: contribution.photoIds,
       updatedAt: serverDate(),
     }),
-  });
+  }));
 }
 
 async function saveDraft(familyId: string, draft: BiographyDraft | undefined, sourceFingerprint = ""): Promise<void> {
@@ -394,12 +411,22 @@ function missingStoryService(error: unknown): boolean {
   return classifyServiceFailure(error) === 'missing';
 }
 
-async function loadStoryServiceRoomState(view?: "home"): Promise<StoryServiceRoomState> {
+// Projections are read-only; only an unqualified read contains the full archive.
+export type RoomStateView = "home" | "memories" | "memory-sources";
+
+async function loadStoryServiceRoomState(view?: RoomStateView): Promise<StoryServiceRoomState> {
   return await readStoryState(async transport => {
-    const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state", ...(view ? {view} : {}), ...transport } });
-    const result = (response.result ?? {}) as StoryServiceRoomState;
-    if (result.error) throw storyServiceError(result);
-    return result;
+    const finish = startPerformanceMeasure('room.request');
+    let outcome: 'ok' | 'error' = 'error';
+    let metrics: PerformanceMetrics = {};
+    try {
+      const response = await wx.cloud.callFunction({ name: "storyBooks", data: { action: "state", performanceDiagnostics: 1, ...(view ? {view} : {}), ...transport } });
+      const result = (response.result ?? {}) as StoryServiceRoomState & {performance?: unknown};
+      metrics = cloudPerformanceMetrics(result.performance);
+      if (result.error) throw storyServiceError(result);
+      outcome = 'ok';
+      return result;
+    } finally { finish(outcome, metrics); }
   }) as StoryServiceRoomState;
 }
 
@@ -443,6 +470,14 @@ function isCompleteStoryServiceRoomState(result: StoryServiceRoomState): boolean
     !!result.personalDraftSourceFingerprints && typeof result.personalDraftSourceFingerprints === "object" && !Array.isArray(result.personalDraftSourceFingerprints);
 }
 
+/** Reuse the same validation and normalization for an authenticated save receipt. */
+export function roomStateFromStoryResponse(value: unknown): FamilyRoomState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const result = value as StoryServiceRoomState;
+  if (result.error || !isCompleteStoryServiceRoomState(result)) return undefined;
+  return normalizeStoryServiceRoomState(result);
+}
+
 function normalizeStoryServiceRoomState(result: StoryServiceRoomState): FamilyRoomState {
   const state: FamilyRoomState = {
     ...createEmptyRoomState(),
@@ -468,7 +503,7 @@ function normalizeStoryServiceRoomState(result: StoryServiceRoomState): FamilyRo
   return state;
 }
 
-export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "home" } = {}): Promise<FamilyRoomState> {
+export async function loadCloudRoomState(options: { readOnly?: boolean; view?: RoomStateView } = {}): Promise<FamilyRoomState> {
   const finish = startPerformanceMeasure('room.cloud');
   const metrics: PerformanceMetrics = { route: 'identity', clientPageReads: 0 };
   let outcome: 'ok' | 'error' = 'error';
@@ -483,12 +518,20 @@ export async function loadCloudRoomState(options: { readOnly?: boolean; view?: "
   }
 }
 
-async function readCloudRoomState(options: { readOnly?: boolean; view?: "home" }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
+async function readCloudRoomState(options: { readOnly?: boolean; view?: RoomStateView }, metrics: PerformanceMetrics): Promise<FamilyRoomState> {
+  // The story identity requires the account registered by getOpenId. On a
+  // first visit these are dependent operations, even though returning users
+  // can make parallel reads appear safe.
   const familyId = await measurePerformance('room.identity', currentFamilyId);
+  const serviceRead = await measurePerformance('room.state', () => loadStoryServiceRoomState(options.view)).then(
+    state => ({ ok: true as const, state }),
+    error => ({ ok: false as const, error }),
+  );
   metrics.route = 'story-service';
   let storyServiceState: StoryServiceRoomState | undefined;
   try {
-    storyServiceState = await measurePerformance('room.state', () => loadStoryServiceRoomState(options.view));
+    if (!serviceRead.ok) throw serviceRead.error;
+    storyServiceState = serviceRead.state;
     const responseAnalysisStarted = Date.now();
     metrics.responseBytes = jsonUtf8ByteLength(storyServiceState);
     metrics.responseAnalysisMs = Math.max(0, Date.now() - responseAnalysisStarted);
@@ -626,11 +669,22 @@ export async function saveCloudManuscriptRevision(revision: ManuscriptRevision):
  * 检测没通过、或者检测服务暂时不可用时，仍然保存这段文字，但强制改成只有作者自己能看；
  * 调用方可以对比保存前后的 sharedWithMemberIds 判断是否发生了这种情况，据此提示作者。
  */
-async function enforceContentSecurity(contribution: MemoryContribution): Promise<MemoryContribution> {
-  const mayBeShownToOthers = contributionScope(contribution) === "personal" &&
+function needsContentCheck(contribution: MemoryContribution): boolean {
+  return contributionScope(contribution) === "personal" &&
     (contributionRelatedMemberIds(contribution).length > 0 || personalShareTargetMemberIds(contribution).length > 0);
-  if (!mayBeShownToOthers) return contribution;
-  const result = await checkTextContent(contribution.text, contribution.title);
+}
+
+interface PendingContentCheck {
+  text: string;
+  title?: string;
+  result: Promise<ContentCheckResult>;
+}
+
+async function enforceContentSecurity(contribution: MemoryContribution, pending?: PendingContentCheck): Promise<MemoryContribution> {
+  if (!needsContentCheck(contribution)) return contribution;
+  // A check belongs only to this save and this exact text/title, never another edit.
+  const result = pending && pending.text === contribution.text && pending.title === contribution.title
+    ? await pending.result : await checkTextContent(contribution.text, contribution.title);
   if (result.ok) return contribution;
   return { ...contribution, sharedWithMemberIds: undefined };
 }
@@ -646,7 +700,7 @@ export async function appendCloudContributions(
   rawContributions: MemoryContribution[],
 ): Promise<FamilyRoomState> {
   if (rawContributions.length === 0) return loadCloudRoomState();
-  const contributions = await Promise.all(rawContributions.map(enforceContentSecurity));
+  const contributions = await Promise.all(rawContributions.map(contribution => enforceContentSecurity(contribution)));
   const familyId = await currentFamilyId();
   const state = await loadCloudRoomState();
   for (let offset = 0; offset < contributions.length; offset += 5) {
@@ -670,9 +724,10 @@ export async function addCloudFamilyMember(
   name: string,
   relation: string,
   kind?: FamilyMember["kind"],
+  options: { view?: "home" } = {},
 ): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
-  const state = await loadCloudRoomState();
+  const state = await loadCloudRoomState(options);
   const trimmedName = name.trim();
   const trimmedRelation = relation.trim() || "家人";
   if (!trimmedName) {
@@ -703,7 +758,7 @@ export async function addCloudFamilyMember(
     name: member.name,
     relation: member.relation,
     kind: member.kind ?? "recording-profile",
-  })) return loadCloudRoomState();
+  })) return loadCloudRoomState(options);
   await saveMembers(familyId, [member]);
   return {
     ...state,
@@ -713,15 +768,34 @@ export async function addCloudFamilyMember(
 
 export async function replaceCloudContribution(
   rawContribution: MemoryContribution,
+  options: { view?: "memories" } = {},
 ): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
-  const state = await loadCloudRoomState();
+  const state = await loadCloudRoomState(options);
   if (!state.contributions.some(item => item.id === rawContribution.id)) {
     throw new Error("这段记忆已不存在，请刷新列表");
   }
-  const contribution = await enforceContentSecurity(rawContribution);
+  return writeCloudContribution(familyId, state, rawContribution);
+}
+
+export async function editCloudContribution(id: string, edit: (latest: MemoryContribution) => MemoryContribution, proposed?: MemoryContribution): Promise<FamilyRoomState> {
+  const pending = proposed?.id === id && needsContentCheck(proposed) ? {
+    text: proposed.text, title: proposed.title,
+    result: measurePerformance('memory.moderate', () => checkTextContent(proposed.text, proposed.title)),
+  } : undefined;
+  const state = await loadCloudRoomState({view: "memories"});
+  const familyId = await currentFamilyId();
+  const latest = state.contributions.find(item => item.id === id && !item.deletedAt);
+  if (!latest) throw new Error("这段记忆已不存在，请刷新列表");
+  const next = edit(latest);
+  if (next.id !== id) throw new Error("记忆编号发生变化，请重新打开");
+  return writeCloudContribution(familyId, state, next, pending);
+}
+
+async function writeCloudContribution(familyId: string, state: FamilyRoomState, rawContribution: MemoryContribution, pending?: PendingContentCheck): Promise<FamilyRoomState> {
+  const contribution = await enforceContentSecurity(rawContribution, pending);
   await saveContribution(familyId, contribution);
-  await invalidateDraft(familyId, contribution);
+  await measurePerformance('memory.invalidate', () => invalidateDraft(familyId, contribution));
   const personalDrafts = { ...(state.personalDrafts ?? {}) };
   delete personalDrafts[contribution.authorMemberId];
   return {
@@ -904,10 +978,10 @@ export async function classifyCloudMember(memberId: string, kind: MemberKind): P
   return changeCloudMember((state) => planClassify(state, memberId, kind, loadCurrentMember(state).id));
 }
 
-export async function deleteCloudMember(memberId: string, now = new Date()): Promise<FamilyRoomState> {
+export async function deleteCloudMember(memberId: string, now = new Date(), options: { view?: "home" } = {}): Promise<FamilyRoomState> {
   // 先走服务端：云函数创建的人物文档没有客户端 _openid，客户端直写会被权限挡掉，
   // 界面上看得见却永远删不掉。服务端不支持时才退回本地改法。
-  if (await callStoryMemberAction("memberDelete", { memberId })) return loadCloudRoomState();
+  if (await callStoryMemberAction("memberDelete", { memberId })) return loadCloudRoomState(options);
   return changeCloudMember((state) => planDelete(state, memberId, loadCurrentMember(state).id, now));
 }
 
@@ -924,17 +998,19 @@ export async function updateCloudRoomProfile(
   return loadCloudRoomState();
 }
 
-export async function restoreCloudMember(memberId: string): Promise<FamilyRoomState> {
-  if (await callStoryMemberAction("memberRestore", { memberId })) return loadCloudRoomState();
+export async function restoreCloudMember(memberId: string, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
+  if (await callStoryMemberAction("memberRestore", { memberId })) return loadCloudRoomState(options);
   return changeCloudMember((state) => planRestore(state, memberId));
 }
 
-export async function updateCloudMember(memberId: string, name: string, relation: string): Promise<FamilyRoomState> {
+export async function updateCloudMember(memberId: string, name: string, relation: string, options: { view?: "home" } = {}): Promise<FamilyRoomState> {
   const familyId = await currentFamilyId();
-  const state = await loadCloudRoomState();
+  const state = await loadCloudRoomState(options);
   const change = planUpdateMember(state, memberId, name, relation);
   if (!change) return state;
-  if (await callStoryMemberAction("memberUpdate", { memberId, name, relation })) return loadCloudRoomState();
+  if (await callStoryMemberAction("memberUpdate", { memberId, name, relation })) return loadCloudRoomState(options);
+  // Legacy writes update attribution too, so keep their complete-state safety path.
+  if (options.view) return changeCloudMember(latest => planUpdateMember(latest, memberId, name, relation));
   await saveContributionsInBatches(familyId, change.contributions);
   await saveMembers(familyId, [change.member]);
   return applyMemberChange(state, change);

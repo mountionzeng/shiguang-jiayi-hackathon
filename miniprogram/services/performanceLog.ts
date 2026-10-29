@@ -1,6 +1,7 @@
-type Operation = 'room.load' | 'room.cloud' | 'room.identity' | 'room.state' | 'story.shelf'
-  | 'ai.daily-question' | 'ai.organize' | 'ai.biography' | 'image.submit' | 'image.status' | 'image.list' | 'image.other'
-  | 'book.export-preview' | 'book.export-material' | 'book.export-render'
+type Operation = 'room.request' | 'story.request' | 'story.save' | 'memory.save' | 'memory.moderate' | 'memory.source-write' | 'memory.record-write' | 'memory.invalidate' | 'room.load' | 'room.cloud' | 'room.identity' | 'room.state' | 'story.shelf'
+  | 'ai.memory-connection' | 'ai.interview' | 'ai.daily-question' | 'ai.organize' | 'ai.biography' | 'image.submit' | 'image.status' | 'image.list' | 'image.other'
+  | 'book.export-preview' | 'book.export-material' | 'book.export-render' | 'book.send-display' | 'book.image-download'
+  | 'invite.prepare' | 'invite.capabilities' | 'invite.create' | 'book.history' | 'book.revision' | 'book.people'
   | 'book.refresh' | 'book.identity' | 'book.photos' | 'book.images' | 'book.cover-cache' | 'book.cover-render';
 
 export interface PerformanceMetrics {
@@ -13,6 +14,10 @@ export interface PerformanceMetrics {
   stories?: number;
   responseBytes?: number;
   responseAnalysisMs?: number;
+  serverDurationMs?: number;
+  serverLoadMs?: number;
+  serverIdentityMs?: number;
+  serverAuthorizeMs?: number;
 }
 
 /** Count the UTF-8 size of a JSON response without retaining or logging its contents. */
@@ -76,4 +81,18 @@ export async function measurePerformance<T>(operation: Operation, work: () => Pr
   } finally {
     finish(outcome);
   }
+}
+
+/** Whitelist numeric diagnostics; never copy arbitrary server response fields to logs. */
+export function cloudPerformanceMetrics(value: unknown): PerformanceMetrics {
+  const timing = value as {serverDurationMs?: unknown; phases?: Record<string, unknown>} | undefined;
+  const duration = (input: unknown): number | undefined => typeof input === 'number' && Number.isFinite(input) && input >= 0 && input <= 3600000 ? input : undefined;
+  const before = duration(timing?.phases?.['state.authorize.before']);
+  const after = duration(timing?.phases?.['state.authorize.after']);
+  return {
+    serverDurationMs: duration(timing?.serverDurationMs),
+    serverLoadMs: duration(timing?.phases?.['state.load']),
+    serverIdentityMs: duration(timing?.phases?.['state.identity']),
+    serverAuthorizeMs: before === undefined && after === undefined ? undefined : (before || 0) + (after || 0),
+  };
 }

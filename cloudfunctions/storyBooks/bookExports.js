@@ -37,13 +37,14 @@ function normalize(input, exporting = false) {
 }
 
 function normalizeMemory(input, exporting = false) {
-  const fields = ['familyId','sourceKind','memoryId','revisionId','expectedSourceVersion','targetTextImageCount', ...(exporting ? ['descriptorId'] : [])];
+  const fields = ['familyId','sourceKind','memoryId','revisionId','expectedSourceVersion','includePhotos','targetTextImageCount', ...(exporting ? ['descriptorId'] : [])];
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !fields.includes(key)) ||
     !FAMILY_ID.test(input.familyId || '') || typeof input.memoryId !== 'string' || !/^[0-9A-Za-z_-]{1,160}$/.test(input.memoryId) ||
     (input.revisionId !== undefined && (typeof input.revisionId !== 'string' || !/^[0-9A-Za-z_-]{1,160}$/.test(input.revisionId))) ||
     typeof input.expectedSourceVersion !== 'string' || !/^[a-f0-9]{64}$/.test(input.expectedSourceVersion)) {
     fail('INVALID_INPUT', '请重新选择要分享的记忆');
   }
+  if (input.includePhotos !== undefined && typeof input.includePhotos !== 'boolean') fail('INVALID_INPUT', '记忆配图选择无效');
   if (input.targetTextImageCount !== undefined &&
     (!Number.isSafeInteger(input.targetTextImageCount) || input.targetTextImageCount < 1 || input.targetTextImageCount > 30)) {
     fail('INVALID_INPUT', '正文图片数量无效');
@@ -85,7 +86,25 @@ async function build(repo, ctx, input) {
         backdropImageId = chapter.backdropImageId;
         backdropFileIDs[chapter.id] = image.fileID;
       }
-      chapters.push({ id: chapter.id, title: chapter.title || '', text, ...(backdropImageId ? { backdropImageId } : {}) });
+      // Share only complete, text-only layouts. Excerpts and layouts with media,
+      // textures, or unplaced text keep the established automatic renderer.
+      let layout;
+      if (input.scope !== 'text' && chapter.layout && chapter.layout.settings.texture === 'none' && !chapter.layout.settings.bodyTextureAssetId &&
+        chapter.layout.settings.includeCover !== true && chapter.content.every(block => typeof block.text === 'string')) {
+        const blocks = new Map(chapter.content.map(block => [block.blockId, block.text]));
+        const seen = new Set();
+        const pages = chapter.layout.pages.map(page => ({ label: page.label, modules: page.modules.map(module => {
+          if (module.kind !== 'text') return null;
+          const value = module.bind.chapterTitle === true ? chapter.title || '' : blocks.get(module.bind.blockId);
+          if (value === undefined) return null;
+          if (module.bind.blockId) seen.add(module.bind.blockId);
+          return { text: value, rect: module.rect, fontSize: module.fontSize, alignment: module.alignment };
+        }) }));
+        if (pages.every(page => page.modules.every(Boolean)) && chapter.content.every(block => seen.has(block.blockId))) {
+          layout = { pages };
+        }
+      }
+      chapters.push({ id: chapter.id, title: chapter.title || '', text, ...(backdropImageId ? { backdropImageId } : {}), ...(layout ? { layout } : {}) });
       containsAiText ||= chapter.containsAiText === true || chapter.generationMode === 'cloud-ai' || draft.generationMode === 'cloud-ai';
     }
     const length = chapters.reduce((sum, c) => sum + Array.from(c.text).length, 0);
@@ -117,14 +136,40 @@ async function buildMemory(repo, ctx, input) {
   });
   const source = result.source;
   if (!source.text.trim()) fail('STORY_SHARE_LIMIT', '所选记忆为空，请重新选择');
+  const photoIDs = input.includePhotos === true ? source.photoIds || [] : [];
+  const photoFileIDs = [];
+  for (const photoId of photoIDs) {
+    if (photoId.startsWith('photo-ai-')) {
+      const image = await repo.get('story_images', `${ctx.familyId}_img_${photoId.slice(9)}`);
+      if (!ctx.verifiedOpenid || !image || image.familyId !== ctx.familyId || image.memoryId !== source.memoryId || image.storyId ||
+          image.deletedAtMs !== undefined || image.moderation !== 'pass' || image.purpose !== 'illustration' ||
+          image.sourcePolicyRequired || image.sourceIds !== undefined || typeof image.fileID !== 'string' ||
+          !image.fileID.startsWith('cloud://') || image.requestId !== photoId.slice(9) ||
+          !['png','jpg','jpeg','webp'].some(ext => image.fileID.endsWith(`/story-images/${ctx.familyId}/memory-${source.memoryId}/${image.requestId}.${ext}`))) {
+        fail('PHOTO_NOT_READY', 'AI配图尚未通过审核或已不可用，请重新核对');
+      }
+      photoFileIDs.push(image.fileID);
+      continue;
+    }
+    const photo = await repo.get('photos', `${ctx.familyId}__${photoId}`);
+    if (!photo || photo.familyId !== ctx.familyId || photo.photoId !== photoId || !ctx.verifiedOpenid || photo._openid !== ctx.verifiedOpenid ||
+        photo.deletedAt || photo.sourcePolicyRequired || photo.sourceIds !== undefined ||
+        photo.moderation?.ok !== true || photo.moderation?.suggest !== 'pass' ||
+        typeof photo.displayFileID !== 'string' || !photo.displayFileID.startsWith('cloud://') ||
+        !photo.displayFileID.endsWith(`/user-photos/${ctx.familyId}/${photoId}/display.jpg`)) {
+      fail('PHOTO_NOT_READY', '配图尚未通过内容检查、未上传或无权发送。可以取消包含配图，先发送文字。');
+    }
+    photoFileIDs.push(photo.displayFileID);
+  }
   const chapter = { id: `memory-${source.memoryId}`, title: source.title || '一段记忆', text: source.text };
   const descriptor = {
     sourceKind: 'memory', memoryId: source.memoryId, revisionId: source.revisionId, sourceVersion: source.sourceVersion,
+    ...(photoIDs.length ? { photoIds: photoIDs } : {}),
     title: source.title || '一段记忆', chapters: [chapter], coverImageId: '', containsAiText: source.containsAiText === true,
     ...(input.targetTextImageCount ? { targetTextImageCount: input.targetTextImageCount } : {}),
   };
-  const id = 'book-' + crypto.createHash('sha256').update(core.stable(descriptor)).digest('hex');
-  return { descriptor: { id, ...descriptor }, coverFileID: '' };
+  const id = 'book-' + crypto.createHash('sha256').update(core.stable({ descriptor, photoFileIDs })).digest('hex');
+  return { descriptor: { id, ...descriptor }, coverFileID: '', photoFileIDs };
 }
 
 async function previewBookExport(repo, ctx, raw, { approve } = {}) {
@@ -152,6 +197,15 @@ async function exportBookImages(repo, ctx, raw, { approve, sign } = {}) {
     if (typeof signed !== 'string' || signed.length > 4096 || parsed.protocol !== 'https:' || parsed.username || parsed.password) deny();
     coverUrls.push(signed);
   }
+  const photoUrls = [];
+  for (const fileID of before.photoFileIDs || []) {
+    if (typeof sign !== 'function') deny();
+    const signed = await sign(fileID, 300);
+    let parsed;
+    try { parsed = new URL(signed); } catch { deny(); }
+    if (typeof signed !== 'string' || signed.length > 4096 || parsed.protocol !== 'https:' || parsed.username || parsed.password) deny();
+    photoUrls.push(signed);
+  }
   const backdropUrls = {};
   for (const [chapterId, fileID] of Object.entries(before.backdropFileIDs || {})) {
     if (typeof sign !== 'function') deny();
@@ -163,9 +217,10 @@ async function exportBookImages(repo, ctx, raw, { approve, sign } = {}) {
   }
   const after = await build(repo, ctx, selection);
   if (after.descriptor.id !== descriptorId || core.stable(after.coverFileIDs || []) !== core.stable(before.coverFileIDs || []) ||
-    core.stable(after.backdropFileIDs || {}) !== core.stable(before.backdropFileIDs || {})) {
+    core.stable(after.backdropFileIDs || {}) !== core.stable(before.backdropFileIDs || {}) ||
+    core.stable(after.photoFileIDs || []) !== core.stable(before.photoFileIDs || [])) {
     fail('VERSION_CONFLICT', '书稿、封面、章节底图或权限已有变化，请重新生成');
   }
-  return { descriptor: after.descriptor, coverUrl: coverUrls[0] || '', coverUrls, backdropUrls };
+  return { descriptor: after.descriptor, coverUrl: coverUrls[0] || '', coverUrls, backdropUrls, ...(after.descriptor.sourceKind === 'memory' ? { photoUrls } : {}) };
 }
 module.exports = { previewBookExport, exportBookImages };

@@ -64,3 +64,64 @@ test('home retains owner authorization and rejects revocation during the read', 
   repo.all=async (table,id)=>{const result=await all(table,id);tables.get(`story_identity_aliases:${aliasIdFor(context.APPID,context.OPENID)}`).status='revoked';return result};
   await assert.rejects(service(context,{action:'state',view:'home'}),{code:'STORY_FORBIDDEN'});
 });
+
+
+test('memory editor projection retains full history and media without scanning manuscript history', async () => {
+  const {repo,tables}=homeFixture();
+  tables.get('memories:m').photoIds=['photo-keep'];
+  const full=await createHandlers(repo).state({familyId:'family_owner'});
+  const reads=[]; const all=repo.all;
+  repo.all=async (table,id)=>{reads.push(table);return all(table,id)};
+  const editor=await createHandlers(repo).state({familyId:'family_owner'},{view:'memories'});
+  assert.deepEqual(editor.contributions,full.contributions.filter(m=>!m.deletedAt));
+  assert.equal(editor.manuscriptRevisions.length,1);
+  assert.ok(!reads.includes('biography_drafts'));
+  assert.ok(!reads.includes('story_migration_items'));
+});
+
+test('home excludes memory history in the database query, while the memory editor still reads it', async () => {
+  const {repo}=homeFixture();
+  const reads=[]; const all=repo.all;
+  repo.all=async (table,id,fields)=>{reads.push({table,fields});return all(table,id)};
+  await createHandlers(repo).state({familyId:'family_owner'},{view:'home'});
+  assert.deepEqual(reads.find(r=>r.table==='memories').fields,{aiRevisions:false});
+  reads.length=0;
+  await createHandlers(repo).state({familyId:'family_owner'},{view:'memories'});
+  assert.equal(reads.find(r=>r.table==='memories').fields,undefined);
+});
+
+test('memory selection reads current sources without reading any stories or manuscripts, including legacy rooms', async () => {
+  for (const legacy of [false,true]) {
+    const {repo,tables}=homeFixture();
+    if(legacy)delete tables.get('families:family_owner').storyBooks;
+    tables.get('memories:m').photoIds=['photo-keep'];
+    const reads=[];const all=repo.all,get=repo.get;
+    repo.all=async (...args)=>{reads.push(args[0]);return all(...args)};
+    repo.get=async (...args)=>{reads.push(args[0]);return get(...args)};
+    const state=await createHandlers(repo).state({familyId:'family_owner'},{view:'memory-sources'});
+    assert.deepEqual(reads.sort(),['families','family_members','memories']);
+    assert.equal(state.contributions.length,1);
+    assert.equal(state.contributions[0].text,'原话');
+    assert.deepEqual(state.contributions[0].photoIds,['photo-keep']);
+    assert.equal(state.contributions[0].aiRevisions,undefined);
+    assert.deepEqual(state.stories,[]);
+    assert.deepEqual(state.manuscriptRevisions,[]);
+  }
+});
+
+test('memory source projection still rejects revocation and failed reads instead of returning an empty library', async () => {
+  const {repo,tables}=homeFixture();
+  const context={APPID:'wx-original',OPENID:'owner'};
+  const service=createStoryService(repo,{accessEnabled:true,rulesReady:true,bootstrapAppId:context.APPID});
+  await service(context,{action:'state',view:'memory-sources'});
+  const all=repo.all;
+  repo.all=async (...args)=>{
+    const rows=await all(...args);
+    tables.get(`story_identity_aliases:${aliasIdFor(context.APPID,context.OPENID)}`).status='revoked';
+    return rows;
+  };
+  await assert.rejects(service(context,{action:'state',view:'memory-sources'}),{code:'STORY_FORBIDDEN'});
+  const failure=new Error('memory database unavailable');
+  repo.all=async ()=>{throw failure};
+  await assert.rejects(createHandlers(repo).state({familyId:'family_owner'},{view:'memory-sources'}),error=>error===failure);
+});

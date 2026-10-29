@@ -21,14 +21,14 @@ Page({
   onShow(){if(!this.data.loadError)void this.refreshCapabilities();},
   onUnload(){this.unloaded=true;},
   async refreshCapabilities(){
-    this.setData({loading:true,loadError:''});
+    this.setData({loading:true,loadError:'',cloneAvailable:false});
     try{
       const capabilities=await storyAudioApi.capabilities();
       if(this.unloaded)return;
-      this.setData({loading:false,unavailable:unavailableReason(capabilities),canCreate:capabilities.submission.enabled&&capabilities.tts.enabled,cloneAvailable:capabilities.submission.enabled&&capabilities.voiceClone.enabled,videoAvailable:capabilities.submission.enabled&&capabilities.video.enabled,officialVoices:Array.isArray(capabilities.officialVoices)?capabilities.officialVoices.filter(item=>item&&typeof item.id==='string'&&typeof item.label==='string'):[]});
+      this.setData({loading:false,unavailable:unavailableReason(capabilities),canCreate:capabilities.submission.enabled&&capabilities.tts.enabled,cloneAvailable:capabilities.submission.enabled&&capabilities.voiceClone.enabled&&capabilities.voiceEnrollment.enabled,videoAvailable:capabilities.submission.enabled&&capabilities.video.enabled,officialVoices:Array.isArray(capabilities.officialVoices)?capabilities.officialVoices.filter(item=>item&&typeof item.id==='string'&&typeof item.label==='string'):[]});
     }catch(error){if(!this.unloaded)this.setData({loading:false,loadError:error instanceof Error?error.message:'声音服务暂时没有响应，请稍后再试。',canCreate:false});}
   },
-  openVoices(){wx.navigateTo({url:'/packages/audio/pages/voices/voices?select=1',events:{selectVoice:(voice:SelectedVoice)=>{if(voice&&['official','clone'].includes(voice.kind)&&voice.id)this.setData({selectedVoice:voice});}}});},
+  openVoices(){if(this.data.loading||!this.data.cloneAvailable){wx.showToast({title:'请先选择页面上的朗读声音',icon:'none'});return;}wx.navigateTo({url:'/packages/audio/pages/voices/voices?select=1',events:{selectVoice:(voice:SelectedVoice)=>{if(voice&&['official','clone'].includes(voice.kind)&&voice.id)this.setData({selectedVoice:voice});}}});},
   chooseOfficial(event:{currentTarget:{dataset:{id?:string;label?:string}}}){const {id,label}=event.currentTarget.dataset;if(id&&label)this.setData({selectedVoice:{kind:'official',id,label}});},
   async startCreate(){
     if(!this.data.canCreate){wx.showToast({title:this.data.unavailable || '声音服务暂未开放',icon:'none'});return;}

@@ -15,6 +15,7 @@ test("the persistent story switcher opens all three destinations, and 随手记 
   let definition: SwitcherDefinition | undefined;
   const relaunches: string[] = [];
   const navigations: string[] = [];
+  const events: string[] = [];
   const stored = new Map<string, unknown>([["shiguang-family-room-v5", createDemoRoomStateForTests()]]);
 
   Object.defineProperty(globalThis, "Component", {
@@ -47,6 +48,9 @@ test("the persistent story switcher opens all three destinations, and 随手记 
       data,
       setData(update: Record<string, unknown>) {
         Object.assign(this.data, update);
+      },
+      triggerEvent(name: string) {
+        events.push(name);
       },
       ...definition.methods,
     };
@@ -85,7 +89,8 @@ test("the persistent story switcher opens all three destinations, and 随手记 
     definition.methods.openAllMemories.call(instance);
     definition.methods.openFamily.call(instance);
 
-    assert.deepEqual(relaunches, ["/pages/stories/stories", "/pages/room/room"]);
+    assert.deepEqual(events, ["openpersonal", "openfamily"]);
+    assert.deepEqual(relaunches, []);
     assert.deepEqual(navigations, [
       "/pages/interview/interview?memoryType=note",
       `/pages/interview/interview?memoryType=memoir&sourceId=demo-personal-rain&storyTitle=${encodeURIComponent("外公接我放学")}`,
