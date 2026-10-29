@@ -271,7 +271,7 @@ test("saving or restoring a legacy draft writes canonical paragraphs into a new 
 test("forward keeps received text, images and root chapter identity without opening arbitrary protected exports", () => {
   const id = block("a"), photoId = "photo-received", assetId = "asset-" + "9".repeat(32);
   const chapter: ManuscriptChapter = {
-    ...chapterWith(), content: [{text:"收到的文字\n",blockId:id,sourceIds:["source-received"]},{photoId}],
+    ...chapterWith(), content: [{text:"收到的文字\n",blockId:id,sourceIds:["source-received"]},{photoId,blockId:block("c"),sourceIds:["source-received"]}],
     packageLineage:{rootPackageId:"cp_root0001",receivedPackageId:"cp_parent01",sourceChapterId:"chapter-original"},
     packageBlockDigests:{[id]:"b".repeat(64)},packageSourceBlockIds:{[id]:id},
     packageAssets:{[assetId]:{photoId,aiGenerated:true}},
@@ -283,6 +283,7 @@ test("forward keeps received text, images and root chapter identity without open
   assert.equal(result.package.lineage.parentPackageId,"cp_parent01");
   assert.equal(result.package.assets[0].assetId,assetId);
   assert.equal(result.package.assets[0].aiGenerated,true);
+  assert.throws(()=>exportChapterForwardPackage({chapter:{...chapter,packageAssets:{}},...meta,images}),/来源权限/);
   assert.deepEqual(result.assetPhotos,{[assetId]:photoId});
   assert.throws(()=>exportChapterPackage({chapter,...meta,images}),/来源权限/);
   assert.throws(()=>exportChapterForwardPackage({chapter:{...chapter,packageLineage:undefined},...meta,images}),/来源/);

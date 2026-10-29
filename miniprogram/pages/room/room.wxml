@@ -89,8 +89,8 @@
   </view>
 
   <view class="empty-filter" wx:elif="{{hasAnyMemory && !sharedArticles.length && !activityLoading}}">
-    <view class="empty-filter-title">还没有和{{activeName}}有关的记忆</view>
-    <view class="empty-filter-note">聊完一段记忆时选上 ta，这段就会出现在这里。</view>
+    <view class="empty-filter-title">{{activeId === 'me' ? '还没有你写下的记忆' : '还没有和' + activeName + '有关的记忆'}}</view>
+    <view class="empty-filter-note">{{activeId === 'me' ? '你自己写下的内容会出现在这里；亲友分享请点对方头像。' : '聊完一段记忆时选上 ta，这段就会出现在这里。'}}</view>
   </view>
 
   <view class="empty-room wash" wx:elif="{{!loading && !loadError && !sharedArticles.length && !activityLoading}}">

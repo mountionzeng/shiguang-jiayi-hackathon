@@ -3,6 +3,7 @@ import { addFamilyMemberRemoteFirst, updateMemberRemoteFirst, restoreMemberRemot
 import { deleteMemberWithConfirm } from '../../services/memberActions';
 import { loadCurrentAccount, saveCurrentAccountName } from '../../services/accountService';
 import {
+  accountOwner,
   contributionRelatedMemberIds,
   contributionStoryTitle,
   FamilyMember,
@@ -17,7 +18,7 @@ import { memoryPlacements } from "../../services/manuscript";
 import { loadSharedFamilyRoom } from "../../services/familyInviteService";
 import { logLoadError } from "../../services/loadErrorLog";
 import { bookmarkDateParts } from "../../services/memoryDates";
-import { loadPendingReturns, PendingReturn, senderLabel } from "../../services/storyReturnsInbox";
+import { loadPendingReturns, PendingReturn } from "../../services/storyReturnsInbox";
 
 interface RoomLoadOptions { familyId?: string; account?: string; edit?: string; storyId?:string; }
 
@@ -27,7 +28,7 @@ function decodeFamilyId(value = ""): string {
 
 /**
  * 记忆之家：先是人，再是记忆。
- * 点「你」看全部记忆，点某个人看和 ta 有关的记忆；写没写进书都在这里。
+ * 点「你」只看本人写下的记忆，点某个人看和 ta 有关的记忆；写没写进书都在这里。
  * 人员编辑与分享往来均在本页展开。
  */
 
@@ -139,7 +140,7 @@ Page({
       viewerRole = shared.viewerRole;
     } else {
       currentState = state ?? await loadRoomStateRemoteFirst({view: "memories"});
-      viewer = currentState.members.find(member => member.relation === "自己") ?? currentState.members[0];
+      viewer = accountOwner(currentState.members);
       // 新用户还没有人物档案时，个人记忆之家仍可浏览空状态。
       viewerRole = viewer?.role ?? "";
     }
@@ -154,9 +155,10 @@ Page({
       if (id) lettersBy.set(id, [...(lettersBy.get(id) ?? []), item]);
     });
     const pool = memoryPool(currentState.contributions);
+    const ownMemories = viewer ? pool.filter(memory => memory.authorMemberId === viewer.id) : [];
     const placements = memoryPlacements(currentState);
     const people: PersonTab[] = [
-      { id: ME, name: "你", relation: "全部记忆", avatarText: "我", count: pool.length, letters: returns.length },
+      { id: ME, name: "你", relation: "我的记忆", avatarText: "我", count: ownMemories.length, letters: 0 },
       ...currentState.members.filter((member) => isActiveMember(member) && !isSelf(member)).map((member) => ({
         id: member.id,
         name: member.name,
@@ -168,7 +170,7 @@ Page({
     ];
     for (const contact of groupAccountActivity(this.allActivity)) people.push({ id: 'account:' + contact.id, name: contact.name, relation: '分享给我的内容', avatarText: contact.avatar, count: contact.count, letters: 0, account: true });
     const active = people.find((person) => person.id === (this.requestedAccount || this.data.activeId)) ?? people[0];
-    const shown = active.id === ME ? pool : memoriesWith(pool, active.id);
+    const shown = active.id === ME ? ownMemories : memoriesWith(pool, active.id);
     const memories: MemoryRow[] = shown
       .slice()
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
@@ -189,12 +191,12 @@ Page({
       });
 
     this.lettersById = new Map(returns.map(item => [item.returnId, item]));
-    const shownLetters = active.id === ME ? returns : (lettersBy.get(active.id) ?? []);
+    const shownLetters = active.id === ME ? [] : (lettersBy.get(active.id) ?? []);
     const letters: LetterRow[] = shownLetters.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(item => ({
       returnId: item.returnId,
       text: item.blocks.map(block => block.text).join("\n\n"),
       dateLabel: formatDate(item.createdAt),
-      where: (active.id === ME ? senderLabel(item) + " · " : "") + "回信给你的书",
+      where: "回信给你的书",
     }));
     this.setData({
       people,
@@ -213,7 +215,7 @@ Page({
       canInvite: this.data.sharedFamilyId ? viewerRole === "owner" : true,
       canEditPerson: !this.data.sharedFamilyId && !active.account,
       trash: currentState.members.filter(member => member.deletedAt),
-      sharedArticles: this.allActivity.filter(event => active.id === ME || active.id === 'account:' + event.accountKey),
+      sharedArticles: this.allActivity.filter(event => active.id === 'account:' + event.accountKey),
     });
     if (this.requestedEdit && !preview) { this.requestedEdit = false; void this.editPerson(); }
   },
