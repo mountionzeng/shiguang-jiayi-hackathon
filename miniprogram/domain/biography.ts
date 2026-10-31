@@ -138,6 +138,8 @@ export interface MemoryContribution {
    * 只有照片、没写一句话时，text 允许为空——见 createContribution 的校验。
    */
   photoIds?: string[];
+  /** Private originals and machine interpretations are read through the capture service. */
+  materialCaptureId?: string;
   /**
    * 原话 → AI 整理 → 人工修改的历史。有这个字段时首条恒为 spoken 原话，
    * text 等于最后一条 revision 的 text。旧记忆没有这个字段，按「只有原话」处理。

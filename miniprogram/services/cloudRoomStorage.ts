@@ -80,6 +80,7 @@ interface CloudMemory {
   segments?: MemoryContribution["segments"];
   aiRevisions?: MemoryContribution["aiRevisions"];
   photoIds?: MemoryContribution["photoIds"];
+  materialCaptureId?: string;
   deletedAt?: string;
 }
 
@@ -317,6 +318,7 @@ async function saveContribution(
       aiRevisions: contribution.aiRevisions,
       deletedAt: contribution.deletedAt,
       photoIds: contribution.photoIds,
+      materialCaptureId: contribution.materialCaptureId,
       updatedAt: serverDate(),
     }),
   }));
@@ -610,6 +612,7 @@ async function readCloudRoomState(options: { readOnly?: boolean; view?: RoomStat
       aiRevisions: memory.aiRevisions,
       deletedAt: memory.deletedAt,
       photoIds: memory.photoIds,
+      materialCaptureId: memory.materialCaptureId,
     }),
   );
 

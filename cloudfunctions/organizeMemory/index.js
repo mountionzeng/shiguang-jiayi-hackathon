@@ -233,6 +233,9 @@ function organizationBrief(memoryType, inlineAnswer = false, writingMode) {
 }
 
 async function main(event, dependencies = {}) {
+  if (typeof event?.action === 'string' && event.action.startsWith('capture')) {
+    return require('./materialCapture').handle(event, dependencies);
+  }
   const apiKey = process.env.ORGANIZE_AI_API_KEY || process.env.CHAT_AI_API_KEY || process.env.AI_API_KEY;
   const model = process.env.ORGANIZE_AI_MODEL || process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
   const configuredBaseUrl = process.env.ORGANIZE_AI_BASE_URL || process.env.CHAT_AI_BASE_URL || process.env.AI_BASE_URL || "";

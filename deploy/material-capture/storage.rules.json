@@ -1,0 +1,4 @@
+{
+  "read": "(resource.openid == auth.openid || resource.openid == auth.uid) && (/^chapter-delivery-inbox\\//.test(resource.path) || /^chapter-delivery-staging\\//.test(resource.path) || /^chapter-packages\\//.test(resource.path) || /^story-images\\//.test(resource.path) || /^user-photos\\//.test(resource.path) || /^story-sharing\\//.test(resource.path) || /^story-audio\\//.test(resource.path) || /^voice-samples\\//.test(resource.path))",
+  "write": "(resource.openid == auth.openid || resource.openid == auth.uid) && (/^chapter-delivery-inbox\\//.test(resource.path) || /^chapter-delivery-staging\\//.test(resource.path) || /^chapter-packages\\//.test(resource.path) || /^story-images\\//.test(resource.path) || /^user-photos\\//.test(resource.path) || /^story-sharing\\//.test(resource.path) || /^story-audio\\//.test(resource.path) || /^voice-samples\\//.test(resource.path) || /^memory-capture-uploads\\//.test(resource.path))"
+}
