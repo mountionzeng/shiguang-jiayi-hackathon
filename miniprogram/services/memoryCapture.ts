@@ -7,7 +7,7 @@ import {classifyImportFiles,readImportTextFile,type ImportFileLike} from './memo
 
 export interface CaptureAudioFile {id:string;name:string;path:string;bytes:number;extension:string;fileID?:string}
 export interface MemoryCaptureDraft {id:string;familyId:string;composerText?:string;submittedText?:string;text:string;photoIds:string[];photoPaths:string[];audio:CaptureAudioFile[];submitted?:boolean}
-export interface MemoryCaptureReceipt {id:string;familyId:string;status:'received'|'processing'|'uncertain'|'ready'|'saved';text:string;photoIds:string[];audio:Array<{id:string;name:string;fileID?:string}>;evidence:Array<{sourceId:string;kind:string;text:string}>;draft?:{title:string;body:string};memoryId:string;message:string;createdAtMs:number}
+export interface MemoryCaptureReceipt {id:string;familyId:string;status:'received'|'processing'|'uncertain'|'ready'|'saved';text:string;photoIds:string[];audio:Array<{id:string;name:string;fileID?:string}>;evidence:Array<{sourceId:string;kind:string;text:string}>;draft?:{title:string;body:string};memoryId:string;message:string;createdAtMs:number;pollAfterMs?:number}
 const makeId=()=>`capture-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,12)}`;
 const key=(familyId:string)=>`memory-capture:v1:${familyId}`;
 export async function assertCaptureScope(familyId:string){if(await currentFamilyId()!==familyId)throw new Error('账号已切换，素材仍保留在原账号，请重新打开聊天');}
@@ -79,7 +79,7 @@ export async function continueMemoryCapture(receipt:MemoryCaptureReceipt,onRecei
     const updated=await call<MemoryCaptureReceipt>('captureProcess',{id:receipt.id,audioConsent,photoConsent},receipt.familyId);onReceipt(updated);
     if(updated.status!=='received' && updated.status!=='ready')return;
     // The existing per-account AI throttle is one second; each step has its own durable receipt.
-    await new Promise(resolve=>setTimeout(resolve,1100));
+    await new Promise(resolve=>setTimeout(resolve,Math.max(1100,Math.min(updated.pollAfterMs || 0,5000))));
   }
 }
 export async function saveCaptureOriginal(id:string,familyId:string){return call<MemoryCaptureReceipt>('captureOriginal',{id},familyId);}

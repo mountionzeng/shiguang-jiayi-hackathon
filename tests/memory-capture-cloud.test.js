@@ -135,3 +135,78 @@ test('录音服务拒绝授权时显示明确原因，原件可保存且不重�
     if(oldKey===undefined)delete process.env.DOUBAO_SPEECH_API_KEY;else process.env.DOUBAO_SPEECH_API_KEY=oldKey;
   }
 });
+
+
+test('素材存储规则只收紧既有创建者权限，原件目录拒绝客户端读写', () => {
+  const rules=require('../deploy/material-capture/storage.rules.json');
+  // The expressions use the documented CloudBase regex test syntax, which is also valid JS.
+  const check=(kind,path,owner='owner',visitor='owner')=>Function('resource','auth',`return (${rules[kind]});`)({path,openid:owner},{openid:visitor,uid:'web-'+visitor});
+  for(const path of ['user-photos/a.jpg','chapter-packages/a.json','story-images/a.png','voice-samples/a.wav']) {
+    assert.equal(check('read',path),true);assert.equal(check('write',path),true);
+    assert.equal(check('read',path,'owner','stranger'),false);assert.equal(check('write',path,'owner','stranger'),false);
+  }
+  assert.equal(check('write','memory-capture-uploads/owner/a.mp3'),true);
+  assert.equal(check('write','memory-capture-uploads/owner/a.mp3','owner','stranger'),false);
+  assert.equal(check('read','memory-capture-uploads/owner/a.mp3'),false);
+  assert.equal(check('read','memory-capture-originals/owner/a.mp3'),false);
+  assert.equal(check('write','memory-capture-originals/owner/a.mp3'),false);
+});
+
+test('标准版转写持久化任务，等待与重开只查询、不重复提交', async () => {
+  const names=['assertServerReady','assertConsentVersion','moderateText','assertIdentityStillActive','reserveAiRequest'];
+  const old=Object.fromEntries(names.map(key=>[key,guard[key]])),env={...process.env};
+  names.forEach(key=>{guard[key]=async()=>{};});
+  process.env.DOUBAO_SPEECH_API_KEY='fixture';process.env.DOUBAO_SPEECH_RESOURCE_ID='volc.seedasr.auc';
+  try {
+    const f=fixture();f.cloud.getTempFileURL=async()=>({fileList:[{tempFileURL:'https://example.com/private-fixture'}]});
+    const calls=[];
+    const fetcher=async(url,options)=>{
+      calls.push({url,options});
+      const code=calls.length===2?'20000001':'20000000';
+      return {ok:true,status:200,headers:{get:()=>code},json:async()=>({result:{text:'虚构录音：纸船抵达灯塔。'}})};
+    };
+    let handler=createCaptureHandler({...f,fetcher});
+    const input={...request(),audio:[{id:'audio-123456',extension:'mp3',bytes:30}]};
+    const received=await handler.receive(input);
+    await handler.register({id:input.id,fileId:input.audio[0].id,fileID:`cloud://env.bucket/${received.uploads[0].cloudPath}`});
+    const event={...input,audioConsent:true};
+    const pending=await handler.processNext(event);
+    assert.equal(pending.status,'received');assert.equal(pending.pollAfterMs,5000);
+    assert.equal(pending.audio[0].asrTask,undefined);
+    handler=createCaptureHandler({...f,fetcher});
+    assert.equal((await handler.processNext(event)).status,'received');
+    const done=await handler.processNext(event);
+    assert.equal(done.evidence.find(e=>e.kind==='transcript').text,'虚构录音：纸船抵达灯塔。');
+    assert.equal(done.pollAfterMs,0);assert.equal(done.message,'');
+    assert.equal(calls.filter(c=>c.url.endsWith('/submit')).length,1);
+    assert.equal(calls.filter(c=>c.url.endsWith('/query')).length,2);
+    assert.equal(new Set(calls.map(c=>c.options.headers['X-Api-Request-Id'])).size,1);
+    assert.equal(calls[0].options.headers['X-Api-Resource-Id'],'volc.seedasr.auc');
+    assert.equal(JSON.parse(calls[0].options.body).audio.url,'https://example.com/private-fixture');
+  } finally {Object.assign(guard,old);for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
+});
+
+test('标准版提交响应丢失或函数中断后，只恢复原任务查询', async () => {
+  const names=['assertServerReady','assertConsentVersion','moderateText','assertIdentityStillActive','reserveAiRequest'];
+  const old=Object.fromEntries(names.map(key=>[key,guard[key]])),env={...process.env};
+  names.forEach(key=>{guard[key]=async()=>{};});
+  process.env.DOUBAO_SPEECH_API_KEY='fixture';process.env.DOUBAO_SPEECH_RESOURCE_ID='volc.seedasr.auc';
+  try {
+    const f=fixture();f.cloud.getTempFileURL=async()=>({fileList:[{tempFileURL:'https://example.com/private-fixture'}]});
+    const calls=[];const handler=createCaptureHandler({...f,fetcher:async(url)=>{
+      calls.push(url);if(url.endsWith('/submit'))throw new Error('connection lost');
+      return {ok:true,status:200,headers:{get:()=> '20000000'},json:async()=>({result:{text:'纸船。'}})};
+    }});
+    const input={...request(),audio:[{id:'audio-123456',extension:'mp3',bytes:30}]};
+    const received=await handler.receive(input);
+    await handler.register({id:input.id,fileId:input.audio[0].id,fileID:`cloud://env.bucket/${received.uploads[0].cloudPath}`});
+    assert.equal((await handler.processNext({...input,audioConsent:true})).status,'received');
+    const row=[...f.state.values()].find(r=>r.id===input.id);
+    row.status='processing';row.updatedAtMs=Date.now()-130000;
+    assert.equal((await handler.read(input)).status,'received');
+    const result=await handler.processNext({...input,audioConsent:true});
+    assert.equal(result.evidence.find(e=>e.kind==='transcript').text,'纸船。');
+    assert.equal(calls.filter(url=>url.endsWith('/submit')).length,1);
+    assert.equal(calls.filter(url=>url.endsWith('/query')).length,1);
+  } finally {Object.assign(guard,old);for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
+});

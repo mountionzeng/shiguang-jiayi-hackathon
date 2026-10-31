@@ -28,7 +28,8 @@ function inputOf(event) {
 }
 function publicReceipt(row) {
   const stale = row.status === 'processing' && Date.now()-row.updatedAtMs>120000;
-  return {id:row.id,familyId:row.familyId,status:stale?'uncertain':row.status,text:row.text,photoIds:row.photoIds,audio:row.audio.map(({id,name})=>({id,name})),evidence:row.evidence,draft:row.draft,memoryId:row.memoryId || '',message:row.message || '',createdAtMs:row.createdAtMs};
+  const resumable=stale && row.audio.some(file=>file.asrTask && !row.evidence.some(e=>e.sourceId===file.id));
+  return {id:row.id,familyId:row.familyId,status:resumable?'received':stale?'uncertain':row.status,text:row.text,photoIds:row.photoIds,audio:row.audio.map(({id,name})=>({id,name})),evidence:row.evidence,draft:row.draft,memoryId:row.memoryId || '',message:row.message || '',createdAtMs:row.createdAtMs,pollAfterMs:row.pollAfterMs || 0};
 }
 function owned(row,identity) { if(!row || row.accountId!==identity.accountId || row.familyId!==identity.familyId) throw error('NOT_FOUND','素材不存在'); return row; }
 
@@ -91,7 +92,45 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
     if(!signature)throw error('INVALID_AUDIO','录音格式与内容不一致');
     return bytes;
   }
-  async function transcribe(file) {
+  async function transcribeStandard(file, captureId) {
+    const apiKey=process.env.DOUBAO_SPEECH_API_KEY;
+    if(!apiKey)throw error('ASR_NOT_CONFIGURED','录音转写尚未配置，原件已保留');
+    let task=file.asrTask;
+    if(task && now()-task.createdAtMs>=14400*1000)throw error('ASR_FAILED','录音转写超时，原件已保留');
+    let url;
+    if(!task){
+      await validatedAudio(file);
+      const signed=await cloud.getTempFileURL({fileList:[{fileID:file.fileID,maxAge:14400}]});
+      url=signed.fileList?.[0]?.tempFileURL;
+      if(typeof url!=='string' || !url.startsWith('https://'))throw error('AUDIO_UNAVAILABLE','原录音暂时无法读取');
+      task={id:crypto.randomUUID(),resource:'volc.seedasr.auc',createdAtMs:now()};
+      // Persist before sending: an interrupted submission is queried, never resubmitted.
+      await mutate(captureId,row=>{row.audio.find(item=>item.id===file.id).asrTask=task;});
+    }
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000);
+    try {
+      const response=await fetcher(`https://openspeech.bytedance.com/api/v3/auc/bigmodel/${url?'submit':'query'}`,{
+        method:'POST',signal:controller.signal,
+        headers:{'Content-Type':'application/json','X-Api-Key':apiKey,'X-Api-Resource-Id':task.resource,'X-Api-Request-Id':task.id,...(url?{'X-Api-Sequence':'-1'}:{})},
+        body:JSON.stringify(url?{user:{uid:identity.accountId},audio:{url,format:file.extension},request:{model_name:'bigmodel'}}:{}),
+      });
+      const code=response.headers?.get('X-Api-Status-Code');
+      if(response.status===401 || response.status===403 || code==='45000030')throw error('ASR_NOT_AUTHORIZED','录音服务尚未获授权');
+      if(!response.ok)throw error('ASR_FAILED','录音服务请求失败');
+      if(url && code==='20000000')return null;
+      if(!url && ['20000001','20000002'].includes(code))return null;
+      if(code!=='20000000')throw error('ASR_FAILED','录音转写未完成');
+      const result=await response.json(),text=result.result?.text;
+      if(typeof text!=='string' || !text.trim() || text.length>20000)throw error('ASR_FAILED','未能识别这段录音');
+      return text;
+    } catch(failure) {
+      // Network ambiguity is safe to resolve by querying the same durable task.
+      if(!['ASR_NOT_AUTHORIZED','ASR_FAILED'].includes(failure.code) && now()-task.createdAtMs<14400*1000)return null;
+      throw failure;
+    } finally {clearTimeout(timer);}
+  }
+  async function transcribe(file, captureId) {
+    if(file.asrTask || process.env.DOUBAO_SPEECH_RESOURCE_ID==='volc.seedasr.auc')return transcribeStandard(file,captureId);
     const apiKey=process.env.DOUBAO_SPEECH_API_KEY;
     if(!apiKey)throw error('ASR_NOT_CONFIGURED','录音转写尚未配置，原件已保留');
     const bytes=await validatedAudio(file);
@@ -122,7 +161,11 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
   }
   async function processNext(event) {
     guard.assertServerReady();guard.assertConsentVersion(identity.account,guard.AI_CONSENT_VERSION);
-    const initial=await read(event.id);
+    let initial=await read(event.id);
+    if(initial.status==='processing' && now()-initial.updatedAtMs>120000 && initial.audio.some(file=>file.asrTask && !initial.evidence.some(e=>e.sourceId===file.id))){
+      await mutate(event.id,row=>{if(row.status!=='processing' || now()-row.updatedAtMs<=120000)return false;row.status='received';});
+      initial=await read(event.id);
+    }
     if(initial.status==='ready')return commit(event.id);
     if(initial.status!=='received')return publicReceipt(initial);
     if(initial.audio.some(file=>!file.fileID))throw error('UPLOAD_PENDING','录音尚未上传完');
@@ -132,11 +175,18 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
     const claimed=await mutate(event.id,row=>{if(row.status!=='received')return false;row.status='processing';return true;});
     if(!claimed)return publicReceipt(await read(event.id));
     try {
-      await guard.reserveAiRequest(db,identity,'materialCapture');
       const nextAudio=initial.audio.find(file=>!initial.evidence.some(e=>e.sourceId===file.id));
       const nextPhoto=initial.photoIds.find(id=>!initial.evidence.some(e=>e.sourceId===id));
+      if(!nextAudio?.asrTask)await guard.reserveAiRequest(db,identity,'materialCapture');
       let evidence,draft;
-      if(nextAudio) evidence={sourceId:nextAudio.id,kind:'transcript',text:await transcribe(nextAudio)};
+      if(nextAudio) {
+        const transcript=await transcribe(nextAudio,event.id);
+        if(transcript===null){
+          await mutate(event.id,row=>{row.status='received';row.message='录音正在转写，原件已保存；稍后可继续整理。';row.pollAfterMs=5000;});
+          return publicReceipt(await read(event.id));
+        }
+        evidence={sourceId:nextAudio.id,kind:'transcript',text:transcript};
+      }
       else if(nextPhoto) {
         const response=await cloud.callFunction({name:'photoAccess',data:{action:'read',familyId:identity.familyId,photoIds:[nextPhoto],variant:'small',purpose:'ai-caption',onBehalfOfOpenid:identity.openid,internalToken:process.env.PHOTO_ACCESS_INTERNAL_TOKEN}});
         const photo=response.result?.photos?.find(item=>item.photoId===nextPhoto);
@@ -152,7 +202,7 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
       if(output.length>20000)throw error('OUTPUT_TOO_LONG','整理内容过长，原件已保留');
       await guard.moderateText(cloud,identity.openid,output,'素材整理结果',{db});
       await guard.assertIdentityStillActive(db,identity);
-      await mutate(event.id,row=>{if(row.status!=='processing')throw error('CAPTURE_CHANGED','素材状态已改变');if(evidence)row.evidence.push(evidence);if(draft)row.draft=draft;row.status=draft?'ready':'received';});
+      await mutate(event.id,row=>{if(row.status!=='processing')throw error('CAPTURE_CHANGED','素材状态已改变');row.message='';row.pollAfterMs=0;if(evidence)row.evidence.push(evidence);if(draft)row.draft=draft;row.status=draft?'ready':'received';});
     } catch (failure) {
       const messages={ASR_NOT_CONFIGURED:'录音转写尚未配置，原录音已保留，可先保存原件。',ASR_NOT_AUTHORIZED:'录音转写服务尚未获授权，原录音已保留，可先保存原件。',ASR_FAILED:'录音转写未完成，原录音已保留，可先保存原件。',AI_NOT_CONFIGURED:'素材整理服务尚未配置，原素材已保留，可先保存原件。',PHOTO_UNAVAILABLE:'照片尚未完成上传或审核，原素材已保留。'};
       const message=messages[failure?.code] || '整理未完成，原素材已保留，没有自动重复调用AI。';
