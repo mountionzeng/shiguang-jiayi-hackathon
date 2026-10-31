@@ -60,3 +60,17 @@ organizeMemory 已从干净提交 6800bc0415f10d0d9321245d8497113efdd86508 使�
 浏览器与独立微信开发者工具云控制台连接已恢复。organizeMemory 已复用网页现有 DOUBAO_SPEECH_API_KEY，并设置 DOUBAO_SPEECH_RESOURCE_ID=volc.seedasr.auc；控制台保存时间 18:46:28。未购买、充值或接受新协议。MATERIAL_CAPTURE_READY 仍关闭。配置保存截图位于 /tmp/capture-release-1031/speech-config-saved.png，不含环境变量值。
 
 最新全量 check：1614 项通过，日志 /tmp/capture-release-1031/check-final-standard.log。主线程检查新增标准版提交/查询、超时恢复、私有链接和前端轮询；真实录音转写与混合素材保存仍待验收。标准版文档列举 raw/wav/mp3/ogg，M4A 兼容仍须实测，不能把支持导入原件等同于已支持转写。
+
+### 标准版部署及首次真实验收
+
+- 已从干净提交 a1d907ec9720fbfbb4d9037278dbfb7ae6646637 按标准脚本部署 organizeMemory。下载回读11个业务文件逐字节一致；证据 /tmp/capture-release-1031/deploy-standard.log、download-standard.log、readback-standard.json。
+- 18:49:35 云配置增加 VISION_MODEL=hy-vision-2.0-instruct、MATERIAL_CAPTURE_READY=true，截图 capture-enabled.png。既有发布同意/内容审核/账号权限保留。
+- 真实UI文字：记下此刻→随手记，输入 Fictional capture test 1031，允许在线AI，成功生成“虚构测试记录1031：蓝色纸船”，打开记忆读取到云端正文。证据 text-memory-reopened.png。
+- 真实UI录音：从微信聊天选文件（开发工具系统文件选择器）导入本机合成的虚构MP3录音，26KB。允许豆包转写后成功保存“虚构测试录音整理”。来源显示准确转写“这是一段虚构测试录音。今天小何把蓝色纸船放进水里，纸船慢慢飘到黄色灯塔旁边。”并提供播放原录音入口。证据 audio-transcribed.png。本次已消费标准版测试时长，未购买新资源。
+- 真实UI图片：导入已有虚构几何船只测试PNG，允许本次照片理解。成功生成“简约几何船只图形记忆初稿”，来源中准确描述浅蓝背景、深蓝梯形船体、黄色长条和橙色三角形。证据 image-described.png。
+- 上述截图位于 /tmp/capture-release-1031。测试记忆尚待软删除清理，M4A、账号隔离、断网恢复、全新真实账号和整体发布验收未完成，不生成可交付二维码。
+
+- 补充：M4A 使用同一虚构录音转成AAC/M4A，经真实文件选择→允许转写→保存成功，打开云端“虚构测试录音转写摘要”核对文字，证据 m4a-memory-reopened.png。供应商实际接受此测试M4A；不代表任意编码/长度M4A均已验证。
+
+- 清理已完成：从记忆档案列表逐条软删除本轮4条测试记忆，均确认“放进最近删除，随时可以恢复”；记忆数量从18回到原有14，未操作原有14条记忆。原始素材和历史保留，不做永久删除。之前SDK存储权限探测留下的2份测试文件仍未删除，不将整体 cleanedUp 标成 true。
+- 当前未完成：跨真实账号隔离、断网恢复、全新真实账号首次流程及其余本提交整体发布验收。因此不生成新二维码、不上传审核版本。已知用户只有两个既有微信号，不应反复要求其凭空提供第三个账号，也不伪造 fresh-account-home passed。
