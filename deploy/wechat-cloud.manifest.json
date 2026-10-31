@@ -273,7 +273,9 @@
         "Configure ORGANIZE_AI_*, CHAT_AI_*, or fallback AI_* provider settings",
         "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation",
         "Confirm provider entitlement, quota, and billing mode",
-        "Verify input/output moderation and one controlled request before enabling both release gates"
+        "Verify input/output moderation and one controlled request before enabling both release gates",
+        "Before enabling MATERIAL_CAPTURE_READY: install and verify private capture collection/index and storage rules in deploy/material-capture/README.md",
+        "Verify real photo understanding and ordinary-audio ASR entitlement with two-account isolation; existing organize actions remain independent"
       ],
       "timeoutSeconds": 60,
       "environmentVariables": [
@@ -297,8 +299,13 @@
         "AI_MODERATION_TENCENT_SECRET_KEY",
         "AI_MODERATION_TENCENT_SESSION_TOKEN",
         "AI_MODERATION_TENCENT_REGION",
-        "AI_MODERATION_TENCENT_BIZ_TYPE"
-      ]
+        "AI_MODERATION_TENCENT_BIZ_TYPE",
+        "MATERIAL_CAPTURE_READY",
+        "PHOTO_ACCESS_INTERNAL_TOKEN",
+        "VISION_MODEL",
+        "DOUBAO_SPEECH_API_KEY"
+      ],
+      "databaseRulesFile": "deploy/material-capture/database.rules.json"
     },
     "ensureCloudCollections": {
       "deploymentClass": "bootstrapOnce",

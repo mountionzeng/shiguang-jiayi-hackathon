@@ -1097,94 +1097,30 @@ test("the personal home page summarizes the active profile", async (context) => 
   assert.equal(page.data.familyCount, 2);
 });
 
-test("聊天页导入长文字文件，按顺序分段但只保存成一条未归类记忆", async (context) => {
-  const storage = installWxMock(createInitialRoomState());
-  context.after(storage.restore);
-  const wxMock = (globalThis as unknown as { wx: Record<string, unknown> }).wx;
-  wxMock.showLoading = () => undefined;
-  wxMock.hideLoading = () => undefined;
-  wxMock.getFileSystemManager = () => ({
-    readFile: ({ success }: { success: (result: { data: string }) => void }) => success({
-      data: `第一自然段。\n${"很久以前的往事".repeat(80)}。`,
-    }),
-  });
-  const page = instantiate(await pageDefinition("interview"));
-
-  await callPage(page, "saveImportedFiles", [{ name: "外婆的故事.txt", path: "wxfile://memory.txt", size: 800 }]);
-
-  const imported = last(storage.roomState().contributions);
-  assert.equal(imported?.title, "外婆的故事");
-  assert.equal(imported?.storyTitle, undefined);
-  assert.equal(imported?.scope, "personal");
-  assert.ok((imported?.segments?.length || 0) > 1);
-  assert.ok(imported?.segments?.every(segment => segment.source === "import" && Array.from(segment.text).length <= 500));
-  assert.equal(page.data.saved, false, "导入不应结束或覆盖正在进行的聊天");
-  assert.equal(page.data.importing, false);
-
-  const wxml = readFileSync("miniprogram/pages/interview/interview.wxml", "utf8");
-  assert.match(wxml, /bindtap="importMemory"/);
-  assert.doesNotMatch(wxml, /照片 · 赛后接入|语音 · 赛后接入/);
+test("聊天页导入文字先保留原素材，不覆盖当前对话或提前创建记忆", async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const mock=wx as any;mock.cloud={callFunction:async()=>({result:{openid:'capture-test-owner'}})};
+  mock.getFileSystemManager=()=>({readFile:({success}:any)=>success({data:'第一自然段。\n第二自然段。'})});
+  const page=instantiate(await pageDefinition('interview'));
+  const before=structuredClone(storage.roomState());page.setData({inputText:'补充的话'});
+  await callPage(page,'saveImportedFiles',[{name:'故事.txt',path:'wxfile://memory.txt',size:80}]);
+  const draft=page.data.captureDraft as any;
+  assert.equal(draft.text,'第一自然段。\n第二自然段。');assert.equal(draft.composerText,'补充的话');
+  assert.deepEqual(storage.roomState(),before);assert.equal(page.data.saved,false);assert.equal(page.data.importing,false);
+  callPage(page,'onInput',{detail:{value:'补充一句新想法'}});
+  assert.equal(mock.getStorageSync('memory-capture:v1:'+draft.familyId).composerText,'补充一句新想法');
 });
 
-test("聊天页导入照片时可以跳过写字，原图留在本机并进入云上传队列", async (context) => {
-  const storage = installWxMock(createInitialRoomState());
-  context.after(storage.restore);
-  const wxMock = (globalThis as unknown as { wx: Record<string, unknown> }).wx;
-  wxMock.env = { USER_DATA_PATH: "/user" };
-  wxMock.showLoading = () => undefined;
-  wxMock.hideLoading = () => undefined;
-  wxMock.getFileSystemManager = () => ({
-    saveFile: ({ filePath, success }: { filePath: string; success: (result: { savedFilePath: string }) => void }) =>
-      success({ savedFilePath: filePath }),
-    accessSync: () => undefined,
-  });
-  const page = instantiate(await pageDefinition("interview"));
-
-  await callPage(page, "saveImportedFiles", [{ name: "合影.jpg", path: "wxfile://photo.jpg", size: 1200, type: "image" }]);
-  assert.equal(page.data.importDraftOpen, true);
-  assert.equal((page.data.importPhotoPaths as string[])[0].startsWith("/user/photo-"), true);
-  await callPage(page, "savePhotoImport");
-
-  const imported = last(storage.roomState().contributions);
-  assert.equal(imported?.text, "");
-  assert.equal(imported?.photoIds?.length, 1);
-  assert.match(imported?.title || "", /^照片 · \d+月\d+日$/);
-  const queue = (wxMock.getStorageSync as (key: string) => unknown)("shiguang-photo-upload-queue-v1") as unknown[];
-  assert.equal(queue.length, 1);
-});
-
-test("照片导入可以取得 AI 草稿，用户改过后以 AI 已修改标识保存", async (context) => {
-  const storage = installWxMock(createInitialRoomState());
-  context.after(storage.restore);
-  const previousCaption = storyImageApi.captionPhotos;
-  context.after(() => { storyImageApi.captionPhotos = previousCaption; });
-  storyImageApi.captionPhotos = async () => ({
-    status: "ok", caption: "院子里晒着被子", message: "", aiGenerated: true,
-  });
-  const wxMock = (globalThis as unknown as { wx: Record<string, unknown> }).wx;
-  wxMock.showLoading = () => undefined;
-  wxMock.hideLoading = () => undefined;
-  const page = instantiate(await pageDefinition("interview"));
-  page.setData({ importDraftOpen: true, importPhotoIds: ["photo-test-ai"], importPhotoPaths: ["/user/test.jpg"] });
-
-  await callPage(page, "generateImportCaption");
-  assert.equal(page.data.importCaption, "院子里晒着被子");
-  assert.equal(page.data.importAiLabel, "文字 AI 生成");
-  callPage(page, "onImportCaptionInput", { detail: { value: "院子里晒着外婆洗好的被子" } });
-  assert.equal(page.data.importAiLabel, "文字 AI 生成 · 已由你修改");
-  await callPage(page, "savePhotoImport");
-
-  const imported = last(storage.roomState().contributions);
-  assert.equal(imported?.text, "院子里晒着外婆洗好的被子");
-  assert.equal(imported?.organizationMode, "cloud-ai");
-});
-
-test("文字 AI 发布闸门关闭时照片导入页不显示看图写文字入口", async () => {
-  const interview = instantiate(await pageDefinition("interview"));
-  assert.equal(interview.data.importCaptionAiReady, false, "当前生产配置不能开放照片文字 AI");
-
-  const wxml = readFileSync("miniprogram/pages/interview/interview.wxml", "utf8");
-  assert.match(wxml, /wx:if="\{\{importCaptionAiReady\}\}"[^>]*bindtap="generateImportCaption"/);
+test("聊天页照片收集保留原图和上传队列，发送前不另开编辑页",async context=>{
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const mock=wx as any;mock.cloud={callFunction:async()=>({result:{openid:'capture-test-owner'}})};mock.env={USER_DATA_PATH:'/user'};
+  mock.getFileSystemManager=()=>({saveFile:({filePath,success}:any)=>success({savedFilePath:filePath}),accessSync:()=>{}});
+  const page=instantiate(await pageDefinition('interview')),before=storage.roomState().contributions.length;
+  await callPage(page,'saveImportedFiles',[{name:'合影.jpg',path:'wxfile://photo.jpg',size:1200,type:'image'}]);
+  const draft=page.data.captureDraft as any;
+  assert.equal(draft.photoIds.length,1);assert.ok(draft.photoPaths[0].startsWith('/user/photo-'));
+  assert.equal(mock.getStorageSync('shiguang-photo-upload-queue-v1').length,1);assert.equal(storage.roomState().contributions.length,before);
+  assert.doesNotMatch(readFileSync('miniprogram/pages/interview/interview.wxml','utf8'),/import-mask|bindtap="generateImportCaption"/);
 });
 
 test("the home cover and its three counts are about the story you are on", async (context) => {
@@ -2633,7 +2569,7 @@ test("continuous keyboard input never echoes bound values; send clears once and 
   assert.equal((page.data.messages as Array<{ text: string }>)[0].text, values[values.length - 1]);
   assert.deepEqual(updates.filter(update => "inputText" in update).map(update => update.inputText), [""]);
   assert.equal(page.data.inputText, "");
-  for (const [handler, field] of [["onTitleInput", "draftTitle"], ["onDraftInput", "draftText"], ["onImportCaptionInput", "importCaption"], ["onStoryTitleInput", "storyTitle"]]) {
+  for (const [handler, field] of [["onTitleInput", "draftTitle"], ["onDraftInput", "draftText"], ["onStoryTitleInput", "storyTitle"]]) {
     updates.length = 0;
     callPage(page, handler, { detail: { value: "新的" } });
     callPage(page, handler, { detail: { value: "新的文字" } });
@@ -4037,4 +3973,43 @@ test('article chat uses live source-only context instead of the legacy saved-boo
   await callPage(page,"refresh",state);
   assert.deepEqual(page.data.sharedArticles,[]);
   assert.deepEqual((page.data.memories as any[]).map(m=>m.id).sort(),ownIds);
+});
+
+
+test("随手记入口直接收集素材，连续发送仍整理为新记忆", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  const page = instantiate(await pageDefinition('interview'));
+  const stageCapture = page.stageCapture as (files: any) => Promise<void>;
+  page.stageCapture = async function(files: any) {
+    (wx as any).cloud = {callFunction: async () => ({result: {openid: 'capture-test-owner'}})};
+    return stageCapture.call(this, files);
+  };
+  await callPage(page, 'onLoad', {memoryType: 'note', capture: '1'});
+  assert.equal(page.data.stage, 'chat');
+  assert.equal(page.data.captureEntry, true);
+  assert.ok(page.data.captureDraft);
+  let sent = 0;
+  page.sendCapture = async function() {sent++; this.setData({captureDraft: null, inputText: ''});};
+  page.setData({inputText: '第一段虚构记忆'});
+  await callPage(page, 'send');
+  page.setData({inputText: '第二段虚构记忆'});
+  await callPage(page, 'send');
+  assert.equal(sent, 2);
+  assert.deepEqual(page.data.answers, []);
+});
+
+
+test("随手记误点空发送不会锁住输入框，随后仍可添加文字", async context => {
+  const storage = installWxMock(createInitialRoomState());
+  context.after(storage.restore);
+  (wx as any).cloud = {callFunction: async () => ({result: {openid: 'capture-test-owner'}})};
+  const page = instantiate(await pageDefinition('interview'));
+  page.setData({captureEntry: true});
+  await callPage(page, 'stageCapture', []);
+  await callPage(page, 'send');
+  assert.match(String(page.data.captureError), /先添加/);
+  assert.equal((page.data.captureDraft as any).submitted, undefined);
+  callPage(page, 'onInput', {detail: {value: '误点之后写下的虚构故事'}});
+  assert.equal(page.data.inputText, '误点之后写下的虚构故事');
 });

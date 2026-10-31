@@ -189,6 +189,7 @@ Page({
     loadError: "",
     storageLabel: "",
     editAiLabel: "",
+    materialCaptureId: "",
     showOriginal: false,
     originalText: "",
     canRevertToSpoken: false,
@@ -217,6 +218,7 @@ Page({
   keyboardListener: undefined as ((event: { height: number }) => void) | undefined,
   xiaoyiLandedAiText: "",
 
+  openMaterialSources(){if(this.data.materialCaptureId)wx.navigateTo({url:`/pages/interview/interview?captureId=${encodeURIComponent(this.data.materialCaptureId)}`});},
   onLoad(options: { tab?: string; id?: string }) {
     this.setData({ activeTab: options.tab === "memoir" ? "memoir" : "note" });
     if (options.id) this.setData({ editingId: options.id });
@@ -437,6 +439,7 @@ Page({
       previewAiLabel: "",
       editTitle: memory.title || "",
       editText: memory.text,
+      materialCaptureId: memory.materialCaptureId || "",
       selectedRevisionId: currentRevision?.id || "",
       selectedVersionLabel: memoryVersionLabel(currentRevision),
       isCurrentVersion: true,
@@ -538,7 +541,7 @@ Page({
     const apply = () => {
       this.resetArchiveXiaoyiState();
       this.setData({ editTitle: original.title || "", editText: original.text,
-      selectedRevisionId: "", selectedVersionLabel: memoryVersionLabel(undefined), isCurrentVersion: true,
+      materialCaptureId:"", selectedRevisionId: "", selectedVersionLabel: memoryVersionLabel(undefined), isCurrentVersion: true,
       editAiLabel: memoryAiLabel(original), isEditingDocument: false, chatExpanded: false, chatInput: "", chatNotice: "", documentWritingInstruction: "",
       chatMessages: [{ id: "welcome-" + original.id, role: "assistant", text: "我会围绕上方这段记忆和你聊。", label: "" }] });
     };
