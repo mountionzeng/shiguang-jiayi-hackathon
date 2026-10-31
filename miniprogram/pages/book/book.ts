@@ -6,7 +6,7 @@ import { saveArticle, type ArticleSaveRequest } from '../../services/articleServ
 import { ensurePhotoUploads } from '../../services/photoCloud';
 import { linePosition, splitLines, type LinePosition } from "../../domain/lineModules";
 import { exploreMemoryConnection, MemoryConnection } from "../../services/memoryConnections";
-import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft } from "../../services/chapterDraft";
+import { chapterDraftScope, chapterDraftKey, readChapterDraft, writeChapterDraft, clearChapterDraft, retainChapterDraft, readRetainedChapterDrafts, type ChapterDraft } from "../../services/chapterDraft";
 import { SendSnapshot, snapshotFromState, stageSendSnapshot } from "../../services/bookSend";
 import { LINE_CONTEXT_CHAT_ENABLED } from "../../config/runtime";
 import { displayLines, lineContextText, lineIndexFromRange, lineIndexFromSelection } from "../../services/lineContext";
@@ -86,6 +86,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 
 Page({
   data: {
+    retainedDrafts: [] as ChapterDraft[],
     articleChatPhotos: [] as Array<{id:string;path:string}>,
     article: null as ArticleChapter | null, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
     openingChapter: null as { title: string; text: string } | null,
@@ -210,6 +211,9 @@ Page({
   xiaoyiCaptureId: 0,
   xiaoyiCapturePending: undefined as Promise<void> | undefined,
   articleConflict: false,
+  chapterBaselineStale: false,
+  chapterManaging: false,
+  articleBase: null as { revisionId: string; version?: number } | null,
   pendingChapterClaim: '',
   articlePending: null as ArticleChapter | null,
   articleAttempt: null as ArticleSaveRequest | null,
@@ -220,21 +224,44 @@ Page({
     this.setData({ articleShareUrl: '' });
     this.articlePending = event.detail.chapter;
     this.setData({ articleDirty: true, articleStatus: '正在保存…' });
-    try { wx.setStorageSync(this.articleKey(), { revisionId: this.revisionId, chapter: this.articlePending }); }
-    catch { this.setData({ articleStatus: '本机空间不足，请保持本页打开并重试保存' }); }
+    this.backupArticle();
     if (this.articleTimer) clearTimeout(this.articleTimer);
     this.articleTimer = setTimeout(() => { void this.flushArticle(); }, 1200);
   },
+  backupArticle(): boolean {
+    const chapter = this.articlePending || this.articleAttempt?.chapter;
+    if (!chapter) return true;
+    try {
+      wx.setStorageSync(this.articleKey(), {
+        revisionId: this.articleBase?.revisionId ?? this.revisionId,
+        storyVersion: this.articleBase?.version ?? this.story?.version,
+        chapter, attempt: this.articleAttempt, conflict: this.articleConflict,
+      });
+      return true;
+    } catch {
+      this.setData({ articleStatus: '本机草稿保存失败，请保持本页打开，复制正文后重试' });
+      return false;
+    }
+  },
+  async finishArticleNavigation(): Promise<boolean> {
+    if (!this.articlePending && !this.articleSaving && !this.articleAttempt) return true;
+    if (await this.flushArticle()) return true;
+    if (!this.backupArticle()) return false;
+    this.setData({ saveNotice: '未同步的章节修改已留在本机，可继续浏览；回到原章可查看草稿。' });
+    return true;
+  },
   async flushArticle(): Promise<boolean> {
-    if(this.articleConflict){this.setData({articleStatus:"本机草稿与云端新版冲突，草稿已保留，请先核对历史版本"});return false;}
     if (this.articleTimer) clearTimeout(this.articleTimer);
+    if(this.articleConflict){this.setData({articleStatus:"本机草稿与云端新版冲突，草稿已保留，请先核对历史版本"});return false;}
     if (this.articleSaving) { if (!await this.articleSaving) return false; }
     if (!this.articlePending && !this.articleAttempt) return true;
     const story = this.story;
     if (!story?.currentRevisionId || !story.version) return false;
     const snapshot = this.articlePending!;
     if (!this.articleAttempt) this.articleAttempt = { requestId: `request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`,
-      storyId: story.id, revisionId: story.currentRevisionId, expectedVersion: story.version, chapter: snapshot };
+      storyId: story.id, revisionId: this.articleBase?.revisionId ?? story.currentRevisionId,
+      expectedVersion: this.articleBase?.version ?? story.version, chapter: snapshot };
+    if (!this.backupArticle()) return false;
     const attempt = this.articleAttempt;
     this.articleSaving = (async () => {
       try {
@@ -242,16 +269,25 @@ Page({
         const result = await saveArticle(attempt);
         this.story = { ...this.story!, version: result.version, currentRevisionId: result.revisionId };
         this.revisionId = result.revisionId;
+        this.articleBase = { revisionId: result.revisionId, version: result.version };
         this.chapters = this.chapters.map(c => c.id === attempt.chapter.id ? attempt.chapter : c);
         this.articleAttempt = null;
         if (this.articlePending === attempt.chapter) {
           this.articlePending = null; wx.removeStorageSync(this.articleKey());
           this.setData({ article: attempt.chapter, articleDirty: false, articleStatus: '已保存', savedRevisionId: result.revisionId });
         } else {
-          wx.setStorageSync(this.articleKey(), { revisionId: result.revisionId, chapter: this.articlePending });
+          this.backupArticle();
         }
         return true;
-      } catch (error) { this.setData({ articleStatus: error instanceof Error ? error.message : '保存失败，点这里重试' }); return false; }
+      } catch (error) {
+        if ((error as { code?: string })?.code === 'VERSION_CONFLICT') {
+          this.articleConflict = true;
+          this.chapterBaselineStale = true;
+        }
+        this.setData({ articleStatus: error instanceof Error ? error.message : '保存失败，点这里重试' });
+        this.backupArticle();
+        return false;
+      }
       finally { this.articleSaving = null; }
     })();
     if (!await this.articleSaving) return false;
@@ -441,6 +477,7 @@ Page({
       .filter(memory => !this.storyScopeMemoryIds || this.storyScopeMemoryIds.has(memory.id));
     const bookId = story?.id || member.id;
     let current = currentManuscript(state, bookId);
+    if (this.data.editing || this.data.pickingPhoto || this.unloaded || refreshId !== this.refreshId) return;
     // A recipient can open a share before creating any story or profile.
     // There is no local book draft to restore until an owned book exists.
     const localDraftKey = bookId ? chapterDraftKey(draftScope, bookId) : "";
@@ -454,6 +491,10 @@ Page({
       backup.revisionId !== current.revisionId ||
       (story && backup.storyVersion !== story.version)
     );
+    if (conflict && backup) {
+      retainChapterDraft(localDraftKey, backup);
+      backup = undefined;
+    }
     if (backup) {
       current = {draft:backup.draft, sourceFingerprint:backup.fingerprint, revisionId:acknowledged ? current.revisionId : backup.revisionId};
     }
@@ -510,9 +551,8 @@ Page({
     this.localDraftKey = localDraftKey;
     this.localDraftToken = backup?.token || "";
     this.editorError = backup?.editorError || "";
-    if (backup) {
-      this.pendingSave = acknowledged ? undefined : backup.pendingSave;
-    }
+    if (backup) this.pendingSave = acknowledged ? undefined : backup.pendingSave;
+    else if (conflict) this.pendingSave = undefined;
     if (this.activeChapterId !== activeChapterId || this.data.storyId !== (story?.id ?? "")) {
       this.releaseArticleChat();
       resetXiaoyiPanel.call(this);
@@ -556,6 +596,7 @@ Page({
     }
     this.setData({
       openingChapter: null,
+      retainedDrafts: localDraftKey ? readRetainedChapterDrafts(localDraftKey) : [],
       coverImageId: bookCoverSource(story?.coverImageId, current.draft), coverUrl: "",
       editTitle: this.titleBuffer, editBody: this.bodyBuffer, editChapterTitle: this.chapterTitleBuffer, view,
       organizeBooks, organizeBookKey, organizeBookTitle: organizeBooks.find(item => item.id === organizeBookKey)?.title || "",
@@ -596,6 +637,9 @@ Page({
         ? "已找回本机草稿，但故事另有新版。草稿不会自动覆盖新版；可先复制正文保留。"
         : "已恢复上次未保存的草稿，退出编辑时会再次保存。"});
       wx.enableAlertBeforeUnload({message:"本机草稿已保留，尚未确认同步到故事。"});
+    } else if (conflict) {
+      this.setData({ editing: false, saveNotice: '已打开云端新版，可以新增和排序章节；冲突草稿单独保留，可随时查看。' });
+      wx.disableAlertBeforeUnload();
     }
     this.seedEditor();
     void this.loadReturns(refreshId);
@@ -714,17 +758,31 @@ Page({
       if (title) stories.set(title, (stories.get(title) ?? 0) + 1);
     });
     let article = active && this.story && CHAPTER_PACKAGE_ENABLED ? articleChapter(active) : null;
-    this.articleConflict = false;
-    if (article) {
+    if (this.articlePending?.id !== active?.id) {
+      this.articlePending = null;
+      this.articleAttempt = null;
+      this.articleConflict = false;
+      this.articleBase = null;
+    }
+    if (article && !this.articlePending) {
       const saved = wx.getStorageSync(this.articleKey());
+      this.articleBase = { revisionId: this.revisionId, version: this.story?.version };
       if (saved?.chapter?.id === active!.id) {
-        article = saved.chapter; this.articlePending = article;
-        if(saved.revisionId!==this.revisionId)this.articleConflict=true;
+        this.articleAttempt = saved.attempt || null;
+        this.articlePending = this.articleAttempt && JSON.stringify(saved.chapter) === JSON.stringify(this.articleAttempt.chapter)
+          ? this.articleAttempt.chapter : saved.chapter;
+        this.articleBase = { revisionId: saved.revisionId, version: saved.storyVersion };
+        // An unknown outcome may already have succeeded: retry its original id before
+        // treating a newer server revision as a conflict. Explicit conflicts stay blocked.
+        this.articleConflict = Boolean(saved.conflict || (!this.articleAttempt && (saved.revisionId !== this.revisionId ||
+          (saved.storyVersion !== undefined && saved.storyVersion !== this.story?.version))));
       }
     }
+    if (this.articleConflict) this.chapterBaselineStale = true;
+    if (article && this.articlePending) article = this.articlePending;
     return {
       article, articleWidth: Math.max(180, (this.windowWidth || 375) - 32), articlePaths: {...this.photoPaths},
-      articleDirty: Boolean(this.articlePending), articleStatus:this.articleConflict?'本机草稿与云端新版冲突，草稿已保留':this.articlePending?'已恢复本机草稿，等待保存':this.data.articleStatus,
+      articleDirty: Boolean(this.articlePending), articleStatus:this.articleConflict?'本机草稿与云端新版冲突，草稿已保留':this.articlePending?'已恢复本机草稿，等待保存':'',
       currentLayoutPages: this.story?.sourcePolicyRequired && active?.layout
         ? chapterLayoutView(active, Math.max(1, (this.windowWidth || 375) - 56), this.photoPaths) : [],
       bookIntroduction: this.introductionBuffer,
@@ -969,7 +1027,7 @@ Page({
     return this.canLeaveEditor(allowLocalDraft);
   },
   async backToContents() {
-    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.finishArticleNavigation()) return;
     if (this.data.openingChapter && this.data.loading) this.refreshId++;
     this.chapterOpenId++;
     this.pendingPhotoImportChapter = "";
@@ -981,7 +1039,7 @@ Page({
     this.setData({ openingChapter: null, view: "contents", moreOpen: false, panel: "", ...this.chapterData() });
   },
   async openChapter(event: { currentTarget: { dataset: { id: string } } }) {
-    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.finishArticleNavigation()) return;
     if (this.suppressChapterOpen) { this.suppressChapterOpen = false; return; }
     const openId = ++this.chapterOpenId;
     if ((this.data.editing || this.editSave) && !await this.finishEditing(true)) return;
@@ -1034,7 +1092,12 @@ Page({
     setTimeout(() => { this.suppressChapterOpen = false; }, 400);
   },
   startChapterDrag(event: WechatMiniprogram.TouchEvent) {
-    if (this.data.protectedCopy || this.data.saving || this.data.editing || this.data.chapterRows.length < 2 || this.chapterDrag) return;
+    if (this.data.protectedCopy || this.data.saving || this.data.generating || this.data.chapterRows.length < 2 || this.chapterDrag || this.chapterManaging) return;
+    if (this.data.editing) {
+      this.setData({ saveNotice: '正在保存当前编辑，请稍后重新拖动。' });
+      void this.prepareChapterManagement();
+      return;
+    }
     const touch = event.touches[0];
     const id = String(event.currentTarget.dataset.id || "");
     const startIndex = this.chapters.findIndex(chapter => chapter.id === id);
@@ -1074,12 +1137,43 @@ Page({
       this.setData({ saveNotice: "按住右侧把手并上下移动，即可调整章节顺序。" });
       return;
     }
-    if (await this.saveChapters(this.chapters, "调整章节顺序")) {
-      this.setData({ saveNotice: "章节顺序已保存。" });
-    } else {
-      this.chapters = drag.original;
-      this.setData({ ...this.chapterData(), saveNotice: this.data.saveNotice || "顺序没有保存，请重试。" });
-    }
+    // Keep the gesture as IDs, not a stale snapshot of all chapter text.
+    this.chapters = drag.original;
+    this.chapterManaging = true;
+    try {
+      if (!await this.prepareChapterManagement()) {
+        this.setData(this.chapterData());
+        return;
+      }
+      if (JSON.stringify(before) !== JSON.stringify(this.chapters.map(chapter => chapter.id))) {
+        this.setData({ ...this.chapterData(), saveNotice: "云端章节顺序已有变化，已显示最新版，请重新拖动。" });
+        return;
+      }
+      const current = new Map(this.chapters.map(chapter => [chapter.id, chapter]));
+      if (await this.saveChapters(after.map(id => current.get(id)!), "调整章节顺序")) {
+        this.setData({ saveNotice: "章节顺序已保存。" });
+      } else {
+        this.setData({ ...this.chapterData(), saveNotice: this.data.saveNotice || "顺序没有保存，请重试。" });
+      }
+    } finally { this.chapterManaging = false; }
+  },
+  cancelChapterDrag() {
+    if (!this.chapterDrag) return;
+    this.chapters = this.chapterDrag.original;
+    this.chapterDrag = undefined;
+    this.suppressNextChapterTap();
+    this.setData({ ...this.chapterData(), draggingChapterId: '' });
+  },
+  showRetainedDrafts() {
+    this.setData({ panel: 'retained-drafts', moreOpen: false });
+  },
+  copyRetainedDraft(event: { currentTarget: { dataset: { token: string } } }) {
+    const retained = this.data.retainedDrafts.find(item => item.token === event.currentTarget.dataset.token);
+    if (!retained) return;
+    const draft = retained.draft;
+    const text = [draft.title, draft.introduction || '', ...(draft.chapters || []).map(chapter =>
+      [chapter.title, ...chapter.content.map(block => block.text ?? '〔原稿图片已保留〕')].join('\n'))].join('\n\n');
+    wx.setClipboardData({ data: text });
   },
   toggleSources() {
     if (this.canLeaveEditor()) this.setData({ panel: "sources", showSources: true });
@@ -1196,6 +1290,11 @@ Page({
     }
   },
   async selectTool(event: { currentTarget: { dataset: { action: string } } }) {
+    if (event.currentTarget.dataset.action === 'new-chapter') {
+      this.closeMore(); this.closeSend(); this.closePhotoMenu();
+      await this.createChapter({ currentTarget: { dataset: {} } });
+      return;
+    }
     if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
     if (this.data.saving || this.data.generating) return;
     this.closeMore();
@@ -1214,7 +1313,6 @@ Page({
       case "generate": this.showOrganize(); break;
       case "sources": this.toggleSources(); break;
       case "record": this.startInterview(); break;
-      case "new-chapter": await this.createChapter({ currentTarget: { dataset: {} } }); break;
       case "memories": this.setData({ panel: "memories" }); break;
       case "up": void this.moveActiveChapter(-1); break;
       case "down": void this.moveActiveChapter(1); break;
@@ -2302,7 +2400,13 @@ Page({
     finally{this.setData({returningOwn:false});}
   },
   async createChapter(event: { currentTarget: { dataset: { story?: string } } }) {
-    if (this.data.protectedCopy || this.data.saving || this.data.generating) return;
+    if (this.data.protectedCopy || this.data.saving || this.data.generating || this.chapterManaging || this.chapterDrag) return;
+    this.chapterManaging = true;
+    try { await this.createPreparedChapter(event); }
+    finally { this.chapterManaging = false; }
+  },
+  async createPreparedChapter(event: { currentTarget: { dataset: { story?: string } } }) {
+    if (!await this.prepareChapterManagement()) return;
     const story = event.currentTarget.dataset.story || "";
     const memories = story ? this.memories.filter(memory => contributionStoryTitle(memory) === story) : [];
     const memoryIds = memories.map(memory => memory.id);
@@ -2321,6 +2425,30 @@ Page({
       await this.openChapter({ currentTarget: { dataset: { id } } });
       this.setData({ saveNotice: "已新开" + label + (memoryIds.length ? "，已把 " + memoryIds.length + " 条记忆图文加入正文" : "") + "。" });
     }
+  },
+  async prepareChapterManagement(): Promise<boolean> {
+    if (!this.canLeaveEditor(true)) return false;
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.finishArticleNavigation()) return false;
+    if ((this.data.editing || this.editSave) && !await this.finishEditing()) {
+      if (!this.backupEdits()) return false;
+      this.setData({ editing: false });
+      try { await this.refresh(); }
+      catch (error) {
+        this.setData({ editing: true, saveNotice: error instanceof Error ? error.message : '无法读取新版，草稿仍保留，请重试' });
+        return false;
+      }
+    }
+    if (this.chapterBaselineStale) {
+      try {
+        await this.refresh();
+        if (this.unloaded) return false;
+        this.chapterBaselineStale = false;
+      } catch (error) {
+        this.setData({ saveNotice: error instanceof Error ? error.message : '无法读取新版，草稿仍保留，请重试' });
+        return false;
+      }
+    }
+    return this.canLeaveEditor();
   },
   chooseChapterFor(event: { currentTarget: { dataset: { id: string } } }) {
     if (this.canLeaveEditor()) this.setData({ panel: "assign", assignMemoryId: event.currentTarget.dataset.id });
@@ -2764,6 +2892,7 @@ Page({
     wx.navigateTo({ url: audioCreatePath({ storyId: this.data.storyId, revisionId: this.data.savedRevisionId, chapterId: this.activeChapterId }) });
   },
   async goHome() {
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.finishArticleNavigation()) return;
     if ((this.data.editing || this.editSave) && !await this.finishEditing(true)) return;
     if (!this.canLeaveEditor(true)) return;
     if (this.data.editing && !this.backupEdits("contents")) return;

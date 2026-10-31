@@ -1690,7 +1690,8 @@ test('读取书稿与确认草稿账号并行，二者都成功前不读本机�
   assert.deepEqual(draftReads, [], 'unconfirmed account must not read local drafts');
   releaseIdentity(); await loading;
   assert.equal(startedConcurrently,1,'draft identity starts before the room response');
-  assert.equal(draftReads.length,1);
+  assert.equal(draftReads.length,2);
+  assert.equal(draftReads[1],draftReads[0]+':retained','retained drafts use the same confirmed account and book scope');
   assert.equal(page.data.loading,false);
 });
 

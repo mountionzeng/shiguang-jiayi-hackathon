@@ -11,6 +11,6 @@ export async function saveArticle(request: ArticleSaveRequest): Promise<{ revisi
     })), layout: chapter.layout, packageAssets: chapter.packageAssets || {},
   } } });
   const result = response.result as { revisionId: string; version: number; error?: string; message?: string };
-  if (!result || result.error || !result.revisionId) throw new Error(result?.message || '保存失败，修改已留在本机，请重试');
+  if (!result || result.error || !result.revisionId) throw Object.assign(new Error(result?.message || '保存失败，修改已留在本机，请重试'), { code: result?.error });
   return result;
 }

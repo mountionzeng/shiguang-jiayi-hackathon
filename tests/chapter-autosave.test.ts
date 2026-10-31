@@ -129,14 +129,15 @@ test('云端已有新版时保留本机正文，不覆盖新版', async () => {
   const revision = makeRevision('owner',remote,'','draft','新版'); revision.savedAt='2099-01-01';
   state.manuscriptRevisions.push(revision);
   const reopened = page(); await reopened.refresh();
-  assert.match(reopened.data.saveNotice,/另有新版/);
-  assert.equal(reopened.bodyBuffer,'本机尚未提交\n');
+  assert.match(reopened.data.saveNotice,/云端新版/);
+  assert.equal(reopened.bodyBuffer.trim(),'另一个编辑器的新正文');
+  assert.equal(reopened.data.retainedDrafts[0].draft.chapters[0].content[0].text,'本机尚未提交\n');
   assert.equal(reopened.data.view,'contents', 'a stale recovered draft must not force the user back into a chapter');
   await reopened.openChapter({currentTarget:{dataset:{id:'chapter-a'}}});
   assert.equal(reopened.data.view,'chapter');
   await reopened.backToContents(); assert.equal(reopened.data.view,'contents');
   const again = page(); await again.refresh();
-  assert.equal(again.bodyBuffer,'本机尚未提交\n');
+  assert.equal(again.data.retainedDrafts[0].draft.chapters[0].content[0].text,'本机尚未提交\n');
   assert.equal(currentManuscript(stored.get('shiguang-family-room-v5'),'owner').revisionId,revision.id);
 });
 
@@ -164,7 +165,8 @@ test('旧版本草稿可返回目录并切换章节，两章本机编辑都保�
   await p.onBack();
   const reopened = page(); await reopened.refresh();
   assert.equal(reopened.data.view,'contents');
-  assert.deepEqual(reopened.chapters.map((c:any)=>c.content[0].text),['第一章未同步\n','第二章也未同步\n']);
+  assert.deepEqual(reopened.data.retainedDrafts[0].draft.chapters.map((c:any)=>c.content[0].text),['第一章未同步\n','第二章也未同步\n']);
+  assert.equal(reopened.chapters[0].content[0].text,'云端新正文\n');
   assert.deepEqual(stored.get('shiguang-family-room-v5').manuscriptRevisions,remoteBefore);
   let home=''; (wx as any).reLaunch=({url}:any)=>{home=url;};
   await reopened.goHome();
@@ -192,10 +194,10 @@ test('故事版本变化但正文编号未变时，旧草稿也从目录恢复�
   state.stories[0].version=2;
   const reopened=page(); reopened.requestedStoryKey='story-conflict'; await reopened.refresh();
   assert.equal(reopened.data.view,'contents');
-  assert.match(reopened.data.saveNotice,/另有新版/);
-  assert.equal(reopened.bodyBuffer,'故事版本冲突的本机正文\n');
-  assert.equal(await reopened.saveEdits(),false);
-  assert.match(reopened.data.saveNotice,/故事已有更新/);
+  assert.match(reopened.data.saveNotice,/云端新版/);
+  assert.equal(reopened.data.retainedDrafts[0].draft.chapters[0].content[0].text,'故事版本冲突的本机正文\n');
+  assert.equal(reopened.data.editing,false);
+  assert.equal(reopened.story.version,2);
   assert.equal(stored.get('shiguang-family-room-v5').stories[0].version,2);
   assert.equal(currentManuscript(stored.get('shiguang-family-room-v5'),'story-conflict').revisionId,revision.id);
 });
@@ -275,4 +277,70 @@ test('a recipient without a story or profile can load the book shell before acce
   assert.equal(p.localDraftKey,'');
   assert.equal(p.data.loadError,'');
   assert.equal(p.chapters.length,0);
+});
+
+test('冲突草稿单独保留后，新建章节与拖动都基于新版，重开仍可找回草稿', async () => {
+  const {p,page,input,stored} = await setup(); input(p,'本机需要保留\n');
+  const state=stored.get('shiguang-family-room-v5');
+  const remote=structuredClone(state.manuscriptRevisions[0].draft);
+  remote.chapters[0].content=[{text:'云端新正文\n'}];
+  const revision=makeRevision('owner',remote,'','draft','新版'); revision.savedAt='2099-01-01';
+  state.manuscriptRevisions.push(revision);
+  const reopened=page(); await reopened.refresh();
+  assert.equal(reopened.data.editing,false);
+  assert.equal(reopened.bodyBuffer.trim(),'云端新正文');
+  assert.equal(reopened.data.retainedDrafts[0].draft.chapters[0].content[0].text,'本机需要保留\n');
+  await reopened.selectTool({currentTarget:{dataset:{action:'new-chapter'}}});
+  assert.equal(reopened.chapters.length,2);
+  assert.equal(reopened.chapters[0].content[0].text,'云端新正文\n');
+  await reopened.backToContents();
+  const id=reopened.chapters[1].id;
+  reopened.windowWidth=375;
+  reopened.startChapterDrag({currentTarget:{dataset:{id}},touches:[{clientY:180}]});
+  reopened.moveChapterDrag({touches:[{clientY:100}]});
+  await reopened.endChapterDrag();
+  assert.equal(currentManuscript(stored.get('shiguang-family-room-v5'),'owner').draft!.chapters![0].id,id);
+  const again=page(); await again.refresh();
+  assert.equal(again.data.retainedDrafts[0].draft.chapters[0].content[0].text,'本机需要保留\n');
+  assert.equal(again.chapters.length,2);
+});
+
+test('当前编辑遇到版本冲突时，新增章节先保留旧稿再读取新版', async () => {
+  const {p,input,stored}=await setup(); input(p,'只在旧稿中的文字\n');
+  const state=stored.get('shiguang-family-room-v5');
+  const remote=structuredClone(state.manuscriptRevisions[0].draft);
+  remote.chapters[0].content=[{text:'远端更新\n'}];
+  const revision=makeRevision('owner',remote,'','draft','新版'); revision.savedAt='2099-01-01';
+  state.manuscriptRevisions.push(revision);
+  await p.backToContents();
+  await p.selectTool({currentTarget:{dataset:{action:'new-chapter'}}});
+  assert.equal(p.chapters.length,2);
+  assert.equal(p.chapters[0].content[0].text,'远端更新\n');
+  assert.equal(p.data.retainedDrafts[0].draft.chapters[0].content[0].text,'只在旧稿中的文字\n');
+});
+
+test('转存冲突草稿遇到空间不足时保留原草稿，不开放覆盖写入', async () => {
+  const {p,page,input,stored}=await setup(); input(p,'必须保留的原稿\n');
+  const key=p.localDraftKey, original=structuredClone(stored.get(key));
+  const state=stored.get('shiguang-family-room-v5');
+  const revision=makeRevision('owner',state.manuscriptRevisions[0].draft,'','draft','新版'); revision.savedAt='2099-01-01';
+  state.manuscriptRevisions.push(revision);
+  const write=wx.setStorageSync;
+  (wx as any).setStorageSync=(k:string,v:any)=>{if(k.endsWith(':retained')) throw Error('quota');write(k,v);};
+  const reopened=page(); await assert.rejects(reopened.refresh(),/quota/);
+  assert.deepEqual(stored.get(key),original);
+  assert.equal(currentManuscript(stored.get('shiguang-family-room-v5'),'owner').revisionId,revision.id);
+});
+
+test('系统取消拖动时恢复原顺序，不提交结构修改', async () => {
+  const {p}=await setup();
+  p.chapters.push({id:'chapter-b',title:'第二章',memoryIds:[],content:[]});
+  p.setData({...p.chapterData(),view:'contents'}); p.windowWidth=375;
+  let saves=0; p.saveChapters=async()=>{saves++;return true;};
+  p.startChapterDrag({currentTarget:{dataset:{id:'chapter-a'}},touches:[{clientY:100}]});
+  p.moveChapterDrag({touches:[{clientY:180}]});
+  assert.equal(p.chapters[0].id,'chapter-b');
+  p.cancelChapterDrag(); await p.endChapterDrag();
+  assert.equal(p.chapters[0].id,'chapter-a'); assert.equal(saves,0);
+  assert.equal(p.data.draggingChapterId,'');
 });
