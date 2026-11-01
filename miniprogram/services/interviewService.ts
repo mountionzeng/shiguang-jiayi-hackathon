@@ -52,9 +52,12 @@ function localFallbackPrompt(
   const answer = input.answer.trim();
   const wantsPause = /(?:^|[，。！？,!?\s])(?:(?:今天|这次)?(?:就|先)?到这里(?:吧|了|就好|就行)?|(?:今天|现在)?(?:先)?不聊了|我(?:想|要)(?:先)?(?:歇|休息)(?:一会儿|一会)?)[。！!，,\s]*$/.test(answer);
   const wantsRecordOnly = /(?:只想|只要|就想)(?:把)?(?:这(?:句|段)话)?(?:记下|记录(?:下来)?|留下)(?:就好|就行|吧)?[。！!\s]*$/.test(answer);
+  const unavailableText = fallbackReason === "consent-declined"
+    ? "你选择了暂不使用在线 AI，原话仍保留在当前对话里。想继续聊，可到「我的 → 在线 AI 授权」允许处理；也可以继续记录。"
+    : "这次暂时没能接上回答，你这句话还在当前对话里。可以继续补充，或先把原话保存下来。";
   return {
     dimension: "feeling",
-    text: wantsPause ? "好，我们先停在这里。" : wantsRecordOnly ? "好，这里先不追问。" : "这次暂时没能接上回答，你这句话还在当前对话里。可以继续补充，或先把原话保存下来。",
+    text: wantsPause ? "好，我们先停在这里。" : wantsRecordOnly ? "好，这里先不追问。" : unavailableText,
     generationMode: "local-fallback",
     fallbackReason,
   };
@@ -83,7 +86,7 @@ export async function generateInterviewPrompt(
   input: GenerateInterviewPromptInput,
 ): Promise<InterviewPrompt> {
   if (!canUseCloudAi()) return localFallbackPrompt(input, "cloud-not-ready");
-  if (!await requestAiConsent()) return localFallbackPrompt(input, "cloud-not-ready");
+  if (!await requestAiConsent()) return localFallbackPrompt(input, "consent-declined");
 
   try {
     const response = await measurePerformance("ai.interview", () => wx.cloud.callFunction({

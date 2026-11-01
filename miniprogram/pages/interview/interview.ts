@@ -21,6 +21,7 @@ import {
   DIMENSION_CHIPS,
   draftTitleFromAnswers,
   CLOUD_FOLLOW_UP_LABEL,
+  CONSENT_REQUIRED_FOLLOW_UP_LABEL,
   FOLLOW_UP_LABEL,
   INTERVIEW_DIMENSIONS,
   InterviewDimension,
@@ -497,6 +498,7 @@ Page({
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
       const label = prompt.generationMode === "cloud-ai" ? CLOUD_FOLLOW_UP_LABEL
+        : prompt.fallbackReason === "consent-declined" ? CONSENT_REQUIRED_FOLLOW_UP_LABEL
         : prompt.fallbackReason === "moderation-quota-exhausted" ? QUOTA_EXHAUSTED_FOLLOW_UP_LABEL : FOLLOW_UP_LABEL;
       this.pushMessage("followup", prompt.text, label);
     } catch (error) {

@@ -57,7 +57,7 @@ import {
 const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
   "cloud-disabled": "这个版本关闭了在线 AI",
   "cloud-not-ready": "微信云开发还没连上",
-  "consent-declined": "本次打开小程序时选了「暂不使用」在线 AI，重新打开小程序会再询问",
+  "consent-declined": "已选择「暂不使用」在线 AI，可到「我的 → 在线 AI 授权」重新选择",
   "ai-not-configured": "整理书稿的云函数还没配置模型",
   "function-missing": "整理书稿的云函数还没部署",
   timeout: "在线 AI 响应超时",

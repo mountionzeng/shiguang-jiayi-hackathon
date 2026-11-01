@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer, useXiaoyiDraft, type XiaoyiHost } from '../miniprogram/services/xiaoyiCompanion';
+import { initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer, useXiaoyiDraft, askXiaoyiQuestion, type XiaoyiHost } from '../miniprogram/services/xiaoyiCompanion';
+import { clearAiConsent } from '../miniprogram/services/aiConsent';
 
 function host() {
   const patches: Record<string, unknown>[] = [];
@@ -16,6 +17,31 @@ function host() {
   };
   return { page, patches, landed };
 }
+
+test('cancelled AI permission preserves input and never labels denial as a connection failure', async context => {
+  const previousWx = Object.getOwnPropertyDescriptor(globalThis, 'wx');
+  const previousApp = Object.getOwnPropertyDescriptor(globalThis, 'getApp');
+  Object.defineProperty(globalThis, 'getApp', { configurable: true, value: () => ({ globalData: { cloudReady: true, aiReady: true } }) });
+  Object.defineProperty(globalThis, 'wx', { configurable: true, value: {
+    showModal: ({ success }: any) => success({ confirm: false }),
+    cloud: { callFunction: async () => { assert.fail('denied content must not reach the provider'); } },
+  } });
+  clearAiConsent();
+  context.after(() => {
+    clearAiConsent();
+    if (previousWx) Object.defineProperty(globalThis, 'wx', previousWx); else delete (globalThis as any).wx;
+    if (previousApp) Object.defineProperty(globalThis, 'getApp', previousApp); else delete (globalThis as any).getApp;
+  });
+  const { page, landed } = host();
+  page.data.xiaoyiAnswer = '【虚构验收】绿色笔记本';
+  await askXiaoyiQuestion.call(page);
+  assert.equal(page.data.xiaoyiAnswer, '【虚构验收】绿色笔记本');
+  assert.equal(page.data.xiaoyiLoading, false);
+  assert.deepEqual(landed, []);
+  const reply = page.data.xiaoyiMessages[page.data.xiaoyiMessages.length - 1];
+  assert.equal(reply?.label, '尚未允许在线处理');
+  assert.match(reply?.text || '', /我的.*在线 AI 授权/);
+});
 
 test('native dictation and draft editing retain the latest full value without echoing into the input', async () => {
   const { page, patches, landed } = host();

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { generateInterviewPrompt } from "../miniprogram/services/interviewService";
+import { clearAiConsent } from "../miniprogram/services/aiConsent";
 
 const interviewCloud = require("../cloudfunctions/chatInterview/index.js");
 import {
@@ -34,6 +35,36 @@ function silenceExpectedWarnings(): () => void {
     console.warn = previous;
   };
 }
+
+test("declining AI gives the real reason and a working recovery path without sending words", async context => {
+  let allow = false;
+  let modelCalls = 0;
+  let prompts = 0;
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: true } }));
+  const restoreWx = installGlobal("wx", {
+    showModal: ({ success }: any) => { prompts++; success({ confirm: allow }); },
+    cloud: { callFunction: async ({ name }: any) => {
+      if (name === "chatInterview") modelCalls++;
+      return { result: { dimension: "event", text: "笔记本的第一页画了什么？" } };
+    } },
+  });
+  clearAiConsent();
+  context.after(() => { clearAiConsent(); restoreWx(); restoreGetApp(); });
+  const input = { answer: "【虚构验收】小禾带来绿色笔记本。", askedDimensions: [] };
+  for (let i = 0; i < 2; i++) {
+    const result = await generateInterviewPrompt(input);
+    assert.equal(result.fallbackReason, "consent-declined");
+    assert.match(result.text, /我的.*在线 AI 授权/);
+    assert.doesNotMatch(result.text, /没连上|暂时没能接上/);
+  }
+  assert.equal(modelCalls, 0);
+  assert.equal(prompts, 1, "respect the stored denial instead of nagging on every send");
+  allow = true;
+  clearAiConsent(); // The existing My → online AI permission action resets the decision.
+  const recovered = await generateInterviewPrompt(input);
+  assert.equal(recovered.generationMode, "cloud-ai");
+  assert.equal(modelCalls, 1);
+});
 
 test("cloud interview prompt uses chatInterview when available", async (context) => {
   let requestData: unknown;

@@ -15,7 +15,7 @@
  * 本模块只实现三处完全一致的部分：问一个问题、记录对话、整理刚给的回答、调用落回。
  */
 import { MemoryType } from "../domain/biography";
-import { CLOUD_FOLLOW_UP_LABEL, FOLLOW_UP_LABEL, InterviewDimension, InterviewMode, InterviewTurn, QUOTA_EXHAUSTED_FOLLOW_UP_LABEL } from "../domain/interview";
+import { CLOUD_FOLLOW_UP_LABEL, FOLLOW_UP_LABEL, CONSENT_REQUIRED_FOLLOW_UP_LABEL, InterviewDimension, InterviewMode, InterviewTurn, QUOTA_EXHAUSTED_FOLLOW_UP_LABEL } from "../domain/interview";
 import { generateInterviewPrompt } from "./interviewService";
 import { organizeInlineAnswer } from "./memoryOrganizerService";
 
@@ -138,6 +138,7 @@ export async function askXiaoyiQuestion(this: XiaoyiHost) {
     });
     if (!request.current()) return;
     const label = prompt.generationMode === "cloud-ai" ? CLOUD_FOLLOW_UP_LABEL
+      : prompt.fallbackReason === "consent-declined" ? CONSENT_REQUIRED_FOLLOW_UP_LABEL
       : prompt.fallbackReason === "moderation-quota-exhausted" ? QUOTA_EXHAUSTED_FOLLOW_UP_LABEL : FOLLOW_UP_LABEL;
     this.xiaoyiAskedDimensions = [...this.xiaoyiAskedDimensions, prompt.dimension];
     const lastAnswer = [...conversation].reverse().find(turn => turn.role === "user");
