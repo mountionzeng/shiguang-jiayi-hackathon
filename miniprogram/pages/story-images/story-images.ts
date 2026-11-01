@@ -426,12 +426,20 @@ Page({
   onRoleChapterChange(event: {detail:{value:string}}) {
     if (!this.data.savingPlacement) this.setData({roleChapterIndex:Number(event.detail.value)});
   },
+  previewDimensions: null as {url:string;width:number;height:number} | null,
+  onPreviewImageLoad(event: {currentTarget:{dataset:{url:string}};detail:{width:number;height:number}}) {
+    const {url}=event.currentTarget.dataset, {width,height}=event.detail;
+    if (url === this.data.preview?.url && Number.isFinite(width) && Number.isFinite(height) && width>0 && height>0) {
+      this.previewDimensions={url,width,height};
+    }
+  },
   async useImageRole(event: {currentTarget:{dataset:{role:string}}}) {
     const image = this.data.preview, purpose = event.currentTarget.dataset.role;
     if (!image || !this.data.storyId || this.data.savingPlacement || this.data.savingBackdrop || this.data.submitting) return;
     if (purpose === 'cover' || purpose === 'backdrop') {
       try {
-        const info = await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve,reject)=>wx.getImageInfo({src:image.url,success:resolve,fail:reject}));
+        const info = this.previewDimensions?.url === image.url ? this.previewDimensions :
+          await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve,reject)=>wx.getImageInfo({src:image.url,success:resolve,fail:reject}));
         if (this.unloaded || this.data.preview?.imageId !== image.imageId) return;
         this.cropSource={width:info.width,height:info.height,x:.5,y:.5};
         this.setData({cropRole:purpose,cropZoom:100,previewNotice:''}); this.updateCropFrame();

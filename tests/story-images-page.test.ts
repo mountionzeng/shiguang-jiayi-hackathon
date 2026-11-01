@@ -1967,3 +1967,30 @@ test('module article illustration saves through article protocol without changin
   assert.equal(Object.values(saved.chapter.packageAssets).some((asset:any)=>asset.aiGenerated===true),true);
  } finally {restore();env.restore();}
 });
+
+test('cropping a visible preview reuses loaded dimensions without downloading it again', async () => {
+  const env = installWx({getImageInfo: () => { throw new Error('redundant remote read'); }});
+  try {
+    const page = instantiate(await pageDefinition('story-images'));
+    page.data.storyId = 'story-test';
+    page.data.preview = {imageId:'image-test',url:'https://example.com/test.png'};
+    call(page, 'onPreviewImageLoad', {currentTarget:{dataset:{url:'https://example.com/test.png'}},detail:{width:800,height:600}});
+    await call(page, 'useImageRole', {currentTarget:{dataset:{role:'cover'}}});
+    assert.equal(page.data.cropRole, 'cover');
+    assert.equal(page.data.cropHeight,330);
+    assert.ok(Math.abs(parseFloat(String(page.data.cropStyle).split(':')[1]) - 440) < 0.001);
+  } finally {env.restore();}
+});
+
+test('preview dimensions from another image cannot be used for cropping', async () => {
+  const env = installWx({getImageInfo: ({fail}: any) => fail({errMsg:'unavailable'})});
+  try {
+    const page = instantiate(await pageDefinition('story-images'));
+    page.data.storyId = 'story-test';
+    page.data.preview = {imageId:'image-test',url:'https://example.com/current.png'};
+    call(page, 'onPreviewImageLoad', {currentTarget:{dataset:{url:'https://example.com/old.png'}},detail:{width:800,height:600}});
+    await call(page, 'useImageRole', {currentTarget:{dataset:{role:'cover'}}});
+    assert.equal(page.data.cropRole, '');
+    assert.match(String(page.data.previewNotice), /读不到图片/);
+  } finally {env.restore();}
+});
