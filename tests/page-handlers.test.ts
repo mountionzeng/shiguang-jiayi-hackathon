@@ -2550,7 +2550,7 @@ test("finish() persists the spoken answer as a real memory before asking organiz
         roomName: storage.roomState().roomName || "测试房间",
         protagonistName: storage.roomState().protagonistName || "测试者",
         members: storage.roomState().members ?? [],
-        contributions: storage.roomState().contributions ?? [],
+        contributions: [...(storage.roomState().contributions ?? []), ...[...records("memories").values()].map(item => ({...item,id:item.frontendContributionId}))],
         manuscriptRevisions: storage.roomState().manuscriptRevisions ?? [],
         deletedStories: storage.roomState().deletedStories ?? [],
         stories: storage.roomState().stories ?? [],
@@ -2595,6 +2595,16 @@ test("finish() persists the spoken answer as a real memory before asking organiz
     "the spoken answer must already be in storage by the time organizeMemory is called",
   );
   assert.equal(callsBeforeOrganize.every(call => call.name !== "organizeMemory"), true);
+  const stateReads = callsBeforeOrganize.filter(call => call.name === "storyBooks" && call.data.action === "state");
+  assert.equal(stateReads.length, 2);
+  assert.ok(stateReads.every(call => call.data.view === "memories"), "organizing a fragment must not download historical manuscripts");
+  calls.length = 0;
+  await callPage(page, "save", {stayOnPage:true});
+  assert.equal(page.data.saved, true);
+  assert.equal(persistedMemory(spoken.id)?.text, page.data.draftText);
+  const saveReads = calls.filter(call => call.name === "storyBooks" && call.data.action === "state");
+  assert.equal(saveReads.length, 2);
+  assert.ok(saveReads.every(call => call.data.view === "memories"), "saving the preview must also avoid historical manuscripts");
 });
 
 test("save() appends a manual revision only when the draft actually changed from the last saved version", async context => {

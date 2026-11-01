@@ -515,7 +515,7 @@ Page({
    */
   async persistSpokenAnswers(answers: string[]): Promise<MemoryContribution> {
     const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;
-    const state = shared?.state ?? await loadRoomStateRemoteFirst();
+    const state = shared?.state ?? await loadRoomStateRemoteFirst({view: "memories"});
     const member = shared
       ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
       : authorFor(state, await loadCurrentMemberRemoteFirst(state));
@@ -545,7 +545,7 @@ Page({
       : base;
 
     if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, contribution);
-    else await appendContributionRemoteFirst(contribution, {learn:false});
+    else await appendContributionRemoteFirst(contribution, {learn:false, view:"memories"});
     this.pendingContribution = contribution;
     this.persistedContributionId = contribution.id;
     return contribution;
@@ -974,7 +974,7 @@ Page({
 
     try {
       const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;
-      const state = shared?.state ?? await loadRoomStateRemoteFirst();
+      const state = shared?.state ?? await loadRoomStateRemoteFirst({view: "memories"});
       const member = shared
         ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
         : authorFor(state, await loadCurrentMemberRemoteFirst(state));
@@ -1042,9 +1042,9 @@ Page({
       };
       if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
       else {
-        const savedState = await appendContributionRemoteFirst(this.pendingContribution);
+        const savedState = await appendContributionRemoteFirst(this.pendingContribution, {view:"memories"});
         this.persistedContributionId = this.pendingContribution.id;
-        if (this.data.storyId) await linkStoryMemories(activeStory(savedState, this.data.storyId), [this.pendingContribution.id]);
+        if (this.data.storyId) await linkStoryMemories(activeStory(savedState, this.data.storyId), [this.pendingContribution.id], undefined, {view:"home"});
       }
 
       this.setData({

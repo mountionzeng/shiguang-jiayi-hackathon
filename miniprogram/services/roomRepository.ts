@@ -148,10 +148,10 @@ export function saveCurrentMemberIdLocal(memberId: string): void {
 
 export async function appendContributionRemoteFirst(
   contribution: MemoryContribution,
-  options: { learn?: boolean } = {},
+  options: { learn?: boolean; view?: "memories" } = {},
 ): Promise<FamilyRoomState> {
   if (shouldUseCloudDatabase()) {
-    const state = await appendCloudContribution(contribution);
+    const state = await appendCloudContribution(contribution, {view: options.view});
     if (options.learn !== false) learnFromSavedMemory(contribution);
     return state;
   }

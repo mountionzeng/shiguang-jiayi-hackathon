@@ -694,18 +694,20 @@ async function enforceContentSecurity(contribution: MemoryContribution, pending?
 
 export async function appendCloudContribution(
   contribution: MemoryContribution,
+  options: { view?: "memories" } = {},
 ): Promise<FamilyRoomState> {
-  return appendCloudContributions([contribution]);
+  return appendCloudContributions([contribution], options);
 }
 
 /** Bounded multi-record import: load the room once, then write resumable stable IDs. */
 export async function appendCloudContributions(
   rawContributions: MemoryContribution[],
+  options: { view?: "memories" } = {},
 ): Promise<FamilyRoomState> {
-  if (rawContributions.length === 0) return loadCloudRoomState();
+  if (rawContributions.length === 0) return loadCloudRoomState(options);
   const contributions = await Promise.all(rawContributions.map(contribution => enforceContentSecurity(contribution)));
   const familyId = await currentFamilyId();
-  const state = await loadCloudRoomState();
+  const state = await loadCloudRoomState(options);
   for (let offset = 0; offset < contributions.length; offset += 5) {
     await Promise.all(contributions.slice(offset, offset + 5).map(item => saveContribution(familyId, item)));
   }

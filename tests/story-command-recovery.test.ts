@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createStoryBook, storyCommand } from '../miniprogram/services/storyBooks';
+import { createStoryBook, linkStoryMemories, storyCommand } from '../miniprogram/services/storyBooks';
 import { SavedRefreshError } from '../miniprogram/services/serviceFailure';
 const { createHandlers } = require('../cloudfunctions/storyBooks/flow');
 
@@ -77,4 +77,14 @@ test('unknown receipts and write timeouts never claim saved; server refusal reta
   const timeout={errCode:-504003};fixture.failWrite(timeout);
   await assert.rejects(storyCommand(command), error=>error===timeout);
   assert.equal(fixture.tables.has('stories:family_test_story-recovery'),false);
+});
+
+test('linking a saved fragment can refresh current stories without historical manuscripts', async t => {
+  const fixture=install(t);
+  const created=await createStoryBook({title:'Fragment test',writingMode:'objective',memoryIds:[],storyId:command.storyId,requestId:command.requestId});
+  fixture.tables.set('memories:family_test_fragment', {familyId:'family_test',frontendContributionId:'fragment',authorMemberId:'owner',scope:'personal',visibility:'private',text:'Fictional paper boat',title:'Boat'});
+  fixture.stateViews.length=0;
+  const state=await linkStoryMemories(created.story,['fragment'],'link-fragment-test',{view:'home'});
+  assert.ok(state.stories?.find(story=>story.id===created.story.id)?.memoryIds.includes('fragment'));
+  assert.deepEqual(fixture.stateViews,['home']);
 });

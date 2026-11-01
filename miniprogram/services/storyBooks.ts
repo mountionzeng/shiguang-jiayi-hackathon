@@ -112,8 +112,8 @@ export async function createStoryBook(input:{title:string;writingMode:'objective
 export function updateStoryBook(story:Story, patch:Partial<Pick<Story,'title'|'bookTitle'|'writingMode'|'coverImageId'>>, requestId = operationId()) {
   return storyCommand({action:'update',storyId:story.id,expectedVersion:story.version,patch,requestId});
 }
-export function linkStoryMemories(story:Story,memoryIds:string[],requestId = operationId()) {
-  return storyCommand({action:'link',storyId:story.id,expectedVersion:story.version,memoryIds,requestId});
+export function linkStoryMemories(story:Story,memoryIds:string[],requestId = operationId(), options: {view?: "home"} = {}) {
+  return storyCommand({action:'link',storyId:story.id,expectedVersion:story.version,memoryIds,requestId}, options);
 }
 export function saveStoryRevision(revision:ManuscriptRevision,expectedRevisionId:string) {
   return measurePerformance('story.save', () => storyCommand({action:'save',storyId:revision.storyId,expectedVersion:revision.expectedStoryVersion,expectedRevisionId,revision,requestId:revision.id}, {view:'home'}));
