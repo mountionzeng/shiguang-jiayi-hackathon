@@ -605,6 +605,16 @@ test("the interview request carries the current-line rule only when a line is ma
     assert.match(requests[0].messages[0].content, /先问他想往哪个方向写，或给两三条思路；他回应之后再给改写/);
     assert.match(requests[0].messages[1].content, /第 2 行（共 3 行）/);
     assert.doesNotMatch(requests[1].messages[0].content, /先问他想往哪个方向写/);
+    const source = "【虚构原话开头】" + "蓝色旧书的翻页声。".repeat(90) + "【原话末尾：想试试水彩】";
+    await chatInterviewMain({ ...base, sourceOnly: true, sourceText: source });
+    assert.ok(requests[2].messages[1].content.includes(source), "a capture continuation must retain more than the old 500-character summary");
+    const longSource = "【很长原话开头】" + "中间内容".repeat(2000) + "【最近补充：今天想用淡蓝色】";
+    await chatInterviewMain({ ...base, sourceOnly: true, sourceText: longSource });
+    const bounded = requests[3].messages[1].content;
+    assert.match(bounded, /很长原话开头/);
+    assert.match(bounded, /最近补充：今天想用淡蓝色/);
+    assert.match(bounded, /中间原文未纳入本次上下文/);
+    assert.ok(bounded.length < requests[1].messages[1].content.length + 6000);
   } finally {
     global.fetch = previousFetch;
     for (const [key, value] of saved) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }

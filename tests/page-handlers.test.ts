@@ -522,8 +522,16 @@ test("interview continuation loads the complete requested memory outside the hom
   const source = initial.contributions.find(item => item.id === "demo-personal-rain")!;
   source.text = "【虚构】一段不在首页摘要中的记忆。" + "窗边有本蓝色的旧书。".repeat(30);
   const views: string[] = [];
+  let captureItems: Array<Record<string, unknown>> = [];
+  let captureError = false;
   (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
     if (name === "getOpenId") return { result: { openid: "source-read-fixture" } };
+    if (name === "organizeMemory") {
+      assert.equal(data.action, "captureSessionRead");
+      assert.equal(data.id, "source-capture");
+      if (captureError) throw new Error("offline");
+      return { result: { sessionId: "source-capture", items: captureItems } };
+    }
     assert.equal(name, "storyBooks");
     views.push(data.view);
     return { result: { ...initial, roomStateVersion: 1, stories: [], manuscriptRevisions: [], deletedStories: [],
@@ -535,6 +543,33 @@ test("interview continuation loads the complete requested memory outside the hom
   assert.equal(page.data.stage, "chat");
   assert.deepEqual(views, ["memories"]);
   assert.equal(storage.backCount(), 0);
+
+  source.materialCaptureId = "source-capture";
+  const original = "【虚构原话】" + "蓝书翻页的声音。".repeat(100) + "最后补充：我更喜欢安静的画面。";
+  captureItems = [
+    { memoryId: source.id, text: original, photoIds: [], audio: [] },
+    { memoryId: source.id, text: "补充：我想试试淡蓝水彩。", photoIds: ["photo-a"], audio: [{ id: "audio-a" }] },
+  ];
+  const captured = instantiate(await pageDefinition("interview"));
+  await callPage(captured, "onLoad", { sourceId: source.id });
+  assert.ok(String(captured.sourceText).includes(original));
+  assert.match(String(captured.sourceText), /补充：我想试试淡蓝水彩/);
+  assert.match(String(captured.sourceText), /未分析/);
+  assert.ok(!String(captured.sourceText).includes(source.text), "do not present the short AI summary as original speech");
+  assert.match(String((captured.data.messages as Array<{text:string}>)[0].text), /虚构原话/);
+
+  captureError = true;
+  const failed = instantiate(await pageDefinition("interview"));
+  await callPage(failed, "onLoad", { sourceId: source.id });
+  assert.deepEqual(failed.data.messages, [], "failed source read must not quietly fall back to the summary");
+  assert.equal(storage.backCount(), 1);
+
+  captureError = false;
+  captureItems = [{ memoryId: "another-memory", text: "不应混入另一段记忆", photoIds: [], audio: [] }];
+  const mismatched = instantiate(await pageDefinition("interview"));
+  await callPage(mismatched, "onLoad", { sourceId: source.id });
+  assert.deepEqual(mismatched.data.messages, []);
+  assert.equal(storage.backCount(), 2);
 });
 
 test("interview refuses an unavailable source instead of silently starting another conversation", async (context) => {

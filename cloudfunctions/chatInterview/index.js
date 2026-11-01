@@ -109,6 +109,15 @@ function sanitizeText(value, maxLength) {
   return String(value || "").trim().slice(0, maxLength);
 }
 
+function interviewSourceText(value) {
+  const text = String(value || "").trim();
+  const budget = 6000;
+  if (text.length <= budget) return text;
+  const omitted = "\n【中间原文未纳入本次上下文，不推断省略内容】\n";
+  const head = Math.floor((budget - omitted.length) / 2);
+  return text.slice(0, head) + omitted + text.slice(-(budget - omitted.length - head));
+}
+
 function validateDimension(value) {
   return DIMENSIONS.includes(value) ? value : "event";
 }
@@ -642,7 +651,7 @@ async function main(event, dependencies = {}) {
   const memoryType = validateMemoryType(event.memoryType);
   const memberName = sanitizeText(event.memberName, 40) || "讲述者";
   const storyTitle = sanitizeText(event.storyTitle, 40);
-  const sourceText = sanitizeText(event.sourceText, 500);
+  const sourceText = interviewSourceText(event.sourceText);
   if (!cloud && event.storyId) cloud = require("wx-server-sdk");
   if (cloud?.init) cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
   const memoryRepo = db ? createMemoryRepository(db) : null;

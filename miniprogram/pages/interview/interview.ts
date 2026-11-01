@@ -278,10 +278,23 @@ Page({
     if (requestedSourceId && !source) throw new Error("这段记忆已不可用");
     const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
     const storyTitle = requestedStory?.title || sourceStoryTitle || requestedStoryTitle;
-    const sourcePreview = source
-      ? `${source.text.slice(0, 72)}${source.text.length > 72 ? "……" : ""}`
-      : "";
-    this.sourceText = source?.text || "";
+    let sourceText = source?.text || "";
+    let sourceMediaNote = "";
+    if (source?.materialCaptureId && !sharedFamilyId) {
+      const session = await readCaptureSession(source.materialCaptureId);
+      if (this.interviewUnloaded) return;
+      if (!Array.isArray(session.items) || session.items.some(item => item.memoryId && item.memoryId !== source.id)) {
+        throw new Error("原素材与这段记忆不一致，请重新打开");
+      }
+      const originals = session.items.filter(item => item.memoryId === source.id);
+      if (!originals.length) throw new Error("这段记忆的原素材暂未读到，请重新打开");
+      sourceText = originals.map(item => item.text.trim()).filter(Boolean).join("\n\n");
+      if (originals.some(item => item.photoIds.length || item.audio.length)) {
+        sourceMediaNote = "附带的图片或录音尚未分析，不推断其中的内容；可以请用户说明想聊的部分。";
+      }
+    }
+    const sourcePreview = `${sourceText.slice(0, 72)}${sourceText.length > 72 ? "……" : ""}`;
+    this.sourceText = [sourceMediaNote, sourceText].filter(Boolean).join("\n\n");
     // 从首页推荐问点进来时，第一句就是用户刚才点的那个问题，不换成泛泛的“后来你又想起了什么”。
     const requestedQuestion = decodeQueryValue(options.question).slice(0, 80);
     const requestedDimension = INTERVIEW_DIMENSIONS.find(
@@ -292,7 +305,9 @@ Page({
     const opening = captureEntry
       ? "把这一刻先记下来吧。文字、照片、录音可以一起发，也可以分几次补充，都会保存在这段记忆里。想聊或整理时，再叫我。"
       : source
-      ? storyTitle
+      ? !sourceText && sourceMediaNote
+        ? "这段图片或录音已经保存。你想先聊其中的什么？"
+        : storyTitle
         ? `我们继续聊「${storyTitle}」吧。\n上次你讲到：“${sourcePreview}”\n${continuation}`
         : `我们接着这段往下聊吧。\n上次你讲到：“${sourcePreview}”\n${continuation}`
       : requestedMemoryType === "note"
