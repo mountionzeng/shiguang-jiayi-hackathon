@@ -77,7 +77,7 @@ export function placeIllustration(content: ManuscriptContent[], imageId: string,
 export async function saveChapterIllustration(input: {
   storyId?: string; memberId?: string; chapterId: string; imageId: string; after: IllustrationAnchor | null; remove?: boolean;
 }) {
-  const state = await loadRoomStateRemoteFirst(), bookId = input.storyId || input.memberId || '';
+  const state = await loadRoomStateRemoteFirst(input.storyId ? {view:'home'} : {}), bookId = input.storyId || input.memberId || '';
   const current = currentManuscript(state, bookId);
   if (!current.draft) throw new Error('请先保存书稿再选插图');
   const chapters = chaptersOf(current.draft, current.sourceFingerprint);
@@ -109,7 +109,7 @@ export async function saveChapterIllustration(input: {
     }
     await saveArticle({requestId:`request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`,
       storyId:story.id,revisionId:story.currentRevisionId,expectedVersion:story.version,chapter:article});
-    return loadRoomStateRemoteFirst();
+    return loadRoomStateRemoteFirst({view:'home'});
   }
   const content = placeIllustration(chapter.content, input.imageId, input.after, input.remove);
   if (JSON.stringify(content) === JSON.stringify(chapter.content)) return state;

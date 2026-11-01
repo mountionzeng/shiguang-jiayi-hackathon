@@ -1994,3 +1994,32 @@ test('preview dimensions from another image cannot be used for cropping', async 
     assert.match(String(page.data.previewNotice), /读不到图片/);
   } finally {env.restore();}
 });
+
+test('module illustration and backdrop selection read current drafts rather than the full historical archive', async () => {
+  const {articleChapter}=await import('../miniprogram/services/articleModules');
+  const {saveChapterIllustration}=await import('../miniprogram/services/chapterIllustrations');
+  const {saveChapterBackdrop}=await import('../miniprogram/services/chapterBackdrop');
+  for (const purpose of ['illustration','backdrop']) {
+    const state={...stateWithBook(),roomStateVersion:1,deletedStories:[],personalDraftSourceFingerprints:{}};
+    const revision=state.manuscriptRevisions![0];revision.storyId='story-images-test';
+    const chapter=articleChapter(revision.draft.chapters![0]);revision.draft.chapters![0]=chapter;
+    state.stories=[{id:revision.storyId,familyId:'family-test',title:'测试',version:3,currentRevisionId:revision.id,
+      protagonistMemberIds:[],memoryIds:[],createdAt:'2026-10-25',updatedAt:'2026-10-25'}];
+    const requests:any[]=[];
+    const env=installWx({cloud:{callFunction:async({name,data}:any)=>{
+      if(name==='getOpenId')return {result:{openid:'o-owner'}};
+      requests.push(data);
+      return {result:data.action==='articleSave'?{revisionId:'revision-new',version:4}:state};
+    }}});
+    env.setApp(true);
+    const images=listWith({pending:[]}).images.map(image=>({...image,moderation:'pass' as const}));
+    const restore=withApi({listStoryImages:async()=>listWith({images,pending:[]})});
+    try {
+      const input={storyId:revision.storyId,chapterId:chapter.id,imageId:images[0].imageId};
+      if(purpose==='illustration')await saveChapterIllustration({...input,after:null});
+      else await saveChapterBackdrop(input);
+      assert.deepEqual(requests.filter(r=>r.action==='state').map(r=>r.view),['home','home']);
+      assert.equal(requests.filter(r=>r.action==='articleSave').length,1);
+    } finally {restore();env.restore();}
+  }
+});

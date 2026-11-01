@@ -24,7 +24,7 @@ export function withChapterBackdrop(chapters: ManuscriptChapter[], chapterId: st
  * Choosing the backdrop a chapter already has saves nothing.
  */
 export async function saveChapterBackdrop(input: { storyId?: string; memberId?: string; chapterId: string; imageId: string }): Promise<FamilyRoomState> {
-  const state = await loadRoomStateRemoteFirst();
+  const state = await loadRoomStateRemoteFirst(input.storyId ? {view:'home'} : {});
   const bookId = input.storyId || input.memberId || "";
   const current = currentManuscript(state, bookId);
   if (!current.draft) throw new Error("这本书还没有保存过，先保存书稿再选底图");
@@ -38,7 +38,7 @@ export async function saveChapterBackdrop(input: { storyId?: string; memberId?: 
     await saveArticle({requestId:`request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`,
       storyId:story.id,revisionId:story.currentRevisionId,expectedVersion:story.version,
       chapter:{...articleChapter(chapter),backdropImageId:input.imageId}});
-    return loadRoomStateRemoteFirst();
+    return loadRoomStateRemoteFirst({view:'home'});
   }
   const next = withChapterBackdrop(chapters, input.chapterId, input.imageId);
   const revision = makeRevision(input.memberId || "", draftWithChapters(current.draft, next), current.sourceFingerprint,
