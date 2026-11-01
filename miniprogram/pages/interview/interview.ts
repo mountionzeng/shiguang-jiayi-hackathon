@@ -241,8 +241,10 @@ Page({
     try {
     const sharedFamilyId = decodeQueryValue(options.familyId);
     const captureEntry = (options.capture === "1" || !!options.captureId) && !sharedFamilyId;
+    const requestedSourceId = decodeQueryValue(options.sourceId);
     const shared = sharedFamilyId ? await loadSharedFamilyRoom(sharedFamilyId) : undefined;
-    const state = shared?.state ?? await loadRoomStateRemoteFirst({ view: "home" });
+    // 首页只提供摘要；指定记忆续聊必须读取完整正文，再按 ID 限定本次来源。
+    const state = shared?.state ?? await loadRoomStateRemoteFirst({ view: requestedSourceId ? "memories" : "home" });
     const member = shared
       ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
       : authorFor(state, await loadCurrentMemberRemoteFirst(state));
@@ -259,7 +261,6 @@ Page({
       ? (state.stories ?? []).find(story => story.id === requestedStoryId && !story.deletedAt)
       : undefined;
     if (requestedStoryId && !requestedStory) throw new Error("这本故事书已不可用");
-    const requestedSourceId = decodeQueryValue(options.sourceId);
     const requestedMemoryType: MemoryType | undefined =
       options.memoryType === "memoir"
         ? "memoir"
@@ -269,10 +270,12 @@ Page({
     // 记忆库是共用的：接着聊的那一段可以是任何人讲的。
     const source = (sharedFamilyId ? state.contributions : memoryPool(state.contributions)).find((memory) => (
       memory.id === requestedSourceId &&
+      !memory.deletedAt &&
       (!sharedFamilyId || (
         memory.authorMemberId === member.id && contributionScope(memory) === "family"
       ))
     ));
+    if (requestedSourceId && !source) throw new Error("这段记忆已不可用");
     const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
     const storyTitle = requestedStory?.title || sourceStoryTitle || requestedStoryTitle;
     const sourcePreview = source

@@ -509,6 +509,48 @@ test("continuing a recent story opens the interview with its existing context", 
 
 
 
+test("interview continuation loads the complete requested memory outside the home projection", async (context) => {
+  const initial = createInitialRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  const priorApp = Object.getOwnPropertyDescriptor(globalThis, "getApp");
+  Object.defineProperty(globalThis, "getApp", { configurable: true, value: () => ({ globalData: { cloudReady: true } }) });
+  context.after(() => {
+    if (priorApp) Object.defineProperty(globalThis, "getApp", priorApp);
+    else delete (globalThis as any).getApp;
+  });
+  const source = initial.contributions.find(item => item.id === "demo-personal-rain")!;
+  source.text = "【虚构】一段不在首页摘要中的记忆。" + "窗边有本蓝色的旧书。".repeat(30);
+  const views: string[] = [];
+  (wx as any).cloud = { callFunction: async ({ name, data }: any) => {
+    if (name === "getOpenId") return { result: { openid: "source-read-fixture" } };
+    assert.equal(name, "storyBooks");
+    views.push(data.view);
+    return { result: { ...initial, roomStateVersion: 1, stories: [], manuscriptRevisions: [], deletedStories: [],
+      personalDrafts: {}, personalDraftSourceFingerprints: {}, contributions: data.view === "memories" ? [source] : [] } };
+  } };
+  const page = instantiate(await pageDefinition("interview"));
+  await callPage(page, "onLoad", { sourceId: source.id });
+  assert.equal(page.sourceText, source.text, "must use full remote source, not a missing or truncated home summary");
+  assert.equal(page.data.stage, "chat");
+  assert.deepEqual(views, ["memories"]);
+  assert.equal(storage.backCount(), 0);
+});
+
+test("interview refuses an unavailable source instead of silently starting another conversation", async (context) => {
+  const initial = createInitialRoomState();
+  const storage = installWxMock(initial);
+  context.after(storage.restore);
+  for (const sourceId of ["missing-memory", "demo-personal-rain"]) {
+    if (sourceId === "demo-personal-rain") initial.contributions.find(item => item.id === sourceId)!.deletedAt = "2026-11-01T00:00:00Z";
+    const page = instantiate(await pageDefinition("interview"));
+    await callPage(page, "onLoad", { sourceId });
+    assert.deepEqual(page.data.messages, []);
+    assert.equal(page.sourceText, "");
+  }
+  assert.equal(storage.backCount(), 2);
+});
+
 test("home book cover swipes between books and opens the selected one", async (context) => {
   const initial = createInitialRoomState();
   initial.contributions.push(createContribution({
