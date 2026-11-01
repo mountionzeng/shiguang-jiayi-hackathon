@@ -758,7 +758,7 @@
 .capture-files { width: 100%; white-space: nowrap; margin: 8rpx 0; }
 .capture-file { display: inline-flex; width: 120rpx; margin-right: 12rpx; flex-direction: column; vertical-align: top; font-size: 22rpx; white-space: normal; }
 .capture-file image { width: 120rpx; height: 92rpx; border-radius: 8rpx; }
-.capture-file text { height: 92rpx; overflow: hidden; }
+.capture-file text { height: 92rpx; overflow: hidden; overflow-wrap: anywhere; }
 .capture-file > view { padding: 8rpx; text-align: center; }
 .capture-error { font-size: 24rpx; line-height: 1.5; color: #9e4837; }
 .capture-bubble { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -768,5 +768,5 @@
 .capture-session-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12rpx; }
 .capture-link.capture-link, .capture-audio.capture-audio { width: auto; margin: 0; padding: 12rpx 10rpx; background: transparent; color: var(--jade); font-size: 24rpx; line-height: 1.5; white-space: normal; }
 .capture-link::after, .capture-audio::after { border: 0; }
-.capture-audio.capture-audio { text-align: left; padding: 14rpx 0; }
+.capture-audio.capture-audio { text-align: left; padding: 14rpx 0; color: inherit; overflow-wrap: anywhere; }
 .capture-recovery { margin: 16rpx 0 28rpx; color: var(--ink-soft); font-size: 24rpx; }

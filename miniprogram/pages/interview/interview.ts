@@ -752,11 +752,18 @@ Page({
       wx.showToast({ title: "请回到自己的记忆里导入", icon: "none" });
       return;
     }
+    const captureEntry = this.data.captureEntry;
     wx.showActionSheet({
-      itemList: ["从相册或拍照选照片", "从微信聊天选文件", "AI生成配图", "录一段声音", "把输入文字整理成记忆"],
+      itemList: captureEntry
+        ? ["从相册或拍照选照片", "从微信聊天选文件", "录一段声音"]
+        : ["从相册或拍照选照片", "从微信聊天选文件", "AI生成配图", "录一段声音", "把输入文字整理成记忆"],
       success: result => {
         if (result.tapIndex === 0) void this.importFromAlbum();
         if (result.tapIndex === 1) void this.importFromMessage();
+        if (captureEntry) {
+          if (result.tapIndex === 2) void this.recordCapture();
+          return;
+        }
         if (result.tapIndex === 2) void this.generateMemoryPhotos();
         if (result.tapIndex === 3) void this.recordCapture();
         if (result.tapIndex === 4) void this.startTextCapture();

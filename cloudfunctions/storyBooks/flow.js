@@ -39,6 +39,7 @@ const contributionForClient = (memory,member,ownName) => ({
   aiRevisions:memory.aiRevisions,
   deletedAt:memory.deletedAt,
   photoIds:memory.photoIds,
+  materialCaptureId:memory.materialCaptureId,
 });
 function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null, now = ()=>new Date().toISOString()} = {}) {
   const memberError = (code,message) => { throw Object.assign(new Error(message),{code}); };
