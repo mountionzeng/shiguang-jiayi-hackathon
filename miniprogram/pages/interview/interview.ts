@@ -47,7 +47,9 @@ import { ImportFileLike } from "../../services/memoryImport";
 import { activeStory, linkStoryMemories } from "../../services/storyBooks";
 import { storyShelf } from "../../services/storyShelf";
 import {recordCaptureAudio,stopCaptureAudio,cancelCaptureAudio} from '../../services/captureAudio';
-import {readMemoryCapture,assertCaptureScope,loadCaptureDraft,storeCaptureDraft,stageCaptureFiles,sendMemoryCapture,captureReceiptList,continueMemoryCapture,saveCaptureOriginal,captureAudioUrl,type MemoryCaptureDraft,type MemoryCaptureReceipt} from '../../services/memoryCapture';
+import {readCaptureSession,pendingCaptureDrafts,assertCaptureScope,loadCaptureDraft,storeCaptureDraft,stageCaptureFiles,sendMemoryCapture,continueMemoryCapture,saveCaptureOriginal,captureAudioUrl,type MemoryCaptureDraft,type MemoryCaptureReceipt} from '../../services/memoryCapture';
+
+interface CaptureMessageView extends MemoryCaptureReceipt {photoPaths:string[];localStatus?:''|'sending'|'failed'}
 
 interface MessageView {
   id: string;
@@ -165,13 +167,16 @@ function splitRecoverableText(text: string): string[] {
 Page({
   data: {
     captureDraft: null as MemoryCaptureDraft | null,
-    captureReceipts: [] as MemoryCaptureReceipt[],
+    captureReceipts: [] as CaptureMessageView[],
+    captureSessionId: '',
+    captureMemoryId: '',
+    captureReadOnly: false,
+    capturePending: [] as Array<{id:string;sessionId?:string;label:string}>,
     captureBusy: false,
     captureRecording: false,
     captureEntry: false,
     captureError: '',
     captureExpandedId: '',
-    capturePhotoPaths: [] as string[],
     memberName: "",
     memberRelation: "",
 
@@ -234,7 +239,7 @@ Page({
     this.interviewUnloaded = false;
     try {
     const sharedFamilyId = decodeQueryValue(options.familyId);
-    const captureEntry = options.capture === "1" && !sharedFamilyId;
+    const captureEntry = (options.capture === "1" || !!options.captureId) && !sharedFamilyId;
     const shared = sharedFamilyId ? await loadSharedFamilyRoom(sharedFamilyId) : undefined;
     const state = shared?.state ?? await loadRoomStateRemoteFirst({ view: "home" });
     const member = shared
@@ -280,7 +285,7 @@ Page({
     const continuation = requestedQuestion ||
       (storyTitle ? "这一次，你还想补充什么？" : "后来你又想起了什么？");
     const opening = captureEntry
-      ? "想到什么就发来吧：文字、图片或录音都可以。发送后，我会帮你整理成一段新记忆，原素材也会保留。"
+      ? "把这一刻先记下来吧。文字、照片、录音可以一起发，也可以分几次补充，都会保存在这段记忆里。想聊或整理时，再叫我。"
       : source
       ? storyTitle
         ? `我们继续聊「${storyTitle}」吧。\n上次你讲到：“${sourcePreview}”\n${continuation}`
@@ -314,14 +319,11 @@ Page({
     });
 
     this.pushMessage("opening", opening);
-    await Promise.all([
-      loadCaptureDraft().then(captureDraft=>{if(!this.interviewUnloaded)this.setData({captureDraft:captureDraft || null,...(captureDraft?.composerText?{inputText:captureDraft.composerText}:{})});}).catch(()=>{}),
-      captureReceiptList().then(captureReceipts=>{if(!this.interviewUnloaded)this.setData({captureReceipts});}).catch(()=>{}),
-    ]);
-    if(captureEntry && !this.data.captureDraft && !this.interviewUnloaded)await this.stageCapture([]);
-    if(options.captureId){
-      const receipt=await readMemoryCapture(decodeQueryValue(options.captureId));
-      if(!this.interviewUnloaded){this.updateCaptureReceipt(receipt);this.setData({stage:'chat'});await this.toggleCaptureSource({currentTarget:{dataset:{id:receipt.id}}});}
+    if(captureEntry){
+      wx.setNavigationBarTitle({title:'随手记'});
+      if(options.captureId)await this.restoreCaptureSession(decodeQueryValue(options.captureId));
+      if(!this.data.captureDraft && !this.data.captureReadOnly)await this.stageCapture([]);
+      await this.refreshPendingCaptures();
     }
     } catch (error) {
       wx.showModal({ title: "暂时无法加载", content: "请返回后重新打开，不会切换到另一份本地数据。", showCancel: false, success: () => wx.navigateBack() });
@@ -337,7 +339,7 @@ Page({
     cancelCaptureAudio();
     this.capturePlayer?.destroy();
     if(this.data.captureDraft && !this.data.captureDraft.submitted)void storeCaptureDraft({...this.data.captureDraft,composerText:this.data.inputText});
-    if(this.data.captureDraft || this.data.captureBusy)return;
+    if(this.data.captureEntry || this.data.captureDraft || this.data.captureBusy)return;
     wx.disableAlertBeforeUnload();
     const unsentText = this.data.inputText.trim();
     const rawAnswers = this.data.answers.concat(unsentText ? [unsentText] : []);
@@ -427,6 +429,7 @@ Page({
   },
 
   async send() {
+    if(this.data.captureReadOnly)return;
     if(this.data.captureEntry){
       if(this.data.captureBusy || this.data.importing || this.data.captureRecording)return;
       if(!this.data.captureDraft)await this.stageCapture([]);
@@ -652,6 +655,7 @@ Page({
   },
 
   beginInterview() {
+    if(this.data.memoryType==='note' && !this.data.sharedFamilyId){wx.redirectTo({url:'/pages/interview/interview?capture=1'});return;}
     this.setData({ stage: "chat" });
   },
 
@@ -820,10 +824,10 @@ Page({
   },
 
   async stageCapture(files:ImportFileLike[]) {
-    if(this.data.captureBusy || this.data.importing)return;
+    if(this.data.captureReadOnly || this.data.captureBusy || this.data.importing)return;
     this.setData({importing:true,captureError:''});
-    try {const captureDraft=await stageCaptureFiles(files,this.data.captureDraft || undefined);captureDraft.composerText=this.data.inputText;await storeCaptureDraft(captureDraft);if(!this.interviewUnloaded)this.setData({captureDraft});}
-    catch(error){const captureDraft=await loadCaptureDraft();if(!this.interviewUnloaded)this.setData({captureDraft:captureDraft || null,captureError:error instanceof Error?error.message:'没能添加素材'});}
+    try {const captureDraft=await stageCaptureFiles(files,this.data.captureDraft || undefined,this.data.captureEntry?this.data.captureSessionId:undefined);captureDraft.composerText=this.data.inputText;await storeCaptureDraft(captureDraft);if(!this.interviewUnloaded)this.setData({captureDraft,captureSessionId:captureDraft.sessionId || this.data.captureSessionId});}
+    catch(error){const captureDraft=await loadCaptureDraft(this.data.captureSessionId || undefined);if(!this.interviewUnloaded)this.setData({captureDraft:captureDraft || this.data.captureDraft,captureError:error instanceof Error?error.message:'没能添加素材'});}
     finally {if(!this.interviewUnloaded)this.setData({importing:false});}
   },
   async startTextCapture(){await this.stageCapture([]);},
@@ -841,15 +845,80 @@ Page({
     if(event.currentTarget.dataset.kind==='photo'){draft.photoIds.splice(index,1);draft.photoPaths.splice(index,1);}else draft.audio.splice(index,1);
     await storeCaptureDraft(draft);this.setData({captureDraft:{...draft}});
   },
-  async cancelEmptyCapture(){const draft=this.data.captureDraft;if(!draft || draft.submitted || draft.audio.length || draft.photoIds.length || draft.text)return;await storeCaptureDraft(undefined,draft.familyId,draft.id);this.setData({captureDraft:null});},
-  updateCaptureReceipt(receipt:MemoryCaptureReceipt){if(this.interviewUnloaded)return;this.setData({captureReceipts:[receipt,...this.data.captureReceipts.filter(item=>item.id!==receipt.id)]});},
+  async cancelEmptyCapture(){const draft=this.data.captureDraft;if(!draft || draft.submitted || draft.audio.length || draft.photoIds.length || draft.text)return;await storeCaptureDraft(undefined,draft.familyId,draft.id,draft.sessionId);this.setData({captureDraft:null});},
+  updateCaptureReceipt(receipt:MemoryCaptureReceipt,localStatus:''|'sending'|'failed'=''){
+    if(this.interviewUnloaded)return;
+    const rows=[...this.data.captureReceipts],index=rows.findIndex(item=>item.id===receipt.id);
+    const message:CaptureMessageView={...receipt,localStatus,photoPaths:index>=0?rows[index].photoPaths:this.data.captureDraft?.id===receipt.id?this.data.captureDraft.photoPaths:[]};
+    if(index>=0)rows[index]=message;else rows.push(message);
+    this.setData({captureReceipts:rows,...(receipt.memoryId?{captureMemoryId:receipt.memoryId}:{}),scrollIntoView:`capture-message-${receipt.id}`});
+    if(receipt.photoIds.length && !message.photoPaths.length)void this.loadCapturePhotos(receipt);
+  },
+  async loadCapturePhotos(receipt:MemoryCaptureReceipt){
+    try{
+      await assertCaptureScope(receipt.familyId);
+      const photos=await readLocalPhotos(receipt.photoIds);
+      await assertCaptureScope(receipt.familyId);
+      if(this.interviewUnloaded)return;
+      this.setData({captureReceipts:this.data.captureReceipts.map(item=>item.id===receipt.id?{...item,photoPaths:receipt.photoIds.map(id=>photos.photoPaths[id]).filter(Boolean)}:item)});
+    }catch{/* Keep the saved message visible even when a photo cannot load. */}
+  },
+  async retryCapturePhotos(event:{currentTarget:{dataset:{id:string}}}){
+    const receipt=this.data.captureReceipts.find(item=>item.id===event.currentTarget.dataset.id);
+    if(receipt)await this.loadCapturePhotos(receipt);
+  },
+  async refreshPendingCaptures(){
+    const drafts=await pendingCaptureDrafts();
+    if(!this.interviewUnloaded)this.setData({capturePending:drafts.filter(draft=>draft.sessionId!==this.data.captureSessionId).map(draft=>({id:draft.id,sessionId:draft.sessionId,label:(draft.composerText || draft.text || `${draft.photoIds.length}张照片、${draft.audio.length}段录音`).slice(0,36)}))});
+  },
+  async restoreCaptureSession(id:string){
+    const session=await readCaptureSession(id);
+    if(this.interviewUnloaded)return;
+    this.setData({captureSessionId:session.sessionId,captureReceipts:[],captureMemoryId:'',captureReadOnly:!session.sessionId});
+    session.items.forEach(receipt=>this.updateCaptureReceipt(receipt));
+    const draft=session.sessionId?await loadCaptureDraft(session.sessionId):undefined;
+    if(!this.interviewUnloaded)this.setData({captureDraft:draft || null,inputText:draft?.composerText || ''});
+  },
+  async recoverCaptureDraft(event:{currentTarget:{dataset:{id:string;session?:string}}}){
+    if(this.data.captureBusy || this.data.importing || this.data.captureRecording)return;
+    this.setData({captureBusy:true,captureError:''});
+    try{
+      const current=this.data.captureDraft;
+      if(current)await storeCaptureDraft({...current,composerText:this.data.inputText});
+      const draft=await loadCaptureDraft(event.currentTarget.dataset.session || undefined);
+      if(!draft || draft.id!==event.currentTarget.dataset.id)return;
+      // Only a submitted draft (or a later message) has an existing cloud session.
+      this.setData({captureReceipts:[],captureMemoryId:''});
+      if(draft.sessionId && (draft.submitted || draft.id!==draft.sessionId)){
+        try{await this.restoreCaptureSession(draft.sessionId);}
+        catch{if(!this.interviewUnloaded)this.setData({captureError:'已恢复本机原件，云端消息暂未读到，可以重试发送。'});}
+      }
+      if(!this.interviewUnloaded)this.setData({captureDraft:draft,captureSessionId:draft.sessionId || '',captureReadOnly:false,inputText:draft.composerText || ''});
+      await this.refreshPendingCaptures();
+    }catch(error){if(!this.interviewUnloaded)this.setData({captureError:error instanceof Error?error.message:'恢复未完成，请重试'});}
+    finally{if(!this.interviewUnloaded)this.setData({captureBusy:false});}
+  },
+  startNewCapture(){if(!this.data.captureBusy && !this.data.importing && !this.data.captureRecording)wx.redirectTo({url:'/pages/interview/interview?capture=1'});},
+  chatAboutCapture(){
+    if(this.data.captureBusy || !this.data.captureMemoryId)return;
+    const draft=this.data.captureDraft;
+    if(this.data.inputText.trim() || draft?.text || draft?.photoIds.length || draft?.audio.length){wx.showToast({title:'先发送当前内容，再一起聊',icon:'none'});return;}
+    wx.navigateTo({url:`/pages/interview/interview?sourceId=${encodeURIComponent(this.data.captureMemoryId)}`});
+  },
   async sendCapture(){
     if(!this.data.captureDraft || this.data.captureBusy || this.data.captureRecording)return;
     const originalText=this.data.inputText;
+    const draft=this.data.captureDraft;
+    if(!draft.submitted && !draft.text.trim() && !originalText.trim() && !draft.photoIds.length && !draft.audio.length){this.setData({captureError:'先添加文字、图片或录音'});return;}
     this.setData({captureBusy:true,captureError:''});
+    this.updateCaptureReceipt({id:draft.id,sessionId:draft.sessionId,familyId:draft.familyId,text:draft.submittedText || [draft.text,originalText].filter(Boolean).join('\n'),photoIds:draft.photoIds,audio:draft.audio,status:'received',evidence:[],memoryId:'',message:'',createdAtMs:Date.now()},'sending');
     try {await sendMemoryCapture(this.data.captureDraft,originalText,receipt=>this.updateCaptureReceipt(receipt));if(!this.interviewUnloaded)this.setData({captureDraft:null,...(this.data.inputText===originalText?{inputText:''}:{})});}
-    catch(error){if(!this.interviewUnloaded)this.setData({captureError:error instanceof Error?error.message:'素材已保留，请稍后继续'});}
+    catch(error){if(!this.interviewUnloaded){const receipt=this.data.captureReceipts.find(item=>item.id===draft.id);if(receipt)this.updateCaptureReceipt(receipt,'failed');this.setData({captureError:error instanceof Error?error.message:'素材已保留，请稍后继续'});}}
     finally {if(!this.interviewUnloaded)this.setData({captureBusy:false});}
+    if(!this.interviewUnloaded && this.data.captureEntry && !this.data.captureDraft){
+      if(!draft.sessionId)this.setData({captureReadOnly:true});
+      else await this.stageCapture([]);
+    }
   },
   async continueCapture(event:{currentTarget:{dataset:{id:string;original?:boolean}}}){
     if(this.data.captureBusy)return;
@@ -859,13 +928,11 @@ Page({
     catch(error){if(!this.interviewUnloaded)this.setData({captureError:error instanceof Error?error.message:'尚未完成'});}
     finally {if(!this.interviewUnloaded)this.setData({captureBusy:false});}
   },
-  async toggleCaptureSource(event:{currentTarget:{dataset:{id:string}}}){
-    const id=event.currentTarget.dataset.id,receipt=this.data.captureReceipts.find(row=>row.id===id);
-    this.setData({captureExpandedId:this.data.captureExpandedId===id?'':id,capturePhotoPaths:[]});
-    if(!receipt || this.data.captureExpandedId!==id)return;
-    try {await assertCaptureScope(receipt.familyId);const photos=await readLocalPhotos(receipt.photoIds);await assertCaptureScope(receipt.familyId);if(!this.interviewUnloaded && this.data.captureExpandedId===id)this.setData({capturePhotoPaths:receipt.photoIds.map(photoId=>photos.photoPaths[photoId]).filter(Boolean)});}catch(error){this.showImportError(error);}
+  toggleCaptureSource(event:{currentTarget:{dataset:{id:string}}}){
+    const id=event.currentTarget.dataset.id;
+    this.setData({captureExpandedId:this.data.captureExpandedId===id?'':id});
   },
-  previewCapturedPhoto(event:{currentTarget:{dataset:{url:string}}}){wx.previewImage({current:event.currentTarget.dataset.url,urls:this.data.capturePhotoPaths});},
+  previewCapturedPhoto(event:{currentTarget:{dataset:{url:string;id?:string}}}){const {url,id}=event.currentTarget.dataset;const urls=this.data.captureReceipts.find(item=>item.id===id)?.photoPaths || [url];wx.previewImage({current:url,urls});},
   openCapturedMemory(event:{currentTarget:{dataset:{id:string}}}){wx.navigateTo({url:`/pages/archive/archive?id=${encodeURIComponent(event.currentTarget.dataset.id)}`});},
   async playCapturedAudio(event:{currentTarget:{dataset:{id:string;fileid:string}}}){
     try {const url=await captureAudioUrl(event.currentTarget.dataset.id,event.currentTarget.dataset.fileid);if(this.interviewUnloaded)return;this.capturePlayer?.destroy();const player=wx.createInnerAudioContext();this.capturePlayer=player;player.src=url;player.onError(()=>wx.showToast({title:'录音暂时无法播放',icon:'none'}));player.play();}catch(error){this.showImportError(error);}

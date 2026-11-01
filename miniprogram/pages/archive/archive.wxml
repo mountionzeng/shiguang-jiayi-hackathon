@@ -99,7 +99,7 @@
       <button class="btn btn-ghost" bindtap="toggleHistory" disabled="{{savingPhotos || savingEdit}}" wx:if="{{historyItems.length}}">{{showHistory ? '收起修改历史' : '查看修改历史'}}</button>
     </view>
     <view class="ai-original-text" wx:if="{{showOriginal}}">{{originalText}}</view>
-    <button wx:if="{{materialCaptureId}}" class="btn btn-ghost" bindtap="openMaterialSources">查看原素材与整理过程</button>
+    <button wx:if="{{materialCaptureId}}" class="btn btn-ghost" bindtap="openMaterialSources">查看原始记录（文字、照片、录音）</button>
     <view class="ai-history-list" wx:if="{{showHistory}}">
       <button class="memory-version-choice {{item.id === selectedRevisionId ? 'memory-version-selected' : ''}}" wx:for="{{historyItems}}" wx:key="id" data-id="{{item.id}}" bindtap="selectMemoryRevision" aria-label="选择{{item.kindLabel}}，{{item.dateLabel}}">
         <view class="ai-history-meta">{{item.kindLabel}} · {{item.dateLabel}}{{item.current ? ' · 当前版本' : ''}}</view>

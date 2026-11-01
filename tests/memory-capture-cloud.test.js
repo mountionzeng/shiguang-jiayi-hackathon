@@ -18,6 +18,106 @@ function fixture(){
 }
 const request=()=>({id:'capture-test-12345678',text:'虚构故事：纸船来到灯塔边。',photoIds:[],audio:[]});
 
+test('随手记多条消息只创建一段记忆，重试不重复、显式恢复不带入旧记忆',async()=>{
+  const oldModerate=guard.moderateText,oldActive=guard.assertIdentityStillActive;
+  guard.moderateText=async()=>{};guard.assertIdentityStillActive=async()=>{};
+  try{
+    const f=fixture(),first={...request(),sessionId:request().id};
+    await f.handler.receive({...request(),id:'capture-old-12345678'});
+    await f.handler.receive(first);await f.handler.saveOriginal(first);
+    const second={...request(),id:'capture-next-12345678',sessionId:first.id,text:'第二条：带来一张画。'};
+    await Promise.all([f.handler.receive(second),f.handler.receive(second)]);
+    await Promise.all([f.handler.saveOriginal(second),f.handler.saveOriginal(second)]);
+    const session=await f.handler.readSession(second);
+    assert.deepEqual(session.items.map(item=>item.id),[first.id,second.id]);
+    assert.equal(new Set(session.items.map(item=>item.memoryId)).size,1);
+    const memories=[...f.state.entries()].filter(([key])=>key.startsWith('memories/'));
+    assert.equal(memories.length,1);assert.equal(memories[0][1].text,first.text+'\n\n'+second.text);
+    assert.equal([...f.state.values()].find(row=>row.rawText).rawText,first.text+'\n\n'+second.text);
+    await assert.rejects(f.handler.processNext(first),/先保存原件/);
+  }finally{guard.moderateText=oldModerate;guard.assertIdentityStillActive=oldActive;}
+});
+
+test('随手记不能借用别人的会话，不能重绑已提交消息，不能混入旧批次',async()=>{
+  const f=fixture(),first={...request(),sessionId:request().id};
+  await f.handler.receive(first);
+  const next={...first,id:'capture-next-12345678'};
+  const stranger=createCaptureHandler({...f,identity:{...f.identity,accountId:'account_stranger'}});
+  await assert.rejects(stranger.receive(next),/不存在/);
+  await assert.rejects(stranger.readSession(first),/不存在/);
+  await assert.rejects(f.handler.receive({...first,sessionId:'capture-other-12345678'}),/不能换内容/);
+  await f.handler.receive({...request(),id:'capture-legacy-12345678'});
+  await assert.rejects(f.handler.receive({...next,sessionId:'capture-legacy-12345678'}),/不能把旧素材/);
+});
+
+test('混合文字照片录音先保存原件，追加纯照片仍归同一记忆且无需调用模型',async()=>{
+  const oldModerate=guard.moderateText,oldActive=guard.assertIdentityStillActive;
+  guard.moderateText=async()=>{};guard.assertIdentityStillActive=async()=>{};
+  try{
+    const f=fixture();let aiCalls=0;
+    const handler=createCaptureHandler({...f,fetcher:async()=>{aiCalls++;throw new Error('不得自动分析');}});
+    for(const id of ['photo-first','photo-next'])f.state.set(`photos/${f.identity.familyId}__${id}`,{familyId:f.identity.familyId,_openid:f.identity.openid});
+    const first={...request(),sessionId:request().id,photoIds:['photo-first'],audio:[{id:'audio-123456',extension:'mp3',bytes:30,name:'随手录音.mp3'}]};
+    const receipt=await handler.receive(first);
+    await assert.rejects(handler.saveOriginal(first),/尚未上传完/);
+    // Failed commit must leave the batch uploadable, so the user can retry sending.
+    assert.equal((await handler.read(first)).status,'received');
+    await handler.register({id:first.id,fileId:first.audio[0].id,fileID:`cloud://env.bucket/${receipt.uploads[0].cloudPath}`});
+    const saved=await handler.saveOriginal(first);
+    const next={...request(),id:'capture-next-12345678',sessionId:first.id,text:'',photoIds:['photo-next']};
+    await handler.receive(next);assert.equal((await handler.saveOriginal(next)).memoryId,saved.memoryId);
+    const memory=f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`);
+    assert.deepEqual(memory.photoIds,['photo-first','photo-next']);assert.equal(aiCalls,0);
+    const session=await handler.readSession(first);
+    assert.equal(session.items[0].audio[0].name,'随手录音.mp3');assert.equal(session.items[0].audio[0].fileID,undefined);
+    assert.match((await handler.audioUrl({id:first.id,fileId:first.audio[0].id})).url,/https:/);
+  }finally{guard.moderateText=oldModerate;guard.assertIdentityStillActive=oldActive;}
+});
+
+test('长会话维持既有记忆正文和配图上限，原始记录完整可恢复',async()=>{
+  const oldModerate=guard.moderateText,oldActive=guard.assertIdentityStillActive;
+  guard.moderateText=async()=>{};guard.assertIdentityStillActive=async()=>{};
+  try{
+    const f=fixture(),sessionId=request().id,photoIds=Array.from({length:12},(_,i)=>`photo-${i}`);
+    for(const id of photoIds)f.state.set(`photos/${f.identity.familyId}__${id}`,{familyId:f.identity.familyId,_openid:f.identity.openid});
+    const text='完整的原话。'.repeat(500);
+    let saved;
+    for(let i=0;i<2;i++){
+      const message={...request(),id:i?'capture-next-12345678':sessionId,sessionId,text,photoIds:photoIds.slice(i*6,i*6+6)};
+      await f.handler.receive(message);saved=await f.handler.saveOriginal(message);
+    }
+    const memory=f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`);
+    assert.ok(memory.text.length<=500);assert.equal(memory.photoIds.length,9);
+    assert.equal(memory.aiRevisions[memory.aiRevisions.length-1].text,memory.text);
+    const session=await f.handler.readSession({id:sessionId});
+    assert.equal(session.items.map(item=>item.text).join('\n\n'),text+'\n\n'+text);
+    assert.equal(session.items.flatMap(item=>item.photoIds).length,12);
+  }finally{guard.moderateText=oldModerate;guard.assertIdentityStillActive=oldActive;}
+});
+
+test('随手记追加保留最新人工修改及长原文，删除后的记忆不被悄悄复活',async()=>{
+  const oldModerate=guard.moderateText,oldActive=guard.assertIdentityStillActive;
+  const moderated=[];guard.moderateText=async(_cloud,_openid,text)=>moderated.push(text);guard.assertIdentityStillActive=async()=>{};
+  try{
+    const f=fixture(),first={...request(),sessionId:request().id,text:'长原文。'.repeat(300)};
+    await f.handler.receive(first);const saved=await f.handler.saveOriginal(first);
+    assert.ok(moderated.includes(first.text),'完整原文须审核，不能只审核缩略正文');
+    assert.equal([...f.state.values()].find(row=>row.rawText).rawText,first.text);
+    const memory=f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`);
+    memory.text='已由用户编辑';memory.title='用户的标题';
+    const next={...request(),id:'capture-next-12345678',sessionId:first.id};
+    await f.handler.receive(next);await f.handler.saveOriginal(next);
+    const updated=f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`);
+    assert.equal(updated.text,'已由用户编辑');assert.equal(updated.title,'用户的标题');
+    assert.equal([...f.state.values()].find(row=>row.rawText).rawText,first.text+'\n\n'+next.text);
+    updated.deletedAt=new Date().toISOString();
+    const last={...next,id:'capture-last-12345678'};
+    await f.handler.receive(last);await assert.rejects(f.handler.saveOriginal(last),/更改或移除/);
+    assert.ok(f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`).deletedAt);
+    assert.notEqual((await f.handler.read(last)).status,'saved');
+  }finally{guard.moderateText=oldModerate;guard.assertIdentityStillActive=oldActive;}
+});
+
 test('收集协议拒绝空批次、重复编号与过大录音',()=>{
   assert.throws(()=>inputOf({...request(),text:''}),/先添加/);
   assert.throws(()=>inputOf({...request(),audio:[{id:'audio-123456',extension:'exe',bytes:8}]}),/录音格式/);

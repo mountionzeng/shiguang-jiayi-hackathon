@@ -2,14 +2,15 @@ import {currentFamilyId} from './cloudRoomStorage';
 import {requestAiConsent} from './aiConsent';
 import {requestPhotoAiConsent} from './photoAiConsent';
 import {saveLocalPhoto} from './bookImages';
-import {resumePhotoUploads} from './photoCloud';
+import {ensurePhotoUploads} from './photoCloud';
 import {classifyImportFiles,readImportTextFile,type ImportFileLike} from './memoryImport';
 
 export interface CaptureAudioFile {id:string;name:string;path:string;bytes:number;extension:string;fileID?:string}
-export interface MemoryCaptureDraft {id:string;familyId:string;composerText?:string;submittedText?:string;text:string;photoIds:string[];photoPaths:string[];audio:CaptureAudioFile[];submitted?:boolean}
-export interface MemoryCaptureReceipt {id:string;familyId:string;status:'received'|'processing'|'uncertain'|'ready'|'saved';text:string;photoIds:string[];audio:Array<{id:string;name:string;fileID?:string}>;evidence:Array<{sourceId:string;kind:string;text:string}>;draft?:{title:string;body:string};memoryId:string;message:string;createdAtMs:number;pollAfterMs?:number}
+export interface MemoryCaptureDraft {id:string;sessionId?:string;familyId:string;composerText?:string;submittedText?:string;text:string;photoIds:string[];photoPaths:string[];audio:CaptureAudioFile[];submitted?:boolean}
+export interface MemoryCaptureReceipt {id:string;sessionId?:string;familyId:string;status:'received'|'processing'|'uncertain'|'ready'|'saved';text:string;photoIds:string[];audio:Array<{id:string;name:string;fileID?:string}>;evidence:Array<{sourceId:string;kind:string;text:string}>;draft?:{title:string;body:string};memoryId:string;message:string;createdAtMs:number;pollAfterMs?:number}
 const makeId=()=>`capture-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,12)}`;
-const key=(familyId:string)=>`memory-capture:v1:${familyId}`;
+const key=(familyId:string,sessionId?:string)=>sessionId ? `memory-capture:v2:${familyId}:${sessionId}` : `memory-capture:v1:${familyId}`;
+const pendingKey=(familyId:string)=>`memory-capture-pending:v2:${familyId}`;
 export async function assertCaptureScope(familyId:string){if(await currentFamilyId()!==familyId)throw new Error('账号已切换，素材仍保留在原账号，请重新打开聊天');}
 async function call<T>(action:string,data:Record<string,unknown>={},familyId?:string):Promise<T>{
   const expectedFamilyId=familyId || await currentFamilyId();
@@ -19,21 +20,33 @@ async function call<T>(action:string,data:Record<string,unknown>={},familyId?:st
   await assertCaptureScope(expectedFamilyId);
   return result;
 }
-export async function loadCaptureDraft():Promise<MemoryCaptureDraft | undefined>{
-  const familyId=await currentFamilyId(),draft=wx.getStorageSync<MemoryCaptureDraft>(key(familyId));
+export async function loadCaptureDraft(sessionId?:string):Promise<MemoryCaptureDraft | undefined>{
+  const familyId=await currentFamilyId(),draft=wx.getStorageSync<MemoryCaptureDraft>(key(familyId,sessionId));
   return draft?{...draft,familyId}:undefined;
 }
-export async function storeCaptureDraft(draft:MemoryCaptureDraft | undefined,familyId?:string,expectedId?:string){
-  const scope=draft?.familyId || familyId || await currentFamilyId(),name=key(scope);
+export async function pendingCaptureDrafts():Promise<MemoryCaptureDraft[]>{
+  const familyId=await currentFamilyId();
+  const ids=wx.getStorageSync<string[]>(pendingKey(familyId)) || [];
+  return [wx.getStorageSync<MemoryCaptureDraft>(key(familyId)),...ids.map(id=>wx.getStorageSync<MemoryCaptureDraft>(key(familyId,id)))].filter(draft=>draft && (draft.composerText?.trim() || draft.text || draft.photoIds.length || draft.audio.length));
+}
+export async function storeCaptureDraft(draft:MemoryCaptureDraft | undefined,familyId?:string,expectedId?:string,sessionId?:string){
+  const scope=draft?.familyId || familyId || await currentFamilyId(),session=draft?.sessionId || sessionId,name=key(scope,session);
   if(draft)wx.setStorageSync(name,draft);
   else {const previous=wx.getStorageSync<MemoryCaptureDraft>(name);if(!expectedId || previous?.id===expectedId)wx.removeStorageSync(name);}
+  if(session){
+    const ids=wx.getStorageSync<string[]>(pendingKey(scope)) || [];
+    const stored=wx.getStorageSync<MemoryCaptureDraft>(name);
+    const hasContent=stored && (stored.composerText?.trim() || stored.text || stored.photoIds.length || stored.audio.length);
+    wx.setStorageSync(pendingKey(scope),[...ids.filter(id=>id!==session),...(hasContent?[session]:[])]);
+  }
 }
-export async function stageCaptureFiles(files:ImportFileLike[],current?:MemoryCaptureDraft):Promise<MemoryCaptureDraft>{
+export async function stageCaptureFiles(files:ImportFileLike[],current?:MemoryCaptureDraft,sessionId?:string):Promise<MemoryCaptureDraft>{
   const classified=classifyImportFiles(files);
   if(classified.unsupportedNames.length)throw new Error(`暂不支持${classified.unsupportedNames.join('、')}。可选图片、TXT/MD或MP3/M4A/WAV/Ogg录音。`);
   const familyId=current?.familyId || await currentFamilyId();
   await assertCaptureScope(familyId);
-  const draft:MemoryCaptureDraft=current?{...current,photoIds:[...current.photoIds],photoPaths:[...current.photoPaths],audio:[...current.audio]}:{id:makeId(),familyId,text:'',photoIds:[],photoPaths:[],audio:[]};
+  const id=makeId();
+  const draft:MemoryCaptureDraft=current?{...current,photoIds:[...current.photoIds],photoPaths:[...current.photoPaths],audio:[...current.audio]}:{id,familyId,text:'',photoIds:[],photoPaths:[],audio:[],...(sessionId!==undefined?{sessionId:sessionId || id}:{})};
   if(draft.submitted)throw new Error('上一批素材已提交，请先完成保存');
   if(draft.photoIds.length+draft.audio.length+classified.images.length+classified.audio.length>6)throw new Error('一批最多6份素材');
   if(draft.audio.length+classified.audio.length>3)throw new Error('一批最多3段录音');
@@ -54,10 +67,15 @@ export async function captureReceiptList(){return (await call<{items:MemoryCaptu
 export async function sendMemoryCapture(draft:MemoryCaptureDraft,text:string,onReceipt:(receipt:MemoryCaptureReceipt)=>void){
   await assertCaptureScope(draft.familyId);
   if(!draft.submitted && !draft.text.trim() && !text.trim() && !draft.photoIds.length && !draft.audio.length)throw new Error('先添加文字、图片或录音');
+  if(draft.sessionId){
+    const capabilities=await call<{sessionVersion:number}>('captureCapabilities',{},draft.familyId);
+    if(capabilities.sessionVersion!==1)throw new Error('云端记录接口尚未更新，请稍后重试');
+  }
   if(!draft.submitted){draft.composerText=text;draft.submittedText=[draft.text,text].filter(Boolean).join('\n');if(draft.submittedText.length>4000)throw new Error('一批最多4000字，请拆分后发送');draft.submitted=true;await storeCaptureDraft(draft);}
-  await resumePhotoUploads();
+  await ensurePhotoUploads(draft.photoIds);
   await assertCaptureScope(draft.familyId);
-  const received=await call<MemoryCaptureReceipt & {uploads:Array<{id:string;cloudPath:string;fileID:string}>}>('captureReceive',{id:draft.id,text:draft.submittedText ?? draft.text,photoIds:draft.photoIds,audio:draft.audio.map(({path,fileID,...file})=>file)},draft.familyId);
+  const received=await call<MemoryCaptureReceipt & {uploads:Array<{id:string;cloudPath:string;fileID:string}>}>('captureReceive',{id:draft.id,...(draft.sessionId?{sessionId:draft.sessionId}:{}),text:draft.submittedText ?? draft.text,photoIds:draft.photoIds,audio:draft.audio.map(({path,fileID,...file})=>file)},draft.familyId);
+  if(draft.sessionId && received.sessionId!==draft.sessionId)throw new Error('云端记录接口尚未更新，原件已保留，请稍后重试');
   onReceipt(received);
   for(const file of draft.audio){
     const slot=received.uploads.find(item=>item.id===file.id);if(!slot)throw new Error('没有找到录音上传位置');
@@ -65,8 +83,8 @@ export async function sendMemoryCapture(draft:MemoryCaptureDraft,text:string,onR
     file.fileID=fileID;await storeCaptureDraft(draft);
     if(!slot.fileID)await call('captureRegister',{id:draft.id,fileId:file.id,fileID},draft.familyId);
   }
-  await continueMemoryCapture(received,onReceipt);
-  await storeCaptureDraft(undefined,draft.familyId,draft.id);
+  onReceipt(await saveCaptureOriginal(received.id,draft.familyId));
+  await storeCaptureDraft(undefined,draft.familyId,draft.id,draft.sessionId);
 }
 export async function continueMemoryCapture(receipt:MemoryCaptureReceipt,onReceipt:(receipt:MemoryCaptureReceipt)=>void){
   await assertCaptureScope(receipt.familyId);
@@ -86,3 +104,4 @@ export async function saveCaptureOriginal(id:string,familyId:string){return call
 export async function captureAudioUrl(id:string,fileId:string){return (await call<{url:string}>('captureAudio',{id,fileId})).url;}
 
 export async function readMemoryCapture(id:string){return call<MemoryCaptureReceipt>('captureRead',{id});}
+export async function readCaptureSession(id:string){return call<{sessionId:string;items:MemoryCaptureReceipt[]}>('captureSessionRead',{id});}

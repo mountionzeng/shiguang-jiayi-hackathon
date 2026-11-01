@@ -7,6 +7,8 @@ const ID = /^capture-[a-z0-9-]{8,80}$/;
 const MAX_BYTES = 8 * 1024 * 1024;
 const error = (code, message) => Object.assign(new Error(message), {code});
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
+// The existing editor/share contract is 500 characters. Originals stay complete in the conversation.
+const originalPreview = text => text.length>450 ? `${text.slice(0,450)}（完整内容见原始记录）` : text || '已保存照片或录音原件，可在原始记录中查看。';
 const missing = err => /not found|does not exist|cannot find document|DOCUMENT_NOT_FOUND|document.get:fail -1\b/i.test(String(err?.message || err?.errMsg || ''));
 async function get(reader, collection, id) {
   try { return (await reader.collection(collection).doc(id).get()).data; }
@@ -24,12 +26,13 @@ function inputOf(event) {
   });
   if(new Set(files.map(file => file.id)).size !== files.length || files.reduce((sum,file) => sum+file.bytes,0)>20*1024*1024) throw error('INVALID_AUDIO','录音总大小超过20MB或编号重复');
   if(!event.text.trim() && !files.length && !photoIds.length) throw error('EMPTY_CAPTURE','先添加文字、照片或录音');
-  return {id:event.id,text:event.text,photoIds,audio:files};
+  if(event.sessionId !== undefined && !ID.test(event.sessionId)) throw error('INVALID_SESSION','记录编号无效');
+  return {id:event.id,text:event.text,photoIds,audio:files,...(event.sessionId ? {sessionId:event.sessionId} : {})};
 }
 function publicReceipt(row) {
   const stale = row.status === 'processing' && Date.now()-row.updatedAtMs>120000;
   const resumable=stale && row.audio.some(file=>file.asrTask && !row.evidence.some(e=>e.sourceId===file.id));
-  return {id:row.id,familyId:row.familyId,status:resumable?'received':stale?'uncertain':row.status,text:row.text,photoIds:row.photoIds,audio:row.audio.map(({id,name})=>({id,name})),evidence:row.evidence,draft:row.draft,memoryId:row.memoryId || '',message:row.message || '',createdAtMs:row.createdAtMs,pollAfterMs:row.pollAfterMs || 0};
+  return {id:row.id,sessionId:row.sessionId,familyId:row.familyId,status:resumable?'received':stale?'uncertain':row.status,text:row.text,photoIds:row.photoIds,audio:row.audio.map(({id,name})=>({id,name})),evidence:row.evidence,draft:row.draft,memoryId:row.memoryId || '',message:row.message || '',createdAtMs:row.createdAtMs,pollAfterMs:row.pollAfterMs || 0};
 }
 function owned(row,identity) { if(!row || row.accountId!==identity.accountId || row.familyId!==identity.familyId) throw error('NOT_FOUND','素材不存在'); return row; }
 
@@ -59,8 +62,14 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
     await db.runTransaction(async tx => {
       const previous=await get(tx,COLLECTION,key(input.id));
       if(previous) {owned(previous,identity);if(previous.inputHash!==fingerprint)throw error('CAPTURE_CHANGED','已提交的素材不能换内容');return;}
+      if(input.sessionId && input.sessionId!==input.id){
+        const session=owned(await get(tx,COLLECTION,key(input.sessionId)),identity);
+        if(session.sessionId!==session.id)throw error('INVALID_SESSION','不能把旧素材混入新记录');
+        if(session.sessionCaptureIds.length>=50)throw error('SESSION_FULL','这段记录已有50条消息，请另开一段记忆');
+        await tx.collection(COLLECTION).doc(key(session.id)).update({data:{sessionCaptureIds:[...session.sessionCaptureIds,input.id]}});
+      }
       const audio=input.audio.map(file=>({...file,cloudPath:`memory-capture-uploads/${identity.openid}/${input.id}/${crypto.randomBytes(16).toString('hex')}.${file.extension}`}));
-      await tx.collection(COLLECTION).doc(key(input.id)).set({data:{...input,audio,accountId:identity.accountId,familyId:identity.familyId,ownerOpenid:identity.openid,_openid:identity.openid,inputHash:fingerprint,status:'received',evidence:input.text.trim()?[{kind:'user-text',sourceId:'text',text:input.text}]:[],createdAtMs:now(),updatedAtMs:now()}});
+      await tx.collection(COLLECTION).doc(key(input.id)).set({data:{...input,...(input.sessionId===input.id?{sessionCaptureIds:[input.id]}:{}),audio,accountId:identity.accountId,familyId:identity.familyId,ownerOpenid:identity.openid,_openid:identity.openid,inputHash:fingerprint,status:'received',evidence:input.text.trim()?[{kind:'user-text',sourceId:'text',text:input.text}]:[],createdAtMs:now(),updatedAtMs:now()}});
     });
     const row=await read(input.id);
     return {...publicReceipt(row),uploads:row.audio.map(file=>({id:file.id,cloudPath:file.cloudPath,fileID:file.fileID || ''}))};
@@ -69,17 +78,17 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
     const row=await read(event.id), item=row.audio.find(file=>file.id===event.fileId);
     if(!item || typeof event.fileID!=='string' || !event.fileID.startsWith('cloud://') || event.fileID.split('/').slice(3).join('/') !== item.cloudPath) throw error('INVALID_FILE','录音归属无法确认');
     if(item.fileID)return publicReceipt(row);
-    if(row.status!=='received')throw error('CAPTURE_LOCKED','这批素材已经开始处理');
+    if(row.status!=='received' && !(row.status==='ready' && row.manual && !row.memoryId))throw error('CAPTURE_LOCKED','这批素材已经开始处理');
     const bytes=await validatedAudio({...item,fileID:event.fileID});
     const sha256=hash(bytes);
     // Keep an immutable server-owned original; client upload paths remain temporary.
     const original=await cloud.uploadFile({cloudPath:`memory-capture-originals/${identity.accountId}/${row.id}/${item.id}-${sha256}.${item.extension}`,fileContent:bytes});
     if(!original.fileID)throw error('UPLOAD_FAILED','原录音尚未保存');
     await mutate(event.id,current=>{
-      if(current.status!=='received')throw error('CAPTURE_LOCKED','这批素材已经开始处理');
+      if(current.status!=='received' && !(current.status==='ready' && current.manual && !current.memoryId))throw error('CAPTURE_LOCKED','这批素材已经开始处理');
       const file=current.audio.find(value=>value.id===event.fileId);
       if(file.sha256 && file.sha256!==sha256)throw error('CAPTURE_CHANGED','录音已上传');
-      file.fileID=original.fileID;file.sha256=sha256;
+      file.fileID=original.fileID;file.sha256=sha256;current.status='received';
     });
     return publicReceipt(await read(event.id));
   }
@@ -160,6 +169,8 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
     } finally {clearTimeout(timer);}
   }
   async function processNext(event) {
+    // Quick notes are originals first. Analysis belongs to the explicitly opened chat.
+    if((await read(event.id)).sessionId)throw error('SESSION_ORIGINAL_ONLY','请先保存原件，再打开这段记忆与小忆聊');
     guard.assertServerReady();guard.assertConsentVersion(identity.account,guard.AI_CONSENT_VERSION);
     let initial=await read(event.id);
     if(initial.status==='processing' && now()-initial.updatedAtMs>120000 && initial.audio.some(file=>file.asrTask && !initial.evidence.some(e=>e.sourceId===file.id))){
@@ -223,14 +234,28 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
       if(row.status!=='ready' || !row.draft)throw error('NOT_READY','素材尚未整理完成');
       await assertPhotos(row.photoIds,tx);
       if(row.audio.some(file=>!file.fileID))throw error('UPLOAD_PENDING','原录音尚未上传完，请继续发送');
-      const memoryId=`memory-${id}`, documentId=`${identity.familyId}_${memoryId}`;
-      if(await get(tx,'memories',documentId))throw error('MEMORY_CONFLICT','这条记忆已存在，请刷新后查看');
+      const memoryId=`memory-${row.sessionId || id}`, documentId=`${identity.familyId}_${memoryId}`;
+      const previous=await get(tx,'memories',documentId);
+      if(previous && (!row.sessionId || previous.materialCaptureId!==row.sessionId || previous._openid!==identity.openid || previous.familyId!==identity.familyId || previous.deletedAt))throw error('MEMORY_CONFLICT','这条记忆已更改或移除，请另开一段记录');
       const createdAt=new Date(now()).toISOString();
       const original=row.evidence.filter(e=>e.kind!=='image-description').map(e=>e.text).join('\n');
       const spoken=original.length>450?`${original.slice(0,450)}（完整原文与录音见素材来源）`:original || '照片或录音素材，原件见素材来源';
-      const memory={_openid:identity.openid,familyId:identity.familyId,frontendContributionId:memoryId,sourceRecordId:`src_${documentId}`,authorMemberId:memberId,authorName:owner.name || '我',relation:owner.relation || '自己',text:row.draft.body,title:row.draft.title,scope:'personal',visibility:'private',reviewStatus:'confirmed',createdAt,updatedAt:createdAt,memoryType:'note',organizationMode:row.manual?'local-demo':'cloud-ai',photoIds:row.photoIds,materialCaptureId:id,aiRevisions:[{id:`${id}-source`,kind:'spoken',text:spoken,createdAt},{id:`${id}-draft`,kind:row.manual?'manual':'ai',text:row.draft.body,title:row.draft.title,createdAt}]};
-      await tx.collection('source_records').doc(memory.sourceRecordId).set({data:{_openid:identity.openid,familyId:identity.familyId,frontendContributionId:memoryId,contributorMemberId:memberId,contributorName:memory.authorName,sourceType:'text',rawText:original,title:memory.title,scope:'personal',visibility:'private',reviewStatus:'confirmed',submittedAt:createdAt,materialCaptureId:id}});
-      await tx.collection('memories').doc(documentId).set({data:memory});
+      const memory={_openid:identity.openid,familyId:identity.familyId,frontendContributionId:memoryId,sourceRecordId:`src_${documentId}`,authorMemberId:memberId,authorName:owner.name || '我',relation:owner.relation || '自己',text:row.draft.body,title:row.draft.title,scope:'personal',visibility:'private',reviewStatus:'confirmed',createdAt,updatedAt:createdAt,memoryType:'note',organizationMode:row.manual?'local-demo':'cloud-ai',photoIds:row.photoIds,materialCaptureId:row.sessionId || id,aiRevisions:[{id:`${id}-source`,kind:'spoken',text:spoken,createdAt},{id:`${id}-draft`,kind:row.manual?'manual':'ai',text:row.draft.body,title:row.draft.title,createdAt}]};
+      if(row.sessionId)memory.materialCapturePreviewText=memory.text;
+      if(previous){
+        // Update only our generated preview, never replace a document the user has edited.
+        const source=await get(tx,'source_records',previous.sourceRecordId);
+        const rawText=[source?.rawText,original].filter(Boolean).join('\n\n');
+        const preview=originalPreview(rawText);
+        const text=previous.text===previous.materialCapturePreviewText ? preview : previous.text;
+        const {_id,...existing}=previous;
+        const aiRevisions=text===previous.text ? previous.aiRevisions || [] : [...(previous.aiRevisions || []),{id:`${id}-draft`,kind:'manual',text,title:previous.title,createdAt}];
+        await tx.collection('memories').doc(documentId).set({data:{...existing,text,materialCapturePreviewText:preview,updatedAt:createdAt,photoIds:[...new Set([...(previous.photoIds || []),...row.photoIds])].slice(0,9),aiRevisions}});
+        await tx.collection('source_records').doc(previous.sourceRecordId).update({data:{rawText}});
+      }else{
+        await tx.collection('source_records').doc(memory.sourceRecordId).set({data:{_openid:identity.openid,familyId:identity.familyId,frontendContributionId:memoryId,contributorMemberId:memberId,contributorName:memory.authorName,sourceType:'text',rawText:original,title:memory.title,scope:'personal',visibility:'private',reviewStatus:'confirmed',submittedAt:createdAt,materialCaptureId:row.sessionId || id}});
+        await tx.collection('memories').doc(documentId).set({data:memory});
+      }
       await tx.collection(COLLECTION).doc(key(id)).update({data:{status:'saved',memoryId,updatedAtMs:now()}});
     });
     return publicReceipt(await read(id));
@@ -238,11 +263,12 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
   async function saveOriginal(event) {
     const row=await read(event.id);
     if(row.status==='saved')return publicReceipt(row);
+    if(row.audio.some(file=>!file.fileID))throw error('UPLOAD_PENDING','原录音尚未上传完，请继续发送');
     if(row.status==='processing' && now()-row.updatedAtMs<120000)throw error('BUSY','仍在整理，请稍等');
     const text=row.evidence.map(e=>`${e.kind==='image-description'?'图片描述（AI）：':e.kind==='transcript'?'录音转写：':''}${e.text}`).join('\n');
-    const body=text.length>450?`${text.slice(0,450)}（完整内容见素材来源）`:text || '已保存照片或录音原件，可在素材来源中查看。';
-    await guard.moderateText(cloud,identity.openid,body,'保存素材文字',{db});
-    await mutate(event.id,current=>{if(current.status==='saved' || current.status==='ready')return false;if(current.status==='processing' && now()-current.updatedAtMs<120000)throw error('BUSY','仍在整理，请稍等');current.draft={title:'收集的素材',body};current.manual=true;current.status='ready';});
+    const body=originalPreview(text);
+    await guard.moderateText(cloud,identity.openid,text || body,'保存素材文字',{db});
+    await mutate(event.id,current=>{if(current.status==='saved' || current.status==='ready')return false;if(current.status==='processing' && now()-current.updatedAtMs<120000)throw error('BUSY','仍在整理，请稍等');current.draft={title:row.sessionId ? row.text.trim().slice(0,24) || '随手记' : '收集的素材',body};current.manual=true;current.status='ready';});
     return commit(event.id);
   }
   async function audioUrl(event) {
@@ -253,7 +279,16 @@ function createCaptureHandler({cloud,db,identity,fetcher=defaultFetch,now=Date.n
     if(!url)throw error('AUDIO_UNAVAILABLE','原录音暂时无法读取');
     return {url};
   }
-  return {receive,register,processNext,saveOriginal,audioUrl,read:async event=>publicReceipt(await read(event.id)),list:async()=>({items:(await db.collection(COLLECTION).where({accountId:identity.accountId,familyId:identity.familyId}).orderBy('createdAtMs','desc').limit(20).get()).data.map(publicReceipt)})};
+  async function readSession(event){
+    const selected=await read(event.id),root=selected.sessionId ? await read(selected.sessionId) : selected;
+    const ids=root.sessionCaptureIds || [root.id],items=[];
+    for(let offset=0;offset<ids.length;offset+=10){
+      const rows=await Promise.all(ids.slice(offset,offset+10).map(read));
+      items.push(...rows.map(publicReceipt));
+    }
+    return {sessionId:root.sessionId || '',items};
+  }
+  return {receive,register,processNext,saveOriginal,audioUrl,readSession,capabilities:async()=>({sessionVersion:1}),read:async event=>publicReceipt(await read(event.id)),list:async()=>({items:(await db.collection(COLLECTION).where({accountId:identity.accountId,familyId:identity.familyId}).orderBy('createdAtMs','desc').limit(20).get()).data.map(publicReceipt)})};
 }
 async function handle(event,dependencies={}) {
   if(process.env.MATERIAL_CAPTURE_READY!=='true')throw error('CAPTURE_NOT_READY','素材收集尚未开放，请先保留原件');
@@ -261,7 +296,7 @@ async function handle(event,dependencies={}) {
   const db=dependencies.db || cloud.database(), identity=await guard.resolveActiveIdentity(db,cloud.getWXContext());
   if(event.expectedFamilyId!==identity.familyId)throw error('IDENTITY_CHANGED','账号已切换，请重新打开素材');
   const handler=createCaptureHandler({cloud,db,identity,...dependencies});
-  const actions={captureReceive:'receive',captureRegister:'register',captureProcess:'processNext',captureOriginal:'saveOriginal',captureRead:'read',captureList:'list',captureAudio:'audioUrl'};
+  const actions={captureReceive:'receive',captureRegister:'register',captureProcess:'processNext',captureOriginal:'saveOriginal',captureRead:'read',captureSessionRead:'readSession',captureCapabilities:'capabilities',captureList:'list',captureAudio:'audioUrl'};
   const action=actions[event.action];if(!action)throw error('INVALID_ACTION','操作不存在');
   return handler[action](event);
 }

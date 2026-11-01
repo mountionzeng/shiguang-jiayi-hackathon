@@ -761,3 +761,12 @@
 .capture-file text { height: 92rpx; overflow: hidden; }
 .capture-file > view { padding: 8rpx; text-align: center; }
 .capture-error { font-size: 24rpx; line-height: 1.5; color: #9e4837; }
+.capture-bubble { white-space: pre-wrap; overflow-wrap: anywhere; }
+.capture-photo-grid { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 12rpx; }
+.capture-photo-grid image { width: 160rpx; height: 160rpx; border-radius: 12rpx; }
+.capture-status { text-align: right; color: var(--ink-soft); font-size: 22rpx; margin: 8rpx 0 24rpx; }
+.capture-session-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12rpx; }
+.capture-link.capture-link, .capture-audio.capture-audio { width: auto; margin: 0; padding: 12rpx 10rpx; background: transparent; color: var(--jade); font-size: 24rpx; line-height: 1.5; white-space: normal; }
+.capture-link::after, .capture-audio::after { border: 0; }
+.capture-audio.capture-audio { text-align: left; padding: 14rpx 0; }
+.capture-recovery { margin: 16rpx 0 28rpx; color: var(--ink-soft); font-size: 24rpx; }

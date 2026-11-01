@@ -121,6 +121,8 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
     value: {
       getStorageSync: (key: string) => stored.get(key),
       setStorageSync: (key: string, value: unknown) => stored.set(key, value),
+      removeStorageSync: (key: string) => stored.delete(key),
+      setNavigationBarTitle: () => undefined,
       enableAlertBeforeUnload: () => undefined,
       disableAlertBeforeUnload: () => undefined,
       showToast: ({ title }: { title: string }) => toasts.push(title),
@@ -3977,7 +3979,7 @@ test('article chat uses live source-only context instead of the legacy saved-boo
 });
 
 
-test("随手记入口直接收集素材，连续发送仍整理为新记忆", async context => {
+test("随手记入口直接收集素材，连续发送留在同一会话", async context => {
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition('interview'));
@@ -4013,4 +4015,75 @@ test("随手记误点空发送不会锁住输入框，随后仍可添加文字",
   assert.equal((page.data.captureDraft as any).submitted, undefined);
   callPage(page, 'onInput', {detail: {value: '误点之后写下的虚构故事'}});
   assert.equal(page.data.inputText, '误点之后写下的虚构故事');
+});
+
+test('随手记进入空白会话，旧草稿仅显式恢复，普通聊天不加载素材历史',async context=>{
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const mock=wx as any,calls:string[]=[];
+  mock.cloud={callFunction:async({data}:any)=>{if(data?.action)calls.push(data.action);return {result:{openid:'capture-test-owner'}};}};
+  const {stageCaptureFiles,storeCaptureDraft}=await import('../miniprogram/services/memoryCapture');
+  const old=await stageCaptureFiles([],undefined,'');old.composerText='上次没有发出的想法';await storeCaptureDraft(old);
+  const page=instantiate(await pageDefinition('interview'));
+  const cloud=mock.cloud;delete mock.cloud;
+  const stage=page.stageCapture as (files:any[])=>Promise<void>;
+  page.stageCapture=async function(files:any[]){mock.cloud=cloud;await stage.call(this,files);};
+  await callPage(page,'onLoad',{capture:'1'});
+  assert.deepEqual(page.data.captureReceipts,[]);assert.equal(page.data.inputText,'');
+  assert.notEqual(page.data.captureSessionId,old.sessionId);
+  assert.equal((page.data.capturePending as any[])[0].id,old.id);
+  assert.equal(calls.includes('captureList'),false);
+  await callPage(page,'recoverCaptureDraft',{currentTarget:{dataset:{id:old.id,session:old.sessionId}}});
+  assert.equal(page.data.inputText,old.composerText);assert.equal(page.data.captureSessionId,old.sessionId);
+  const chat=instantiate(await pageDefinition('interview'));
+  delete mock.cloud;
+  await callPage(chat,'onLoad',{memoryType:'memoir'});
+  assert.equal(chat.data.captureDraft,null);assert.deepEqual(chat.data.captureReceipts,[]);
+});
+
+test('随手记保存两条原话不调用AI，重试保持同一消息，续聊只传本次memoryId',async context=>{
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const mock=wx as any,calls:string[]=[],receipts=new Map<string,any>();let failSave=true;
+  mock.cloud={callFunction:async({data}:any)=>{
+    if(!data?.action)return {result:{openid:'capture-test-owner'}};
+    calls.push(data.action);
+    if(data.action==='captureCapabilities')return {result:{sessionVersion:1}};
+    if(data.action==='captureReceive'){
+      if(!receipts.has(data.id))receipts.set(data.id,{...data,familyId:data.expectedFamilyId,status:'received',evidence:[],memoryId:'',message:'',createdAtMs:Date.now(),uploads:[]});
+      return {result:receipts.get(data.id)};
+    }
+    if(data.action==='captureOriginal'){
+      if(failSave){failSave=false;throw new Error('网络中断');}
+      const row=receipts.get(data.id);row.status='saved';row.memoryId='memory-'+row.sessionId;return {result:{...row}};
+    }
+    throw new Error('Unexpected '+data.action);
+  }};
+  const page=instantiate(await pageDefinition('interview'));page.setData({captureEntry:true});
+  await callPage(page,'stageCapture',[]);const session=page.data.captureSessionId;
+  callPage(page,'onInput',{detail:{value:'第一条原话'}});await callPage(page,'send');
+  const id=(page.data.captureDraft as any).id;
+  assert.equal((page.data.captureReceipts as any[])[0].localStatus,'failed');
+  await callPage(page,'send');
+  assert.equal((page.data.captureReceipts as any[]).length,1);
+  assert.equal((page.data.captureReceipts as any[])[0].id,id);
+  callPage(page,'onInput',{detail:{value:'第二条原话'}});await callPage(page,'send');
+  assert.equal(page.data.captureSessionId,session);
+  assert.deepEqual((page.data.captureReceipts as any[]).map(row=>row.text),['第一条原话','第二条原话']);
+  assert.equal(calls.includes('captureProcess'),false);
+  assert.equal((page.data.captureDraft as any).sessionId,session,'发送后仍保存下一条未发草稿');
+  callPage(page,'chatAboutCapture');
+  assert.equal(storage.navigations[storage.navigations.length-1],'/pages/interview/interview?sourceId='+encodeURIComponent('memory-'+session));
+  callPage(page,'onInput',{detail:{value:'离开前没发完的第三句'}});
+  const {pendingCaptureDrafts}=await import('../miniprogram/services/memoryCapture');
+  assert.equal((await pendingCaptureDrafts())[0].composerText,'离开前没发完的第三句');
+});
+
+test('旧云端没有会话协议时保留本地草稿，不提交成另一段记忆',async context=>{
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const mock=wx as any,calls:string[]=[];
+  mock.cloud={callFunction:async({data}:any)=>{if(data?.action){calls.push(data.action);return {result:{}};}return {result:{openid:'capture-test-owner'}};}};
+  const page=instantiate(await pageDefinition('interview'));page.setData({captureEntry:true});
+  await callPage(page,'stageCapture',[]);callPage(page,'onInput',{detail:{value:'不能落入旧接口'}});
+  await callPage(page,'send');
+  assert.match(String(page.data.captureError),/尚未更新/);assert.equal(calls.includes('captureReceive'),false);
+  assert.equal((page.data.captureDraft as any).submitted,undefined);
 });
