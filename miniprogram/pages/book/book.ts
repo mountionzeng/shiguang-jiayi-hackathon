@@ -220,9 +220,13 @@ Page({
   articleSaving: null as Promise<boolean> | null,
   articleTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   articleKey() { return `article-draft:${cachedAccountScope()}:${this.story?.id || this.data.storyId}:${this.activeChapterId}`; },
-  onArticleChange(event: { detail: { chapter: ArticleChapter } }) {
+  onArticleChange(event: { detail: { chapter: ArticleChapter; titleChanged?: boolean } }) {
     this.setData({ articleShareUrl: '' });
-    this.articlePending = event.detail.chapter;
+    const incoming = event.detail.chapter;
+    const latest = this.articlePending || this.data.article;
+    // The child edits body/layout; its title may predate a still-debounced title input.
+    this.articlePending = !event.detail.titleChanged && latest?.id === incoming.id && latest.title !== incoming.title
+      ? { ...incoming, title: latest.title } : incoming;
     this.setData({ articleDirty: true, articleStatus: '正在保存…' });
     this.backupArticle();
     if (this.articleTimer) clearTimeout(this.articleTimer);
@@ -295,7 +299,7 @@ Page({
   },
   onArticleTitle(event: WechatMiniprogram.Input) {
     const base=this.articlePending || this.data.article;
-    if(base)this.onArticleChange({detail:{chapter:{...base,title:event.detail.value}}});
+    if(base)this.onArticleChange({detail:{chapter:{...base,title:event.detail.value},titleChanged:true}});
   },
   async addArticleImage(event: { detail?: { blockId?: string; text?: string } } = {}) {
     if (this.data.pickingPhoto || !this.data.article) return;
@@ -1403,7 +1407,7 @@ Page({
   articleChatModuleId: '',
   async onArticleModuleSelected(event: { detail: { id: string } }) {
     const chapter = this.articlePending || this.data.article;
-    if (!chapter || this.unloaded || this.data.writingMode !== 'creative') return;
+    if (!chapter || this.unloaded) return;
     const module = chapter.layout.pages.flatMap(page => page.modules).find(item => item.id === event.detail.id);
     if (!module) return;
     const key = this.xiaoyiContextKey() + ':' + module.id;
@@ -1549,7 +1553,7 @@ Page({
     } finally { if (!this.unloaded && key === this.articleChatKey()) { this.setData({xiaoyiLoading:false}); this.saveArticleChat(); } }
   },
   openXiaoyi() {
-    if (this.data.writingMode !== "creative") return;
+    if (!this.data.article && this.data.writingMode !== "creative") return;
     if ((this.data.protectedCopy && !this.data.article) || this.data.view !== "chapter" || this.data.panel || this.data.saving || this.data.generating) return;
     if (this.data.article) this.restoreArticleChat();
     this.setData({ xiaoyiOpen: true, xiaoyiAnswer: this.data.xiaoyiAnswer, xiaoyiDraftText: this.data.xiaoyiDraftText, xiaoyiWritingInstruction: this.data.xiaoyiWritingInstruction, moreOpen: false, xiaoyiStatus: "", xiaoyiContextPreview: "正在读取当前正文…" });
@@ -1980,7 +1984,7 @@ Page({
     const next = story.writingMode === "creative" ? "objective" : "creative";
     wx.showModal({
       title: next === "creative" ? "切换为 AI 创作？" : "切换为自己写？",
-      content: "AI 创作会显示小鸟，自己写会收起小鸟。已有文字保留。",
+      content: this.data.article ? "切换写作方式后，已有文字保留，仍可随时点小鸟寻求帮助。" : "AI 创作会显示小鸟，自己写会收起小鸟。已有文字保留。",
       success: async result => {
         if (!result.confirm) return;
         try {

@@ -3849,7 +3849,8 @@ test('a new empty book opens a writable first chapter and reopening does not add
   assert.equal(page.data.writingMode,'objective');
   assert.ok(page.data.article, 'blank chapter exposes the article editor');
   await callPage(page,'openXiaoyi');
-  assert.equal(page.data.xiaoyiOpen,false);
+  assert.equal(page.data.xiaoyiOpen,true, 'self-writing still offers the bird on demand');
+  await callPage(page,'closeXiaoyi');
   await callPage(page,'refresh');
   assert.equal((page.chapters as any[]).length,1);
 });

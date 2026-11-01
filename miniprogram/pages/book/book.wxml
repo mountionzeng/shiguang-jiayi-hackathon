@@ -129,7 +129,7 @@
     </view>
     <article-editor backdrop="{{backdropUrl}}" chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindselectmodule="onArticleModuleSelected" bindaddimage="addArticleImage" />
   </scroll-view>
-  <button wx:if="{{article && writingMode === 'creative' && !panel && view === 'chapter' && !xiaoyiOpen}}" class="article-bird" bindtap="openXiaoyi" aria-label="和小忆聊这篇文章"><image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" /><text>小忆帮我写</text></button>
+  <button wx:if="{{article && !panel && view === 'chapter' && !xiaoyiOpen}}" class="article-bird" bindtap="openXiaoyi" aria-label="和小忆聊这篇文章"><image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" /><text>小忆帮我写</text></button>
   <view wx:if="{{articleShareUrl}}" class="article-share-mask" bindtap="closeArticleShare">
     <view class="article-share-sheet" catchtap="keepArticleShareOpen">
       <view class="serif">发给微信用户</view>

@@ -1,8 +1,9 @@
+import { articleEditorPages } from '../../services/articleEditorLayout';
 import type { ManuscriptChapter } from '../../domain/biography';
 import { articleChapter, changeArticleText, moveArticleModule, removeArticleModule, type ArticleChapter } from '../../services/articleModules';
 Component({
   properties: { backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
-  data: { imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 1, note: '' },
+  data: { textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 1, note: '' },
   observers: {
     'chapter, paths, width': function(chapter: ManuscriptChapter, _paths: Record<string, string>, width: number) {
       if (!chapter) return;
@@ -14,6 +15,7 @@ Component({
         if (current?.id === chapter.id && JSON.stringify(current) === JSON.stringify(chapter) && this.data.scale === scale) {
           this.syncGeometry(); return;
         }
+        this.data.textHeights = {};
         this.data.current = articleChapter(chapter);
         this.setData({ scale }); this.render();
       }
@@ -23,16 +25,20 @@ Component({
   methods: {
     pageModels() {
       const chapter = this.data.current as ArticleChapter | undefined; if (!chapter) return;
-      const scale = this.data.scale;
-      return chapter.layout.pages.map((page, index) => ({ id: index, height: Math.max(220, ...page.modules.map(module => module.rect.y + module.rect.height + 36)) * scale,
-        modules: page.modules.map(module => ({ ...module,
-          style: `left:${module.rect.x * scale}px;top:${module.rect.y * scale}px;width:${module.rect.width * scale}px;height:${module.rect.height * scale}px;`,
-          text: module.kind === 'text' ? ('blockId' in module.bind ? chapter.content.find(block => block.blockId === ('blockId' in module.bind ? module.bind.blockId : ''))?.text || '' : chapter.title) : '',
-          blockId: module.kind === 'text' && 'blockId' in module.bind ? module.bind.blockId : '',
-          path: module.kind === 'image' ? this.properties.paths[chapter.packageAssets?.[module.assetId]?.photoId || ''] || '' : '',
-          fontStyle: module.kind === 'text' ? `font-size:${Math.max(12, module.fontSize * scale)}px;text-align:${module.alignment === 'center' ? 'center' : 'left'};` : '',
-        })),
-      }));
+      return articleEditorPages(chapter, this.data.scale, this.properties.paths, this.data.textHeights);
+    },
+    textLineChange(event: { currentTarget: { dataset: { id: string; measure: string } }; detail: { height: number } }) {
+      const { id, measure } = event.currentTarget.dataset;
+      const height = Number(event.detail.height);
+      if (!Number.isFinite(height) || height <= 0) return;
+      const module = this.pageModels()?.flatMap(page => page.modules).find(item => item.id === id);
+      // Ignore measurements from an old chapter, width or text value.
+      if (!module || module.measurementKey !== measure) return;
+      this.data.textHeights ||= {};
+      const previous = this.data.textHeights[id];
+      if (previous?.key === measure && previous.height === height) return;
+      this.data.textHeights[id] = { key: measure, height };
+      this.syncGeometry();
     },
     render() {
       const pages = this.pageModels();
@@ -51,6 +57,7 @@ Component({
           const previous = this.data.pages[pageIndex].modules[moduleIndex];
           if (module.style !== previous.style) patch[`pages[${pageIndex}].modules[${moduleIndex}].style`] = module.style;
           if (module.fontStyle !== previous.fontStyle) patch[`pages[${pageIndex}].modules[${moduleIndex}].fontStyle`] = module.fontStyle;
+          if (module.measurementKey !== previous.measurementKey) patch[`pages[${pageIndex}].modules[${moduleIndex}].measurementKey`] = module.measurementKey;
           if (module.path !== previous.path) patch[`pages[${pageIndex}].modules[${moduleIndex}].path`] = module.path;
         });
       });

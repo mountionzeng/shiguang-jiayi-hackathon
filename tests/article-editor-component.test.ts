@@ -81,3 +81,20 @@ test('a caret before the remaining text stays at that offset after Return splits
 
   assert.equal(context.data.cursor, 0, 'the new paragraph caret belongs before its remaining text');
 });
+
+test('native height changes patch geometry without replacing input, and stale measurements are ignored', async () => {
+  const definition = await loadComponentDefinition();
+  const chapter = articleChapter({id:'native-height',title:'',memoryIds:[],content:[{text:'文字'.repeat(80)}]});
+  const patches: Array<Record<string,unknown>> = [];
+  const context:any = {data:{current:chapter,pages:[],scale:.4,textHeights:{}},properties:{paths:{}},
+    setData(patch:Record<string,unknown>) {patches.push(patch);Object.assign(this.data,patch);}};
+  Object.assign(context,definition.methods);
+  context.render();patches.length=0;
+  const module=context.data.pages[0].modules[0];
+  context.textLineChange({currentTarget:{dataset:{id:module.id,measure:module.measurementKey}},detail:{height:400}});
+  assert.ok(patches.length);
+  assert.ok(!patches.some(patch => 'pages' in patch || Object.keys(patch).some(key=>/\.text$/.test(key))));
+  const measurement=context.data.textHeights[module.id];
+  context.textLineChange({currentTarget:{dataset:{id:module.id,measure:'old-width-or-text'}},detail:{height:10}});
+  assert.equal(context.data.textHeights[module.id],measurement);
+});
