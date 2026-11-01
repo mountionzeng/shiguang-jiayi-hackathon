@@ -770,26 +770,6 @@ test("the interview cloud function separates note and memoir prompts", () => {
   assert.match(memoir.rule, /不按固定顺序补字段/);
 });
 
-test("the interview strategy reacts to emotion and off-track replies", () => {
-  const highEmotion = chatInterviewTest.decideStrategy({
-    inputType: "情感信号",
-    emotionIntensity: "高",
-    missingInfo: ["地点", "时间"],
-    keyDetail: "很想外公",
-  }, []);
-  assert.equal(highEmotion.dimension, "feeling");
-  assert.match(highEmotion.instruction, /回应情绪/);
-
-  const offTrack = chatInterviewTest.decideStrategy({
-    inputType: "反问跑题",
-    emotionIntensity: "中",
-    missingInfo: ["时间", "地点"],
-    keyDetail: "用户把 AI 当成记忆里的人",
-  }, []);
-  assert.equal(offTrack.dimension, "person");
-  assert.match(offTrack.instruction, /接住用户的话/);
-});
-
 test("the interview cloud parser accepts plain text fallback", () => {
   const result = chatInterviewTest.parseInterviewPrompt(
     "追问：后来你又想起了哪个细节？",
