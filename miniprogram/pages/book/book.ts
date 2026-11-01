@@ -1,3 +1,4 @@
+import { generateInterviewPrompt } from "../../services/interviewService";
 import { bookCoverSource } from "../../services/bookCoverSource";
 import { articleChatMaterial } from '../../services/articleChatMaterial';
 import { organizeInlineAnswer } from '../../services/memoryOrganizerService';
@@ -135,6 +136,7 @@ Page({
     chapterChanges: [] as Array<{ revisionId: string; by: string; when: string; titleChange: string; blocks: Array<{ index: number; before: string; after: string }> }>, changesOpen: false,
     ...initialXiaoyiPanelData(),
     xiaoyiSelectionLabel: "已定位到当前文章",
+    xiaoyiStarterLoading: false,
     chapterPendingEdits: [] as PendingEditRow[], chapterPendingCount: 0,
   },
   // Native inputs own their live value/cursor. Do not echo the document on each keystroke.
@@ -1411,19 +1413,49 @@ Page({
     const module = chapter.layout.pages.flatMap(page => page.modules).find(item => item.id === event.detail.id);
     if (!module) return;
     const key = this.xiaoyiContextKey() + ':' + module.id;
-    const repeated = this.articleChatSelection === key;
     this.articleChatSelection = key;
     this.articleChatModuleId = module.id;
     this.setData({ xiaoyiSelectionLabel: module.kind === 'image' ? '已定位到当前图片' : '已定位到当前文字' });
-    if (!this.data.xiaoyiOpen) return;
-    await this.openXiaoyi();
-    if (repeated || this.unloaded || this.articleChatSelection !== key || !this.data.xiaoyiOpen) return;
-    const excerpt = this.xiaoyiContextText().trim().replace(/\s+/g, ' ').slice(0, 18);
-    const reply = module.kind === 'image' ? (excerpt ? '这张图和“' + excerpt + '”，有什么故事？' : '这张图片让你想起了什么？')
-      : excerpt ? '关于“' + excerpt + '”，你还想补充哪一点？' : '这里想记下什么？零散的想法也可以。';
-    this.xiaoyiMessagesAppend({ kind: 'question', text: reply });
-    this.xiaoyiConversation = [...this.xiaoyiConversation, { role: 'assistant', text: reply }];
+    if (this.data.xiaoyiOpen) await this.openXiaoyi();
+  },
+  articleStarterKey: '',
+  articleStarterRequest: 0,
+  async startArticleWritingPrompt() {
+    if (!this.data.article || !this.data.xiaoyiOpen || this.unloaded) return;
+    const source = this.xiaoyiContextText().trim();
+    const key = JSON.stringify([this.articleChatKey(), this.articleChatModuleId, source]);
+    if (key === this.articleStarterKey) return;
+    this.articleStarterKey = key;
+    const request = ++this.articleStarterRequest;
+    const excerpt = source.replace(/\s+/g, ' ').slice(0, 28);
+    const reply = excerpt ? '读到“' + excerpt + '”，你最想接着写哪个细节？' : '这里想记下什么？零散的想法也可以。';
+    this.xiaoyiMessagesAppend({kind:'question', text:reply, label:'写作引子'});
+    const id = this.data.xiaoyiMessages[this.data.xiaoyiMessages.length - 1].id;
+    this.xiaoyiConversation = [...this.xiaoyiConversation, {role:'assistant', text:reply}];
+    const turnIndex = this.xiaoyiConversation.length - 1;
     this.saveArticleChat();
+    if (!source) return;
+    this.setData({xiaoyiStarterLoading:true});
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const prompt = await Promise.race([
+        generateInterviewPrompt({answer:source,sourceText:source,sourceOnly:true,
+          replyIntent:'question',askedDimensions:[],previousAnswers:[],conversation:[],...this.xiaoyiConfig()}),
+        new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('starter-timeout')), 15000); }),
+      ]);
+      if (request !== this.articleStarterRequest || this.unloaded || !this.data.xiaoyiOpen
+        || key !== JSON.stringify([this.articleChatKey(), this.articleChatModuleId, this.xiaoyiContextText().trim()])) return;
+      if (prompt.generationMode !== 'cloud-ai') return;
+      this.setData({xiaoyiMessages:this.data.xiaoyiMessages.map(message => message.id === id
+        ? {...message,text:prompt.text,label:'小忆 · AI话题引子'} : message)});
+      if (this.xiaoyiConversation[turnIndex]?.text === reply) this.xiaoyiConversation[turnIndex] = {role:'assistant',text:prompt.text};
+      this.saveArticleChat();
+    } catch {
+      // Keep the local starter and the user's input when online assistance is unavailable.
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+      if (request === this.articleStarterRequest) this.setData({xiaoyiStarterLoading:false});
+    }
   },
   articleChatKey() { return `article-chat:${cachedAccountScope()}:${this.xiaoyiContextKey()}`; },
   saveArticleChat() {
@@ -1435,6 +1467,9 @@ Page({
   },
   releaseArticleChat() {
     this.saveArticleChat();
+    this.articleStarterRequest++;
+    this.articleStarterKey = '';
+    this.setData({xiaoyiStarterLoading:false});
     this.articleChatLoadedKey = '';
     this.articleChatMemory = undefined;
     this.articleChatSelection = '';
@@ -1558,9 +1593,11 @@ Page({
     if (this.data.article) this.restoreArticleChat();
     this.setData({ xiaoyiOpen: true, xiaoyiAnswer: this.data.xiaoyiAnswer, xiaoyiDraftText: this.data.xiaoyiDraftText, xiaoyiWritingInstruction: this.data.xiaoyiWritingInstruction, moreOpen: false, xiaoyiStatus: "", xiaoyiContextPreview: "正在读取当前正文…" });
     this.xiaoyiCapturePending = this.captureXiaoyiContext();
-    return this.xiaoyiCapturePending;
+    return this.xiaoyiCapturePending.then(() => this.startArticleWritingPrompt());
   },
   closeXiaoyi() {
+    this.articleStarterRequest++;
+    this.setData({xiaoyiStarterLoading:false});
     if (this.data.article) { this.saveArticleChat(); this.setData({xiaoyiOpen:false}); return; }
     this.xiaoyiCaptureId++;
     this.xiaoyiContextCapturedText = "";
@@ -1671,6 +1708,8 @@ Page({
   xiaoyiContextKey() { return [this.data.storyId, this.data.memberId, this.activeChapterId].join(":"); },
   xiaoyiMessagesAppend,
   async askXiaoyiQuestion() {
+    this.articleStarterRequest++;
+    this.setData({xiaoyiStarterLoading:false});
     const key = this.xiaoyiContextKey();
     const captureId = this.xiaoyiCaptureId;
     await this.xiaoyiCapturePending;

@@ -3879,7 +3879,9 @@ test('article module selection starts a short conversation and follows live text
   ]}]} };
   callPage(page, 'restoreArticleChat');
   callPage(page, 'onXiaoyiAnswerInput', {detail:{value:'未发送的想法'}});
+  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
   await callPage(page, 'openXiaoyi');
+  assert.ok((page.data.xiaoyiMessages as any[]).length, 'opening after selecting text must offer a writing starter');
   await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
   assert.equal(page.data.xiaoyiSelectionLabel, '已定位到当前文字');
   assert.match((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /灯塔下放纸船/);
@@ -4174,4 +4176,52 @@ test('旧云端没有会话协议时保留本地草稿，不提交成另一段�
   await callPage(page,'send');
   assert.match(String(page.data.captureError),/尚未更新/);assert.equal(calls.includes('captureReceive'),false);
   assert.equal((page.data.captureDraft as any).submitted,undefined);
+});
+
+
+test('article opening requests one source-bound AI starter without consuming input or applying a late reply after closing', async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const {clearAiConsent} = await import('../miniprogram/services/aiConsent');
+  clearAiConsent(); context.after(clearAiConsent);
+  wx.setStorageSync('aiConsentDecision',{granted:true,version:1,decidedAt:'2026-11-02T00:00:00.000Z'});
+  const before = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({globalData:{cloudReady:true,aiReady:true}});
+  context.after(() => {(globalThis as any).getApp=before;});
+  let resolveReply: any; const calls: any[]=[];
+  (wx as any).cloud={callFunction:({name,data}:any)=>{
+    calls.push({name,data});
+    if(name==='recordAiConsent') return Promise.resolve({result:{success:true}});
+    return new Promise(resolve=>{resolveReply=resolve;});
+  }};
+  const page=instantiate(await pageDefinition('book'));
+  page.data.storyId='starter-fixture';page.activeChapterId='chapter';page.data.view='chapter';
+  page.data.article={title:'Boat',content:[{blockId:'b',text:'Fictional blue paper boat'}],layout:{pages:[{modules:[{id:'t',kind:'text',bind:{blockId:'b'}}]}]}};
+  callPage(page,'restoreArticleChat');
+  await callPage(page,'onArticleModuleSelected',{detail:{id:'t'}});
+  callPage(page,'onXiaoyiAnswerInput',{detail:{value:'unsent thought'}});
+  const opened=callPage(page,'openXiaoyi');
+  for(let i=0;i<20&&!resolveReply;i++) await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(resolveReply);
+  const request=calls.find(item=>item.name==='chatInterview');
+  assert.equal(request.data.sourceOnly,true);
+  assert.equal(request.data.sourceText,'Fictional blue paper boat');
+  assert.equal(page.data.xiaoyiLoading,false,'the automatic starter does not disable typing');
+  assert.equal(page.data.xiaoyiAnswer,'unsent thought');
+  resolveReply({result:{text:'What did the paper boat carry?',dimension:'event',generationMode:'cloud-ai'}});
+  await opened;
+  assert.equal((page.data.xiaoyiMessages as any[]).slice(-1)[0].text,'What did the paper boat carry?');
+  assert.equal(page.data.xiaoyiAnswer,'unsent thought');
+  await callPage(page,'openXiaoyi');
+  assert.equal(calls.filter(item=>item.name==='chatInterview').length,1);
+  (page.data.article as any).content[0].text='Fictional red paper boat';
+  resolveReply=undefined;
+  const changed=callPage(page,'openXiaoyi');
+  for(let i=0;i<20&&!resolveReply;i++) await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(resolveReply);
+  callPage(page,'closeXiaoyi');
+  resolveReply({result:{text:'Late AI response',dimension:'event',generationMode:'cloud-ai'}});
+  await changed;
+  assert.ok(!(page.data.xiaoyiMessages as any[]).some(item=>item.text==='Late AI response'));
+  await callPage(page,'openXiaoyi');
+  assert.equal(calls.filter(item=>item.name==='chatInterview').length,2);
 });

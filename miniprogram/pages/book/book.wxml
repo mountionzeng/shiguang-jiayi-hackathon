@@ -1,4 +1,4 @@
-<view class="writing-page {{keyboardHeight ? 'keyboard-open' : ''}}" style="height: {{viewportHeight ? viewportHeight + 'px' : '100%'}};">
+<view class="writing-page {{keyboardHeight ? 'keyboard-open' : ''}} {{xiaoyiOpen && article ? 'companion-open' : ''}}" style="height: {{viewportHeight ? viewportHeight + 'px' : '100%'}};">
   <view wx:if="{{openingChapter}}" class="writing-toolbar"><button class="tool-button" bindtap="onBack">‹ 返回目录</button></view>
   <scroll-view wx:if="{{openingChapter}}" class="reading-panel" scroll-y>
     <view class="panel-content">
@@ -218,6 +218,7 @@
           <view>{{item.text}}</view>
         </view>
       </scroll-view>
+      <view wx:if="{{xiaoyiStarterLoading}}" class="xiaoyi-context">小忆正在读这句话，你可以先接着写…</view>
       <view wx:if="{{article}}" class="xiaoyi-materials">
         <image wx:for="{{articleChatPhotos}}" wx:key="id" src="{{item.path}}" mode="aspectFill" />
 
@@ -228,13 +229,13 @@
       <textarea wx:if="{{!article}}" class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
       <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
       <view class="xiaoyi-status" wx:elif="{{xiaoyiStatus}}">{{xiaoyiStatus}}</view>
-      <view wx:if="{{article}}" class="xiaoyi-context">这章的对话和未发送内容保存在当前设备。</view>
+      <view wx:if="{{article && !keyboardHeight}}" class="xiaoyi-context">这章的对话和未发送内容保存在当前设备。</view>
       <view wx:if="{{xiaoyiDraftText}}" class="xiaoyi-draft-box">
         <view class="xiaoyi-message-label">小忆草稿，可以改</view>
         <textarea class="xiaoyi-draft" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiDraftText}}" maxlength="800" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" bindinput="onXiaoyiDraftInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
 
       </view>
-      <view class="xiaoyi-actions">
+      <view class="xiaoyi-actions xiaoyi-secondary-actions">
         <button class="xiaoyi-action" data-mode="compose" bindtap="organizeXiaoyiAnswer" disabled="{{xiaoyiLoading}}">整理成文</button>
         <button wx:if="{{article}}" class="xiaoyi-action" bindtap="illustrateXiaoyiText" disabled="{{xiaoyiLoading}}">生成配图</button>
         <button wx:if="{{article}}" class="xiaoyi-action" bindtap="addXiaoyiPhoto" disabled="{{xiaoyiLoading}}">添加照片</button>
