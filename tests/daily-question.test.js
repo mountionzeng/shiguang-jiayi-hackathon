@@ -34,3 +34,25 @@ test('daily result must cite actual evidence and must not repeat previous questi
  assert.throws(()=>validateDailyQuestion(JSON.stringify(result),sources,[result.text]),/REPEATED/);
  assert.throws(()=>validateDailyQuestion(JSON.stringify({...result,sourceId:'other'}),sources,[]),/EVIDENCE/);
 });
+
+test('daily questions retain the ending of a long article and reject artificial excerpt boundaries', async () => {
+ const result=await loadDailySources(database({
+  'stories/family_owner_story-one':{familyId:'family_owner',currentRevisionId:'r1'},
+  'biography_drafts/family_owner_r1':{familyId:'family_owner',revision:{storyId:'story-one',draft:{chapters:[{content:[{blockId:'b1',text:'虚构故事开头。'+'雨落在窗外。'.repeat(240)+'结尾：她改选了安静的蓝色。'}]}]}}}
+ }),identity,{storyId:'story-one'});
+ assert.match(result.sources[0].text,/改选了安静的蓝色/);
+ const base={dimension:'feeling',text:'为什么最后选了安静的蓝色？',sourceId:result.sources[0].id,anchor:'改选了安静的蓝色',focus:'choice',gap:'蓝色选择背后还未讲述的考虑'};
+ assert.equal(validateDailyQuestion(JSON.stringify(base),result.sources,[]).focus,'choice');
+ assert.throws(()=>validateDailyQuestion(JSON.stringify({...base,anchor:'【中间省略】'}),result.sources,[]),/EVIDENCE/);
+});
+
+test('daily topic history blocks rewording the same anchored question but allows a new angle', () => {
+ const sources=[{id:'m1',memoryId:'m1',text:'我没有选红色，最后改选了安静的蓝色。'}];
+ const prior=[{anchor:'改选了安静的蓝色',focus:'choice',gap:'为何选蓝色'}];
+ const next={dimension:'event',text:'选择蓝色时你考虑了什么？',sourceId:'m1',anchor:'最后改选了安静的蓝色',focus:'choice',gap:'蓝色选择时的考虑'};
+ assert.throws(()=>validateDailyQuestion(JSON.stringify(next),sources,[],prior),/REPEATED/);
+ assert.equal(validateDailyQuestion(JSON.stringify({...next,text:'你想怎样把这片蓝写成一句话？',focus:'expression',gap:'这片蓝色的表达尝试'}),sources,[],prior).focus,'expression');
+ const messages=dailyMessages({title:'虚构配色试验',sources},[],prior);
+ assert.match(messages[0].content,/选择和自述情绪/);
+ assert.deepEqual(JSON.parse(messages[1].content).recentTopics,prior);
+});

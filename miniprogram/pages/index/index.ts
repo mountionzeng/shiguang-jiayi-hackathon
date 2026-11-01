@@ -734,8 +734,8 @@ Page({
     const requestId = ++this.dailyRequestId;
     this.setData({dailyLoading:true, dailyStatus:""});
     try {
-      const question = await dailyQuestionCache.get(scope, version, sharedQuestionSeed(), manual, previous =>
-        generateDailyQuestion(story ? {storyId:story.id} : {memoryId}, previous, manual));
+      const question = await dailyQuestionCache.get(scope, version, sharedQuestionSeed(), manual, (previous,topics) =>
+        generateDailyQuestion(story ? {storyId:story.id} : {memoryId}, previous, manual,topics));
       if (requestId !== this.dailyRequestId) return;
       this.setData({dailyAi:true, hasRecommendedQuestion:true, recommendedQuestion:question.text,
         recommendedSourceId:question.sourceId, recommendedDimension:question.dimension,

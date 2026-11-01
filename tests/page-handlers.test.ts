@@ -500,6 +500,7 @@ test("continuing a recent story opens the interview with its existing context", 
   });
   assert.equal(interview.data.stage, "chat");
   assert.equal(interview.data.storyTitle, "外公接我放学");
+  assert.equal(interview.sourceText, initial.contributions.find(item=>item.id===story.id)?.text);
   assert.match(
     (interview.data.messages as Array<{ text: string }>)[0]?.text ?? "",
     /继续聊「外公接我放学」/,

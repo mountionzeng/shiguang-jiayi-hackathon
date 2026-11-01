@@ -228,6 +228,7 @@ Page({
   },
 
   messageSeq: 0,
+  sourceText: "",
   pendingContribution: undefined as MemoryContribution | undefined,
   persistedContributionId: "",
   interviewUnloaded: false,
@@ -277,6 +278,7 @@ Page({
     const sourcePreview = source
       ? `${source.text.slice(0, 72)}${source.text.length > 72 ? "……" : ""}`
       : "";
+    this.sourceText = source?.text || "";
     // 从首页推荐问点进来时，第一句就是用户刚才点的那个问题，不换成泛泛的“后来你又想起了什么”。
     const requestedQuestion = decodeQueryValue(options.question).slice(0, 80);
     const requestedDimension = INTERVIEW_DIMENSIONS.find(
@@ -470,6 +472,7 @@ Page({
         storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
         previousAnswers,
         conversation,
+        ...(this.sourceText ? {sourceText: this.sourceText, sourceOnly: true} : {}),
       });
       this.setData({
         asking: false,

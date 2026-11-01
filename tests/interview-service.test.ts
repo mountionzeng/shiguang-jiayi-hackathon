@@ -106,7 +106,7 @@ test("coediting interview includes only the displayed memory and disables unrela
   assert.equal(requestData.sourceOnly, true);
 });
 
-test("cloud interview prompt uses an honest local template when cloud fails", async (context) => {
+test("cloud interview failure preserves the words without disguising a template as a follow-up", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({
     globalData: { cloudReady: true, aiReady: true },
@@ -133,6 +133,8 @@ test("cloud interview prompt uses an honest local template when cloud fails", as
   assert.equal(prompt.generationMode, "local-fallback");
   assert.equal(prompt.fallbackReason, "function-error");
   assert.match(prompt.text, /这句话/);
+  assert.match(prompt.text, /暂时没能接上回答/);
+  assert.doesNotMatch(prompt.text, /[？?]/);
 });
 
 test("cloud-ready preview does not call interview AI before release", async (context) => {
@@ -206,7 +208,8 @@ test("declining one topic does not end the local conversation", async context =>
   const restoreWx = installGlobal("wx", {});
   context.after(() => { restoreWx(); restoreGetApp(); });
   const result = await generateInterviewPrompt({ answer:"我不想聊那个人，想说说我后来怎样决定离开的。", askedDimensions:[] });
-  assert.match(result.text, /[？?]/);
+  assert.match(result.text, /可以继续补充/);
+  assert.doesNotMatch(result.text, /先停在这里/);
 });
 
 test("邀请短笺 AI 只返回可编辑的短标题和短正文", () => {
