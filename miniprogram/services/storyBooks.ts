@@ -105,7 +105,8 @@ export async function storyCommand(command: Record<string,unknown>, options: { v
 export async function createStoryBook(input:{title:string;writingMode:'objective'|'creative';memoryIds?:string[];storyId?:string;requestId?:string}) {
   if (input.memoryIds?.length) await ensureStoryBooks();
   const storyId = input.storyId || newStoryId();
-  const state = await storyCommand({...input,storyId,requestId:input.requestId || operationId(),action:'create'});
+  // Opening the new book only needs current drafts; history remains available on demand.
+  const state = await storyCommand({...input,storyId,requestId:input.requestId || operationId(),action:'create'}, {view:'home'});
   return {state,story:core.activeStory(state,storyId)};
 }
 export function updateStoryBook(story:Story, patch:Partial<Pick<Story,'title'|'bookTitle'|'writingMode'|'coverImageId'>>, requestId = operationId()) {
