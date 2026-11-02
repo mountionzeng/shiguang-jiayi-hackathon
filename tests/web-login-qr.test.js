@@ -42,3 +42,13 @@ test('provider diagnostics preserve failure and never log the request or provide
   finally{console.error=original;}
   assert.deepEqual(logs,[['web_login_qr_generation_failed',{sdkCode:-604101,providerCode:85096,invalidPage:false,unreleased:true,permissionDenied:false}]]);
 });
+test('HTTPS QR generation selects the server-configured app, without relying on caller WX context',async()=>{
+  const fs=require('node:fs'),vm=require('node:vm');
+  const selected=[];
+  const cloud={init(){},database:()=>({}),openapi(options){selected.push(options);return {wxacode:{getUnlimited:async()=>Buffer.from('image')}};}};
+  const sandbox={module:{exports:{}},Buffer,Date,process:{env:{WEB_LOGIN_QR_ENABLED:'true',WECHAT_APP_ID:'wx86ae3e9d507ce52d'}},
+    require(name){if(name==='wx-server-sdk')return cloud;if(name==='./webLoginQr')return {PATH,webLoginQr:async(_repo,_request,options)=>{await options.generate({scene:'test'});return {base64:'image'};}};return require('../cloudfunctions/storyDesktopAccess/'+name);}};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../cloudfunctions/storyDesktopAccess/index'),'utf8'),sandbox);
+  const result=await sandbox.module.exports.main({path:PATH,httpMethod:'POST',body:'{}'});
+  assert.equal(result.statusCode,200);assert.equal(selected[0].appid,'wx86ae3e9d507ce52d');
+});
