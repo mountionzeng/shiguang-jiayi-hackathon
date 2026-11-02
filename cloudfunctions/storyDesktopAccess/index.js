@@ -2,6 +2,8 @@ const cloud=require('wx-server-sdk');
 const {readAuthoritativeStory,writeAuthoritativeStory,readAuthoritativeMedia,authoritativeShareCard,READ_PATH,WRITE_PATH,MEDIA_PATH,CARD_PATH}=require('./core');
 const {webImport,PATH:WEB_IMPORT_PATH}=require('./webImport');
 const {webLoginQr,PATH:WEB_LOGIN_QR_PATH}=require('./webLoginQr');
+const {createQrGenerator}=require('./wechatQrProvider');
+const generateQr=createQrGenerator({appid:process.env.WECHAT_APP_ID,secret:process.env.WECHAT_APP_SECRET});
 cloud.init({env:cloud.DYNAMIC_CURRENT_ENV});
 const db=cloud.database();
 function reader(target){return {async get(table,id){try{return (await target.collection(table).doc(id).get()).data;}catch(error){if(/does not exist|not found|cannot find document/i.test(String(error?.message||error?.errMsg||error)))return undefined;throw error;}},async set(table,id,value){await target.collection(table).doc(id).set({data:value});}};}
@@ -25,7 +27,7 @@ async function main(event={}){
         try{const response=await cloud.openapi.security.msgSecCheck({openid,scene:3,version:2,content:text});return response?.result?.suggest==='pass';}catch{return false;}
       },async signMedia(fileID,maxAge){const result=await cloud.getTempFileURL({fileList:[{fileID,maxAge}]});
       return result.fileList?.find(item=>item.fileID===fileID&&item.status===0)?.tempFileURL;}};
-    if(isLoginQr)return response(200,await webLoginQr(repo,request,{...options,envVersion:process.env.WEB_LOGIN_QR_ENV_VERSION,generate:input=>{const appid=String(process.env.WECHAT_APP_ID||'');if(!/^wx[a-f0-9]{16}$/.test(appid))throw Object.assign(new Error('qr_not_configured'),{code:'qr_not_configured'});return cloud.openapi({appid}).wxacode.getUnlimited(input);}}));
+    if(isLoginQr)return response(200,await webLoginQr(repo,request,{...options,envVersion:process.env.WEB_LOGIN_QR_ENV_VERSION,generate:generateQr}));
     if(isImport)return response(200,await webImport(repo,request,{...options,download:async fileID=>(await cloud.downloadFile({fileID})).fileContent}));
     if(request.path===READ_PATH)return response(200,{story:await readAuthoritativeStory(repo,request,options)});
     if(request.path===WRITE_PATH)return response(200,{result:await writeAuthoritativeStory(repo,request,options)});
