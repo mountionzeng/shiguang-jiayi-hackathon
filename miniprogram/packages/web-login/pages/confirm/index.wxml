@@ -4,13 +4,18 @@
     <block wx:if="{{fromQr}}">
       <view class="note">{{busy ? '正在读取登录请求…' : '请重新读取登录请求，或在网页刷新二维码。'}}</view>
       <view class="error" wx:if="{{error}}">{{error}}</view>
-      <button class="primary" bindtap="lookup" disabled="{{busy}}">{{busy ? '读取中…' : '重新读取'}}</button>
+      <button class="primary" bindtap="lookup" disabled="{{busy || !code}}">{{busy ? '读取中…' : '重新读取'}}</button>
     </block>
     <block wx:else>
-    <view class="note">输入电脑网页上显示的 6 位码。只在你自己面前的电脑上输入。</view>
+    <view class="note">在电脑上打开拾光网页登录页，选择“使用微信登录”，再用微信扫一扫。</view>
+    <view class="note">扫码后确认，即可用这个微信账号登录网页。无需输入六位码。</view>
+    <button wx:if="{{!legacyInput}}" class="ghost" bindtap="showLegacyInput">使用旧版登录码</button>
+    <block wx:if="{{legacyInput}}">
+    <view class="note">仅适用于电脑上仍显示六位码的旧版登录页。</view>
     <input class="code-input" maxlength="8" value="{{code}}" bindinput="onInput" placeholder="6 位码" />
     <view class="error" wx:if="{{error}}">{{error}}</view>
     <button class="primary" bindtap="lookup" disabled="{{busy || code.length < 6}}">下一步</button>
+    </block>
     </block>
   </block>
   <block wx:elif="{{step==='confirm'}}">
