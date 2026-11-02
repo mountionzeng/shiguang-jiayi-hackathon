@@ -25,6 +25,8 @@ async function webLoginQr(repo,request,options){
       invalidPage:/invalid page/i.test(message),
       unreleased:/not released|未发布/i.test(message),
       permissionDenied:/permission|权限|unauthorized/i.test(message),
+      hints:['appid','empty','invalid','not found','access_token','permission','system','resource','not support','not registered','timeout','api','function','parse','param','env','internal','service','认证','参数','权限'].filter(word=>message.toLowerCase().includes(word)),
+      numericCodes:[...message.matchAll(/(?<![a-z0-9])(-?\d{3,7})(?![a-z0-9])/gi)].map(match=>Number(match[1])),
     });
     throw error;
   }
