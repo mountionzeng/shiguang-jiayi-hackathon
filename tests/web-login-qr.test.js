@@ -34,3 +34,11 @@ test('does not return an invalid provider response or a code expired during gene
   f.options.generate=async()=>{f.options.now=()=>now+120001;return Buffer.from('fixture-image');};
   await assert.rejects(webLoginQr(f.repo,f.request(),f.options));
 });
+test('provider diagnostics preserve failure and never log the request or provider message',async()=>{
+  const f=setup(),logs=[],original=console.error;
+  const error=Object.assign(new Error('errcode: 85096 app not released private-token'),{errCode:-604101});
+  f.options.generate=async()=>{throw error;};console.error=(...args)=>logs.push(args);
+  try{await assert.rejects(webLoginQr(f.repo,f.request(),f.options),value=>value===error);}
+  finally{console.error=original;}
+  assert.deepEqual(logs,[['web_login_qr_generation_failed',{sdkCode:-604101,providerCode:85096,invalidPage:false,unreleased:true,permissionDenied:false}]]);
+});
