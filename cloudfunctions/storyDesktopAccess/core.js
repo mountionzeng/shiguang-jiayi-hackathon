@@ -17,14 +17,21 @@ function sign(secret, timestamp, nonce, body, path=READ_PATH) {
   return crypto.createHmac('sha256', secret).update(`POST\n${path}\n${timestamp}\n${nonce}\n${canonicalJson(body)}`).digest('hex');
 }
 
-function verifyRequest(request, { secret, now = Date.now() }, path=READ_PATH, fields=['grantId']) {
+function verifySignedRequest(request, { secret, now = Date.now }, path, fields) {
+  const currentTime=typeof now==='function'?now():now;
   const timestamp=String(request?.headers?.['x-shiguang-timestamp']||''),nonce=String(request?.headers?.['x-shiguang-nonce']||'');
   const signature=String(request?.headers?.['x-shiguang-signature']||''),body=request?.body;
-  if(request?.method!=='POST'||request?.path!==path||!exact(body,fields)||!GRANT.test(body.grantId||'')||
-    !/^\d{13}$/.test(timestamp)||Math.abs(now-Number(timestamp))>300000||!NONCE.test(nonce)||!SIGNATURE.test(signature))fail('invalid_authority_signature');
+  if(request?.method!=='POST'||request?.path!==path||!exact(body,fields)||typeof secret!=='string'||secret.length<32||
+    !Number.isFinite(currentTime)||!/^\d{13}$/.test(timestamp)||Math.abs(currentTime-Number(timestamp))>300000||!NONCE.test(nonce)||!SIGNATURE.test(signature))fail('invalid_authority_signature');
   const expected=sign(secret,timestamp,nonce,body,path);
   if(!secret||secret.length<32||!crypto.timingSafeEqual(Buffer.from(signature,'hex'),Buffer.from(expected,'hex')))fail('invalid_authority_signature');
-  return {grantId:body.grantId,timestampMs:Number(timestamp),nonce};
+  return {timestampMs:Number(timestamp),nonce};
+}
+
+function verifyRequest(request, options, path=READ_PATH, fields=['grantId']) {
+  const verified=verifySignedRequest(request,options,path,fields);
+  if(!GRANT.test(request.body.grantId||''))fail('invalid_authority_signature');
+  return {grantId:request.body.grantId,...verified};
 }
 
 async function claimNonce(tx, timestampMs, nonce) {
@@ -180,4 +187,4 @@ async function authoritativeShareCard(repo,request,options){
   fail('invalid_input');
 }
 
-module.exports={PATH:READ_PATH,READ_PATH,WRITE_PATH,MEDIA_PATH,CARD_PATH,sign,verifyRequest,claimNonce,readAuthoritativeStory,writeAuthoritativeStory,readAuthoritativeMedia,authoritativeShareCard};
+module.exports={PATH:READ_PATH,READ_PATH,WRITE_PATH,MEDIA_PATH,CARD_PATH,sign,verifySignedRequest,verifyRequest,claimNonce,readAuthoritativeStory,writeAuthoritativeStory,readAuthoritativeMedia,authoritativeShareCard};

@@ -35,5 +35,5 @@ test('release manifest records gated switches and applicable rule files, not sec
   assert.equal(entry.databaseRulesFile, 'deploy/story-sharing/database.rules.json');
   assert.equal(entry.storageRulesFile, 'deploy/story-sharing/storage.rules.json');
   assert.deepEqual(json('deploy/wechat-cloud.manifest.json').cloudFunctions.storyDesktopAccess.environmentVariables,
-    ['STORY_DESKTOP_ACCESS_ENABLED','STORY_DESKTOP_AUTHORITY_SECRET','STORY_SHARE_CARD_ENABLED']);
+    ['STORY_DESKTOP_ACCESS_ENABLED','STORY_DESKTOP_AUTHORITY_SECRET','WEB_LOGIN_QR_ENABLED','WEB_LOGIN_QR_ENV_VERSION','WEB_STORY_IMPORT_ENABLED','STORY_SHARE_CARD_ENABLED']);
 });

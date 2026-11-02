@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { inspectDeploymentSource } from "./deployment-source.mjs";
+import { packageStoryDesktopAccess } from "./package-story-desktop-access.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, "..");
@@ -128,14 +129,26 @@ export async function run(argv = process.argv.slice(2), options = {}) {
   const inspectSource = options.inspectSource ?? inspectDeploymentSource;
   const source = inspectSource(project, parsed.env);
   const cliPath = options.cliPath ?? "/Applications/wechatwebdevtools.app/Contents/MacOS/cli";
+  // A function upload cannot resolve sibling folders. Package the authority's
+  // reachable modules only, after validating the clean source commit.
+  const packaged = names.includes("storyDesktopAccess")
+    ? packageStoryDesktopAccess(path.join(project, "cloudfunctions"))
+    : null;
   const deployArgs = [
     "cloud", "functions", "deploy",
     "--env", parsed.env,
     "--project", project,
     "--remote-npm-install",
-    "--names", ...names,
+    ...(packaged
+      ? ["--paths", ...names.map(name => name === "storyDesktopAccess"
+        ? packaged.output : path.join(project, "cloudfunctions", name))]
+      : ["--names", ...names]),
   ];
-  assertCommandSucceeded(await runner(cliPath, deployArgs, { cwd: rootDir }));
+  try {
+    assertCommandSucceeded(await runner(cliPath, deployArgs, { cwd: rootDir }));
+  } finally {
+    if (packaged) fs.rmSync(path.dirname(packaged.output), { recursive: true, force: true });
+  }
 
   for (const name of names) {
     const infoArgs = ["cloud", "functions", "info", "--env", parsed.env, "--project", project, "--names", name];

@@ -2,9 +2,9 @@
 
 | 项 | 值 |
 |---|---|
-| 约定版本 | **1.7.0** |
+| 约定版本 | **1.7.1** |
 | 状态 | 本地实现，默认关闭，待双端真实验收 |
-| 日期 | 2026-10-24 |
+| 日期 | 2026-11-02 |
 | 权威版本 | Drinking Time 仓库 `docs/integrations/shiguang-bridge-contract.md` |
 | 副本 | 拾光家忆仓库 `docs/integrations/drinking-time-bridge-contract.md`（必须与权威版本同版本号） |
 | 实现基线 | Drinking Time `9f7f9f4`（桥接口），拾光家忆 `d83f1ed`（云函数 `drinkingTimeBridge`） |
@@ -616,7 +616,7 @@ canonicalJson(正文)，单行，没有末尾换行：
 - 网页侧请求有效期 120 秒，一次性；码、请求标识和浏览器验证值都只存带密钥的摘要。登录 cookie 只发给持有浏览器验证值的那个浏览器，会话属性与配对码登录一致。
 - 开关：网页 `WECHAT_SCAN_LOGIN_ENABLED`，云函数 `WEB_LOGIN_CONFIRM_ENABLED`，均默认关闭；复用现有桥接密钥与登录码摘要密钥。
 - 网页自身接口（不属于桥接口）：`POST /api/auth/wechat-scan/create`、`POST /api/auth/wechat-scan/poll`。
-- 小程序码出码（方案 A）本版本不包含，6 位码只是请求的展示形式，之后可替换展示方式而不改本节。
+- 原1.6.0仅包含六位码确认；1.7.1新增动态小程序码登录，见下方补充。六位码协议兼容保留。
 
 ### 1.6.0 测试向量 V2
 
@@ -685,3 +685,13 @@ canonicalJson(正文)，单行，没有末尾换行：
 | 1.6.0 | 2026-10-23 | 新增 `/web-login/confirm`：网页 6 位码登录确认与绑定微信（默认关闭，向后兼容）。签名测试向量 V1 不变，新增 V2。 |
 | 1.5.1 | 2026-09-19 | 电脑配对 nonce 改为 MySQL 原子领取，跨进程和重启后仍拒绝五分钟窗口内重放；`storyAccess` 只有在电脑权威地址、密钥和开关完整配置后才可落库。补充迁移先行、生产者最后开启和反向关闭的发布/回滚清单。 |
 | 1.0.0 | 2026-09-15 | 首版草案：如实记录 Drinking Time `9f7f9f4` 与拾光家忆 `d83f1ed` 的现有行为、已知缺口、待决定事项 D1 和提案 P1–P10；并入小程序端两轮核对：服务地址与挂载点、漏挂载点返回 200 首页及成功响应校验、标题与修订号的关系、`sourceKey` 跳变缺口、数组 `undefined`、云函数执行超时、云函数本地体积检查、小程序端实际上限 |
+
+### 1.7.1 补充：扫码登录与可选迁移（2026-11-02，本地未部署）
+
+- 新网页向 `POST /api/auth/wechat-scan/create` 传 `{presentation:"qr"}`。服务端生成独立112-bit确认令牌（28位大写十六进制），数据库只存带密钥摘要；返回 `{l,v,qrDataUrl,expiresAt,clientHint}`，不返回令牌明文。旧空正文请求仍返回六位码，原配对协议保留。
+- `/web-login/confirm` 的 `code` 新增支持28位大写十六进制；可信微信主体、HMAC、持久nonce、限流、明确确认、120秒到期和仅原浏览器领取规则不变，V2测试向量不变。
+- Web用已有authority HTTPS地址/密钥请求 `POST /v1/web-login/qr`，正文只有 `{code,expiresAt}`（毫秒）。签名采用POST/完整路径/时间戳/nonce/规范JSON。此路径不要求故事grant，仍使用同一持久nonce库。不得传入L/V。
+- 云函数调用 `wxacode.getUnlimited`，页面固定 `packages/web-login/pages/confirm/index`，scene固定 `wl_<28位令牌>`（31字符）。版本由 `WEB_LOGIN_QR_ENV_VERSION=release|trial|develop` 决定，默认release，浏览器不能指定。release检查发布页面；trial/develop仍需上传正确客户端。
+- 扫码只自动preview，显示浏览器信息后须人点击确认或拒绝。网页确认后进入正常工作区，再可选询问迁移；没有未迁移故事或读取失败时不拦阻工作区。
+- Web需要 `WECHAT_SCAN_LOGIN_ENABLED=true`、`WECHAT_LOGIN_QR_ENABLED=true` 和 `SHIGUANG_STORY_AUTHORITY_URL/SECRET`。出码云函数需要 `WEB_LOGIN_QR_ENABLED=true`、`wxacode.getUnlimited`权限；确认云函数仍需 `WEB_LOGIN_CONFIRM_ENABLED=true`。导入开关独立。
+- 没有配置时，新前端明确提示扫码不可用，不以固定体验码冒充登录码。先部署兼容新令牌的后端和原生确认云函数，再部署出码路由、上传正确小程序、真实验收，最后切换前端。

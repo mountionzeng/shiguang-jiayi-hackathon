@@ -29,7 +29,8 @@ test('desktop authority packages transitive siblings and loads without the check
       main({}).then(result => assert.equal(result.statusCode, 404));
     `;
     execFileSync(process.execPath, ['-e', check], { cwd: result.output, env: { PATH: process.env.PATH }, stdio: 'pipe' });
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(result.output, 'config.json'))).permissions.openapi, ['security.msgSecCheck']);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(result.output, 'config.json'))).permissions.openapi, ['security.msgSecCheck', 'wxacode.getUnlimited']);
+    assert.ok(result.files.includes('storyDesktopAccess/webLoginQr.js'));
   } finally { fs.rmSync(path.dirname(result.output), { recursive: true, force: true }); }
 });
 

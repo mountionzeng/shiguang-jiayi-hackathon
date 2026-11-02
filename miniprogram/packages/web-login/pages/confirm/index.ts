@@ -6,11 +6,22 @@ Page({
   data: {
     step: "input" as Step,
     code: "",
+    fromQr: false,
     busy: false,
     clientHint: "",
     mode: "login",
     resultText: "",
     error: "",
+  },
+  onLoad(options: { scene?: string }) {
+    if (options.scene === undefined) return;
+    let scene = "";
+    try { scene = decodeURIComponent(options.scene); } catch { /* Invalid scenes never trigger a request. */ }
+    const match = /^wl_([A-F0-9]{28})$/.exec(scene);
+    if (!match) { this.setData({ error: "登录二维码无效，请在网页重新生成。" }); return; }
+    this.setData({ code: match[1], fromQr: true });
+    // Scanning only previews the device; the user must still tap confirmation.
+    void this.lookup();
   },
   onInput(event: { detail: { value: string } }) {
     this.setData({ code: event.detail.value.toUpperCase().replace(/[^0-9A-Z-]/g, ""), error: "" });

@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const crypto = require("node:crypto");
 const { bridgeUrl, chapterDeliveryActionForPath, chapterDeliveryPathForAction, chapterDeliveryBody, chapterDeliveryResultShapeError,
   issueDesktopResultShapeError, signature, webLoginBody, webLoginResultShapeError } = require("./core");
-const { prepareDesktopBody } = require("./egress");
+const { prepareDesktopBody, prepareWebImportIdentity } = require("./egress");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db=cloud.database();
@@ -242,6 +242,12 @@ async function main(event = {}) {
   }
   if (action === "confirmWebLogin") {
     const loginBody = webLoginBody(event, context, { appIdFallback: process.env.WECHAT_APP_ID });
+    if (loginBody.decision === 'confirm' && process.env.WEB_STORY_IMPORT_ENABLED === 'true') {
+      // Failure to prepare import must not prevent the established login path.
+      try { await prepareWebImportIdentity(repo, {...context,APPID:context.APPID||process.env.WECHAT_APP_ID}, {
+        bootstrapAppId:process.env.STORY_IDENTITY_BOOTSTRAP_APP_ID||process.env.WECHAT_APP_ID,
+      }); } catch { console.warn('web_import_identity_not_ready'); }
+    }
     return post(baseUrl, path, loginBody, secret, webLoginResultShapeError);
   }
   const body = await prepareDesktopBody(repo, event, context, {

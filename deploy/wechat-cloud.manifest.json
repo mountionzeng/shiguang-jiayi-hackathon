@@ -192,6 +192,7 @@
         "DRINKING_TIME_BRIDGE_SECRET",
         "STORY_DESKTOP_AUTHORITY_ENABLED",
         "WEB_LOGIN_CONFIRM_ENABLED",
+        "WEB_STORY_IMPORT_ENABLED",
         "WECHAT_APP_ID",
         "STORY_IDENTITY_BOOTSTRAP_APP_ID"
       ]
@@ -199,11 +200,14 @@
     "storyDesktopAccess": {
       "deploymentClass": "configured",
       "defaultDeploy": false,
-      "activationRequirements": ["Configure STORY_DESKTOP_AUTHORITY_SECRET", "Explicitly enable STORY_DESKTOP_ACCESS_ENABLED after authority setup"],
+      "activationRequirements": ["Configure STORY_DESKTOP_AUTHORITY_SECRET", "Deploy the standalone package including sibling dependencies", "Explicitly enable only the required desktop, import or login QR capability", "For login QR, install wxacode.getUnlimited permission and upload the matching confirmation client"],
       "timeoutSeconds": 20,
       "environmentVariables": [
         "STORY_DESKTOP_ACCESS_ENABLED",
         "STORY_DESKTOP_AUTHORITY_SECRET",
+        "WEB_LOGIN_QR_ENABLED",
+        "WEB_LOGIN_QR_ENV_VERSION",
+        "WEB_STORY_IMPORT_ENABLED",
         "STORY_SHARE_CARD_ENABLED"
       ]
     },
