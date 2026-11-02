@@ -1,5 +1,6 @@
 const { recordDeliveryActivity } = require('./activity');
 const cloud = require("wx-server-sdk");
+const { loginDisplayName } = require("./loginProfile");
 const https = require("node:https");
 const fs = require("node:fs");
 const crypto = require("node:crypto");
@@ -247,6 +248,12 @@ async function main(event = {}) {
       try { await prepareWebImportIdentity(repo, {...context,APPID:context.APPID||process.env.WECHAT_APP_ID}, {
         bootstrapAppId:process.env.STORY_IDENTITY_BOOTSTRAP_APP_ID||process.env.WECHAT_APP_ID,
       }); } catch { console.warn('web_import_identity_not_ready'); }
+    }
+    if (loginBody.decision === 'confirm') {
+      try {
+        const name = await loginDisplayName(db, context);
+        if (name) loginBody.displayName = name;
+      } catch { console.warn('web_login_profile_not_ready'); }
     }
     return post(baseUrl, path, loginBody, secret, webLoginResultShapeError);
   }
