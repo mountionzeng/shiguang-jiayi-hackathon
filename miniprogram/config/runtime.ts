@@ -26,8 +26,6 @@ export const CLOUD_IMAGE_AI_RELEASE_READY = true;
 // 投递额外受 CHAPTER_PACKAGE_ENABLED 约束；与 STORY_ACCESS_ENABLED 等故事开关无关。
 export const CHAPTER_PACKAGE_ENABLED = true;
 export const CHAPTER_DELIVERY_ENABLED = true;
-export const BACKEND_API_ENABLED = false;
-export const BACKEND_API_BASE_URL = "http://127.0.0.1:8000/api/v1";
 // Bump when the AI-consent disclosure text materially changes; existing users
 // must re-confirm before online AI runs again.
 export const AI_CONSENT_VERSION = 1;
