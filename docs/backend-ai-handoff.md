@@ -1,3 +1,5 @@
+> 历史设计交接，不能作为当前部署说明。2026-11-03 核对后移除无人生产调用的 `miniprogram/services/backendApi.ts`、仅覆盖它的测试和两个无效 FastAPI 配置；下文旧适配层/开启开关的描述仅供追溯，不再可执行。当前数据入口为 `miniprogram/services/roomRepository.ts` 与 `cloudRoomStorage.ts`，云端部署边界以 `docs/WORKSPACE.md` 及最新验收记录为准。
+
 # 后端与 AI 对接说明
 
 本文档记录 `dev_backend` 分支对后端、云开发和 AI 生成能力的协作边界，方便前端、产品和后端并行开发。
