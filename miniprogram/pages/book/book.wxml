@@ -43,7 +43,7 @@
     <button wx:if="{{storyId && savedRevisionId && !editing}}" class="send-option" data-action="invite" bindtap="selectTool">亲友阅读与权限<text>›</text></button>
     <button wx:if="{{view === 'chapter'}}" class="send-option" catchtouchstart="openShareSelection">发送选中的文字<text>›</text></button>
   </view>
-  <view class="notice" wx:if="{{saveNotice || loadError}}">{{saveNotice || loadError}}</view>
+  <view class="notice" wx:if="{{loadError || (saveNotice && !(article && (saveNotice === '修改已保存' || saveNotice === '版本已保存，旧版仍然保留')))}}">{{loadError || saveNotice}}</view>
   <view class="notice" wx:elif="{{modeLabel && !(article && view === 'chapter')}}">{{modeLabel}} · {{modeNote}}</view>
   <view class="panel-actions" wx:if="{{loadError}}"><button class="tool-button" bindtap="retryLoad">重新加载</button></view>
   <view class="panel-actions" wx:if="{{canUndo && !panel && !editing}}">
@@ -108,7 +108,7 @@
     </view>
   </scroll-view>
   <scroll-view wx:if="{{article && !panel && view === 'chapter' && !openingChapter}}" class="article-scroll" scroll-y>
-    <input class="article-title serif" value="{{article.title}}" bindinput="onArticleTitle" maxlength="40" placeholder="给这一章起个名字" />
+    <input adjust-position="{{!xiaoyiOpen}}" class="article-title serif" value="{{article.title}}" bindinput="onArticleTitle" maxlength="40" placeholder="给这一章起个名字" />
     <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
     <button wx:if="{{!protectedCopy}}" class="article-memory-entry" bindtap="openArticleMemories" disabled="{{xiaoyiLoading || articleMemoryLoading}}">＋ 加入记忆</button>
     <view wx:if="{{articleMemoryOpen}}" class="article-memory-picker">
@@ -127,7 +127,7 @@
         <button class="xiaoyi-action xiaoyi-action-primary" bindtap="composeArticleMemories" disabled="{{articleMemoryLoading || xiaoyiLoading || !articleMemoryRows.length}}">用选中的记忆写一段</button>
       </view>
     </view>
-    <article-editor backdrop="{{backdropUrl}}" chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindselectmodule="onArticleModuleSelected" bindaddimage="addArticleImage" />
+    <article-editor id="article-editor" adjust-position="{{!xiaoyiOpen}}" backdrop="{{backdropUrl}}" chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindselectmodule="onArticleModuleSelected" bindaddimage="addArticleImage" />
   </scroll-view>
   <button wx:if="{{article && !panel && view === 'chapter' && !xiaoyiOpen}}" class="article-bird" bindtap="openXiaoyi" aria-label="和小忆聊这篇文章"><image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" /><text>小忆帮我写</text></button>
   <view wx:if="{{articleShareUrl}}" class="article-share-mask" bindtap="closeArticleShare">

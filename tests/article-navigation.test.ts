@@ -199,3 +199,30 @@ test('a concurrently changed chapter order is shown without overwriting it with 
   assert.deepEqual(p.chapters.map((c:any)=>c.id),['b','a']);
   assert.match(p.data.saveNotice,/重新拖动/);
 });
+
+test('editing a conflicting article clears stale saved notices and stays explicitly local', async () => {
+  const {p,stored,requests} = await setup();
+  await open(p,'a');
+  p.articleConflict=true;
+  p.setData({saveNotice:'修改已保存'});
+  type(p,'冲突后新输入');
+  assert.equal(p.data.saveNotice,'');
+  assert.match(p.data.articleStatus,/仅存本机/);
+  assert.doesNotMatch(p.data.articleStatus,/正在保存|已保存到云端/);
+  assert.equal(stored.get(p.articleKey()).chapter.content[0].text,'冲突后新输入');
+  assert.equal(await p.flushArticle(),false);
+  assert.equal(requests.length,0);
+});
+
+test('native article keyboard adjustment does not also shrink the scroll viewport', async () => {
+  const {p} = await setup();
+  await open(p,'a');
+  p.fullWindowHeight=760;
+  p.onKeyboardHeight({detail:{height:300}});
+  assert.equal(p.data.viewportHeight,760);
+  p.setData({xiaoyiOpen:true});
+  p.updateViewport();
+  assert.equal(p.data.viewportHeight,460,'the companion keeps its manually sized keyboard layout');
+  p.onKeyboardHeight({detail:{height:0}});
+  assert.equal(p.data.viewportHeight,760);
+});

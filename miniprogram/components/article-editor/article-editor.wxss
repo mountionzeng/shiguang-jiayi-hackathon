@@ -1,5 +1,5 @@
 :host { display:block; }
-.article-hint,.article-note { color:#68776c;font-size:26rpx;padding:20rpx 0; }
+.article-note { color:#68776c;font-size:26rpx;padding:20rpx 0; }
 .article-note { color:#9a4b35; }
 .article-page { position:relative;background:#fffefa;margin:0 0 24rpx;overflow:visible; }
 .article-module { position:absolute;box-sizing:border-box;border:1px solid transparent; }

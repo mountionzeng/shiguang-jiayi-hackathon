@@ -229,7 +229,8 @@ Page({
     // The child edits body/layout; its title may predate a still-debounced title input.
     this.articlePending = !event.detail.titleChanged && latest?.id === incoming.id && latest.title !== incoming.title
       ? { ...incoming, title: latest.title } : incoming;
-    this.setData({ articleDirty: true, articleStatus: '正在保存…' });
+    this.setData({ articleDirty: true, saveNotice: '', articleStatus: this.articleConflict
+      ? '仅存本机：云端有新版，请核对历史版本' : '正在保存到云端…' });
     this.backupArticle();
     if (this.articleTimer) clearTimeout(this.articleTimer);
     this.articleTimer = setTimeout(() => { void this.flushArticle(); }, 1200);
@@ -258,7 +259,7 @@ Page({
   },
   async flushArticle(): Promise<boolean> {
     if (this.articleTimer) clearTimeout(this.articleTimer);
-    if(this.articleConflict){this.setData({articleStatus:"本机草稿与云端新版冲突，草稿已保留，请先核对历史版本"});return false;}
+    if(this.articleConflict){this.setData({articleStatus:"仅存本机：云端有新版，请核对历史版本"});return false;}
     if (this.articleSaving) { if (!await this.articleSaving) return false; }
     if (!this.articlePending && !this.articleAttempt) return true;
     const story = this.story;
@@ -280,7 +281,7 @@ Page({
         this.articleAttempt = null;
         if (this.articlePending === attempt.chapter) {
           this.articlePending = null; wx.removeStorageSync(this.articleKey());
-          this.setData({ article: attempt.chapter, articleDirty: false, articleStatus: '已保存', savedRevisionId: result.revisionId });
+          this.setData({ article: attempt.chapter, articleDirty: false, articleStatus: '已保存到云端', savedRevisionId: result.revisionId });
         } else {
           this.backupArticle();
         }
@@ -388,7 +389,10 @@ Page({
   },
   updateViewport() {
     if (!this.fullWindowHeight) return;
-    const viewportHeight = Math.max(180, this.fullWindowHeight - this.data.keyboardHeight);
+    // Native article inputs already move the viewport to keep their caret visible.
+    // Resizing their scroll container as well can reset its scroll offset on phones.
+    const nativeArticleKeyboard = this.data.article && this.data.view === 'chapter' && !this.data.panel && !this.data.xiaoyiOpen;
+    const viewportHeight = Math.max(180, this.fullWindowHeight - (nativeArticleKeyboard ? 0 : this.data.keyboardHeight));
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
   onHide() {
@@ -788,7 +792,7 @@ Page({
     if (article && this.articlePending) article = this.articlePending;
     return {
       article, articleWidth: Math.max(180, (this.windowWidth || 375) - 32), articlePaths: {...this.photoPaths},
-      articleDirty: Boolean(this.articlePending), articleStatus:this.articleConflict?'本机草稿与云端新版冲突，草稿已保留':this.articlePending?'已恢复本机草稿，等待保存':'',
+      articleDirty: Boolean(this.articlePending), articleStatus:this.articleConflict?'仅存本机：云端有新版，请核对历史版本':this.articlePending?'已恢复本机草稿，等待保存':'',
       currentLayoutPages: this.story?.sourcePolicyRequired && active?.layout
         ? chapterLayoutView(active, Math.max(1, (this.windowWidth || 375) - 56), this.photoPaths) : [],
       bookIntroduction: this.introductionBuffer,
@@ -1592,13 +1596,14 @@ Page({
     if ((this.data.protectedCopy && !this.data.article) || this.data.view !== "chapter" || this.data.panel || this.data.saving || this.data.generating) return;
     if (this.data.article) this.restoreArticleChat();
     this.setData({ xiaoyiOpen: true, xiaoyiAnswer: this.data.xiaoyiAnswer, xiaoyiDraftText: this.data.xiaoyiDraftText, xiaoyiWritingInstruction: this.data.xiaoyiWritingInstruction, moreOpen: false, xiaoyiStatus: "", xiaoyiContextPreview: "正在读取当前正文…" });
+    this.updateViewport();
     this.xiaoyiCapturePending = this.captureXiaoyiContext();
     return this.xiaoyiCapturePending.then(() => this.startArticleWritingPrompt());
   },
   closeXiaoyi() {
     this.articleStarterRequest++;
     this.setData({xiaoyiStarterLoading:false});
-    if (this.data.article) { this.saveArticleChat(); this.setData({xiaoyiOpen:false}); return; }
+    if (this.data.article) { this.saveArticleChat(); this.setData({xiaoyiOpen:false}); this.updateViewport(); return; }
     this.xiaoyiCaptureId++;
     this.xiaoyiContextCapturedText = "";
     this.xiaoyiLineContext = "";
