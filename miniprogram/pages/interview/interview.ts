@@ -1224,7 +1224,8 @@ Page({
 
   async save(options: {stayOnPage?: boolean} = {}) {
     if (this.data.saving || this.data.saved) return;
-    this.setData({ saving: true, saveError: "" });
+    // Input handlers keep native typing smooth; publish the latest text before switching to the saved view.
+    this.setData({ saving: true, saveError: "", draftText:this.data.draftText, draftTitle:this.data.draftTitle });
 
     try {
       const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;

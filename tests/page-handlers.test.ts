@@ -4435,3 +4435,16 @@ test('reorganizing appends speech history while preserving the saved article on 
  assert.equal(saved.text,original.text);assert.equal(page.data.draftText,original.text);assert.equal(page.data.saved,true);
  assert.ok(memoryAiRevisions(saved).some(item=>item.kind==='spoken' && item.text==='我的新感受'));
 });
+
+
+test('saving publishes native editor values to the saved-view bindings before async work',async context=>{
+ const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
+ const page=instantiate(await pageDefinition('interview'));await callPage(page,'onLoad');
+ const original=state.contributions.find(item=>item.id==='demo-personal-rain')!;
+ page.pendingContribution=original;page.persistedContributionId=original.id;page.setData({draftText:'旧稿',draftTitle:'旧题',saved:false});
+ callPage(page,'onDraftInput',{detail:{value:'手动改好的新稿'}});callPage(page,'onTitleInput',{detail:{value:'新题'}});
+ const updates:any[]=[];const apply=page.setData;page.setData=update=>{updates.push(update);apply(update);};
+ await callPage(page,'save',{stayOnPage:true});
+ const frame=updates.find(update=>update.saving===true);assert.equal(frame.draftText,'手动改好的新稿');assert.equal(frame.draftTitle,'新题');
+ assert.equal(storage.roomState().contributions.find(item=>item.id===original.id)!.text,'手动改好的新稿');
+});
