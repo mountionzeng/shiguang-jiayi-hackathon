@@ -220,7 +220,7 @@
               <view class="story-excerpt">{{item.excerpt}}</view>
               <view class="story-meta">{{item.countLabel}}</view>
             </view>
-            <view class="story-continue">继续聊</view>
+            <button class="story-continue" data-id="{{item.id}}" data-title="{{item.storyTitle}}" catchtap="continueStory" aria-label="继续聊{{item.title}}">继续聊 ›</button>
           </view>
         </view>
       </view>
