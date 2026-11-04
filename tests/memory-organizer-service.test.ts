@@ -153,3 +153,13 @@ test('inline dialogue organization sends all explicit user segments as editable 
   assert.deepEqual(sent.transcript,material);
   assert.equal(sent.inlineAnswer,true);
 });
+
+
+test('article clarification is a distinct result only for the requested guidance flow',async context=>{
+ context.after(installGlobal('getApp',()=>({globalData:{cloudReady:true,aiReady:true}})));
+ const {clearAiConsent}=await import('../miniprogram/services/aiConsent');clearAiConsent();context.after(clearAiConsent);
+ let request:any;
+ context.after(installGlobal('wx',{cloud:{callFunction:async(r:any)=>{request=r;return {result:r.name==='recordAiConsent'?{}:{clarification:'想写感受，还是介绍原文？',body:'',generationMode:'cloud-ai'}};}}}));
+ const result=await organizeMemory({memoryId:'m1',transcript:['我读了一篇文章'],memoryType:'note',expectedSavedText:'我读了一篇文章',writingMode:'compose',articleGuidance:true});
+ assert.equal(result.body,'');assert.match(result.clarification || '',/想写感受/);assert.equal(result.fallbackReason,undefined);assert.equal(request.data.articleGuidance,true);
+});

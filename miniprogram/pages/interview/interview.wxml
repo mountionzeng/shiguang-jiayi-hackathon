@@ -205,17 +205,18 @@
       <view wx:if="{{!captureEntry && !captureReadOnly}}" class="writing-search-note">AI查资料只把你确认的检索词发给腾讯云 TokenHub，不发送照片和私人对话。</view>
       <view wx:if="{{searchError}}" class="capture-error">{{searchError}}</view>
       <generation-status wx:if="{{searching}}" text="正在检索公开资料并核对来源…" />
-      <generation-status wx:if="{{organizing}}" text="正在把刚才的对话整理成片段…" />
+      <generation-status wx:if="{{organizing}}" text="正在结合材料和你的想法整理文章…" />
       <view class="tool-row" wx:if="{{!captureReadOnly}}">
         <view class="tool-chip {{importing ? 'tool-chip-off' : ''}}" bindtap="importMemory">{{importing ? '正在导入…' : captureEntry ? '添加素材' : '导入'}}</view>
         <button wx:if="{{!captureEntry && !captureDraft}}" class="tool-chip" bindtap="searchWritingMaterials">AI查资料</button>
         <button wx:if="{{!captureEntry && !sharedFamilyId}}" class="tool-chip" bindtap="editWritingPreferences">写作偏好</button>
+        <button wx:if="{{!captureEntry}}" class="tool-chip" bindtap="chooseArticleDirection" disabled="{{organizing || asking}}">调整写法</button>
         <view class="tool-spacer"></view>
         <button
           wx:if="{{!captureEntry}}"
           class="tidy-btn {{(answers.length === 0 || organizing || asking || importing || saving) ? 'tidy-btn-off' : ''}}"
           bindtap="finish"
-        >{{organizing ? '正在整理…' : asking ? '小忆正在回应…' : '整理成片段'}}</button>
+        >{{organizing ? '正在整理…' : asking ? '小忆正在回应…' : '整理成文章'}}</button>
       </view>
       <view wx:if="{{!captureEntry && sourceMaterials.length}}" class="capture-session-actions">
         <button class="capture-link" bindtap="readSourceMaterials" disabled="{{captureReading || asking || organizing}}">{{captureReading ? '正在逐份读取…' : '读取材料内容'}}</button>
@@ -439,6 +440,18 @@
       </view>
     </view>
   </block>
+  <view wx:if="{{compositionOpen}}" class="material-reader-mask" bindtap="closeComposition" role="dialog" aria-label="选择文章写法">
+    <view class="composition-sheet" catchtap="stopTranscriptTap">
+      <view class="material-reader-head"><text class="serif">你想把它写成什么样？</text><button class="capture-link" bindtap="closeComposition">取消</button></view>
+      <scroll-view scroll-y class="composition-scroll">
+        <view class="composition-hint">没想好也没关系。选一个方向再改，或直接告诉小忆：写给谁看、最想表达什么、喜欢什么语气。</view>
+        <view class="composition-options"><button wx:for="{{compositionOptions}}" wx:key="label" class="composition-option" data-index="{{index}}" bindtap="chooseComposition">{{item.label}}</button></view>
+        <textarea class="composition-input" value="{{compositionInstruction}}" bindinput="onCompositionInstruction" maxlength="300" placeholder="例如：写一篇给孩子看的读后感，重点讲为什么值得记住这些人，语气朴素。" aria-label="我想要的文章写法"/>
+        <view class="composition-hint">先整理成 500 字以内的短文。只依据已读材料和你说过的内容，之后还可以修改、整理进书。</view>
+      </scroll-view>
+      <button class="btn btn-primary" bindtap="confirmComposition" disabled="{{!compositionInstruction || organizing}}">按这个写法整理</button>
+    </view>
+  </view>
   <view wx:if="{{sourceTranscriptOpen}}" class="material-reader-mask" bindtap="toggleSourceTranscript">
     <view class="material-reader" catchtap="stopTranscriptTap">
       <view class="material-reader-head"><text class="serif">已读取的材料原文</text><button class="capture-link" bindtap="toggleSourceTranscript">关闭</button></view>

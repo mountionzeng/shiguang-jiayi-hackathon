@@ -210,6 +210,10 @@ Page({
     searchError: "",
     preferencesBusy: false,
     organizing: false,
+    compositionOpen: false,
+    writingInstruction: "",
+    compositionInstruction: "",
+    compositionOptions: [] as Array<{label:string;instruction:string}>,
     scrollIntoView: "",
 
     // 先等档案读完再决定显示哪一屏，免得从首页进来时先闪一下「选择讲述方式」。
@@ -394,6 +398,7 @@ Page({
       this.setData({messages:restored.messages, answers:restored.answers, inputText:restored.inputText,
         askedDimensions:restored.askedDimensions.filter((item):item is InterviewDimension=>INTERVIEW_DIMENSIONS.includes(item as InterviewDimension)),
         draftTitle:restored.draftTitle,draftText:restored.draftText,draftSummary:restored.draftSummary,
+        writingInstruction:restored.messages.filter(item=>item.kind === "request" && item.label === "本次写法").slice(-1)[0]?.text || "",
         draftLength:restored.draftText.length,tooLong:restored.draftText.length>MAX_MEMORY_LENGTH,
         draftOrganizationMode:restored.draftOrganizationMode,saved:!!output && restored.saved,
         draftAiLabel:output ? draftAiLabel(this.pendingContribution!,restored.draftText) : "",
@@ -571,6 +576,10 @@ Page({
       return;
     }
 
+    if(this.data.messages[this.data.messages.length-1]?.label === "写作方向") {
+      await this.composeArticle();
+      return;
+    }
     if (isWritingSearchRequest(answer)) { await this.runWritingSearch(answer); return; }
     const previousAnswers = this.data.answers;
     // 小忆问过的话也要交给 AI，它才知道哪些已经问过、用户已经答过。
@@ -688,9 +697,12 @@ Page({
       scope: this.data.sharedFamilyId ? "family" : "personal",
       visibility: this.data.sharedFamilyId ? "family" : "private",
     });
-    const contribution = this.pendingContribution
+    const spokenRevision = this.pendingContribution
       ? appendAiRevision(base, "spoken", spokenText, base.title, base.organizationMode)
       : base;
+    const contribution = this.data.saved && this.pendingContribution
+      ? {...spokenRevision,text:base.text,title:base.title}
+      : spokenRevision;
 
     if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, contribution);
     else await appendContributionRemoteFirst(contribution, {learn:false, view:"memories"});
@@ -699,7 +711,45 @@ Page({
     return contribution;
   },
 
-  async finish() {
+  async finish() { await this.composeArticle(); },
+
+  chooseArticleDirection() {
+    if (this.data.sessionBlocked || this.data.captureReading || this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
+    if (!this.data.answers.length && !this.data.inputText.trim()) {
+      wx.showToast({title:"先说一点想写的内容，再一起选写法",icon:"none"});
+      return;
+    }
+    const hasMaterials = !!(this.data.sourceTranscript || this.data.sourceMaterials.length || this.materialSourceMemoryId);
+    this.setData({compositionOpen:true,compositionInstruction:this.data.writingInstruction,
+      compositionOptions:hasMaterials ? [
+        {label:"写一篇读后感",instruction:"写一篇读后感：从我读材料时的感受写起，结合材料中具体的人或事，表达我为什么想留下它。材料作者的经历不要写成我的亲历。"},
+        {label:"介绍材料中的人和事",instruction:"写一篇介绍文章：按清楚的顺序讲明材料中的人和事，注明出处，保留不确定的地方，让没看过材料的人也能读懂。"},
+        {label:"写给想分享的人",instruction:"写一篇适合分享的短文：从材料里最打动我的一点切入，用自然、好懂的语言，结合我已经说过的感受，不空泛说教。"},
+      ] : [
+        {label:"讲述一件事",instruction:"写一篇叙事短文：围绕我讲过的一件事，按事情发展组织开头、经过和结尾，保留具体细节，不补造经历。"},
+        {label:"写下我的感受",instruction:"写一篇随笔：从我明确说过的感受切入，用已经提供的人和事承载情感，语言自然，不替我补造想法。"},
+        {label:"留给家人读",instruction:"写一篇给家人看的回忆文章：用亲切、朴素的语言讲清我说过的人和事，保留关系和细节，不编造。"},
+      ]});
+  },
+  closeComposition() { this.setData({compositionOpen:false}); },
+  onCompositionInstruction(event:WechatMiniprogram.CustomEvent<{value:string}>) {
+    this.setData({compositionInstruction:event.detail.value.slice(0,300)});
+  },
+  chooseComposition(event:WechatMiniprogram.CustomEvent) {
+    const option=this.data.compositionOptions[Number(event.currentTarget.dataset.index)];
+    if(option)this.setData({compositionInstruction:option.instruction});
+  },
+  async confirmComposition() {
+    const instruction=this.data.compositionInstruction.trim();
+    if(!this.data.compositionOpen || this.data.sessionBlocked || this.data.organizing || this.data.asking || this.data.saving)return;
+    if(!instruction){wx.showToast({title:"选一个方向，或说说你想怎么写",icon:"none"});return;}
+    this.setData({writingInstruction:instruction,compositionOpen:false});
+    if(this.data.messages.filter(item=>item.kind === "request" && item.label === "本次写法").slice(-1)[0]?.text !== instruction)
+      this.pushMessage("request",instruction,"本次写法");
+    await this.composeArticle();
+  },
+
+  async composeArticle() {
     if (this.data.sessionBlocked || this.data.captureReading || this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
     const unsentText = this.data.inputText.trim();
     const answers = this.data.answers.concat(unsentText ? [unsentText] : []);
@@ -708,7 +758,7 @@ Page({
       return;
     }
 
-    this.setData({ organizing: true, saved: false });
+    this.setData({ organizing: true });
 
     try {
       if (this.materialSourceMemoryId) {
@@ -716,10 +766,12 @@ Page({
         if(this.interviewUnloaded)return;
         this.setData({sourceTranscript:reading});
       }
-      this.setData({answers});
       const spoken = await this.persistSpokenAnswers(answers);
+      this.setData({answers,inputText:""});
+      if(unsentText)this.pushMessage("answer",unsentText);
       await this.ensureSession();
       await this.persistSession();
+      if(this.writingSession && !this.writingSession.canWrite)throw new Error("聊天尚未同步");
       const draft = await organizeMemory({
         transcript: [spoken.text],
         memoryType: this.data.memoryType,
@@ -731,12 +783,20 @@ Page({
         ...(this.materialSourceMemoryId ? {materialSourceId:this.materialSourceMemoryId} : {}),
         expectedSavedText: spoken.text,
         writingMode: "compose",
-        conversation: this.data.messages.slice(-10).map(message => ({
-          role: message.kind === "answer" ? "user" as const : "assistant" as const,
-          content: message.text,
+        writingInstruction: this.data.writingInstruction,
+        articleGuidance:true,
+        conversation: this.data.messages.map(message => ({
+          role: message.kind === "answer" || message.kind === "request" ? "user" as const : "assistant" as const,
+          content: message.label === "写作方向" ? `[写作方向] ${message.text}` : message.text,
         })),
       });
+      if(draft.fallbackReason)throw new Error("写作尚未完成，原话与原稿已保留");
       if(this.materialSourceMemoryId && draft.generationMode!=='cloud-ai')throw new Error('尚未完成基于材料正文的整理，原话已保存');
+      if(draft.clarification) {
+        this.pushMessage("followup",draft.clarification,"写作方向");
+        await this.persistSession();
+        return;
+      }
       const covered = detectCoveredDimensions(draft.body);
 
       if (draft.generationMode === "cloud-ai") {
@@ -762,7 +822,7 @@ Page({
       });
       await this.persistSession();
     } catch (error) {
-      console.warn("整理成片段失败", error);
+      console.warn("按写法整理文章失败", error);
       wx.showToast({ title: "暂时无法整理，请稍后再试", icon: "none" });
     } finally {
       this.setData({ organizing: false });

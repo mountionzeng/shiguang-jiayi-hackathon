@@ -164,12 +164,14 @@ test('成文模型接收五页云端OCR而非客户端照片概述，并核对�
   f.records.set('material_captures:'+row.accountId+'_'+captureId,row);
   let request;
   global.fetch=async(_url,options)=>{request=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({title:'街道与往事',body:'读到满城解放的记述，我想记住这些往事。',summary:'读书感想',emotions:[],people:[],places:[]})}}]})};};
-  const result=await organizeCloud.main({memoryId:'m2',materialSourceId:'m2',sourceOnly:true,expectedText:memory.text,transcript:[memory.text],writingMode:'compose'},{cloud:f.cloud});
+  const result=await organizeCloud.main({memoryId:'m2',materialSourceId:'m2',sourceOnly:true,expectedText:memory.text,transcript:[memory.text],writingMode:'compose',writingInstruction:'写给孩子看的读后感，重点是传承。'},{cloud:f.cloud});
   assert.equal(result.materialReadingApplied,true);
   for(let i=1;i<=5;i++)assert.match(request.messages[1].content,new RegExp('第'+i+'页'));
   assert.doesNotMatch(request.messages[1].content,/一本打开的书/);
   assert.match(request.messages[0].content,/材料作者/);
-  assert.match(request.messages[0].content,/300字以内.*不必概括每一页.*包含标点和换行/);
+  assert.match(request.messages[0].content,/instruction.*文章类型、读者、主题和语气/);
+  assert.match(request.messages[0].content,/未指定体裁时.*已知目的.*不必概括每一页.*包含标点和换行/);
+  assert.match(request.messages[1].content,/写给孩子看的读后感，重点是传承/);
   row.evidence.pop();let calls=0;global.fetch=async()=>{calls++;throw new Error('must not reach provider');};
   await assert.rejects(organizeCloud.main({memoryId:'m2',materialSourceId:'m2',writingMode:'compose'},{cloud:f.cloud,nowMs:Date.now()+10000}),/尚未读完/);
   assert.equal(calls,0);
@@ -217,4 +219,24 @@ test('session read propagates storage outage instead of inventing an empty conve
   const f=sessionFixture(context),collection=f.db.collection;
   f.db.collection=name=>name==='writing_sessions'?{doc(){return {get:async()=>{throw new Error('collection writing_sessions does not exist');}};}}:collection(name);
   await assert.rejects(f.call(),/collection writing_sessions/);
+});
+
+
+test('article guidance reads the whole dialogue and returns one clarification without treating it as a draft',async context=>{
+ env(context);const f=fixture(),old=global.fetch;context.after(()=>global.fetch=old);
+ const memory=f.records.get('memories:family_alice_m2');memory._openid='alice-openid';
+ let request;let response={clarification:'你想介绍这家书店，还是写进门时的感受？'};
+ global.fetch=async(_url,options)=>{request=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(response)}}]})};};
+ const conversation=[{role:'user',content:'最初的关切不能被最后十轮截掉'},...Array.from({length:12},(_,i)=>({role:'assistant',content:'交流'+i}))];
+ const event={memoryId:'m2',sourceOnly:true,expectedText:memory.text,transcript:[memory.text],writingMode:'compose',articleGuidance:true,conversation};
+ const question=await organizeCloud.main(event,{cloud:f.cloud});
+ assert.equal(question.body,'');assert.equal(question.clarification,response.clarification);
+ assert.match(request.messages[1].content,/最初的关切不能被最后十轮截掉/);
+ assert.match(request.messages[0].content,/前因、经过、结果/);assert.match(request.messages[0].content,/已经问过并得到回答的内容不得再问/);
+ event.conversation.push({role:'assistant',content:'[写作方向] '+response.clarification},{role:'user',content:'写读书时的感受'});
+ await assert.rejects(organizeCloud.main(event,{cloud:f.cloud,nowMs:Date.now()+10000}),/EMPTY_MODEL_OUTPUT/);
+ response={title:'书店',body:'我走进书店，想把这一刻的感受留下。'};
+ const article=await organizeCloud.main(event,{cloud:f.cloud,nowMs:Date.now()+20000});
+ assert.equal(article.body,response.body);assert.equal(article.clarification,undefined);
+ assert.match(request.messages[0].content,/本轮直接返回文章 JSON/);
 });

@@ -13,11 +13,13 @@ import { currentConsentVersion, requestAiConsent } from "./aiConsent";
 
 export interface WritingOptions {
   writingMode?: "polish" | "compose";
+  articleGuidance?: boolean;
   writingInstruction?: string;
   conversation?: Array<{ role: "user" | "assistant"; content: string }>;
 }
 
 export interface OrganizedMemoryDraft {
+  clarification?: string;
   title: string;
   summary: string;
   body: string;
@@ -30,6 +32,7 @@ export interface OrganizedMemoryDraft {
 }
 
 interface CloudOrganizedMemoryResult {
+  clarification?: unknown;
   title?: unknown;
   summary?: unknown;
   body?: unknown;
@@ -85,9 +88,12 @@ function isMemoryType(value: unknown): value is MemoryType {
 function parseCloudDraft(
   result: unknown,
   fallback: OrganizedMemoryDraft,
+  articleGuidance = false,
 ): OrganizedMemoryDraft | undefined {
   if (!result || typeof result !== "object") return undefined;
   const draft = result as CloudOrganizedMemoryResult;
+  if(articleGuidance && typeof draft.clarification === "string" && draft.clarification.trim() && draft.clarification.length <= 160 && !draft.body && draft.generationMode === "cloud-ai")
+    return {...fallback,body:"",title:"",summary:"",clarification:draft.clarification.trim(),generationMode:"cloud-ai"};
   if (typeof draft.body !== "string" || !draft.body.trim() || draft.body.trim().length > 500) return undefined;
 
   return {
@@ -148,6 +154,7 @@ export async function organizeMemory(
       name: "organizeMemory",
       data: {
         memoryId: input.memoryId,
+        ...(input.articleGuidance ? {articleGuidance:true} : {}),
         ...(input.materialSourceId ? {materialSourceId:input.materialSourceId} : {}),
         memoryType: input.memoryType,
         memberName: input.memberName,
@@ -171,7 +178,7 @@ export async function organizeMemory(
     if (input.photoReference && (response.result as CloudOrganizedMemoryResult | undefined)?.photoReferenceApplied !== true) {
       throw new Error("照片参考尚未得到云端确认，已保留原稿");
     }
-    const cloudDraft = parseCloudDraft(response.result, fallback);
+    const cloudDraft = parseCloudDraft(response.result, fallback, input.articleGuidance);
     if (cloudDraft) return cloudDraft;
     console.warn("AI 整理返回格式不完整，将保留原话草稿");
   } catch (error) {

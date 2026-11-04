@@ -55,9 +55,10 @@ function writingContext(event) {
   const contextual = event.sourceOnly === true || event.inlineAnswer === true;
   const conversation = contextual && event.conversation !== undefined ? event.conversation : [];
   if (!Array.isArray(conversation)) throw new Error("INVALID_WRITING_CONVERSATION");
-  const messages = conversation.slice(-10).map(message => {
+  if (event.articleGuidance === true && (conversation.length > 200 || JSON.stringify(conversation).length > 120000)) throw new Error("WRITING_CONVERSATION_TOO_LONG");
+  const messages = (event.articleGuidance === true ? conversation : conversation.slice(-10)).map(message => {
     if (!message || !["user", "assistant"].includes(message.role)) throw new Error("INVALID_WRITING_CONVERSATION");
-    return { role: message.role, content: boundedText(message.content, message.role === "assistant" ? 1200 : 500, "WRITING_CONVERSATION_TOO_LONG") };
+    return { role: message.role, content: boundedText(message.content, event.articleGuidance === true ? 5000 : message.role === "assistant" ? 1200 : 500, "WRITING_CONVERSATION_TOO_LONG") };
   });
   return {
     mode,
@@ -161,7 +162,7 @@ function buildLocalCard(transcript, memoryType) {
   };
 }
 
-function parseOrganizedMemory(content, transcript, memoryType) {
+function parseOrganizedMemory(content, transcript, memoryType, articleGuidance = false) {
   const cleaned = boundedText(content, 12000, "MODEL_OUTPUT_TOO_LONG");
   if (!cleaned) throw new Error("EMPTY_MODEL_OUTPUT");
 
@@ -172,6 +173,11 @@ function parseOrganizedMemory(content, transcript, memoryType) {
     throw new Error("INVALID_MODEL_OUTPUT");
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("INVALID_MODEL_OUTPUT");
+  if (articleGuidance && parsed.clarification !== undefined) {
+    const clarification=boundedText(parsed.clarification,160,"WRITING_QUESTION_TOO_LONG");
+    if(!clarification || parsed.body)throw new Error("INVALID_MODEL_OUTPUT");
+    return {clarification,title:"",summary:"",body:"",emotions:[],people:[],places:[],memoryType,generationMode:"cloud-ai"};
+  }
   const body = boundedText(parsed.body, 500, "MEMORY_BODY_TOO_LONG");
   if (!body) throw new Error("EMPTY_MODEL_OUTPUT");
   const fallback = buildLocalCard([body], memoryType);
@@ -279,7 +285,14 @@ async function main(event, dependencies = {}) {
   const storyTitle = sanitizeText(source.storyTitle, 40);
   const writing = writingContext(event);
   const brief = organizationBrief(memoryType, source.inlineAnswer === true, writing.mode);
-  if (materialReading) brief.system += ' 本次提供了独立标记的材料原文，可据此提炼内容并结合用户明确表达的感受成文；注明原文出处，材料中的第一人称属于材料作者，不能写成用户经历。画面描述不是正文资料。不要把“还没想好怎么写”等对助手的要求写成故事内容。没有可用文字和用户内容时不得用书页外观凑成稿。先围绕用户的写作意图选一个切口，只写一至三段短稿，以300字以内为目标，不设最低字数；不必概括每一页或逐项列出材料。body包含标点和换行在内不得超过500个字符，输出前检查长度。';
+  if (materialReading) brief.system += ' 本次提供了独立标记的材料原文，可据此提炼内容并结合用户明确表达的感受成文；注明原文出处，材料中的第一人称属于材料作者，不能写成用户经历。画面描述不是正文资料。不要把“还没想好怎么写”等对助手的要求写成故事内容。没有可用文字和用户内容时不得用书页外观凑成稿。按本次 instruction 确认的文章类型、读者、主题和语气组织成文；读后感围绕用户感受结合原文，介绍文章围绕材料事实，叙事文章围绕已有事件。不一律压成摘要，不把写作要求写进正文。未指定体裁时从已知目的选择合适的写法，篇幅按表达需要安排；不设最低字数，不必概括每一页或逐项列出材料。body包含标点和换行在内不得超过500个字符，输出前检查长度。';
+  const directionQuestionIndex = writing.conversation.map(item=>item.role === "assistant" && item.content.startsWith("[写作方向]")).lastIndexOf(true);
+  const directionAnswered = directionQuestionIndex >= 0 && writing.conversation.slice(directionQuestionIndex+1).some(item=>item.role === "user");
+  const canClarify = event.articleGuidance === true && !writing.instruction && !directionAnswered;
+  if(event.articleGuidance === true) {
+    brief.system += "\n" + require("./articleWritingGuide").ARTICLE_WRITING_GUIDE;
+    if(!canClarify)brief.system += " 用户已确认写法或已答复写作方向，本轮直接返回文章 JSON，不得再次返回 clarification。最新用户纠正优先于较早写法。";
+  }
   let personalContext;
   const memoryRepo = db ? createMemoryRepository(db) : null;
   if (!dependencies.skipGuard && event.sourceOnly !== true && event.inlineAnswer !== true && process.env.PERSONAL_MEMORY_ENABLED === 'true') {
@@ -356,9 +369,9 @@ async function main(event, dependencies = {}) {
 
   const payload = await response.json();
   const content = payload?.choices?.[0]?.message?.content;
-  const result = parseOrganizedMemory(content, transcript, memoryType);
+  const result = parseOrganizedMemory(content, transcript, memoryType, canClarify);
   if (!dependencies.skipGuard) {
-    await moderateText(cloud, identity.openid, [result.title, result.summary, result.body].join("\n"), "AI 记忆整理输出", { db, nowMs: dependencies.nowMs });
+    await moderateText(cloud, identity.openid, [result.title, result.summary, result.body, result.clarification || ""].join("\n"), "AI 记忆整理输出", { db, nowMs: dependencies.nowMs });
     await assertIdentityStillActive(db, identity);
     if (source.photoReference) await loadMemorySource(event, cloud, identity);
   }
