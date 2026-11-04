@@ -329,7 +329,7 @@ Page({
     if (!this.articlePending && !this.articleSaving && !this.articleAttempt) return true;
     if (await this.flushArticle()) return true;
     if (!this.backupArticle()) return false;
-    this.setData({ saveNotice: '修改已留在本机，恢复联网或重新打开时会自动保存。' });
+    this.setData({ saveNotice: this.data.articleStatus || '修改仅保存在本机，尚未同步到云端。' });
     return true;
   },
   async flushArticle(recoveries = 0): Promise<boolean> {

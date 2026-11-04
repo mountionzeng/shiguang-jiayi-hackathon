@@ -504,3 +504,12 @@ test('new input during a rejection is saved automatically while unchanged review
  assert.equal(stored.get(p.articleKey()).chapter.content[0].text,'仍需复核的稿子');
  assert.match(p.data.articleStatus,/需复核/);
 });
+
+test('leaving after moderation review keeps the real cause instead of promising a network fix',async()=>{
+ const {p,stored}=await setup();await open(p,'a');type(p,'本机完整原稿');
+ (wx as any).cloud.callFunction=async()=>({result:{error:'STORY_BOOK_ERROR',code:'MODERATION_REVIEW',message:'内容检查返回需复核，暂未同步'}});
+ assert.equal(await p.finishArticleNavigation(),true);
+ assert.match(p.data.saveNotice,/需复核/);
+ assert.doesNotMatch(p.data.saveNotice,/恢复联网|重新打开时会自动保存/);
+ assert.equal(stored.get(p.articleKey()).chapter.content[0].text,'本机完整原稿');
+});
