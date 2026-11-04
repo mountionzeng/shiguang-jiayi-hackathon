@@ -226,3 +226,40 @@ test('native article keyboard adjustment does not also shrink the scroll viewpor
   p.onKeyboardHeight({detail:{height:0}});
   assert.equal(p.data.viewportHeight,760);
 });
+
+test('rapid title confirmations serialize saves and reopen with the newest title', async () => {
+  const {p,page,stored,requests}=await setup();
+  await open(p,'a');
+  let finishFirst:any;
+  (wx as any).cloud.callFunction=({data}:any)=>{
+    requests.push(data);
+    if(requests.length===1)return new Promise(resolve=>{finishFirst=()=>resolve({result:{revisionId:'revision-title-1',version:3}});});
+    return Promise.resolve({result:{revisionId:'revision-title-2',version:4}});
+  };
+  const first=p.onArticleTitleBlur({detail:{value:'第一次改名'}});
+  while(!finishFirst) await Promise.resolve();
+  const second=p.onArticleTitleBlur({detail:{value:'最后确认的标题'}});
+  finishFirst();
+  assert.deepEqual(await Promise.all([first,second]),[true,true]);
+  assert.equal(requests.length,2,'concurrent blur/confirm must not duplicate the next write');
+  assert.equal(requests[1].chapter.title,'最后确认的标题');
+  assert.equal(requests[1].expectedVersion,3);
+  assert.equal(p.data.article.title,'最后确认的标题');
+  assert.equal(stored.has(p.articleKey()),false);
+  const reopened=page();reopened.chapters=p.chapters;await open(reopened,'a');
+  assert.equal(reopened.data.article.title,'最后确认的标题');
+});
+
+test('title-only offline edit survives reopening and retries the same request', async () => {
+  const {p,page,stored,requests}=await setup();await open(p,'a');
+  (wx as any).cloud.callFunction=async({data}:any)=>{requests.push(data);throw Error('网络中断');};
+  assert.equal(await p.onArticleTitleBlur({detail:{value:'离线输入的新标题'}}),false);
+  const backup=stored.get(p.articleKey());
+  assert.equal(backup.chapter.title,'离线输入的新标题');
+  const reopened=page();await open(reopened,'a');
+  assert.equal(reopened.data.article.title,'离线输入的新标题');
+  (wx as any).cloud.callFunction=async({data}:any)=>{requests.push(data);return {result:{revisionId:'revision-title-retry',version:3}};};
+  assert.equal(await reopened.onArticleTitleBlur({detail:{value:'离线输入的新标题'}}),true);
+  assert.equal(requests[requests.length - 1].requestId,backup.attempt.requestId);
+  assert.equal(reopened.data.article.title,'离线输入的新标题');
+});

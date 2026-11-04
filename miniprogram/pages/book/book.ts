@@ -262,7 +262,11 @@ Page({
   async flushArticle(): Promise<boolean> {
     if (this.articleTimer) clearTimeout(this.articleTimer);
     if(this.articleConflict){this.setData({articleStatus:"仅存本机：云端有新版，请核对历史版本"});return false;}
-    if (this.articleSaving) { if (!await this.articleSaving) return false; }
+    if (this.articleSaving) {
+      if (!await this.articleSaving) return false;
+      // Another waiter may already be saving newer input. Re-enter the guard.
+      return this.flushArticle();
+    }
     if (!this.articlePending && !this.articleAttempt) return true;
     const story = this.story;
     if (!story?.currentRevisionId || !story.version) return false;
@@ -306,6 +310,11 @@ Page({
   onArticleTitle(event: WechatMiniprogram.Input) {
     const base=this.articlePending || this.data.article;
     if(base)this.onArticleChange({detail:{chapter:{...base,title:event.detail.value},titleChanged:true}});
+  },
+  onArticleTitleBlur(event: WechatMiniprogram.Input) {
+    const latest = this.articlePending || this.data.article;
+    if (latest && typeof event.detail.value === 'string' && latest.title !== event.detail.value) this.onArticleTitle(event);
+    return this.flushArticle();
   },
   async addArticleImage(event: { detail?: { blockId?: string; text?: string } } = {}) {
     if (this.data.pickingPhoto || !this.data.article) return;
@@ -1972,6 +1981,10 @@ Page({
     wx.enableAlertBeforeUnload({message:backedUp ? "草稿已留在本机，尚未确认保存到故事。" : "草稿备份失败，请取消退出，先保存或复制正文。"});
   },
   onEditTitle(event: WechatMiniprogram.Input) { this.titleBuffer = event.detail.value; this.editManuscript(); },
+  onBookTitleBlur(event: WechatMiniprogram.Input) {
+    if (typeof event.detail.value === 'string' && this.titleBuffer !== event.detail.value) this.onEditTitle(event);
+    return this.saveEdits(true);
+  },
   editIntroduction() {
     if (this.data.protectedCopy || this.data.view !== "contents" || !this.data.draft) return;
     this.introductionBuffer = this.data.bookIntroduction;

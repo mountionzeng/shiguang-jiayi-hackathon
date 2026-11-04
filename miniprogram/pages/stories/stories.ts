@@ -168,10 +168,11 @@ Page({
     if (requestedKey && !row) return Promise.resolve();
     const key = row?.key || this.data.selectedKey;
     const title = row?.title || this.data.selectedTitle;
+    const displayTitle = row?.bookTitle || this.data.selectedBookTitle || title;
     if (!key || !title || this.data.deletingStoryKey) return Promise.resolve();
     this.setData({ deletingStoryKey: key });
     return new Promise<void>((resolve) => wx.showModal({
-      title: `删除「${title}」？`,
+      title: `删除「${displayTitle}」？`,
       content: "故事会进入最近删除；原始记忆和书稿版本都会保留，恢复后原样回来。",
       confirmText: "删除",
       confirmColor: "#c75245",

@@ -70,7 +70,7 @@
         <image wx:if="{{coverUrl}}" class="contents-cover-background" src="{{coverUrl}}" mode="aspectFill" binderror="onCoverError" aria-hidden="true"></image>
         <view class="contents-book-copy">
           <view class="field-label">书名</view>
-          <input class="manuscript-title serif" value="{{editTitle}}" maxlength="80" bindinput="onEditTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{protectedCopy || saving || generating}}" placeholder="写一个标题" />
+          <input class="manuscript-title serif" value="{{editTitle}}" maxlength="80" bindinput="onEditTitle" bindblur="onBookTitleBlur" bindconfirm="onBookTitleBlur" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{protectedCopy || saving || generating}}" placeholder="写一个标题" />
           <view class="contents-summary">{{chapterRows.length}} 章 · {{sourceCount}} 段记忆<text wx:if="{{unassigned.length}}"> · {{unassigned.length}} 段还没写进</text></view>
           <view class="contents-intro-label"><text>内容简介<text wx:if="{{!protectedCopy}}"> · 可编辑</text></text><button wx:if="{{!protectedCopy && !editing}}" class="intro-edit" bindtap="editIntroduction">编辑</button></view>
           <textarea wx:if="{{editing && view === 'contents'}}" class="contents-introduction contents-introduction-edit" value="{{editIntroduction}}" maxlength="500" auto-height bindinput="onEditIntroduction" placeholder="写几句话介绍这本故事" />
@@ -108,7 +108,7 @@
     </view>
   </scroll-view>
   <scroll-view wx:if="{{article && !panel && view === 'chapter' && !openingChapter}}" class="article-scroll" scroll-y>
-    <input adjust-position="{{!xiaoyiOpen}}" class="article-title serif" value="{{article.title}}" bindinput="onArticleTitle" maxlength="40" placeholder="给这一章起个名字" />
+    <input adjust-position="{{!xiaoyiOpen}}" class="article-title serif" value="{{article.title}}" bindinput="onArticleTitle" bindblur="onArticleTitleBlur" bindconfirm="onArticleTitleBlur" maxlength="40" placeholder="给这一章起个名字" />
     <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
     <view wx:if="{{!protectedCopy}}" class="article-memory-actions">
       <button class="article-memory-entry" bindtap="openArticleMemories" disabled="{{xiaoyiLoading || articleMemoryLoading}}">＋ 加入记忆</button>
@@ -132,7 +132,16 @@
     </view>
     <article-editor id="article-editor" adjust-position="{{!xiaoyiOpen}}" backdrop="{{backdropUrl}}" chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindselectmodule="onArticleModuleSelected" bindaddimage="addArticleImage" />
   </scroll-view>
-  <button wx:if="{{article && !panel && view === 'chapter' && !xiaoyiOpen}}" class="article-bird" bindtap="openXiaoyi" aria-label="和小忆聊这篇文章"><image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" /><text>小忆帮我写</text></button>
+  <button wx:if="{{article && !panel && view === 'chapter' && !xiaoyiOpen}}" class="article-bird" hover-class="none" bindtap="openXiaoyi" aria-label="小忆帮我写，和小忆聊这篇文章">
+    <image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" aria-hidden="true" />
+    <view class="article-bird-label" aria-hidden="true">
+      <text class="article-bird-letter article-bird-letter-1">小</text>
+      <text class="article-bird-letter article-bird-letter-2">忆</text>
+      <text class="article-bird-letter article-bird-letter-3">帮</text>
+      <text class="article-bird-letter article-bird-letter-4">我</text>
+      <text class="article-bird-letter article-bird-letter-5">写</text>
+    </view>
+  </button>
   <view wx:if="{{articleShareUrl}}" class="article-share-mask" bindtap="closeArticleShare">
     <view class="article-share-sheet" catchtap="keepArticleShareOpen">
       <view class="serif">发给微信用户</view>

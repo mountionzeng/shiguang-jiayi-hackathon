@@ -4571,3 +4571,29 @@ test('enter chapter memory opens its own source, preserves unsaved text and supp
   await page.enterChapterMemory({currentTarget:{dataset:{id:'source-b'}}});
   assert.equal(storage.navigations.length,2,'received copies do not expose private source navigation');
 });
+
+test('renamed book displays consistently on shelf and home while keeping original story identity', async context => {
+  const state=createInitialRoomState();
+  state.storyMigration={version:1,status:'active',pending:[]};
+  state.stories=[{id:'story-renamed',familyId:'family-demo',title:'创建时的故事名',bookTitle:'手机修改后的书名',writingMode:'creative',version:2,
+    memoryIds:[],protagonistMemberIds:[],createdAt:'2026-11-04',updatedAt:'2026-11-04'}];
+  const storage=installWxMock(state);context.after(storage.restore);
+  const home=instantiate(await pageDefinition('index'));
+  await callPage(home,'refresh',state);
+  const option=(home.data.storyOptions as any[]).find(row=>row.key==='story-renamed');
+  assert.equal(option.displayTitle,'手机修改后的书名');
+  assert.equal(option.title,'创建时的故事名','legacy association must not be renamed by a display fix');
+  await callPage(home,'chooseStory',{currentTarget:{dataset:{key:option.key,title:option.title}}});
+  assert.equal(home.data.currentStoryLabel,'手机修改后的书名');
+  assert.equal(home.data.storyId,'story-renamed');
+  const shelf=instantiate(await pageDefinition('stories'));
+  await callPage(shelf,'refresh',state);
+  assert.equal((shelf.data.stories as any[])[0].bookTitle,'手机修改后的书名');
+  let confirmationTitle='';
+  (wx as any).showModal=({title,success}:any)=>{confirmationTitle=title;success({confirm:false,cancel:true});};
+  await callPage(shelf,'deleteSelectedStory',{currentTarget:{dataset:{key:'story-renamed'}}});
+  assert.equal(confirmationTitle,'删除「手机修改后的书名」？');
+  assert.equal((storage.roomState().stories || [])[0].title,'创建时的故事名');
+  const template=readFileSync('miniprogram/pages/stories/stories.wxml','utf8');
+  assert.match(template,/class="spine-title serif">\{\{item.bookTitle \|\| item.title\}\}/);
+});

@@ -48,6 +48,7 @@ interface RecentStoryView {
 interface StoryOptionView {
   key: string;
   title: string;
+  displayTitle: string;
   label: string;
   avatarText: string;
   selected: boolean;
@@ -138,14 +139,16 @@ function storyOptionsFor(shelf: ShelfStory[], currentTitle: string): StoryOption
   const options = shelf.map((story) => ({
     key: story.key,
     title: story.title,
+    displayTitle: story.bookTitle || story.title,
     label: shelfStoryLabel(story),
-    avatarText: Array.from(story.title)[0] ?? "故",
+    avatarText: Array.from(story.bookTitle || story.title)[0] ?? "故",
     selected: story.title === currentTitle,
   }));
   if (currentTitle && !options.some((option) => option.selected)) {
     options.unshift({
       key: `new:${currentTitle}`,
       title: currentTitle,
+      displayTitle: currentTitle,
       label: "还没开始聊",
       avatarText: Array.from(currentTitle)[0] ?? "故",
       selected: true,
@@ -450,7 +453,7 @@ Page({
       bookSlides,
       storyOptions: storyOptionsFor(shelf, currentStoryTitle),
       currentStoryTitle,
-      currentStoryLabel: activeBook?.storyTitle || "先随便聊聊",
+      currentStoryLabel: activeBook?.title || "先随便聊聊",
       // 这个故事还没有记忆可接着问时，用当天的共用题目；聊天页开场用同一个种子，问的是同一题。
       dailyQuestion: dailyQuestionFor(this.recommendationOffset),
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
@@ -577,7 +580,7 @@ Page({
       storyPeopleCount: slide.peopleCount,
       storyManuscriptMemberId: slide.manuscriptMemberId,
       currentStoryTitle: slide.storyTitle,
-      currentStoryLabel: slide.storyTitle || "先随便聊聊",
+      currentStoryLabel: slide.title || "先随便聊聊",
       storyOptions: this.data.storyOptions.map(option => ({ ...option, selected: option.key === slide.key })),
       dailyQuestion: dailyQuestionFor(this.recommendationOffset),
       recommendedQuestionLabel: recommended?.label ?? "",

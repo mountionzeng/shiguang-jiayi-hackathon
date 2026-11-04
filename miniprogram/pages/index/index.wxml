@@ -167,7 +167,7 @@
         role="button"
         aria-label="回答每日一问"
       >
-        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryTitle + '》' : currentStoryLabel}}</view>
+        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryLabel + '》' : currentStoryLabel}}</view>
         <view class="recommended-context">{{recommendedQuestionContext}}</view>
         <view class="recommended-question">{{recommendedQuestion}}</view>
         <view class="recommended-action">回答这一问</view>
@@ -179,7 +179,7 @@
         role="button"
         aria-label="回答每日一问：{{currentStoryLabel}}"
       >
-        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryTitle + '》' : currentStoryLabel}}</view>
+        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryLabel + '》' : currentStoryLabel}}</view>
         <view class="recommended-question">{{dailyQuestion}}</view>
         <view class="recommended-action">回答这一问</view>
       </view>
@@ -243,11 +243,11 @@
     data-key="{{item.key}}"
     bindtap="chooseStory"
     hover-class="none"
-    aria-label="换到{{item.title}}"
+    aria-label="换到{{item.displayTitle}}"
   >
     <view class="story-menu-avatar serif">{{item.avatarText}}</view>
     <view class="story-menu-copy">
-      <text class="story-menu-name">{{item.title}}</text>
+      <text class="story-menu-name">{{item.displayTitle}}</text>
       <text class="story-menu-relation">{{item.label}}</text>
     </view>
     <text class="story-menu-check">{{item.selected ? '✓' : ''}}</text>

@@ -2,7 +2,7 @@
   <image class="archive-paper" src="/assets/illustrations/story-paper.jpg" mode="scaleToFill" aria-hidden="true" />
   <view class="story-content">
     <view class="archive-eyebrow">{{selectedKey ? '人生之书 · 一个故事' : '人生之书'}}</view>
-    <view class="archive-title serif">{{selectedTitle || '你所有的故事'}}</view>
+    <view class="archive-title serif">{{selectedBookTitle || selectedTitle || '你所有的故事'}}</view>
     <view class="archive-intro">{{selectedKey ? '《' + selectedBookTitle + '》 · ' + (selectedWritingMode === 'creative' ? 'AI 创作' : '自己写') : '每个故事就是一本独立的书。'}}</view>
     <view wx:if="{{loadError}}" class="archive-empty">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
     <block wx:elif="{{selectedKey}}">
@@ -35,17 +35,17 @@
       <view wx:if="{{managingBooks}}" class="book-management">
         <view class="management-note">删除的书可在「最近删除」恢复，原始记忆仍保留。</view>
         <view class="book-management-row" wx:for="{{stories}}" wx:key="key">
-          <view class="book-management-copy"><view class="serif">{{item.title}}</view><text>{{item.label}}</text></view>
-          <button class="story-delete" data-key="{{item.key}}" bindtap="deleteSelectedStory" disabled="{{!!deletingStoryKey}}" loading="{{deletingStoryKey === item.key}}" aria-label="删除书籍：{{item.title}}">删除</button>
+          <view class="book-management-copy"><view class="serif">{{item.bookTitle || item.title}}</view><text>{{item.label}}</text></view>
+          <button class="story-delete" data-key="{{item.key}}" bindtap="deleteSelectedStory" disabled="{{!!deletingStoryKey}}" loading="{{deletingStoryKey === item.key}}" aria-label="删除书籍：{{item.bookTitle || item.title}}">删除</button>
         </view>
         <view wx:if="{{!stories.length}}" class="management-note">还没有书籍。</view>
       </view>
       <view wx:else class="bookshelf">
         <view class="shelf-books">
-          <button class="story-book spine spine-h-{{index % 3}} {{!item.chapterCount ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.title}}，{{item.label}}">
+          <button class="story-book spine spine-h-{{index % 3}} {{!item.chapterCount ? 'spine-empty' : ''}}" wx:for="{{stories}}" wx:key="key" data-key="{{item.key}}" bindtap="openStory" hover-class="spine-pressed" aria-label="打开故事：{{item.bookTitle || item.title}}，{{item.label}}">
             <view class="spine-body">
               <image class="spine-art" src="{{item.spineArtUrl || '/assets/illustrations/story-book-spine.png'}}" mode="scaleToFill" aria-hidden="true"></image>
-              <view class="spine-label"><text class="spine-title serif">{{item.title}}</text></view>
+              <view class="spine-label"><text class="spine-title serif">{{item.bookTitle || item.title}}</text></view>
               <text class="spine-no" aria-hidden="true">{{index + 1 < 10 ? '0' : ''}}{{index + 1}}</text>
             </view>
           </button>

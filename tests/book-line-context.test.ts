@@ -172,3 +172,26 @@ test('body input preserves a title edited before the debounce save has completed
   assert.equal(page.articlePending.title,'新标题');
   assert.equal(page.articlePending.content[0].text,'新正文');
 });
+
+test('title blur saves the final native input value without waiting for page exit', async () => {
+  const { page } = setup();
+  page.data.article = { id:'a',title:'旧章名',content:[{blockId:'b',text:'正文'}],layout:{pages:[]} };
+  page.backupArticle = () => true;
+  let savedTitle='';
+  page.flushArticle = async () => { clearTimeout(page.articleTimer); savedTitle=page.articlePending?.title; return false; };
+  assert.equal(await page.onArticleTitleBlur({detail:{value:'手机最终章名'}}),false);
+  assert.equal(savedTitle,'手机最终章名');
+  assert.equal(page.articlePending.title,'手机最终章名','failed save retains the final title for retry');
+  assert.equal(page.articlePending.content[0].text,'正文');
+});
+
+test('book title blur captures final IME text and persists without renaming a chapter', async () => {
+  const { page } = setup();
+  page.titleBuffer='输入中的书名';
+  page.onEditTitle=({detail}:any)=>{page.titleBuffer=detail.value;};
+  let saved:any;
+  page.saveEdits=async(bufferOnly:boolean)=>{saved={title:page.titleBuffer,bufferOnly};return true;};
+  assert.equal(await page.onBookTitleBlur({detail:{value:'手机最终书名'}}),true);
+  assert.deepEqual(saved,{title:'手机最终书名',bufferOnly:true});
+  assert.equal(page.chapters[0].title,'第一章');
+});
