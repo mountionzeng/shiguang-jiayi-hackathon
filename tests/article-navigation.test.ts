@@ -31,6 +31,7 @@ async function setup() {
     p.seedEditor = () => {};
     p.refresh = async () => {};
     p.loadChapterChanges = async () => {};
+    p.loadArticleRecovery=async()=>{throw Error('暂时无法读取历史书稿，修改已保留');};
     p.data.view = 'contents';
     p.setData(p.chapterData());
     return p;
@@ -207,7 +208,7 @@ test('editing a conflicting article clears stale saved notices and stays explici
   p.setData({saveNotice:'修改已保存'});
   type(p,'冲突后新输入');
   assert.equal(p.data.saveNotice,'');
-  assert.match(p.data.articleStatus,/仅存本机/);
+  assert.match(p.data.articleStatus,/留在本机/);
   assert.doesNotMatch(p.data.articleStatus,/正在保存|已保存到云端/);
   assert.equal(stored.get(p.articleKey()).chapter.content[0].text,'冲突后新输入');
   assert.equal(await p.flushArticle(),false);
@@ -374,7 +375,7 @@ test('sharing a failed or conflicted article never falls back to the older cloud
     await p.chooseSend(shareEvent);
     assert.deepEqual(urls,[]);
     assert.equal(stored.get(p.articleKey()).chapter.content[0].text,'只能留在本机的新正文');
-    assert.match(p.data.saveNotice,/同步|保存/);
+    assert.match(p.data.saveNotice,/同步|保存|保留|network unavailable/);
   }
 });
 
@@ -393,4 +394,77 @@ test('send from contents opens the book menu even after reading an article', asy
   p.toggleSend=()=>{book++;}; p.sendArticle=async()=>{article++;};
   p.sendCurrentArticle();
   assert.equal(book,1); assert.equal(article,0);
+});
+
+test('a legacy conflict caused by another chapter changing automatically saves on exit', async () => {
+  const {p,stored}=await setup();
+  const base=structuredClone(p.chapters);
+  const draft=(chapters:any[])=>({title:'满城',paragraphs:[],sourceCount:0,generatedAt:'',generationMode:'local-demo',chapters});
+  p.chapters[1]={...p.chapters[1],title:'另一章新名字'};
+  p.data.draft=draft(p.chapters);
+  stored.set(p.articleKey('a'),{revisionId:'revision-old',storyVersion:1,conflict:true,
+    chapter:{...base[0],title:'解放'}});
+  const writes:any[]=[];
+  p.loadArticleRecovery=async()=>({story:p.story,draft:draft(p.chapters),base:draft(base)});
+  (wx as any).cloud.callFunction=async({data}:any)=>{
+    assert.equal(data.action,'articleSave');writes.push(data);
+    return {result:{revisionId:'revision-recovered',version:3}};
+  };
+  await open(p,'a');await p.backToContents();
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].expectedVersion,2);
+  assert.equal(writes[0].revisionId,'revision-new');
+  assert.equal(p.chapters[0].title,'解放');
+  assert.equal(p.chapters[1].title,'另一章新名字');
+  assert.equal(stored.has(p.articleKey('a')),false);
+  assert.equal(p.data.chapterRows[0].localOnly,false);
+});
+
+test('typing during conflict recovery is included in the automatically retried save',async()=>{
+ const {p,stored,requests}=await setup();const base=structuredClone(p.chapters);
+ stored.set(p.articleKey('a'),{revisionId:'revision-old',storyVersion:1,conflict:true,chapter:{...base[0],title:'解放'}});
+ await open(p,'a');let release:any;
+ p.loadArticleRecovery=()=>new Promise(resolve=>{release=()=>resolve({story:p.story,draft:{title:'满城',chapters:p.chapters},base:{chapters:base}});});
+ (wx as any).cloud.callFunction=async({data}:any)=>{requests.push(data);return {result:{revisionId:'revision-recovered',version:3}};};
+ const saving=p.flushArticle();while(!release)await Promise.resolve();
+ type(p,'恢复期间继续写的最后一句');release();
+ assert.equal(await saving,true);
+ assert.equal(requests[0].chapter.title,'解放');assert.equal(requests[0].chapter.content[0].text,'恢复期间继续写的最后一句');
+ assert.equal(stored.has(p.articleKey()),false);
+});
+
+test('whole-book sharing automatically saves a closed chapter and uses its new revision',async()=>{
+ const {p,stored,requests}=await setup();const base=structuredClone(p.chapters);
+ await open(p,'b');const urls=prepareSharing(p);
+ stored.set(p.articleKey('a'),{revisionId:'revision-old',storyVersion:1,conflict:true,chapter:{...base[0],title:'解放'}});
+ let remote={story:p.story,draft:p.data.draft,base:{chapters:base}};
+ p.loadArticleRecovery=async()=>remote;
+ (wx as any).cloud.callFunction=async({data}:any)=>{
+   requests.push(data);remote={...remote,story:{...p.story,version:3,currentRevisionId:'revision-background'},draft:{...p.data.draft,chapters:p.chapters.map((c:any)=>c.id===data.chapter.id?data.chapter:c)}};
+   return {result:{revisionId:'revision-background',version:3}};
+ };
+ p.refresh=async()=>{p.story=remote.story;p.revisionId=remote.story.currentRevisionId;p.chapters=remote.draft.chapters;p.setData({draft:remote.draft,savedRevisionId:p.revisionId,...p.chapterData()});};
+ await p.chooseSend(shareEvent);
+ assert.equal(requests.length,1);assert.equal(urls.length,1);assert.match(urls[0],/revisionId=revision-background&version=3/);
+ assert.equal(p.activeChapterId,'b');assert.equal(p.data.chapterRows[0].title,'解放');assert.equal(p.data.chapterRows[0].localOnly,false);
+ assert.equal(stored.has(p.articleKey('a')),false);
+});
+
+test('an old acknowledged request cannot roll the directory back from a newer loaded revision',async()=>{
+ const {p,stored}=await setup();const base=structuredClone(p.chapters),attempt={requestId:'request-old',storyId:p.story.id,revisionId:'revision-start',expectedVersion:1,chapter:{...base[0],title:'已保存过的名字'}};
+ stored.set(p.articleKey('a'),{revisionId:'revision-start',storyVersion:1,chapter:attempt.chapter,attempt});
+ p.story={...p.story,version:4,currentRevisionId:'revision-four'};p.revisionId='revision-four';p.chapters[0]={...base[0],title:'之后改过的名字'};
+ p.loadArticleRecovery=async()=>({story:p.story,draft:{title:'满城',chapters:p.chapters},base:{chapters:[attempt.chapter,base[1]]}});
+ (wx as any).cloud.callFunction=async()=>({result:{revisionId:'revision-accepted',version:2}});
+ await open(p,'a');assert.equal(await p.flushArticle(),true);
+ assert.equal(p.story.version,4);assert.equal(p.revisionId,'revision-four');assert.equal(p.data.article.title,'之后改过的名字');
+ assert.equal(stored.has(p.articleKey('a')),false);
+});
+
+test('returning to the page automatically retries a pending offline article without another save tap',async()=>{
+ const {p,stored,requests}=await setup();await open(p,'a');type(p,'断网时写下的完整正文');
+ (wx as any).cloud.callFunction=async({data}:any)=>{requests.push(data);return {result:{revisionId:'revision-online',version:3}};};
+ p.onShow();assert.ok(p.bookSyncing);await p.bookSyncing;
+ assert.equal(requests.length,1);assert.equal(p.articlePending,null);assert.equal(stored.has(p.articleKey()),false);
+ assert.equal(p.chapters[0].content[0].text,'断网时写下的完整正文');
 });

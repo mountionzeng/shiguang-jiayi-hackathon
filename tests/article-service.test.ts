@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {saveArticle} from '../miniprogram/services/articleService';
+
+test('cloud error envelopes preserve the conflict code needed for automatic recovery',async()=>{
+ (globalThis as any).wx={cloud:{callFunction:async()=>({result:{error:'STORY_BOOK_ERROR',code:'VERSION_CONFLICT',message:'文章已在别处修改'}})}};
+ await assert.rejects(saveArticle({chapter:{id:'chapter-a',title:'a',content:[],layout:{}},requestId:'request-test'} as any),{code:'VERSION_CONFLICT'});
+});
 import {articleChapter} from '../miniprogram/services/articleModules';
 
 test('article save sends stable source IDs alongside text and refuses unconfirmed saves',async context=>{

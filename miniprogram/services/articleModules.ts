@@ -36,7 +36,7 @@ export function articleChapter(input: ManuscriptChapter): ArticleChapter {
         rect: { x: 48, y: 48, width: 804, height: 420 }, crop: { x: 0, y: 0, width: 1, height: 1 } });
     }
   }
-  if (!chapter.content.some(block => typeof block.text === 'string')) { const id = freshId(); chapter.content.push({ blockId: id, text: '' }); place(chapter, textModule(id, { x: 48, y: 48, width: 804, height: 130 })); }
+  if (!chapter.content.some(block => typeof block.text === 'string')) { const id = chapterPackageBlockId(['article-empty',input.id]); chapter.content.push({ blockId: id, text: '' }); place(chapter, textModule(id, { x: 48, y: 48, width: 804, height: 130 })); }
   return chapter;
 }
 export function changeArticleText(input: ArticleChapter, blockId: string, value: string) {

@@ -141,6 +141,8 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
       getWindowInfo: () => ({ windowHeight: 800, windowWidth: 390 }),
       onKeyboardHeightChange: () => undefined,
       offKeyboardHeightChange: () => undefined,
+      onNetworkStatusChange: () => undefined,
+      offNetworkStatusChange: () => undefined,
     },
   });
 

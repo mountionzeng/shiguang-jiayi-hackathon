@@ -93,7 +93,7 @@ test('保存过程中到达的新输入不会被保存回执覆盖，退出可�
   const saving = p.saveEdits(true); input(p,'先写的\n保存中继续输入\n');
   await saving;
   assert.equal(p.bodyBuffer,'先写的\n保存中继续输入\n');
-  assert.equal(p.data.editing,true);
+  assert.equal(p.data.editing,false,'automatically save input that arrived during the first request');
   await p.backToContents(); assert.equal(p.data.view,'contents');
   const reopened = page(); await reopened.refresh(); assert.equal(reopened.bodyBuffer.trim(),'先写的\n保存中继续输入');
 });
@@ -114,7 +114,7 @@ test('断网后跨章编辑，旧保存请求恢复成功时不能抹掉另一�
   input(p,'第二章的新正文\n');
   (wx as any).setStorageSync=write;
   await p.saveEdits();
-  assert.equal(p.data.editing,true, 'acknowledging the older request must leave the newer draft pending');
+  assert.equal(p.data.editing,false, 'acknowledging the older request automatically saves the newer draft too');
   assert.equal(p.chapters[0].content[0].text,'第一章后续的新正文\n');
   await p.saveEdits();
   const saved=currentManuscript(stored.get('shiguang-family-room-v5'),'owner');
