@@ -279,7 +279,7 @@ async function main(event, dependencies = {}) {
   const storyTitle = sanitizeText(source.storyTitle, 40);
   const writing = writingContext(event);
   const brief = organizationBrief(memoryType, source.inlineAnswer === true, writing.mode);
-  if (materialReading) brief.system += ' 本次提供了独立标记的材料原文，可据此提炼内容并结合用户明确表达的感受成文；注明原文出处，材料中的第一人称属于材料作者，不能写成用户经历。画面描述不是正文资料。不要把“还没想好怎么写”等对助手的要求写成故事内容。没有可用文字和用户内容时不得用书页外观凑成稿。';
+  if (materialReading) brief.system += ' 本次提供了独立标记的材料原文，可据此提炼内容并结合用户明确表达的感受成文；注明原文出处，材料中的第一人称属于材料作者，不能写成用户经历。画面描述不是正文资料。不要把“还没想好怎么写”等对助手的要求写成故事内容。没有可用文字和用户内容时不得用书页外观凑成稿。先围绕用户的写作意图选一个切口，只写一至三段短稿，以300字以内为目标，不设最低字数；不必概括每一页或逐项列出材料。body包含标点和换行在内不得超过500个字符，输出前检查长度。';
   let personalContext;
   const memoryRepo = db ? createMemoryRepository(db) : null;
   if (!dependencies.skipGuard && event.sourceOnly !== true && event.inlineAnswer !== true && process.env.PERSONAL_MEMORY_ENABLED === 'true') {

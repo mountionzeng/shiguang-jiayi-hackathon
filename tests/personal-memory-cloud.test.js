@@ -169,6 +169,7 @@ test('成文模型接收五页云端OCR而非客户端照片概述，并核对�
   for(let i=1;i<=5;i++)assert.match(request.messages[1].content,new RegExp('第'+i+'页'));
   assert.doesNotMatch(request.messages[1].content,/一本打开的书/);
   assert.match(request.messages[0].content,/材料作者/);
+  assert.match(request.messages[0].content,/300字以内.*不必概括每一页.*包含标点和换行/);
   row.evidence.pop();let calls=0;global.fetch=async()=>{calls++;throw new Error('must not reach provider');};
   await assert.rejects(organizeCloud.main({memoryId:'m2',materialSourceId:'m2',writingMode:'compose'},{cloud:f.cloud,nowMs:Date.now()+10000}),/尚未读完/);
   assert.equal(calls,0);
