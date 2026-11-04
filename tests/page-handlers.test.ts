@@ -4044,7 +4044,7 @@ test('memory composition uses live article context and edited draft without over
 
 test('chat send does not depend on native input being replayed through setData', () => {
   const wxml=readFileSync('miniprogram/pages/book/book.wxml','utf8');
-  assert.match(wxml,/bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">发送/);
+  assert.match(wxml,/<button[^>]*bindtap="askXiaoyiQuestion"[^>]*disabled="{{xiaoyiLoading}}"[^>]*aria-label="发送"/);
 });
 
 

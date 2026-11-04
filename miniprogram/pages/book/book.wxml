@@ -222,7 +222,7 @@
         <view>
           <view class="xiaoyi-context">{{xiaoyiSelectionLabel}}</view>
         </view>
-
+        <button class="xiaoyi-close" bindtap="closeXiaoyi" disabled="{{xiaoyiLoading}}">关掉</button>
       </view>
       <scroll-view class="xiaoyi-thread" scroll-y scroll-into-view="{{xiaoyiMessages[xiaoyiMessages.length - 1].id}}" wx:if="{{xiaoyiMessages.length}}">
         <view id="{{item.id}}" class="xiaoyi-message xiaoyi-message-{{item.kind}}" wx:for="{{xiaoyiMessages}}" wx:key="id" selectable>
@@ -235,8 +235,10 @@
         <image wx:for="{{articleChatPhotos}}" wx:key="id" src="{{item.path}}" mode="aspectFill" />
 
       </view>
-      <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="想到什么就写什么，也可以用键盘语音输入…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
-      <button wx:if="{{article}}" class="xiaoyi-action" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}">发送</button>
+      <view class="xiaoyi-composer">
+        <textarea class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiAnswer}}" maxlength="500" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="想到什么就写什么，也可以用键盘语音输入…" bindinput="onXiaoyiAnswerInput" bindkeyboardheightchange="onKeyboardHeight"></textarea>
+        <button wx:if="{{article}}" class="xiaoyi-send" bindtap="askXiaoyiQuestion" disabled="{{xiaoyiLoading}}" aria-label="发送">↑</button>
+      </view>
       <view wx:if="{{!article}}" class="xiaoyi-message-label">这次怎么写（可不填）</view>
       <textarea wx:if="{{!article}}" class="xiaoyi-answer" hold-keyboard="{{true}}" disabled="{{xiaoyiLoading}}" value="{{xiaoyiWritingInstruction}}" maxlength="300" auto-height fixed="{{true}}" adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="例如：像我平时说话，结尾停在那件小事上" bindinput="onXiaoyiWritingInstruction" bindkeyboardheightchange="onKeyboardHeight"></textarea>
       <generation-status wx:if="{{xiaoyiLoading}}" text="{{xiaoyiStatus || '小忆正在整理文字…'}}" />
@@ -259,9 +261,8 @@
       </view>
 
 
-      <view class="xiaoyi-actions">
-        <button wx:if="{{xiaoyiDraftText}}" class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{xiaoyiLoading}}">把这段放进文章</button>
-        <button class="xiaoyi-close" bindtap="closeXiaoyi" disabled="{{xiaoyiLoading}}">关掉</button>
+      <view wx:if="{{xiaoyiDraftText}}" class="xiaoyi-actions">
+        <button class="xiaoyi-action xiaoyi-action-primary" bindtap="useXiaoyiDraft" disabled="{{xiaoyiLoading}}">把这段放进文章</button>
       </view>
 
     </view>
