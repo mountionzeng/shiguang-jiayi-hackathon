@@ -1233,8 +1233,8 @@ Page({
       else if (!this.data.article) actions.push({label:"添加图片",action:"photo-menu"});
     }
     if (this.data.draft) actions.push({label:"历史版本",action:"history"});
-    if (this.data.view === "contents" && this.data.storyId && this.data.savedRevisionId && !this.data.protectedCopy)
-      actions.push({label:"删除整个故事（可恢复）",action:"delete-story"});
+    if (this.data.storyId && this.data.savedRevisionId && !this.data.protectedCopy)
+      actions.push({label:"删除本书",action:"delete-story"});
     if (!actions.length) { wx.showToast({title:"先写下你的故事",icon:"none"});return; }
     wx.showActionSheet({
       itemList: actions.map(item=>item.label),
@@ -1253,23 +1253,31 @@ Page({
   deleteCurrentStory() {
     const story = this.story;
     if (!story || !this.data.storyId || this.data.protectedCopy || this.data.editing || this.data.saving || this.data.generating) return;
-    wx.showModal({
-      title: `删除「${story.title}」？`,
-      content: "故事会进入最近删除；原始记忆和书稿版本都会保留，恢复后原样回来。",
+    this.setData({ saving: true });
+    return new Promise<void>(resolve => wx.showModal({
+      title: `删除「${this.data.draft?.title || story.bookTitle || story.title}」？`,
+      content: "整本书（包括所有章节）会进入最近删除；原始记忆和书稿版本都会保留，可在书架恢复。",
       confirmText: "删除",
       confirmColor: "#c75245",
       success: async (result) => {
-        if (!result.confirm) return;
+        if (!result.confirm) { this.setData({ saving: false }); resolve(); return; }
+        wx.showLoading({ title: "正在删除", mask: true });
         try {
           await deleteStoryRemoteFirst(story.id, story.title);
           saveCurrentStoryId("");
+          wx.hideLoading();
           wx.showToast({ title: "已放进最近删除", icon: "none" });
-          wx.navigateBack();
+          wx.reLaunch({ url: "/pages/stories/stories" });
         } catch (error) {
+          wx.hideLoading();
           wx.showToast({ title: error instanceof Error ? error.message : "删除没有完成，请重试", icon: "none" });
+        } finally {
+          if (!this.unloaded) this.setData({ saving: false });
+          resolve();
         }
       },
-    });
+      fail: () => { this.setData({ saving: false }); resolve(); },
+    }));
   },
   toggleSend() {
     if (this.data.protectedCopy || !this.data.draft || !['contents', 'chapter'].includes(this.data.view) || this.data.panel || this.data.preparingSend || this.data.generating || this.data.pickingPhoto) return;
@@ -1329,7 +1337,7 @@ Page({
     if (this.data.editing && !await this.finishEditing()) return;
     if (!this.canLeaveEditor()) return;
     switch (action) {
-      case "delete-story": this.deleteCurrentStory(); break;
+      case "delete-story": await this.deleteCurrentStory(); break;
       case "photo-menu": this.togglePhotoMenu(); break;
       case "history": this.toggleHistory(); break;
       case "version": this.setData({ panel: "version" }); break;

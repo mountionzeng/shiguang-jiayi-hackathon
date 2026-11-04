@@ -126,6 +126,8 @@ function installWxMock(initialState: FamilyRoomState, currentMemberId = "owner")
       enableAlertBeforeUnload: () => undefined,
       disableAlertBeforeUnload: () => undefined,
       showToast: ({ title }: { title: string }) => toasts.push(title),
+      showLoading: () => undefined,
+      hideLoading: () => undefined,
       showModal: ({ success }: { success?: (result: { confirm: boolean; cancel: boolean }) => void }) =>
         success?.({ confirm: true, cancel: false }),
       showActionSheet: ({ success }: { success?: (result: { tapIndex: number }) => void }) => success?.({ tapIndex: 0 }),
@@ -3545,9 +3547,9 @@ test("已保存的自有故事可从书稿菜单移入最近删除，原始记�
   await callPage(page, "deleteCurrentStory");
 
   assert.equal(storage.roomState().deletedStories?.some(item => item.key === story.id), true);
-  assert.equal(storage.backCount(), 1);
+  assert.deepEqual(storage.relaunches, ["/pages/stories/stories"]);
   assert.ok(storage.toasts.includes("已放进最近删除"));
-  assert.match(readFileSync("miniprogram/pages/book/book.ts", "utf8"), /删除整个故事（可恢复）/);
+  assert.equal(page.data.saving, false);
 });
 
 test('connection reflection is independently saved only explicitly, and never copies AI interpretation',async context=>{
@@ -4596,4 +4598,47 @@ test('renamed book displays consistently on shelf and home while keeping origina
   assert.equal((storage.roomState().stories || [])[0].title,'创建时的故事名');
   const template=readFileSync('miniprogram/pages/stories/stories.wxml','utf8');
   assert.match(template,/class="spine-title serif">\{\{item.bookTitle \|\| item.title\}\}/);
+});
+
+
+test('article more menu exposes recoverable whole-book deletion; cancel and protected copies preserve it', async context => {
+  const state=createInitialRoomState();
+  const story={id:'fixture-delete-menu',title:'旧关联名称',bookTitle:'新书名',writingMode:'objective',memoryIds:[],version:1} as any;
+  state.stories=[story];
+  const storage=installWxMock(state);context.after(storage.restore);
+  const page=instantiate(await pageDefinition('book'));
+  page.story=story;
+  page.setData({storyId:story.id,savedRevisionId:'r1',draft:{title:'新书名'},view:'chapter',article:{title:'这一章'},protectedCopy:false});
+  let actions:string[]=[];let dialog:any;
+  (wx as any).hideKeyboard=()=>{};
+  (wx as any).showActionSheet=({itemList}:any)=>{actions=itemList;};
+  (wx as any).showModal=(options:any)=>{dialog=options;};
+  callPage(page,'showMore');
+  assert.ok(actions.includes('删除本书'));
+  const first=callPage(page,'selectTool',{currentTarget:{dataset:{action:'delete-story'}}});
+  assert.equal(dialog.title,'删除「新书名」？');
+  assert.match(dialog.content,/整本书（包括所有章节）/);
+  assert.equal(page.data.saving,true);
+  let duplicate=false;(wx as any).showModal=()=>{duplicate=true;};
+  await callPage(page,'deleteCurrentStory');assert.equal(duplicate,false);
+  await dialog.success({confirm:false});await first;
+  assert.equal(page.data.saving,false);
+  assert.equal(storage.roomState().stories?.length,1);
+  assert.deepEqual(storage.relaunches,[]);
+  page.setData({protectedCopy:true});actions=[];callPage(page,'showMore');
+  assert.equal(actions.includes('删除本书'),false);
+  await callPage(page,'deleteCurrentStory');assert.equal(duplicate,false);
+});
+
+test('whole-book delete waits for article save and refuses an unsaved failure', async context => {
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const page=instantiate(await pageDefinition('book'));
+  page.articlePending={title:'尚未保存'};
+  let deleted=0;page.deleteCurrentStory=()=>{deleted++;};
+  page.flushArticle=async()=>false;
+  await callPage(page,'selectTool',{currentTarget:{dataset:{action:'delete-story'}}});
+  assert.equal(deleted,0);
+  page.flushArticle=async()=>{page.articlePending=null;return true;};
+  await callPage(page,'selectTool',{currentTarget:{dataset:{action:'delete-story'}}});
+  assert.equal(deleted,1);
 });
