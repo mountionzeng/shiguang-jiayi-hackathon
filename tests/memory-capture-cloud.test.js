@@ -310,3 +310,58 @@ test('标准版提交响应丢失或函数中断后，只恢复原任务查询',
     assert.equal(calls.filter(url=>url.endsWith('/query')).length,1);
   } finally {Object.assign(guard,old);for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
 });
+
+
+async function withReadingFixture(run) {
+  const names=['assertServerReady','assertConsentVersion','moderateText','assertIdentityStillActive','reserveAiRequest'];
+  const old=Object.fromEntries(names.map(key=>[key,guard[key]])),env={...process.env};
+  names.forEach(key=>{guard[key]=async()=>{};});
+  Object.assign(process.env,{ORGANIZE_AI_API_KEY:'fixture',ORGANIZE_AI_MODEL:'fixture',ORGANIZE_AI_BASE_URL:'https://tokenhub.tencentmaas.com/v1',TEXT_COMPUTE_USAGE_ENABLED:'false'});
+  try { await run(fixture()); }
+  finally {Object.assign(guard,old);for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
+}
+
+test('已保存的随手记逐张读材料，保留原件正文、完整识别与来源，重开不重复付费',()=>withReadingFixture(async f=>{
+  const input={...request(),text:'',sessionId:request().id,photoIds:['photo-first','photo-second']};
+  for(const id of input.photoIds)f.state.set(`photos/${f.identity.familyId}__${id}`,{familyId:f.identity.familyId,_openid:f.identity.openid});
+  const accesses=[],requests=[];
+  f.cloud.callFunction=async({data})=>{accesses.push(data);return {result:{photos:[{photoId:data.photoIds[0],status:'ok',url:'https://example.invalid/picture'}]}};};
+  const transcript='【可见文字】虚构手稿：雨后去灯塔。'+ '后半页的原文也要保留。'.repeat(35);
+  const handler=createCaptureHandler({...f,fetcher:async(_url,options)=>{requests.push(JSON.parse(options.body));return {ok:true,json:async()=>({choices:[{message:{content:transcript}}]})};}});
+  await handler.receive(input);
+  await assert.rejects(handler.readMaterials({...input,photoConsent:true}),/先保存/);
+  const saved=await handler.saveOriginal(input);
+  const before=structuredClone([...f.state.entries()].filter(([key])=>/^(memories|memory_sources)\//.test(key)));
+  await assert.rejects(handler.readMaterials(input),/允许.*照片/);
+  assert.equal(requests.length,0);
+  const one=await handler.readMaterials({...input,photoConsent:true});
+  assert.equal(one.status,'saved');assert.equal(one.analysis.status,'pending');
+  assert.equal(one.evidence[0].text,transcript);assert.equal(one.evidence[0].sourceId,'photo-first');
+  const done=await handler.readMaterials({...input,photoConsent:true});
+  assert.equal(done.analysis.status,'ready');assert.equal(done.memoryId,saved.memoryId);
+  assert.equal(done.evidence.length,2);assert.equal(accesses[0].variant,'display');
+  assert.match(requests[0].messages[0].content[0].text,/文字/);
+  await handler.readMaterials({...input,photoConsent:true});
+  assert.equal(requests.length,2);
+  assert.deepEqual([...f.state.entries()].filter(([key])=>/^(memories|memory_sources)\//.test(key)),before);
+  const stranger=createCaptureHandler({...f,identity:{...f.identity,accountId:'someone-else'}});
+  await assert.rejects(stranger.readMaterials({...input,photoConsent:true}),/不存在/);
+}));
+
+test('读取失败须明确重试，并发和重开不重复调用；用户删除记忆后拒绝读取',()=>withReadingFixture(async f=>{
+  const input={...request(),sessionId:request().id,photoIds:['photo-first']};
+  f.state.set(`photos/${f.identity.familyId}__photo-first`,{familyId:f.identity.familyId,_openid:f.identity.openid});
+  f.cloud.callFunction=async()=>({result:{photos:[{photoId:'photo-first',status:'ok',url:'https://example.invalid/picture'}]}});
+  let calls=0,release;
+  const handler=createCaptureHandler({...f,fetcher:async()=>{calls++;await new Promise(resolve=>{release=resolve;});throw new Error('network interrupted');}});
+  await handler.receive(input);const saved=await handler.saveOriginal(input);
+  const first=handler.readMaterials({...input,photoConsent:true});
+  while(!release)await new Promise(resolve=>setImmediate(resolve));
+  const duplicate=await handler.readMaterials({...input,photoConsent:true});
+  assert.equal(duplicate.analysis.status,'processing');assert.equal(calls,1);
+  release();const failed=await first;assert.equal(failed.analysis.status,'uncertain');
+  await handler.readMaterials({...input,photoConsent:true});assert.equal(calls,1);
+  const memory=f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`);memory.deletedAt='2026-11-04';
+  await assert.rejects(handler.readMaterials({...input,photoConsent:true,retry:true}),/不可用/);
+  assert.equal(calls,1);
+}));

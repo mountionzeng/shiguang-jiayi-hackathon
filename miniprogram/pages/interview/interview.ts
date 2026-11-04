@@ -48,9 +48,9 @@ import { ImportFileLike } from "../../services/memoryImport";
 import { activeStory, linkStoryMemories } from "../../services/storyBooks";
 import { storyShelf } from "../../services/storyShelf";
 import {recordCaptureAudio,stopCaptureAudio,cancelCaptureAudio} from '../../services/captureAudio';
-import {readCaptureSession,pendingCaptureDrafts,assertCaptureScope,loadCaptureDraft,storeCaptureDraft,stageCaptureFiles,sendMemoryCapture,continueMemoryCapture,saveCaptureOriginal,captureAudioUrl,type MemoryCaptureDraft,type MemoryCaptureReceipt} from '../../services/memoryCapture';
+import {captureHasUnreadMedia,captureSourceText,readCaptureMaterials,readCaptureSession,pendingCaptureDrafts,assertCaptureScope,loadCaptureDraft,storeCaptureDraft,stageCaptureFiles,sendMemoryCapture,continueMemoryCapture,saveCaptureOriginal,captureAudioUrl,type MemoryCaptureDraft,type MemoryCaptureReceipt} from '../../services/memoryCapture';
 
-interface CaptureMessageView extends MemoryCaptureReceipt {photoPaths:string[];localStatus?:''|'sending'|'failed'}
+interface CaptureMessageView extends MemoryCaptureReceipt {hasReading:boolean;photoPaths:string[];localStatus?:''|'sending'|'failed'}
 
 interface MessageView {
   id: string;
@@ -174,6 +174,10 @@ Page({
     captureReadOnly: false,
     capturePending: [] as Array<{id:string;sessionId?:string;label:string}>,
     captureBusy: false,
+    captureMaterialsRead: false,
+    captureReading: false,
+    sourceMaterials: [] as MemoryCaptureReceipt[],
+    sourceReadError: '',
     captureRecording: false,
     captureEntry: false,
     captureError: '',
@@ -289,9 +293,10 @@ Page({
       }
       const originals = session.items.filter(item => item.memoryId === source.id);
       if (!originals.length) throw new Error("这段记忆的原素材暂未读到，请重新打开");
-      sourceText = originals.map(item => item.text.trim()).filter(Boolean).join("\n\n");
-      if (originals.some(item => item.photoIds.length || item.audio.length)) {
-        sourceMediaNote = "附带的图片或录音尚未分析，不推断其中的内容；可以请用户说明想聊的部分。";
+      this.setData({sourceMaterials:originals});
+      sourceText = captureSourceText(originals);
+      if (originals.some(captureHasUnreadMedia)) {
+        sourceMediaNote = "附带的图片或录音未完成读取，不推断其中的内容；先读取材料，不要求用户先想好怎么写。";
       }
     }
     const sourcePreview = `${sourceText.slice(0, 72)}${sourceText.length > 72 ? "……" : ""}`;
@@ -339,7 +344,11 @@ Page({
       audienceOptions: memberOptionsFor(state.members, member.id),
     });
 
-    this.pushMessage("opening", opening);
+    this.pushMessage("opening", source?.materialCaptureId
+      ? (this.data.sourceMaterials.some(captureHasUnreadMedia)
+        ? "原件已保存。先读取材料里的内容，再一起整理，你不用先想好怎么写。"
+        : `我读到的材料如下（机器识别，请核对）：\n\n${sourceText}\n\n可以先从这些内容中梳理人物、事件和时间线，不需要先决定写法。`)
+      : opening);
     if(captureEntry){
       wx.setNavigationBarTitle({title:'随手记'});
       if(options.captureId)await this.restoreCaptureSession(decodeQueryValue(options.captureId));
@@ -458,7 +467,7 @@ Page({
       return;
     }
     if(this.data.captureDraft){await this.sendCapture();return;}
-    if (this.data.asking || this.data.organizing || this.data.importing || this.data.saving) return;
+    if (this.data.captureReading || this.data.asking || this.data.organizing || this.data.importing || this.data.saving) return;
     const answer = this.data.inputText.trim();
     if (!answer) {
       wx.showToast({ title: "先说一句吧，短一点也行", icon: "none" });
@@ -552,7 +561,7 @@ Page({
   },
 
   async finish() {
-    if (this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
+    if (this.data.captureReading || this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
     const unsentText = this.data.inputText.trim();
     const answers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (answers.length === 0) {
@@ -879,9 +888,9 @@ Page({
   updateCaptureReceipt(receipt:MemoryCaptureReceipt,localStatus:''|'sending'|'failed'=''){
     if(this.interviewUnloaded)return;
     const rows=[...this.data.captureReceipts],index=rows.findIndex(item=>item.id===receipt.id);
-    const message:CaptureMessageView={...receipt,localStatus,photoPaths:index>=0?rows[index].photoPaths:this.data.captureDraft?.id===receipt.id?this.data.captureDraft.photoPaths:[]};
+    const message:CaptureMessageView={...receipt,hasReading:receipt.evidence.some(item=>item.kind!=='user-text'),localStatus,photoPaths:index>=0?rows[index].photoPaths:this.data.captureDraft?.id===receipt.id?this.data.captureDraft.photoPaths:[]};
     if(index>=0)rows[index]=message;else rows.push(message);
-    this.setData({captureReceipts:rows,...(receipt.memoryId?{captureMemoryId:receipt.memoryId}:{}),scrollIntoView:`capture-message-${receipt.id}`});
+    this.setData({captureReceipts:rows,captureMaterialsRead:rows.length>0 && rows.every(item=>item.status==='saved' && !captureHasUnreadMedia(item)),...(receipt.memoryId?{captureMemoryId:receipt.memoryId}:{}),scrollIntoView:`capture-message-${receipt.id}`});
     if(receipt.photoIds.length && !message.photoPaths.length)void this.loadCapturePhotos(receipt);
   },
   async loadCapturePhotos(receipt:MemoryCaptureReceipt){
@@ -929,11 +938,40 @@ Page({
     finally{if(!this.interviewUnloaded)this.setData({captureBusy:false});}
   },
   startNewCapture(){if(!this.data.captureBusy && !this.data.importing && !this.data.captureRecording)wx.redirectTo({url:'/pages/interview/interview?capture=1'});},
-  chatAboutCapture(){
-    if(this.data.captureBusy || !this.data.captureMemoryId)return;
+  async chatAboutCapture(){
+    if(this.data.captureBusy || this.data.importing || this.data.captureRecording || !this.data.captureMemoryId)return;
     const draft=this.data.captureDraft;
-    if(this.data.inputText.trim() || draft?.text || draft?.photoIds.length || draft?.audio.length){wx.showToast({title:'先发送当前内容，再一起聊',icon:'none'});return;}
+    if(this.data.inputText.trim() || draft?.text || draft?.photoIds.length || draft?.audio.length){wx.showToast({title:'先发送当前内容，再一起读',icon:'none'});return;}
+    if(this.data.captureReceipts.some(captureHasUnreadMedia)) {
+      this.setData({captureBusy:true,captureReading:true,captureError:''});
+      try {
+        const complete=await readCaptureMaterials(this.data.captureReceipts,receipt=>{
+          this.updateCaptureReceipt(receipt);
+          this.setData({captureExpandedId:receipt.id});
+        },()=>!this.interviewUnloaded);
+        if(!this.interviewUnloaded && !complete)this.setData({captureError:'原件已保留。允许读取材料后，小忆才能根据内容帮你整理。'});
+      } catch(error) {if(!this.interviewUnloaded)this.setData({captureError:error instanceof Error?error.message:'材料未能读完，可继续读取。'});}
+      finally {if(!this.interviewUnloaded)this.setData({captureBusy:false,captureReading:false});}
+      return;
+    }
     wx.navigateTo({url:`/pages/interview/interview?sourceId=${encodeURIComponent(this.data.captureMemoryId)}`});
+  },
+  async readSourceMaterials(){
+    if(this.data.captureReading || this.data.asking || this.data.organizing)return;
+    this.setData({captureReading:true,sourceReadError:''});
+    try {
+      const complete=await readCaptureMaterials(this.data.sourceMaterials,receipt=>{
+        const items=this.data.sourceMaterials.map(item=>item.id===receipt.id?receipt:item);
+        this.sourceText=captureSourceText(items);
+        this.setData({sourceMaterials:items});
+      },()=>!this.interviewUnloaded);
+      if(this.interviewUnloaded)return;
+      if(complete) {
+        this.sourceText=captureSourceText(this.data.sourceMaterials);
+        this.pushMessage('opening',`我读到的材料如下（机器识别，请核对）：\n\n${this.sourceText}\n\n我们可以先梳理其中的人物、事件和时间线，你不用先决定写法。`);
+      } else this.setData({sourceReadError:'原件已保留。允许读取后，小忆才能根据内容帮你整理。'});
+    } catch(error) {if(!this.interviewUnloaded)this.setData({sourceReadError:error instanceof Error?error.message:'材料未能读完，可继续读取。'});}
+    finally {if(!this.interviewUnloaded)this.setData({captureReading:false});}
   },
   async sendCapture(){
     if(!this.data.captureDraft || this.data.captureBusy || this.data.captureRecording)return;

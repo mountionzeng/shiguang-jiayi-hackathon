@@ -554,9 +554,9 @@ test("interview continuation loads the complete requested memory outside the hom
   await callPage(captured, "onLoad", { sourceId: source.id });
   assert.ok(String(captured.sourceText).includes(original));
   assert.match(String(captured.sourceText), /补充：我想试试淡蓝水彩/);
-  assert.match(String(captured.sourceText), /未分析/);
+  assert.match(String(captured.sourceText), /未完成读取/);
   assert.ok(!String(captured.sourceText).includes(source.text), "do not present the short AI summary as original speech");
-  assert.match(String((captured.data.messages as Array<{text:string}>)[0].text), /虚构原话/);
+  assert.match(String((captured.data.messages as Array<{text:string}>)[0].text), /先读取材料/);
 
   captureError = true;
   const failed = instantiate(await pageDefinition("interview"));

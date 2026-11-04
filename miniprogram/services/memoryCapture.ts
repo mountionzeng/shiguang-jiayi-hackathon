@@ -7,7 +7,8 @@ import {classifyImportFiles,readImportTextFile,type ImportFileLike} from './memo
 
 export interface CaptureAudioFile {id:string;name:string;path:string;bytes:number;extension:string;fileID?:string}
 export interface MemoryCaptureDraft {id:string;sessionId?:string;familyId:string;composerText?:string;submittedText?:string;text:string;photoIds:string[];photoPaths:string[];audio:CaptureAudioFile[];submitted?:boolean}
-export interface MemoryCaptureReceipt {id:string;sessionId?:string;familyId:string;status:'received'|'processing'|'uncertain'|'ready'|'saved';text:string;photoIds:string[];audio:Array<{id:string;name:string;fileID?:string}>;evidence:Array<{sourceId:string;kind:string;text:string}>;draft?:{title:string;body:string};memoryId:string;message:string;createdAtMs:number;pollAfterMs?:number}
+export interface MaterialAnalysis {status:'pending'|'processing'|'uncertain'|'ready';message?:string;pollAfterMs?:number}
+export interface MemoryCaptureReceipt {analysis?:MaterialAnalysis;id:string;sessionId?:string;familyId:string;status:'received'|'processing'|'uncertain'|'ready'|'saved';text:string;photoIds:string[];audio:Array<{id:string;name:string;fileID?:string}>;evidence:Array<{sourceId:string;kind:string;text:string}>;draft?:{title:string;body:string};memoryId:string;message:string;createdAtMs:number;pollAfterMs?:number}
 const makeId=()=>`capture-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,12)}`;
 const key=(familyId:string,sessionId?:string)=>sessionId ? `memory-capture:v2:${familyId}:${sessionId}` : `memory-capture:v1:${familyId}`;
 const pendingKey=(familyId:string)=>`memory-capture-pending:v2:${familyId}`;
@@ -105,3 +106,57 @@ export async function captureAudioUrl(id:string,fileId:string){return (await cal
 
 export async function readMemoryCapture(id:string){return call<MemoryCaptureReceipt>('captureRead',{id});}
 export async function readCaptureSession(id:string){return call<{sessionId:string;items:MemoryCaptureReceipt[]}>('captureSessionRead',{id});}
+
+
+export function captureHasUnreadMedia(receipt: MemoryCaptureReceipt): boolean {
+  return receipt.photoIds.some(id=>!receipt.evidence?.some(e=>e.sourceId===id && e.kind==='image-reading')) ||
+    receipt.audio.some(file=>!receipt.evidence?.some(e=>e.sourceId===file.id && e.kind==='transcript'));
+}
+
+/** Keep machine readings distinct from original speech, including when a source could not be read. */
+export function captureSourceText(items: MemoryCaptureReceipt[]): string {
+  return items.map((item,index)=>{
+    const parts=[`【材料 ${index+1}】`,item.text.trim() ? `用户原文：\n${item.text}` : ''];
+    for(const evidence of item.evidence || []) {
+      if(evidence.kind==='user-text')continue;
+      const photoIndex=item.photoIds.indexOf(evidence.sourceId);
+      const audio=item.audio.find(file=>file.id===evidence.sourceId);
+      if(photoIndex>=0 && ['image-reading','image-description'].includes(evidence.kind))parts.push(`图片 ${photoIndex+1}（AI读取，请核对，不是用户亲历自述）：\n${evidence.text}`);
+      else if(audio && evidence.kind==='transcript')parts.push(`录音 ${audio.name}（机器转写，请核对）：\n${evidence.text}`);
+    }
+    if(captureHasUnreadMedia(item))parts.push('还有图片或录音未完成读取，不推断未读内容。');
+    return parts.filter(Boolean).join('\n\n');
+  }).join('\n\n');
+}
+
+export async function readCaptureMaterials(
+  items: MemoryCaptureReceipt[],
+  onReceipt: (receipt: MemoryCaptureReceipt)=>void,
+  isActive: ()=>boolean = ()=>true,
+): Promise<boolean> {
+  const pending=items.filter(captureHasUnreadMedia);
+  if(!pending.length)return true;
+  if(!await requestAiConsent() || !isActive())return false;
+  const photoCount=pending.reduce((n,item)=>n+item.photoIds.length,0);
+  const photoConsent=!photoCount || await requestPhotoAiConsent(photoCount,'material-reading');
+  if(!photoConsent || !isActive())return false;
+  const audioConsent=!pending.some(item=>item.audio.length) || await new Promise<boolean>(resolve=>wx.showModal({title:'读取这些录音里的内容？',content:'将这段记忆中的录音发送给豆包语音服务转成文字，保留原件供你核对。不同意仍可保存和查看原件。',confirmText:'允许转写',cancelText:'只存原件',success:result=>resolve(result.confirm),fail:()=>resolve(false)}));
+  if(!audioConsent || !isActive())return false;
+  for(const item of pending) {
+    let current=item;
+    for(let step=0;step<8 && captureHasUnreadMedia(current);step++) {
+      if(!isActive())return false;
+      current=await call<MemoryCaptureReceipt>('captureReadMaterials',{id:item.id,photoConsent,audioConsent,...(step===0 && item.analysis?.status==='uncertain'?{retry:true}:{})},item.familyId);
+      if(!isActive())return false;
+      onReceipt(current);
+      if(!current.analysis)throw new Error('材料读取接口尚未更新，原件已保留。');
+      if(current.analysis.status==='uncertain')throw new Error(current.analysis.message || '材料尚未读完，已保留原件，可继续读取。');
+      if(current.analysis.status==='processing')throw new Error('材料正在读取，请稍后继续，原件已保留。');
+      if(captureHasUnreadMedia(current))await new Promise(resolve=>setTimeout(resolve,Math.max(1100,Math.min(current.analysis?.pollAfterMs || 0,5000))));
+    }
+    if(captureHasUnreadMedia(current))throw new Error('材料还在读取，已读内容已保留，稍后点击继续读取。');
+    // Keep consecutive batches outside the server's per-account throttle window.
+    if(item!==pending[pending.length-1])await new Promise(resolve=>setTimeout(resolve,1100));
+  }
+  return true;
+}
