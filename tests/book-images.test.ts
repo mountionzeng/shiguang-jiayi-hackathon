@@ -198,3 +198,12 @@ test("本机没有照片时通过 photoAccess 读取云端显示图", async cont
   assert.equal(read?.data?.purpose, "view");
   assert.equal(read?.data?.variant, "display");
 });
+
+test('article block identity is valid book content while paths and source-policy markers stay rejected', () => {
+  const blockId='block-'+'a'.repeat(64),parentBlockId='block-'+'b'.repeat(64);
+  const blocks=[{text:'原文',blockId},{text:'下一段',blockId:parentBlockId,parentBlockId:blockId}];
+  const before=JSON.stringify(blocks);
+  assert.doesNotThrow(()=>validateContent(blocks));
+  assert.equal(JSON.stringify(blocks),before,'validation preserves editing and layout identities');
+  for(const bad of [{text:'正文',blockId:'bad'}, {text:'正文',sourceIds:[]}, {text:'正文',path:'/private/file'}, {text:'正文',photoId:'photo-one'}, {text:'正文',parentBlockId:'bad'}])assert.throws(()=>validateContent([bad as any]));
+});

@@ -361,3 +361,13 @@ test('书名保存后返回目录仍显示新值，顶部保存处理当前目�
   let books=0,articles=0;p.saveEdits=async()=>{books++;return true;};p.flushArticle=async()=>{articles++;return true;};
   await p.saveCurrentArticle();assert.equal(books,1);assert.equal(articles,0);
 });
+
+test('文章编辑器保存过的文字块不会阻止修改书名，编号和正文保持原样',async()=>{
+  const {p,stored}=await setup();
+  const block={text:'正文保持不变',blockId:'block-'+'a'.repeat(64)};
+  p.chapters[0].content=[block];p.contentBuffer=[{...block}];p.data.view='contents';
+  assert.equal(await p.onBookTitleBlur({detail:{value:'文章编辑后的新书名'}}),true);
+  const saved=currentManuscript(stored.get('shiguang-family-room-v5'),'owner').draft!;
+  assert.equal(saved.title,'文章编辑后的新书名');
+  assert.deepEqual(saved.chapters![0].content,[block]);
+});

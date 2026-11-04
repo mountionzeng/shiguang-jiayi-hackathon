@@ -64,9 +64,15 @@ export function validateContent(content: ManuscriptContent[] | undefined) {
   if (!Array.isArray(content) || content.length > 3000 || JSON.stringify(content).length > 100000) throw new Error("图文内容过长，请分成多个故事");
   let images = 0;
   for (const item of content) {
-    if (!item || Object.keys(item).length !== 1) throw new Error("图文内容格式无效");
-    if (typeof item.text === "string") continue;
-    if (typeof item.photoId === "string" && (LOCAL_PHOTO_ID.test(item.photoId) || STORY_IMAGE_REFERENCE.test(item.photoId))) { images++; continue; }
+    // Article blocks retain stable layout IDs. These are not source-policy
+    // permissions; legacy full-book edits must still reject those markers.
+    if (!item || Object.keys(item).some(key => !['text', 'photoId', 'blockId', 'parentBlockId'].includes(key))) throw new Error("图文内容格式无效");
+    for (const key of ['blockId', 'parentBlockId']) {
+      const id = (item as unknown as Record<string, unknown>)[key];
+      if (id !== undefined && (typeof id !== 'string' || !/^block-[a-f0-9]{64}$/.test(id))) throw new Error("文字块编号无效");
+    }
+    if (typeof item.text === "string" && item.photoId === undefined) continue;
+    if (typeof item.photoId === "string" && item.text === undefined && (LOCAL_PHOTO_ID.test(item.photoId) || STORY_IMAGE_REFERENCE.test(item.photoId))) { images++; continue; }
     throw new Error("图片引用无效");
   }
   if (images > 9) throw new Error("一篇书稿最多放 9 张照片（含 AI 插图）");
