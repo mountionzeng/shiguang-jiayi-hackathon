@@ -770,3 +770,12 @@
 .capture-link::after, .capture-audio::after { border: 0; }
 .capture-audio.capture-audio { text-align: left; padding: 14rpx 0; color: inherit; overflow-wrap: anywhere; }
 .capture-recovery { margin: 16rpx 0 28rpx; color: var(--ink-soft); font-size: 24rpx; }
+
+.research-sources { margin-top: 20rpx; border-top: 1rpx solid rgba(80,100,85,.16); padding-top: 12rpx; }
+.research-source { width: auto; margin: 8rpx 0; padding: 12rpx 0; min-height: 72rpx; text-align: left; color: #436452; background: transparent; font-size: 24rpx; line-height: 1.6; }
+.research-source::after { border: 0; }
+.tool-row { flex-wrap: wrap; row-gap: 12rpx; }
+
+.writing-search-note { color: #7b8078; font-size: 21rpx; line-height: 1.5; margin: 10rpx 0; }
+
+.source-transcript { margin-bottom: 20rpx; padding: 16rpx 22rpx; background: rgba(82,119,99,.05); border-radius: 16rpx; font-size: 26rpx; line-height: 1.8; white-space: pre-wrap; }

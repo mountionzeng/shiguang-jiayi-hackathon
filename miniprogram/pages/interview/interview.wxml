@@ -92,14 +92,21 @@
       scroll-into-view="{{scrollIntoView}}"
     >
       <view class="chat-inner">
+        <view wx:if="{{sourceTranscript}}" class="source-transcript">
+          <button class="capture-link" bindtap="toggleSourceTranscript">{{sourceTranscriptOpen ? '收起材料原文' : '查看已读取材料'}}</button>
+          <text wx:if="{{sourceTranscriptOpen}}" selectable>{{sourceTranscript}}</text>
+        </view>
         <block wx:for="{{messages}}" wx:key="id">
           <!-- 追问：单独的卡片，和普通气泡区分开 -->
-          <view class="ask-card" wx:if="{{item.kind === 'followup'}}" id="{{item.id}}">
+          <view class="ask-card" wx:if="{{item.kind === 'followup' || item.kind === 'research'}}" id="{{item.id}}">
             <text class="ask-label">{{item.label}}</text>
-            <view class="ask-text serif">{{item.text}}</view>
+            <view class="ask-text serif" selectable>{{item.text}}</view>
+            <view wx:if="{{item.sources.length}}" class="research-sources">
+              <button class="research-source" wx:for="{{item.sources}}" wx:for-item="source" wx:for-index="sourceIndex" wx:key="index" data-message="{{item.id}}" data-index="{{sourceIndex}}" bindtap="copyResearchSource">[{{source.index}}] {{source.title}} · 复制链接</button>
+            </view>
           </view>
 
-          <view class="row row-me" wx:elif="{{item.kind === 'answer'}}" id="{{item.id}}">
+          <view class="row row-me" wx:elif="{{item.kind === 'answer' || item.kind === 'request'}}" id="{{item.id}}">
             <view class="bubble bubble-me serif">{{item.text}}</view>
           </view>
 
@@ -189,9 +196,14 @@
         </view>
       </view>
 
+      <view wx:if="{{!captureEntry && !captureReadOnly}}" class="writing-search-note">AI查资料只把你确认的检索词发给腾讯云 TokenHub，不发送照片和私人对话。</view>
+      <view wx:if="{{searchError}}" class="capture-error">{{searchError}}</view>
+      <generation-status wx:if="{{searching}}" text="正在检索公开资料并核对来源…" />
       <generation-status wx:if="{{organizing}}" text="正在把刚才的对话整理成片段…" />
       <view class="tool-row" wx:if="{{!captureReadOnly}}">
         <view class="tool-chip {{importing ? 'tool-chip-off' : ''}}" bindtap="importMemory">{{importing ? '正在导入…' : captureEntry ? '添加素材' : '导入'}}</view>
+        <view wx:if="{{!captureEntry && !captureDraft}}" class="tool-chip" bindtap="searchWritingMaterials" role="button">AI查资料</view>
+        <view wx:if="{{!captureEntry && !sharedFamilyId}}" class="tool-chip" bindtap="editWritingPreferences" role="button">写作偏好</view>
         <view class="tool-spacer"></view>
         <view
           wx:if="{{!captureEntry}}"

@@ -157,3 +157,12 @@ test('real cloud handlers record empty-response retry, timeout fallback and pars
     for (const [key, value] of Object.entries(previous)) value === undefined ? delete process.env[key] : process.env[key] = value;
   }
 });
+
+
+test('search usage stays pending reconciliation instead of pretending the text-only estimate includes search',async()=>{
+  const f=fixture();const m=meter(f.db,async()=>response('资料',{...usage,tool_usage:{web_search_call:2}}));
+  const res=await m.fetch(BASE,{body:JSON.stringify({web_search_options:{enable:true}})});await res.json();
+  assert.equal(m.snapshot().status,'pending_reconciliation');
+  assert.equal(m.snapshot().estimatedMicros,null);
+  assert.equal([...f.records.values()][0].attempts[0].searchCalls,2);
+});

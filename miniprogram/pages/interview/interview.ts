@@ -30,6 +30,7 @@ import {
   pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
+import {requestWritingSearch, writingSearchContext, isWritingSearchRequest, editWritingPreferences, type WritingSource} from '../../services/writingSupport';
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
 import {
@@ -54,7 +55,8 @@ interface CaptureMessageView extends MemoryCaptureReceipt {hasReading:boolean;ph
 
 interface MessageView {
   id: string;
-  kind: "opening" | "followup" | "answer";
+  kind: "opening" | "followup" | "answer" | "research" | "request";
+  sources?: WritingSource[];
   text: string;
   label: string;
 }
@@ -178,6 +180,8 @@ Page({
     captureReading: false,
     sourceMaterials: [] as MemoryCaptureReceipt[],
     sourceReadError: '',
+    sourceTranscript: "",
+    sourceTranscriptOpen: false,
     captureRecording: false,
     captureEntry: false,
     captureError: '',
@@ -191,6 +195,10 @@ Page({
 
     inputText: "",
     asking: false,
+    searching: false,
+    searchQuery: "",
+    searchError: "",
+    preferencesBusy: false,
     organizing: false,
     scrollIntoView: "",
 
@@ -234,6 +242,7 @@ Page({
 
   messageSeq: 0,
   sourceText: "",
+  researchText: "",
   pendingContribution: undefined as MemoryContribution | undefined,
   persistedContributionId: "",
   interviewUnloaded: false,
@@ -344,10 +353,11 @@ Page({
       audienceOptions: memberOptionsFor(state.members, member.id),
     });
 
+    this.setData({sourceTranscript: source?.materialCaptureId ? sourceText : ""});
     this.pushMessage("opening", source?.materialCaptureId
       ? (this.data.sourceMaterials.some(captureHasUnreadMedia)
         ? "原件已保存。先读取材料里的内容，再一起整理，你不用先想好怎么写。"
-        : `我读到的材料如下（机器识别，请核对）：\n\n${sourceText}\n\n可以先从这些内容中梳理人物、事件和时间线，不需要先决定写法。`)
+        : "材料已经读取好了，可以随时展开核对原文。我们不用急着决定写法，先从一个小问题开始：你为什么想留下这份材料？")
       : opening);
     if(captureEntry){
       wx.setNavigationBarTitle({title:'随手记'});
@@ -430,11 +440,11 @@ Page({
     }
   },
 
-  pushMessage(kind: MessageView["kind"], text: string, label = "") {
+  pushMessage(kind: MessageView["kind"], text: string, label = "", sources: WritingSource[] = []) {
     this.messageSeq += 1;
     const id = `msg-${this.messageSeq}`;
     this.setData({
-      messages: this.data.messages.concat([{ id, kind, text, label }]),
+      messages: this.data.messages.concat([{ id, kind, text, label, sources }]),
       scrollIntoView: id,
     });
   },
@@ -474,10 +484,11 @@ Page({
       return;
     }
 
+    if (isWritingSearchRequest(answer)) { await this.runWritingSearch(answer); return; }
     const previousAnswers = this.data.answers;
     // 小忆问过的话也要交给 AI，它才知道哪些已经问过、用户已经答过。
     const conversation: InterviewTurn[] = this.data.messages.map((message) => ({
-      role: message.kind === "answer" ? "user" : "assistant",
+      role: message.kind === "answer" || message.kind === "request" ? "user" : "assistant",
       text: message.text,
     }));
     const answers = previousAnswers.concat([answer]);
@@ -500,7 +511,7 @@ Page({
         storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
         previousAnswers,
         conversation,
-        ...(this.sourceText ? {sourceText: this.sourceText, sourceOnly: true} : {}),
+        ...((this.sourceText || this.researchText) ? {sourceText: [this.sourceText, this.researchText].filter(Boolean).join("\n\n"), sourceOnly: true} : {}),
       });
       this.setData({
         asking: false,
@@ -515,6 +526,35 @@ Page({
       this.setData({ asking: false });
       wx.showToast({ title: "小忆刚刚走神了，再试一次", icon: "none" });
     }
+  },
+
+  toggleSourceTranscript() { this.setData({sourceTranscriptOpen: !this.data.sourceTranscriptOpen}); },
+  async searchWritingMaterials() { await this.runWritingSearch(this.data.inputText.trim() || this.data.searchQuery); },
+  async runWritingSearch(initialQuery:string) {
+    if (this.data.asking || this.data.organizing || this.data.saving || this.data.importing || this.data.captureReading || this.data.captureDraft || this.data.captureEntry) return;
+    this.setData({asking:true,searching:true,searchError:""});
+    try {
+      const result = await requestWritingSearch(initialQuery, query=>{ if (!this.interviewUnloaded) this.setData({searchQuery:query}); });
+      if (!result || this.interviewUnloaded) return;
+      this.researchText = writingSearchContext(result);
+      this.pushMessage('request', `帮我查资料：${result.query}`);
+      this.pushMessage('research', result.text, '联网参考 · 请核对来源', result.sources);
+      if (this.data.inputText.trim() === initialQuery) this.setData({inputText:''});
+    } catch {
+      if (!this.interviewUnloaded) this.setData({searchError:'搜索未完成，尚未获得可核对的来源。检索词已保留，可点 AI查资料重试。'});
+    } finally { if (!this.interviewUnloaded) this.setData({asking:false,searching:false}); }
+  },
+  copyResearchSource(event:{currentTarget:{dataset:{message:string;index:number}}}) {
+    const message = this.data.messages.find(item=>item.id === event.currentTarget.dataset.message);
+    const source = message?.sources?.[Number(event.currentTarget.dataset.index)];
+    if (source) wx.setClipboardData({data:source.url});
+  },
+  async editWritingPreferences() {
+    if (this.data.preferencesBusy || this.data.asking || this.data.organizing || this.data.saving) return;
+    this.setData({preferencesBusy:true});
+    try { await editWritingPreferences(); }
+    catch { wx.showToast({title:'偏好未保存，请重新打开后再试',icon:'none'}); }
+    finally { if (!this.interviewUnloaded) this.setData({preferencesBusy:false}); }
   },
 
   /**
@@ -968,7 +1008,8 @@ Page({
       if(this.interviewUnloaded)return;
       if(complete) {
         this.sourceText=captureSourceText(this.data.sourceMaterials);
-        this.pushMessage('opening',`我读到的材料如下（机器识别，请核对）：\n\n${this.sourceText}\n\n我们可以先梳理其中的人物、事件和时间线，你不用先决定写法。`);
+        this.setData({sourceTranscript:this.sourceText});
+        this.pushMessage('opening','材料已经读取好了，可以展开核对。你为什么想留下这份材料？');
       } else this.setData({sourceReadError:'原件已保留。允许读取后，小忆才能根据内容帮你整理。'});
     } catch(error) {if(!this.interviewUnloaded)this.setData({sourceReadError:error instanceof Error?error.message:'材料未能读完，可继续读取。'});}
     finally {if(!this.interviewUnloaded)this.setData({captureReading:false});}

@@ -110,7 +110,11 @@ function createTextMeter({ db, identity, kind, model, baseUrl, fetcher, env = pr
           attempt.usage = tokenUsage(payload);
           attempt.responseId = safeId(payload?.id);
           attempt.completedAt = now();
-          attempt.estimatedMicros = estimate(attempt.usage, model, baseUrl, attempt.startedAt, attempt.completedAt);
+          let searchRequested = false;
+          try { searchRequested = JSON.parse(options.body || '{}').web_search_options?.enable === true; } catch { /* Non-JSON transport bodies remain supported. */ }
+          const calls = payload?.usage?.tool_usage?.web_search_call;
+          attempt.searchCalls = Number.isSafeInteger(calls) && calls >= 0 ? calls : null;
+          attempt.estimatedMicros = searchRequested ? null : estimate(attempt.usage, model, baseUrl, attempt.startedAt, attempt.completedAt);
         } finally {
           timing.providerMs = elapsed(providerStarted);
           // Never persist prompts, generated text, raw errors or credentials.

@@ -4262,3 +4262,29 @@ test('visible memory deletion closes the removed document and blocks deletion du
   assert.equal(page.data.editingId, '');
   assert.ok(storage.roomState().contributions.find(item => item.id === memory.id)?.deletedAt);
 });
+
+
+test('writing search cancellation preserves input and search results never become autobiographical answers',async context=>{
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const page=instantiate(await pageDefinition('interview'));page.setData({stage:'chat',inputText:'请帮我搜一下满城'});
+  const mock=wx as any;let confirm=false,calls=0;
+  mock.showModal=(options:any)=>options.success({confirm,content:'河北满城街道'});
+  mock.cloud={callFunction:async()=>{calls++;return {result:{text:'公开参考[1]',query:'河北满城街道',searchedAt:'today',sources:[{index:1,title:'档案',url:'https://example.org'}]}};}};
+  await callPage(page,'send');assert.equal(page.data.inputText,'请帮我搜一下满城');assert.equal(calls,0);assert.equal(page.data.asking,false);
+  const {clearAiConsent}=await import('../miniprogram/services/aiConsent');clearAiConsent();context.after(clearAiConsent);
+  confirm=true;await callPage(page,'send');
+  assert.deepEqual(page.data.answers,[]);assert.equal(page.data.inputText,'');
+  assert.equal((page.data.messages as any[])[(page.data.messages as any[]).length - 1].kind,'research');
+  assert.match(page.researchText as string,/不是用户亲历/);
+});
+test('a delayed research result after leaving the interview does not mutate the closed page',async context=>{
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const page=instantiate(await pageDefinition('interview'));page.setData({stage:'chat',inputText:'请搜一下满城'});
+  const {clearAiConsent}=await import('../miniprogram/services/aiConsent');clearAiConsent();context.after(clearAiConsent);
+  let resolve:any;const pending=new Promise(r=>resolve=r);
+  (wx as any).showModal=(options:any)=>options.success({confirm:true,content:'满城公开资料'});
+  (wx as any).cloud={callFunction:()=>pending};
+  const request=callPage(page,'send');await new Promise(r=>setTimeout(r,0));
+  page.interviewUnloaded=true;resolve({result:{text:'资料',query:'满城',sources:[{index:1,title:'资料',url:'https://example.org'}]}});
+  await request;assert.deepEqual(page.data.messages,[]);assert.equal(page.data.inputText,'请搜一下满城');
+});

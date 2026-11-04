@@ -2,6 +2,7 @@
   <view class="memory-eyebrow">小忆与你</view>
   <view class="memory-heading serif">小忆记住的事</view>
   <view class="memory-intro">这些是从你的讲述里提炼的少量理解，可能不够准确。你可以确认、纠正或忘掉；小忆会按你的选择调整。</view>
+  <view class="memory-setting"><view><view class="memory-setting-title">写作偏好</view><view class="memory-note">你明确保存的要求会用于以后的对话和整理，可修改或清空。</view></view><button class="memory-action" bindtap="editWritingPreferences" disabled="{{busy}}">查看 / 修改</button></view>
   <view wx:if="{{loading}}" class="memory-status">正在读取…</view>
   <view wx:elif="{{error}}" class="memory-status">{{error}}<button class="btn btn-jade" bindtap="refresh">重新读取</button></view>
   <block wx:else>

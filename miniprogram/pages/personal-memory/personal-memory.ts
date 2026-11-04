@@ -1,8 +1,16 @@
+import {editWritingPreferences} from '../../services/writingSupport';
 import { personalMemory, PersonalInsight } from '../../services/personalMemory';
 import { requestAiConsent } from '../../services/aiConsent';
 
 Page({
   data: { enabled: false, insights: [] as Array<PersonalInsight & { originLabel: string }>, loading: true, busy: false, error: '' },
+  async editWritingPreferences() {
+    if (this.data.busy) return;
+    this.setData({busy:true});
+    try { await editWritingPreferences(); }
+    catch { wx.showToast({title:'偏好未保存，请重新打开后再试',icon:'none'}); }
+    finally { this.setData({busy:false}); }
+  },
   onShow() { void this.refresh(); },
   async refresh() {
     this.setData({loading:true,error:''});

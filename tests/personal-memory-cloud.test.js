@@ -105,3 +105,49 @@ test('independent cloud bundles stay in sync and all personal collections deny d
   const rules=JSON.parse(fs.readFileSync('deploy/personal-memory/database.rules.json','utf8'));
   for(const value of Object.values(rules.collections))assert.deepEqual(value,{read:false,write:false});
 });
+
+
+test('writing preferences persist across requests, isolate accounts, reject stale updates and can be cleared',async context=>{
+  env(context); const f=fixture();
+  const call=(data)=>chatCloud.main({action:'writingPreferences',...data},{cloud:f.cloud});
+  assert.deepEqual(await call({operation:'get'}),{text:'',revision:0});
+  await call({operation:'save',text:'一次只问一个问题，先给例子。',revision:0});
+  assert.equal((await call({operation:'get'})).text,'一次只问一个问题，先给例子。');
+  await assert.rejects(call({operation:'save',text:'stale',revision:0}),/CHANGED/);
+  await assert.rejects(call({operation:'save',text:'x'.repeat(501),revision:1}),/INVALID/);
+  f.as('bob');assert.deepEqual(await call({operation:'get',accountId:'account_aaaaaaaaaaaaaaaaaaaaaaaa'}),{text:'',revision:0});
+  f.as('alice');await call({operation:'save',text:'',revision:1});
+  assert.deepEqual(await call({operation:'get'}),{text:'',revision:2});
+});
+test('explicit writing preferences affect the next source-only conversation and compose without learning source characters',async context=>{
+  env(context);const f=fixture();const old=global.fetch;context.after(()=>global.fetch=old);
+  await chatCloud.main({action:'writingPreferences',operation:'save',text:'先给一个朴素的开头。',revision:0},{cloud:f.cloud});
+  let request;
+  global.fetch=async(_url,options)=>{request=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({dimension:'event',text:'可以从读文章的感受开始。'})}}]})};};
+  await chatCloud.main({answer:'这是一篇文章，我不知道怎么写。',sourceOnly:true,sourceText:'书中作者的回忆'},{cloud:f.cloud,nowMs:Date.now()});
+  assert.match(request.messages[1].content,/先给一个朴素的开头/);
+  global.fetch=async(_url,options)=>{request=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({title:'书店',body:'今天我走进了一家书店。',summary:'书店',emotions:[],people:[],places:[]})}}]})};};
+  await organizeCloud.main({memoryId:'m2',writingMode:'compose'},{cloud:f.cloud,nowMs:Date.now()+10000});
+  assert.match(request.messages[1].content,/先给一个朴素的开头/);
+});
+test('clearing a writing preference during a model request prevents releasing the stale personalized response',async context=>{
+  env(context);const f=fixture();const old=global.fetch;context.after(()=>global.fetch=old);
+  await chatCloud.main({action:'writingPreferences',operation:'save',text:'先给例子',revision:0},{cloud:f.cloud});
+  global.fetch=async()=>{
+    await chatCloud.main({action:'writingPreferences',operation:'save',text:'',revision:1},{cloud:f.cloud});
+    return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({dimension:'event',text:'旧偏好的回应'})}}]})};
+  };
+  await assert.rejects(chatCloud.main({answer:'怎么写',sourceOnly:true},{cloud:f.cloud}),/WRITING_PREFERENCES_CHANGED/);
+});
+test('search cloud entry enforces explicit search consent and identity before calling the provider',async context=>{
+  env(context);const f=fixture();let calls=0;const old=global.fetch;context.after(()=>global.fetch=old);
+  global.fetch=async()=>{calls++;return {ok:true,json:async()=>({choices:[{message:{content:'资料[1]',search_results:[{index:1,url:'https://example.org',name:'资料'}]}}]})};};
+  await assert.rejects(chatCloud.main({action:'writingSearch',query:'河北满城'},{cloud:f.cloud}),/CONSENT_REQUIRED/);
+  assert.equal(calls,0);
+  const value=await chatCloud.main({action:'writingSearch',query:'河北满城',searchConsent:true,sourceText:'private text'},{cloud:f.cloud});
+  assert.equal(value.sources.length,1);assert.equal(calls,1);
+  f.records.get('user_accounts:'+accountDocumentIdFor('alice-openid')).status='deleted';
+  await assert.rejects(chatCloud.main({action:'writingPreferences',operation:'get'},{cloud:f.cloud}),error=>error.code==='IDENTITY_UNLINKED');
+  await assert.rejects(chatCloud.main({action:'writingSearch',query:'满城',searchConsent:true},{cloud:f.cloud}),error=>error.code==='IDENTITY_UNLINKED');
+  assert.equal(calls,1);
+});
