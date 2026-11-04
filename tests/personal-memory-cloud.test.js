@@ -183,7 +183,7 @@ function sessionFixture(context) {
 test('writing session roundtrips complete dialogue, unsent text and draft from source and output memory',async context=>{
   const f=sessionFixture(context);delete process.env.CHAT_AI_API_KEY;
   assert.equal((await f.call()).snapshot,null);
-  const snapshot=sessionSnapshot();await f.call({operation:'save',revision:0,mutationId:'turn-1',snapshot});
+  const snapshot=sessionSnapshot({draftAiText:'原生成文',draftAiTitle:'原标题'});await f.call({operation:'save',revision:0,mutationId:'turn-1',snapshot});
   for(const memoryId of ['m1','m2']) {const result=await f.call({memoryId});assert.equal(result.memoryId,'m1');assert.deepEqual(result.snapshot,{...snapshot,messages:snapshot.messages.map(m=>({...m,sources:[]}))});}
 });
 test('session retries are idempotent and stale writers cannot overwrite another device',async context=>{

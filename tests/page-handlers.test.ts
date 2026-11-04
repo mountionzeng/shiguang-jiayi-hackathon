@@ -4340,6 +4340,10 @@ test('reopened interview restores all turns and draft, and retains source contex
   assert.equal(page.data.draftText,'整理的正文');assert.equal(page.data.stage,'chat');assert.equal(page.data.inputText,'未发送');
   await callPage(page,'persistSession');assert.equal(saved.outputMemoryId,output.id);await callPage(page,'organizeDraftIntoBook');
   assert.equal(last(storage.navigations),'/pages/book/book?memoryIds=session-output');
+  WritingSession.open=async()=>({session:{rootMemoryId:root.id,canWrite:true,save:async(value:any)=>{saved=value;}} as any,snapshot:{messages,answers:['值得传承'],askedDimensions:['feeling'],inputText:'',draftTitle:'整理稿',draftText:'手动核正后的正文',draftAiText:'AI原来的正文',draftAiTitle:'原稿',draftSummary:'摘要',draftOrganizationMode:'cloud-ai',outputMemoryId:output.id,saved:false} as any});
+  const edited=instantiate(await pageDefinition('interview'));await callPage(edited,'onLoad',{sourceId:root.id});
+  assert.match(String(edited.data.draftAiLabel),/已由你修改/);
+  await callPage(edited,'persistSession');assert.equal(saved.draftAiText,'AI原来的正文');assert.equal(saved.draftText,'手动核正后的正文');
 });
 test('material reader opens independently of last-message scroll position and closes without resetting chat',async context=>{
   const storage=installWxMock(createInitialRoomState());context.after(storage.restore);

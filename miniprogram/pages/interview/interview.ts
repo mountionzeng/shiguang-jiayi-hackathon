@@ -169,6 +169,11 @@ function splitRecoverableText(text: string): string[] {
   return chunks;
 }
 
+function draftAiLabel(contribution:MemoryContribution, text:string):string {
+  const label=memoryAiLabel(contribution);
+  return label && text.trim()!==contribution.text.trim() ? "文字 AI 生成 · 已由你修改" : label;
+}
+
 Page({
   data: {
     captureDraft: null as MemoryCaptureDraft | null,
@@ -384,14 +389,14 @@ Page({
       this.pendingContribution = output;
       this.persistedContributionId = output?.id || "";
       if (output && !restored.saved && restored.draftText && restored.draftOrganizationMode === "cloud-ai") {
-        this.pendingContribution = appendAiRevision(output, "ai", restored.draftText, restored.draftTitle, "cloud-ai");
+        this.pendingContribution = appendAiRevision(output, "ai", restored.draftAiText || restored.draftText, restored.draftAiTitle || restored.draftTitle, "cloud-ai");
       }
       this.setData({messages:restored.messages, answers:restored.answers, inputText:restored.inputText,
         askedDimensions:restored.askedDimensions.filter((item):item is InterviewDimension=>INTERVIEW_DIMENSIONS.includes(item as InterviewDimension)),
         draftTitle:restored.draftTitle,draftText:restored.draftText,draftSummary:restored.draftSummary,
         draftLength:restored.draftText.length,tooLong:restored.draftText.length>MAX_MEMORY_LENGTH,
         draftOrganizationMode:restored.draftOrganizationMode,saved:!!output && restored.saved,
-        draftAiLabel:output ? memoryAiLabel(this.pendingContribution!) : "",
+        draftAiLabel:output ? draftAiLabel(this.pendingContribution!,restored.draftText) : "",
         stage:"chat",scrollIntoView:restored.messages[restored.messages.length-1]?.id || ""});
       this.messageSeq=Math.max(0,...restored.messages.map(item=>Number(item.id.replace("msg-","")) || 0));
       this.researchText=restored.messages.filter(item=>item.kind==="research").map(item=>item.text+"\n"+(item.sources || []).map(source=>`[${source.index}] ${source.title} ${source.url}`).join("\n")).join("\n\n");
@@ -412,12 +417,17 @@ Page({
   },
 
   sessionStatus(text:string) {
-    if (!this.interviewUnloaded) this.setData({sessionNotice:text,sessionBlocked:!!this.writingSession && !this.writingSession.canWrite});
+    if (!this.interviewUnloaded) {
+      this.setData({sessionNotice:text,sessionBlocked:!!this.writingSession && !this.writingSession.canWrite});
+      if(text === "聊天与草稿已保存")wx.disableAlertBeforeUnload();
+    }
   },
   sessionSnapshot():WritingSnapshot {
+    const aiRevision=this.pendingContribution ? memoryAiRevisions(this.pendingContribution).filter(item=>item.kind === "ai").slice(-1)[0] : undefined;
     return {messages:this.data.messages,answers:this.data.answers,askedDimensions:this.data.askedDimensions,
       inputText:this.data.inputText,draftTitle:this.data.draftTitle,draftText:this.data.draftText,
       draftSummary:this.data.draftSummary,draftOrganizationMode:this.data.draftOrganizationMode,
+      ...(aiRevision ? {draftAiText:aiRevision.text,draftAiTitle:aiRevision.title || ""} : {}),
       outputMemoryId:this.persistedContributionId,saved:this.data.saved};
   },
   async persistSession() {if(this.writingSession)await this.writingSession.save(this.sessionSnapshot());},
@@ -799,7 +809,7 @@ Page({
   /** 就地小忆共享机制的落回目标：接到这段记忆的草稿末尾，保存时才真正持久化。 */
   xiaoyiLand(text: string): Promise<boolean> {
     const next = normalizeMemoryText([this.data.draftText.trim(), text.trim()].filter(Boolean).join("\n\n"));
-    const previewLabel = this.pendingContribution ? memoryAiLabel({ ...this.pendingContribution, text: next }) : this.data.draftAiLabel;
+    const previewLabel = this.pendingContribution ? draftAiLabel(this.pendingContribution,next) : this.data.draftAiLabel;
     this.setData({ draftText: next, draftLength: next.length, tooLong: next.length > MAX_MEMORY_LENGTH, draftAiLabel: previewLabel, xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiStatus: "已接到草稿后面，你还可以继续改。" });
     this.checkpointSession();
     return Promise.resolve(true);
@@ -815,7 +825,7 @@ Page({
     // 手改之后立刻打「已由你修改」，避免用户等到点保存才看到标签变化；
     // 真正的 manual revision 记录在 save() 里追加，这里只是显示态。
     const previewLabel = this.pendingContribution
-      ? memoryAiLabel({ ...this.pendingContribution, text: draftText })
+      ? draftAiLabel(this.pendingContribution,draftText)
       : this.data.draftOrganizationMode === "cloud-ai" ? "文字 AI 生成 · 已由你修改" : "";
     this.data.draftText = draftText;
     this.checkpointSession();

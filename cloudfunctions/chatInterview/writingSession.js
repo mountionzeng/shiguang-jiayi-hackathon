@@ -28,6 +28,7 @@ function snapshot(value) {
   return {messages,answers:value.answers.map(v=>text(v,5000)),inputText:text(value.inputText || '',10000),
     askedDimensions:(value.askedDimensions || []).filter(v=>['time','place','person','event','feeling'].includes(v)).slice(0,200),
     draftTitle:text(value.draftTitle || '',80),draftText:text(value.draftText || '',10000),draftSummary:text(value.draftSummary || '',500),
+    ...(value.draftAiText ? {draftAiText:text(value.draftAiText,10000),draftAiTitle:text(value.draftAiTitle || '',80)} : {}),
     draftOrganizationMode:value.draftOrganizationMode==='cloud-ai'?'cloud-ai':'local-demo',
     outputMemoryId:value.outputMemoryId ? text(value.outputMemoryId,128):'', saved:value.saved===true};
 }
