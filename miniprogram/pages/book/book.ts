@@ -117,7 +117,7 @@ Page({
     currentLayoutPages: [] as ChapterLayoutViewPage[],
     // "contents" lists the chapters; "chapter" edits one of them. Empty until the first load.
     view: "" as "" | "contents" | "chapter",
-    chapterRows: [] as Array<{ id: string; label: string; title: string; memoryCount: number; photoCount: number; hasReturn: boolean }>,
+    chapterRows: [] as Array<{ id: string; label: string; title: string; localOnly: boolean; memoryCount: number; photoCount: number; hasReturn: boolean }>,
     swipeOpenChapterId: "", draggingChapterId: "",
     chapterLabelText: "", chapterAiLabelText: "", editChapterTitle: "",
     unassigned: [] as MemoryRow[], chapterMemories: [] as MemoryRow[],
@@ -223,7 +223,7 @@ Page({
   articleAttempt: null as ArticleSaveRequest | null,
   articleSaving: null as Promise<boolean> | null,
   articleTimer: undefined as ReturnType<typeof setTimeout> | undefined,
-  articleKey() { return `article-draft:${cachedAccountScope()}:${this.story?.id || this.data.storyId}:${this.activeChapterId}`; },
+  articleKey(chapterId?: string) { return `article-draft:${cachedAccountScope()}:${this.story?.id || this.data.storyId}:${chapterId ?? this.activeChapterId}`; },
   onArticleChange(event: { detail: { chapter: ArticleChapter; titleChanged?: boolean } }) {
     this.setData({ articleShareUrl: '' });
     const incoming = event.detail.chapter;
@@ -288,10 +288,22 @@ Page({
         this.articleAttempt = null;
         if (this.articlePending === attempt.chapter) {
           this.articlePending = null; wx.removeStorageSync(this.articleKey());
+          if (this.activeChapterId === attempt.chapter.id) {
+            this.chapterTitleBuffer = attempt.chapter.title;
+            this.contentBuffer = attempt.chapter.content.map(block => ({...block}));
+            this.bodyBuffer = plainText(this.contentBuffer).replace(/\n+$/, "");
+          }
           this.setData({ article: attempt.chapter, articleDirty: false, articleStatus: '已保存到云端', savedRevisionId: result.revisionId });
         } else {
           this.backupArticle();
         }
+        // The article and the book must advance to the same confirmed revision.
+        // Keeping the old manuscript here can restore old titles in later book edits.
+        this.setData({
+          ...(this.data.draft ? {draft: draftWithChapters(this.data.draft, this.chapters)} : {}),
+          chapterRows: this.data.chapterRows.map(row => row.id === attempt.chapter.id
+            ? {...row, title: this.articlePending?.title ?? attempt.chapter.title, localOnly: Boolean(this.articlePending)} : row),
+        });
         return true;
       } catch (error) {
         if ((error as { code?: string })?.code === 'VERSION_CONFLICT') {
@@ -351,7 +363,7 @@ Page({
     } catch (error) { this.setData({ articleStatus:error instanceof Error?error.message:'没有添加图片' }); }
     finally { this.setData({ pickingPhoto:false }); }
   },
-  saveCurrentArticle() { if (this.data.article) void this.flushArticle(); else void this.saveEdits(); },
+  saveCurrentArticle() { return this.data.view === 'chapter' && this.data.article ? this.flushArticle() : this.saveEdits(); },
   sendCurrentArticle() { if (this.data.article) void this.sendArticle(); else this.toggleSend(); },
   async sendArticle() {
     if (this.data.articleSending) return;
@@ -811,11 +823,19 @@ Page({
       bookIntroduction: this.introductionBuffer,
       protectedCanRevise: Boolean(this.story?.sourcePolicyRequired === true && active?.content.some(item => typeof item.text === "string" && item.sourceIds?.length && item.blockId)),
       protectedHasDeliveryLineage: Boolean(active?.packageLineage?.rootPackageId && active.packageLineage.receivedPackageId),
-      chapterRows: visibleChapters.map((chapter, index) => ({
-        id: chapter.id, label: chapterLabel(index + 1), title: chapter.title,
-        memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: chapterPhotoIds(chapter).length,
-        hasReturn: returned.has(chapter.id),
-      })),
+      chapterRows: visibleChapters.map((chapter, index) => {
+        let local = this.articlePending?.id === chapter.id ? this.articlePending : undefined;
+        if (!local && this.story) {
+          try { local = wx.getStorageSync(this.articleKey(chapter.id))?.chapter; }
+          catch { /* A failed local read must not hide the confirmed directory. */ }
+        }
+        return {
+          id: chapter.id, label: chapterLabel(index + 1), title: local?.id === chapter.id ? local.title : chapter.title,
+          localOnly: local?.id === chapter.id,
+          memoryCount: chapter.memoryIds.filter(id => known.has(id)).length, photoCount: chapterPhotoIds(chapter).length,
+          hasReturn: returned.has(chapter.id),
+        };
+      }),
       chapterReturns: this.story && active
         ? returnsForChapter(this.pendingReturns, this.story.id, active.id).map(item => ({
           returnId: item.returnId, senderName: senderLabel(item), text: [
@@ -1994,6 +2014,8 @@ Page({
   onEditTitle(event: WechatMiniprogram.Input) { this.titleBuffer = event.detail.value; this.editManuscript(); },
   onBookTitleBlur(event: WechatMiniprogram.Input) {
     if (typeof event.detail.value === 'string' && this.titleBuffer !== event.detail.value) this.onEditTitle(event);
+    // Commit the native input value after composition ends, not on each keystroke.
+    this.setData({editTitle:this.titleBuffer});
     return this.saveEdits(true);
   },
   editIntroduction() {
@@ -2149,7 +2171,7 @@ Page({
       if (unchanged) {
         clearChapterDraft(key,this.localDraftToken);
         this.localDraftToken = "";
-        this.setData({editing:false,saveNotice:"修改已保存", ...this.chapterData()});
+        this.setData({editing:false,editTitle:this.titleBuffer,saveNotice:"修改已保存", ...this.chapterData()});
         wx.disableAlertBeforeUnload();
       } else {
         this.backupEdits();

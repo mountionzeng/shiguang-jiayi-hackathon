@@ -344,3 +344,20 @@ test('系统取消拖动时恢复原顺序，不提交结构修改', async () =>
   assert.equal(p.chapters[0].id,'chapter-a'); assert.equal(saves,0);
   assert.equal(p.data.draggingChapterId,'');
 });
+
+test('书名保存后返回目录仍显示新值，顶部保存处理当前目录的书名', async () => {
+  const {p,page,stored}=await setup();
+  await p.backToContents();
+  const chapterBefore=structuredClone(p.chapters[0]);
+  await p.onBookTitleBlur({detail:{value:'目录上的新书名'}});
+  assert.equal(p.data.editTitle,'目录上的新书名');
+  assert.equal(currentManuscript(stored.get('shiguang-family-room-v5'),'owner').draft!.title,'目录上的新书名');
+  assert.deepEqual(p.chapters[0],chapterBefore);
+  await p.openChapter({currentTarget:{dataset:{id:'chapter-a'}}});
+  await p.backToContents();
+  assert.equal(p.data.editTitle,'目录上的新书名');
+  const reopened=page();await reopened.refresh();assert.equal(reopened.data.editTitle,'目录上的新书名');
+  p.data.article={id:'chapter-a'};
+  let books=0,articles=0;p.saveEdits=async()=>{books++;return true;};p.flushArticle=async()=>{articles++;return true;};
+  await p.saveCurrentArticle();assert.equal(books,1);assert.equal(articles,0);
+});

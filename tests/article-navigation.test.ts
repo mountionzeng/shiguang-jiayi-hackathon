@@ -263,3 +263,27 @@ test('title-only offline edit survives reopening and retries the same request', 
   assert.equal(requests[requests.length - 1].requestId,backup.attempt.requestId);
   assert.equal(reopened.data.article.title,'离线输入的新标题');
 });
+
+test('confirmed chapter rename updates the directory, manuscript and editing buffers together',async()=>{
+  const {p}=await setup();await open(p,'a');
+  p.data.draft={title:'书名',paragraphs:['原文a','原文b'],sourceCount:0,chapters:structuredClone(p.chapters)};
+  (wx as any).cloud.callFunction=async()=>({result:{revisionId:'revision-title-saved',version:3}});
+  await p.onArticleTitleBlur({detail:{value:'新的章节名'}});
+  assert.equal(p.data.chapterRows[0].title,'新的章节名');
+  assert.equal(p.data.draft.chapters[0].title,'新的章节名');
+  assert.equal(p.chapterTitleBuffer,'新的章节名');
+  await p.backToContents();assert.equal(p.data.chapterRows[0].title,'新的章节名');
+});
+
+test('unsynced chapter title appears in the directory with local-only status and never overwrites the saved manuscript',async()=>{
+  const {p,page,stored}=await setup();await open(p,'a');
+  assert.equal(await p.onArticleTitleBlur({detail:{value:'手机改过的章名'}}),false);
+  await p.backToContents();
+  assert.equal(p.data.chapterRows[0].title,'手机改过的章名');
+  assert.equal(p.data.chapterRows[0].localOnly,true);
+  assert.equal(p.chapters[0].title,'a','do not promote an unconfirmed edit to a saved draft');
+  await open(p,'b');await p.backToContents();
+  assert.equal(p.data.chapterRows[0].title,'手机改过的章名');
+  const reopened=page();assert.equal(reopened.data.chapterRows[0].title,'手机改过的章名');
+  assert.equal(stored.get(p.articleKey().replace(/:b$/,':a')).chapter.title,'手机改过的章名');
+});
