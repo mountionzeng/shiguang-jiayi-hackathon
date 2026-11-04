@@ -210,10 +210,7 @@ Page({
     searchError: "",
     preferencesBusy: false,
     organizing: false,
-    compositionOpen: false,
     writingInstruction: "",
-    compositionInstruction: "",
-    compositionOptions: [] as Array<{label:string;instruction:string}>,
     scrollIntoView: "",
 
     // 先等档案读完再决定显示哪一屏，免得从首页进来时先闪一下「选择讲述方式」。
@@ -395,16 +392,21 @@ Page({
       if (output && !restored.saved && restored.draftText && restored.draftOrganizationMode === "cloud-ai") {
         this.pendingContribution = appendAiRevision(output, "ai", restored.draftAiText || restored.draftText, restored.draftAiTitle || restored.draftTitle, "cloud-ai");
       }
-      this.setData({messages:restored.messages, answers:restored.answers, inputText:restored.inputText,
+      // Earlier versions echoed form selections as if the user had sent a chat message.
+      // Preserve the setting privately, but do not present a generated form echo as their words.
+      const priorDirections=restored.messages.filter(item=>item.kind === "request" && item.label === "本次写法");
+      const messages=restored.messages.filter(item=>!(item.kind === "request" && item.label === "本次写法"));
+      this.setData({messages, answers:restored.answers, inputText:restored.inputText,
         askedDimensions:restored.askedDimensions.filter((item):item is InterviewDimension=>INTERVIEW_DIMENSIONS.includes(item as InterviewDimension)),
         draftTitle:restored.draftTitle,draftText:restored.draftText,draftSummary:restored.draftSummary,
-        writingInstruction:restored.messages.filter(item=>item.kind === "request" && item.label === "本次写法").slice(-1)[0]?.text || "",
+        writingInstruction:restored.writingInstruction || priorDirections.slice(-1)[0]?.text || "",
         draftLength:restored.draftText.length,tooLong:restored.draftText.length>MAX_MEMORY_LENGTH,
         draftOrganizationMode:restored.draftOrganizationMode,saved:!!output && restored.saved,
         draftAiLabel:output ? draftAiLabel(this.pendingContribution!,restored.draftText) : "",
-        stage:"chat",scrollIntoView:restored.messages[restored.messages.length-1]?.id || ""});
+        stage:"chat",scrollIntoView:messages[messages.length-1]?.id || ""});
       this.messageSeq=Math.max(0,...restored.messages.map(item=>Number(item.id.replace("msg-","")) || 0));
-      this.researchText=restored.messages.filter(item=>item.kind==="research").map(item=>item.text+"\n"+(item.sources || []).map(source=>`[${source.index}] ${source.title} ${source.url}`).join("\n")).join("\n\n");
+      if(priorDirections.length)await this.persistSession();
+      this.researchText=messages.filter(item=>item.kind==="research").map(item=>item.text+"\n"+(item.sources || []).map(source=>`[${source.index}] ${source.title} ${source.url}`).join("\n")).join("\n\n");
     } else if (source && !source.materialCaptureId && !this.materialSourceMemoryId) {
       this.pendingContribution=source;this.persistedContributionId=source.id;
       this.setData({draftText:source.text,draftTitle:source.title || "",draftLength:source.text.length,saved:true,draftAiLabel:memoryAiLabel(source)});
@@ -431,6 +433,7 @@ Page({
     const aiRevision=this.pendingContribution ? memoryAiRevisions(this.pendingContribution).filter(item=>item.kind === "ai").slice(-1)[0] : undefined;
     return {messages:this.data.messages,answers:this.data.answers,askedDimensions:this.data.askedDimensions,
       inputText:this.data.inputText,draftTitle:this.data.draftTitle,draftText:this.data.draftText,
+      ...(this.data.writingInstruction ? {writingInstruction:this.data.writingInstruction} : {}),
       draftSummary:this.data.draftSummary,draftOrganizationMode:this.data.draftOrganizationMode,
       ...(aiRevision ? {draftAiText:aiRevision.text,draftAiTitle:aiRevision.title || ""} : {}),
       outputMemoryId:this.persistedContributionId,saved:this.data.saved};
@@ -712,42 +715,6 @@ Page({
   },
 
   async finish() { await this.composeArticle(); },
-
-  chooseArticleDirection() {
-    if (this.data.sessionBlocked || this.data.captureReading || this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
-    if (!this.data.answers.length && !this.data.inputText.trim()) {
-      wx.showToast({title:"先说一点想写的内容，再一起选写法",icon:"none"});
-      return;
-    }
-    const hasMaterials = !!(this.data.sourceTranscript || this.data.sourceMaterials.length || this.materialSourceMemoryId);
-    this.setData({compositionOpen:true,compositionInstruction:this.data.writingInstruction,
-      compositionOptions:hasMaterials ? [
-        {label:"写一篇读后感",instruction:"写一篇读后感：从我读材料时的感受写起，结合材料中具体的人或事，表达我为什么想留下它。材料作者的经历不要写成我的亲历。"},
-        {label:"介绍材料中的人和事",instruction:"写一篇介绍文章：按清楚的顺序讲明材料中的人和事，注明出处，保留不确定的地方，让没看过材料的人也能读懂。"},
-        {label:"写给想分享的人",instruction:"写一篇适合分享的短文：从材料里最打动我的一点切入，用自然、好懂的语言，结合我已经说过的感受，不空泛说教。"},
-      ] : [
-        {label:"讲述一件事",instruction:"写一篇叙事短文：围绕我讲过的一件事，按事情发展组织开头、经过和结尾，保留具体细节，不补造经历。"},
-        {label:"写下我的感受",instruction:"写一篇随笔：从我明确说过的感受切入，用已经提供的人和事承载情感，语言自然，不替我补造想法。"},
-        {label:"留给家人读",instruction:"写一篇给家人看的回忆文章：用亲切、朴素的语言讲清我说过的人和事，保留关系和细节，不编造。"},
-      ]});
-  },
-  closeComposition() { this.setData({compositionOpen:false}); },
-  onCompositionInstruction(event:WechatMiniprogram.CustomEvent<{value:string}>) {
-    this.setData({compositionInstruction:event.detail.value.slice(0,300)});
-  },
-  chooseComposition(event:WechatMiniprogram.CustomEvent) {
-    const option=this.data.compositionOptions[Number(event.currentTarget.dataset.index)];
-    if(option)this.setData({compositionInstruction:option.instruction});
-  },
-  async confirmComposition() {
-    const instruction=this.data.compositionInstruction.trim();
-    if(!this.data.compositionOpen || this.data.sessionBlocked || this.data.organizing || this.data.asking || this.data.saving)return;
-    if(!instruction){wx.showToast({title:"选一个方向，或说说你想怎么写",icon:"none"});return;}
-    this.setData({writingInstruction:instruction,compositionOpen:false});
-    if(this.data.messages.filter(item=>item.kind === "request" && item.label === "本次写法").slice(-1)[0]?.text !== instruction)
-      this.pushMessage("request",instruction,"本次写法");
-    await this.composeArticle();
-  },
 
   async composeArticle() {
     if (this.data.sessionBlocked || this.data.captureReading || this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;

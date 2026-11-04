@@ -242,3 +242,11 @@ test('article guidance reads the whole dialogue and returns one clarification wi
  assert.equal(article.body,response.body);assert.equal(article.clarification,undefined);
  assert.match(request.messages[0].content,/本轮直接返回文章 JSON/);
 });
+
+
+test('legacy writing form setting survives session storage without a fake conversation turn',()=>{
+ const {snapshot}=require('../cloudfunctions/chatInterview/writingSession');
+ const result=snapshot(sessionSnapshot({writingInstruction:'写给孩子看，朴素一点'}));
+ assert.equal(result.writingInstruction,'写给孩子看，朴素一点');assert.equal(result.messages.length,2);
+ assert.throws(()=>snapshot(sessionSnapshot({writingInstruction:'字'.repeat(301)})),/WRITING_SESSION_INVALID/);
+});

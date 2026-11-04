@@ -840,9 +840,7 @@ test("tidying includes text still sitting in the composer", async (context) => {
     inputText: "这一句还在输入框里。",
   });
 
-  await callPage(page, "chooseArticleDirection");
-  page.setData({compositionInstruction:"写一篇朴素的叙事短文，不编造。"});
-  await callPage(page, "confirmComposition");
+  await callPage(page, "finish");
   assert.equal(page.data.stage, "save");
   assert.equal(page.data.inputText, "");
   assert.equal(page.data.draftText, "我已经发送了第一句话。 这一句还在输入框里。");
@@ -859,9 +857,7 @@ test("returning from organize and continuing chat unloads the newest transcript"
   const page = instantiate(await pageDefinition("interview"));
   await callPage(page, "onLoad");
   page.setData({ answers: ["第一段已经讲完。"], writingMode:"objective" });
-  await callPage(page, "chooseArticleDirection");
-  page.setData({compositionInstruction:"写一篇朴素的叙事短文，不编造。"});
-  await callPage(page, "confirmComposition");
+  await callPage(page, "finish");
   callPage(page, "backToChat");
   page.setData({ inputText: "回到聊天后又想起的一句。" });
   await callPage(page, "saveRecoverableAnswers", ["第一段已经讲完。", "回到聊天后又想起的一句。"]);
@@ -2415,9 +2411,7 @@ test("interview persist-first, manual save and archive restore keep the same mem
   const page = instantiate(await pageDefinition("interview"));
   await callPage(page, "onLoad");
   page.setData({ answers: ["小时候我喜欢在院子里听雨。"], writingMode: "objective" });
-  await callPage(page, "chooseArticleDirection");
-  page.setData({compositionInstruction:"写一篇朴素的叙事短文，不编造。"});
-  await callPage(page, "confirmComposition");
+  await callPage(page, "finish");
   const spoken = page.pendingContribution as import("../miniprogram/domain/biography").MemoryContribution;
   assert.equal(storage.roomState().contributions.find(item => item.id === spoken.id)?.text, spoken.text);
   const count = storage.roomState().contributions.length;
@@ -2522,9 +2516,7 @@ test("interview local fallback preserves persisted speech without inventing AI r
   const page = instantiate(await pageDefinition("interview"));
   await callPage(page, "onLoad");
   callPage(page, "onInput", { detail: { value: "今天想起了老家的院子。" } });
-  await callPage(page, "chooseArticleDirection");
-  page.setData({compositionInstruction:"写一篇朴素的叙事短文，不编造。"});
-  await callPage(page, "confirmComposition");
+  await callPage(page, "finish");
   const id = (page.pendingContribution as { id: string }).id;
   assert.notEqual(page.data.stage,"save","unavailable AI must not pretend a requested article was composed");
   const saved = storage.roomState().contributions.find(item => item.id === id)!;
@@ -2596,15 +2588,14 @@ test("finish() persists the spoken answer as a real memory before asking organiz
     }),
   }) };
 
-  await callPage(page, "chooseArticleDirection");
-  page.setData({compositionInstruction:"写一篇朴素的叙事短文，不编造。"});
-  await callPage(page, "confirmComposition");
+  await callPage(page, "finish");
 
   const organizeCall = calls.find(call => call.name === "organizeMemory");
   assert.ok(organizeCall, "organizeMemory must be called");
   const spoken = page.pendingContribution as import("../miniprogram/domain/biography").MemoryContribution;
   assert.equal(organizeCall!.data.memoryId, spoken.id);
-  assert.equal(organizeCall!.data.writingInstruction,"写一篇朴素的叙事短文，不编造。");
+  assert.equal(organizeCall!.data.writingInstruction,"");
+  assert.equal(organizeCall!.data.articleGuidance,true,"the system applies its writing guide without a user instruction");
   assert.doesNotMatch(spoken.text,/叙事短文/);
   // The memory existed in storage before organizeMemory was ever called, not just before finish() returned.
   const organizeCallIndex = calls.findIndex(call => call.name === "organizeMemory");
@@ -2632,9 +2623,7 @@ test("save() appends a manual revision only when the draft actually changed from
   const page = instantiate(await pageDefinition("interview"));
   await callPage(page, "onLoad");
   page.setData({ answers: ["外公在灶台前忙了一整个下午。"], writingMode: "objective" });
-  await callPage(page, "chooseArticleDirection");
-  page.setData({compositionInstruction:"写一篇朴素的叙事短文，不编造。"});
-  await callPage(page, "confirmComposition");
+  await callPage(page, "finish");
   const spoken = page.pendingContribution as import("../miniprogram/domain/biography").MemoryContribution;
   const countAfterFinish = storage.roomState().contributions.length;
 
@@ -4351,7 +4340,7 @@ test('reopened interview restores all turns and draft, and retains source contex
   WritingSession.open=async()=>({session:{rootMemoryId:root.id,canWrite:true,save:async(value:any)=>{saved=value;}} as any,snapshot:{messages,answers:['值得传承'],askedDimensions:['feeling'],inputText:'未发送',draftTitle:'整理稿',draftText:'整理的正文',draftSummary:'摘要',draftOrganizationMode:'cloud-ai',outputMemoryId:output.id,saved:true} as any});
   (wx as any).cloud={callFunction:async({name}:any)=>({result:name==='getOpenId'?{openid:'restore-session'}:{...state,roomStateVersion:1,stories:[],manuscriptRevisions:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}}})};
   const page=instantiate(await pageDefinition('interview'));await callPage(page,'onLoad',{sourceId:output.id});
-  assert.deepEqual(page.data.messages,messages);assert.equal(page.sourceText,root.text);assert.equal(page.messageSeq,6);assert.equal(page.data.writingInstruction,"写给孩子看的读后感");
+  assert.deepEqual(page.data.messages,messages.slice(0,-1));assert.equal(saved.writingInstruction,"写给孩子看的读后感");assert.deepEqual(saved.messages,messages.slice(0,-1));assert.equal(page.sourceText,root.text);assert.equal(page.messageSeq,6);assert.equal(page.data.writingInstruction,"写给孩子看的读后感");
   assert.equal(page.data.draftText,'整理的正文');assert.equal(page.data.stage,'chat');assert.equal(page.data.inputText,'未发送');
   await callPage(page,'persistSession');assert.equal(saved.outputMemoryId,output.id);await callPage(page,'organizeDraftIntoBook');
   assert.equal(last(storage.navigations),'/pages/book/book?memoryIds=session-output');
@@ -4376,31 +4365,6 @@ test('leaving a persisted interview flushes full session instead of creating a d
 });
 
 
-test('optional article direction editor waits for confirmation and cancellation keeps the draft',async context=>{
-  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
-  const page=instantiate(await pageDefinition('interview'));
-  page.setData({stage:'chat',answers:['读完之后我很感动'],inputText:'还没发的补充',sourceTranscript:'文章原文',draftText:'以前的稿子',saved:true});
-  let calls=0;page.composeArticle=async()=>{calls++;};
-  await callPage(page,'chooseArticleDirection');
-  assert.equal(page.data.compositionOpen,true);assert.equal(calls,0);
-  assert.equal((page.data.compositionOptions as any[])[0].label,'写一篇读后感');
-  await callPage(page,'confirmComposition');assert.equal(calls,0);
-  callPage(page,'chooseComposition',{currentTarget:{dataset:{index:0}}});
-  assert.match(String(page.data.compositionInstruction),/读后感/);
-  callPage(page,'closeComposition');
-  assert.equal(page.data.draftText,'以前的稿子');assert.equal(page.data.saved,true);assert.equal(page.data.inputText,'还没发的补充');
-  assert.deepEqual(page.data.messages,[]);
-  await callPage(page,'chooseArticleDirection');
-  callPage(page,'onCompositionInstruction',{detail:{value:'写给孩子看，朴素些，说明为什么值得传承。'}});
-  await callPage(page,'confirmComposition');
-  assert.equal(calls,1);assert.equal(page.data.writingInstruction,'写给孩子看，朴素些，说明为什么值得传承。');
-  assert.equal((page.data.messages as any[])[0].kind,'request');assert.equal((page.data.messages as any[])[0].label,'本次写法');
-  assert.deepEqual(page.data.answers,['读完之后我很感动']);
-  assert.equal((callPage(page,'sessionSnapshot') as any).messages[0].text,page.data.writingInstruction);
-  await callPage(page,'confirmComposition');assert.equal(calls,1,'double taps cannot generate twice');
-  await callPage(page,'chooseArticleDirection');assert.equal(page.data.compositionInstruction,page.data.writingInstruction);
-});
-
 test('failed article composition keeps previous draft and does not duplicate an unsent supplement on retry',async context=>{
   const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
   const page=instantiate(await pageDefinition('interview'));
@@ -4418,7 +4382,7 @@ test('article action directly reads known intent, and only the clarification rep
  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
  const page=instantiate(await pageDefinition('interview'));let calls=0;
  page.composeArticle=async()=>{calls++;};
- await callPage(page,'finish');assert.equal(calls,1);assert.equal(page.data.compositionOpen,false);
+ await callPage(page,'finish');assert.equal(calls,1);assert.equal(page.data.compositionOpen,undefined);
  page.setData({messages:[{id:'msg-1',kind:'followup',text:'想突出哪一面？',label:'写作方向'}],inputText:'突出传承'});
  await callPage(page,'send');assert.equal(calls,2);assert.equal(page.data.inputText,'突出传承');
 });
@@ -4447,4 +4411,14 @@ test('saving publishes native editor values to the saved-view bindings before as
  await callPage(page,'save',{stayOnPage:true});
  const frame=updates.find(update=>update.saving===true);assert.equal(frame.draftText,'手动改好的新稿');assert.equal(frame.draftTitle,'新题');
  assert.equal(storage.roomState().contributions.find(item=>item.id===original.id)!.text,'手动改好的新稿');
+});
+
+
+test('interview writing guide is automatic and has no writing-form controls or synthetic instruction sender',async()=>{
+ const page=instantiate(await pageDefinition('interview'));
+ assert.equal(page.chooseArticleDirection,undefined);assert.equal(page.confirmComposition,undefined);
+ const template=readFileSync('miniprogram/pages/interview/interview.wxml','utf8');
+ assert.doesNotMatch(template,/调整写法|compositionOpen|按这个写法整理|选择文章写法/);
+ const snapshot=callPage(page,'sessionSnapshot') as any;
+ assert.equal(snapshot.writingInstruction,undefined);assert.deepEqual(snapshot.messages,[]);
 });

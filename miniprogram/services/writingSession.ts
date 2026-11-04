@@ -4,6 +4,8 @@ export interface WritingSnapshot {
   messages:Array<{id:string;kind:'opening'|'followup'|'answer'|'research'|'request';text:string;label:string;sources?:WritingSource[]}>;
   answers:string[];askedDimensions:string[];inputText:string;draftTitle:string;draftText:string;draftSummary:string;
   draftAiText?:string;draftAiTitle?:string;
+  /** Former form choice retained without a synthetic user chat bubble. */
+  writingInstruction?:string;
   draftOrganizationMode:'cloud-ai'|'local-demo';outputMemoryId:string;saved:boolean;
 }
 interface Pending {revision:number;mutationId:string;snapshot:WritingSnapshot;}
