@@ -92,15 +92,15 @@ test("addMemoryToChapter and removeMemoryFromChapter let one memory sit in sever
   assert.deepEqual(onlyFirst.map(item => item.memoryIds), [["m1"], []]);
 });
 
-test("chapter operations keep one memory in one chapter and only append to the selected chapter", async () => {
-  const { addChapter, assignMemory, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter } = await import("../miniprogram/services/chapters");
+test("chapter operations reuse sources and only append to the selected chapter", async () => {
+  const { addChapter, addMemoryToChapter, removeMemoryFromChapter, moveChapter, placeMemoryInChapter, removeChapter, unassignedMemoryIds, updateChapter } = await import("../miniprogram/services/chapters");
   const one = { ...chapter("chapter-1", "一", "第一章正文\n", ["photo-a"]), memoryIds: ["m1", "m2"] };
   const two = { ...chapter("chapter-2", "二", "第二章正文\n"), memoryIds: ["m3"] };
   const added = addChapter([one, two], "三", ["m2"], "chapter-3");
-  assert.deepEqual(added.map(item => item.memoryIds), [["m1"], ["m3"], ["m2"]], "a memory moves instead of being copied");
+  assert.deepEqual(added.map(item => item.memoryIds), [["m1", "m2"], ["m3"], ["m2"]], "an earlier article keeps its source");
   assert.deepEqual(added[0].content, one.content);
-  assert.deepEqual(assignMemory(added, "m1", "chapter-2").map(item => item.memoryIds), [[], ["m3", "m1"], ["m2"]]);
-  assert.deepEqual(unassignedMemoryIds(assignMemory(added, "m1", ""), ["m1", "m2", "m3", "m4"]), ["m1", "m4"]);
+  assert.deepEqual(addMemoryToChapter(added, "m1", "chapter-2").map(item => item.memoryIds), [["m1", "m2"], ["m3", "m1"], ["m2"]]);
+  assert.deepEqual(unassignedMemoryIds(removeMemoryFromChapter(added, "m1", "chapter-1"), ["m1", "m2", "m3", "m4"]), ["m1", "m4"]);
   assert.deepEqual(moveChapter(added, "chapter-3", -1).map(item => item.id), ["chapter-1", "chapter-3", "chapter-2"]);
   assert.deepEqual(moveChapter(added, "chapter-1", -1).map(item => item.id), ["chapter-1", "chapter-2", "chapter-3"]);
   assert.deepEqual(removeChapter(added, "chapter-2").map(item => item.id), ["chapter-1", "chapter-3"]);
@@ -118,7 +118,7 @@ test("chapter operations keep one memory in one chapter and only append to the s
   assert.deepEqual(one.memoryIds, ["m1", "m2"], "inputs are never mutated");
 
   const placed = placeMemoryInChapter(added, { id: "m4", text: "新放进来的原始记忆。" }, "chapter-1");
-  assert.deepEqual(placed[0].memoryIds, ["m1", "m4"]);
+  assert.deepEqual(placed[0].memoryIds, ["m1", "m2", "m4"]);
   assert.deepEqual(placed[0].content, [
     { text: "第一章正文\n" },
     { photoId: "photo-a" },
@@ -133,13 +133,13 @@ test("chapter operations keep one memory in one chapter and only append to the s
 
   const repeated = placeMemoryInChapter(placed, { id: "m4", text: "新放进来的原始记忆。" }, "chapter-1");
   assert.deepEqual(repeated[0].content, placed[0].content, "placing the same memory twice does not duplicate its text");
-  const removed = assignMemory(placed, "m4", "");
+  const removed = removeMemoryFromChapter(placed, "m4", "chapter-1");
   assert.deepEqual(removed[0].content, placed[0].content, "removing a memory keeps the editable chapter text");
   const restored = placeMemoryInChapter(removed, { id: "m4", text: "新放进来的原始记忆。" }, "chapter-1");
   assert.deepEqual(restored[0].content, placed[0].content, "putting a removed memory back does not duplicate text already present");
 });
 
-test("organizing replaces only the target chapter's text, keeps its photos (even old markers) and moves the chosen memories", async () => {
+test("organizing replaces only target text, retains photos and reuses chosen memories", async () => {
   const { applyOrganized, organizedChapterTitle } = await import("../miniprogram/services/chapters");
   const [first] = chaptersOf({ ...base, paragraphs: ["前文【本机照片：photo-legacy】后文"] });
   const second = { ...chapter("chapter-2", "二", "第二章正文\n", ["photo-b"]), memoryIds: ["m1"], handEdited: true };
@@ -149,7 +149,7 @@ test("organizing replaces only the target chapter's text, keeps its photos (even
   assert.deepEqual(result.chapters[0].content, [{ text: "新正文\n" }, { photoId: "photo-legacy" }, { text: "\n" }]);
   assert.equal(result.chapters[0].title, "", "template AI titles never become chapter names");
   assert.deepEqual(result.chapters[0].memoryIds, ["m1"]);
-  assert.deepEqual(result.chapters[1], { ...second, memoryIds: [] }, "other chapters keep their text, photos and hand edits");
+  assert.deepEqual(result.chapters[1], second, "other chapters keep text, photos, hand edits and sources");
   const created = applyOrganized([first], "new", { ...ai, title: "第二章｜雨天的巷口" }, []);
   assert.equal(created.chapters.length, 2);
   assert.equal(created.chapters[1].title, "雨天的巷口");
@@ -164,4 +164,21 @@ test("chapter structure is checked before saving", () => {
   assert.throws(() => validateManuscriptDraft(draftWithChapters(base, [{ ...good, id: "../1" }])), /章节编号无效/);
   assert.throws(() => validateManuscriptDraft({ ...draftWithChapters(base, [good]), chapters: [] }), /最多 30 章/);
   assert.equal(flattenChapters([good]).paragraphs[0], "第一章　章名");
+});
+
+test('one source can form two articles and combine with another without changing either source or earlier text', async () => {
+  const {applyOrganized,placeMemoryInChapter,removeMemoryFromChapter}=await import('../miniprogram/services/chapters');
+  const source={id:'m1',text:'【虚构】雨后修桥。',photoIds:['photo-bridge']};
+  const first={...chapter('chapter-first','第一篇','已完成的读后感。'),memoryIds:['m1']};
+  const second=applyOrganized([first],'new',{...base,title:'另一篇',paragraphs:['修桥与种树的故事。']},['m1','m2','m1']);
+  assert.deepEqual(second.chapters.map(c=>c.memoryIds),[['m1'],['m1','m2']]);
+  assert.deepEqual(second.chapters[0],first);
+  const inserted=placeMemoryInChapter(second.chapters,source,second.chapterId);
+  assert.deepEqual(inserted[0],first);
+  assert.deepEqual(placeMemoryInChapter(inserted,source,second.chapterId),inserted,'repeat is idempotent');
+  const removed=removeMemoryFromChapter(inserted,'m1',second.chapterId);
+  assert.deepEqual(removed.map(c=>c.memoryIds),[['m1'],['m2']]);
+  assert.deepEqual(removed[1].content,inserted[1].content);
+  assert.deepEqual(source,{id:'m1',text:'【虚构】雨后修桥。',photoIds:['photo-bridge']});
+  assert.deepEqual(placeMemoryInChapter(inserted,source,'chapter-missing'),inserted,'missing targets cannot detach sources');
 });

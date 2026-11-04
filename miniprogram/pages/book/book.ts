@@ -33,7 +33,7 @@ import {
 import { newImageRequestId, StoryImage, storyImageApi } from "../../services/storyImageService";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import {
-  addChapter, applyOrganized, assignMemory, chapterAiLabel, chapterLabel, chaptersOf, draftWithChapters, finalizePendingRevision, moveChapter, pendingRevisionResolved, placeMemoryInChapter, proposeInlineXiaoyiInsert, removeChapter, resolvePendingEdit, unassignedMemoryIds, updateChapter,
+  addChapter, applyOrganized, removeMemoryFromChapter, chapterAiLabel, chapterLabel, chaptersOf, draftWithChapters, finalizePendingRevision, moveChapter, pendingRevisionResolved, placeMemoryInChapter, proposeInlineXiaoyiInsert, removeChapter, resolvePendingEdit, unassignedMemoryIds, updateChapter,
 } from "../../services/chapters";
 import { chapterInsertionPoints, ChapterInsertionPoint, insertChapterText } from "../../services/chapterInsertion";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -269,14 +269,15 @@ Page({
     const snapshot = this.articlePending!;
     if (!this.articleAttempt) this.articleAttempt = { requestId: `request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`,
       storyId: story.id, revisionId: this.articleBase?.revisionId ?? story.currentRevisionId,
-      expectedVersion: this.articleBase?.version ?? story.version, chapter: snapshot };
+      expectedVersion: this.articleBase?.version ?? story.version, chapter: snapshot, sourceMemoryIds:[...(snapshot.memoryIds || [])] };
     if (!this.backupArticle()) return false;
     const attempt = this.articleAttempt;
     this.articleSaving = (async () => {
       try {
         await ensurePhotoUploads(chapterPhotoIds(attempt.chapter));
         const result = await saveArticle(attempt);
-        this.story = { ...this.story!, version: result.version, currentRevisionId: result.revisionId };
+        this.story = { ...this.story!, version: result.version, currentRevisionId: result.revisionId,
+          memoryIds: [...new Set([...(this.story!.memoryIds || []), ...(attempt.chapter.memoryIds || [])])] };
         this.revisionId = result.revisionId;
         this.articleBase = { revisionId: result.revisionId, version: result.version };
         this.chapters = this.chapters.map(c => c.id === attempt.chapter.id ? attempt.chapter : c);
@@ -1403,6 +1404,7 @@ Page({
         .filter(turn => !this.xiaoyiConversation.some(previous => previous.role === 'user' && previous.text === turn.text));
       articleChatMaterial([...this.xiaoyiConversation, ...added], this.data.xiaoyiAnswer);
       this.xiaoyiConversation = [...this.xiaoyiConversation, ...added];
+      this.articleChatSourceIds = [...new Set([...this.articleChatSourceIds, ...ids])];
       for (const turn of added) xiaoyiMessagesAppend.call(this,{kind:'answer',text:turn.text,label:'加入的记忆'});
       this.setData({articleMemoryOpen:false, xiaoyiOpen:true});
       this.saveArticleChat();
@@ -1469,7 +1471,8 @@ Page({
     if(!this.articleChatLoadedKey) return;
     try { wx.setStorageSync(this.articleChatLoadedKey, {messages:this.data.xiaoyiMessages,answer:this.data.xiaoyiAnswer,
       draft:this.data.xiaoyiDraftText,instruction:this.data.xiaoyiWritingInstruction,conversation:this.xiaoyiConversation,
-      dimensions:this.xiaoyiAskedDimensions,photos:this.data.articleChatPhotos,memory:this.articleChatMemory}); }
+      dimensions:this.xiaoyiAskedDimensions,photos:this.data.articleChatPhotos,memory:this.articleChatMemory,
+      sourceMemoryIds:this.articleChatSourceIds,draftSourceMemoryIds:this.articleDraftSourceIds}); }
     catch { this.setData({xiaoyiStatus:'本机空间不足，对话还在当前页面，请先复制保存。'}); }
   },
   releaseArticleChat() {
@@ -1479,6 +1482,8 @@ Page({
     this.setData({xiaoyiStarterLoading:false});
     this.articleChatLoadedKey = '';
     this.articleChatMemory = undefined;
+    this.articleChatSourceIds = [];
+    this.articleDraftSourceIds = [];
     this.articleChatSelection = '';
     this.articleChatModuleId = '';
     this.setData({xiaoyiSelectionLabel: '已定位到当前文章'});
@@ -1491,11 +1496,15 @@ Page({
     resetXiaoyiPanel.call(this);
     this.articleChatLoadedKey=key;
     this.articleChatMemory=saved?.memory;
+    this.articleChatSourceIds=Array.isArray(saved?.sourceMemoryIds) ? saved.sourceMemoryIds.filter((id: unknown) => typeof id === 'string') : [];
+    this.articleDraftSourceIds=Array.isArray(saved?.draftSourceMemoryIds) ? saved.draftSourceMemoryIds.filter((id: unknown) => typeof id === 'string') : [];
     this.setData({xiaoyiMessages:saved?.messages || [],xiaoyiAnswer:saved?.answer || '',xiaoyiDraftText:saved?.draft || '',
       xiaoyiWritingInstruction:saved?.instruction || '',articleChatPhotos:saved?.photos || []});
     this.xiaoyiConversation=saved?.conversation || [];this.xiaoyiAskedDimensions=saved?.dimensions || [];
   },
   articleChatMemory: undefined as { key: string; memory: MemoryContribution; saved: boolean; imageRequestId?: string } | undefined,
+  articleChatSourceIds: [] as string[],
+  articleDraftSourceIds: [] as string[],
   articleChatMaterial() { return articleChatMaterial(this.xiaoyiConversation, this.data.xiaoyiAnswer); },
   recordArticleChatInput() {
     const text = this.data.xiaoyiAnswer.trim();
@@ -1735,6 +1744,7 @@ Page({
       this.setData({xiaoyiLoading:true, xiaoyiStatus:'正在把你的对话整理成文…'});
       try {
         const transcript = this.articleChatMaterial();
+        const sourceMemoryIds = [...this.articleChatSourceIds];
         if (!transcript.length) throw new Error('先和小忆说点什么，再整理成文。');
         this.recordArticleChatInput();
         const draft = await organizeInlineAnswer({answer:'', transcript, memoryType:'note', writingMode:'compose',
@@ -1743,6 +1753,7 @@ Page({
           writingInstruction:'根据所选记忆和对话生成一段文字，结合已有正文自然衔接。已有草稿时按用户最新要求修改草稿。修改要求是指令，不写进故事。不重复或改写正文，保留虚构标记，不补造事实。'});
         if (this.unloaded || key !== this.articleChatKey()) return;
         if (!draft) throw new Error('这次没有整理成功，对话还在，可以重试。');
+        this.articleDraftSourceIds = sourceMemoryIds;
         this.setData({xiaoyiDraftText:draft.body, xiaoyiStatus:'整理好了，可以修改，满意后放进文章。'});
         xiaoyiMessagesAppend.call(this,{kind:'draft',text:draft.body,label:'对话整理 · AI生成'});
       } catch(error) {
@@ -1766,6 +1777,8 @@ Page({
     if (this.data.article) {
       if (this.data.xiaoyiLoading || !text.trim()) return false;
       const chapter=appendArticleText(this.articlePending || this.data.article,text);
+      const sourceMemoryIds = kind === 'organized' ? this.articleDraftSourceIds : this.articleChatSourceIds;
+      chapter.memoryIds = [...new Set([...(chapter.memoryIds || []), ...sourceMemoryIds])];
       this.onArticleChange({detail:{chapter}});
       const ok=await this.flushArticle();
       this.setData({xiaoyiStatus:ok?'已放进文章，原来的文字保留。':'文字已保存在本机草稿，请处理保存提示。'});
@@ -2532,7 +2545,8 @@ Page({
     }
   },
   async removeFromChapter(event: { currentTarget: { dataset: { id: string } } }) {
-    await this.saveChapters(assignMemory(this.chapters, event.currentTarget.dataset.id, ""), "调整章节");
+    if (!this.activeChapterId) return;
+    await this.saveChapters(removeMemoryFromChapter(this.chapters, event.currentTarget.dataset.id, this.activeChapterId), "调整章节");
   },
   async moveActiveChapter(offset: number) {
     const chapters = moveChapter(this.chapters, this.activeChapterId, offset);
@@ -2640,11 +2654,12 @@ Page({
     const known = new Set(this.memories.map(memory => memory.id));
     this.organizeSelection = unassignedMemoryIds(this.chapters, [...known]);
     const where = new Map<string, string>();
-    visibleChapters.forEach((chapter, index) => chapter.memoryIds.forEach(id => where.set(id, "在" + chapterLabel(index + 1))));
+    visibleChapters.forEach((chapter, index) => chapter.memoryIds.forEach(id => where.set(id,
+      [where.get(id), chapterLabel(index + 1)].filter(Boolean).join("、"))));
     this.setData({
       panel: "organize", organizeTarget: active ? active.id : "new",
       organizeCount: this.organizeSelection.length,
-      organizeRows: this.organizeMemories.map(memory => ({ ...memoryRow(memory), where: where.get(memory.id) ?? "还没放进", checked: this.organizeSelection.includes(memory.id) })),
+      organizeRows: this.organizeMemories.map(memory => ({ ...memoryRow(memory), where: where.has(memory.id) ? "已用于" + where.get(memory.id) : "还没放进", checked: this.organizeSelection.includes(memory.id) })),
     });
     this.updateOrganizeTarget(this.data.organizeTarget);
   },

@@ -136,4 +136,4 @@ async function memoryExportSource(repo, ctx, input = {}) {
   return resolveFromMemory(memory, { ...ctx, ownerMemberId }, input);
 }
 
-module.exports = { memoryExportSource, resolveFromMemory, memoryIdOf };
+module.exports = { memoryExportSource, resolveFromMemory, memoryIdOf, getMemory, getOwnerMemberId };

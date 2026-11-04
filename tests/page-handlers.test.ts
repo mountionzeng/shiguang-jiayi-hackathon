@@ -4481,3 +4481,66 @@ test('cancelling article placement clears the handoff so later memory organizati
  callPage(page,'closePanel');assert.equal(page.data.articleSessionId,'');assert.equal(page.data.panel,'');
  assert.deepEqual(storage.roomState().contributions,state.contributions);
 });
+
+test('removing a source from one article preserves other articles, source memory and body text',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+ const page=instantiate(await pageDefinition('book'));
+ page.activeChapterId='chapter-two';page.chapters=[
+  {id:'chapter-one',title:'第一篇',memoryIds:['m1'],content:[{text:'第一篇正文'}]},
+  {id:'chapter-two',title:'第二篇',memoryIds:['m1','m2'],content:[{text:'第二篇正文'}]},
+ ];
+ const before=structuredClone(page.chapters) as any[];let saved:any;
+ page.saveChapters=async(chapters:any)=>{saved=chapters;return true;};
+ await callPage(page,'removeFromChapter',{currentTarget:{dataset:{id:'m1'}}});
+ assert.deepEqual(saved[0],before[0]);assert.deepEqual(saved[1].memoryIds,['m2']);assert.deepEqual(saved[1].content,before[1].content);
+ assert.deepEqual(page.chapters,before);
+});
+test('selected article sources survive chat reopening and are attached only when the draft is accepted',async context=>{
+ const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
+ const {articleChapter}=await import('../miniprogram/services/articleModules');
+ const page=instantiate(await pageDefinition('book'));page.data.storyId='story-reuse';page.activeChapterId='chapter-two';
+ page.data.article=articleChapter({id:'chapter-two',title:'第二篇',memoryIds:['earlier'],content:[{text:'已有正文'}]});
+ page.organizeXiaoyiAnswer=async()=>{page.articleDraftSourceIds=[...(page.articleChatSourceIds as string[])];page.setData({xiaoyiDraftText:'合写的一段。'});};
+ page.data.articleMemoryRows=[{id:'demo-personal-rain',checked:true}];
+ await callPage(page,'composeArticleMemories');
+ assert.deepEqual((page.data.article as any).memoryIds,['earlier']);
+ callPage(page,'releaseArticleChat');callPage(page,'restoreArticleChat');
+ assert.deepEqual(page.articleChatSourceIds,['demo-personal-rain']);
+ let pending:any;page.onArticleChange=({detail}:any)=>{pending=detail.chapter;};page.flushArticle=async()=>true;
+ await callPage(page,'xiaoyiLand','合写的一段。','organized');
+ assert.deepEqual(pending.memoryIds,['earlier','demo-personal-rain']);assert.match(JSON.stringify(pending.content),/已有正文/);
+ assert.deepEqual(storage.roomState().contributions,state.contributions);
+ callPage(page,'releaseArticleChat');page.activeChapterId='chapter-three';callPage(page,'restoreArticleChat');
+ assert.deepEqual(page.articleChatSourceIds,[],'another article does not inherit the selection');
+});
+
+test('reusing a completed memory session writes a second independent article and preserves the first on reopen',async context=>{
+ const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
+ const baseline=structuredClone(state.contributions);
+ const {WritingSession}=await import('../miniprogram/services/writingSession');const old=WritingSession.open;context.after(()=>{WritingSession.open=old;});
+ let body='第一篇完成文章。';
+ WritingSession.open=async()=>({session:{rootMemoryId:'demo-personal-rain',canWrite:true,flush:async()=>{}} as any,
+  snapshot:{draftTitle:body,draftText:body,draftOrganizationMode:'cloud-ai'} as any});
+ for(let i=0;i<2;i++){
+  const page=instantiate(await pageDefinition('book'));page.setData({articleSessionId:'demo-personal-rain'});page.requestedMemoryIds=['demo-personal-rain'];
+  await callPage(page,'refresh');callPage(page,'onOrganizeTarget',{detail:{value:'new'}});
+  await callPage(page,'runOrganize');assert.equal(page.data.panel,'organize-preview',String(page.data.saveNotice));
+  await callPage(page,'confirmOrganize');assert.equal(page.data.articleSessionId,'',String(page.data.saveNotice));
+  body='同一材料的另一篇文章。';
+ }
+ const reopened=instantiate(await pageDefinition('book'));await callPage(reopened,'refresh');
+ const chapters=(reopened.data.draft as any).chapters;
+ assert.equal(chapters.length,2);assert.deepEqual(chapters.map((c:any)=>c.memoryIds),[['demo-personal-rain'],['demo-personal-rain']]);
+ assert.equal(chapters[0].content[0].text,'第一篇完成文章。\n');assert.equal(chapters[1].content[0].text,'同一材料的另一篇文章。\n');
+ assert.deepEqual(storage.roomState().contributions,baseline);
+});
+
+test('failed composition keeps the earlier draft sources instead of linking newly selected material',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+ const page=instantiate(await pageDefinition('book'));page.data.article={content:[{text:'已有文章'}]};
+ page.data.xiaoyiDraftText='此前的成稿';page.articleDraftSourceIds=['memory-earlier'];page.articleChatSourceIds=['memory-earlier','memory-new'];
+ page.articleChatMaterial=()=>{throw new Error('材料暂不可用');};
+ await callPage(page,'organizeXiaoyiAnswer');
+ assert.deepEqual(page.articleDraftSourceIds,['memory-earlier']);assert.equal(page.data.xiaoyiDraftText,'此前的成稿');
+ assert.match(String(page.data.xiaoyiStatus),/材料暂不可用/);
+});

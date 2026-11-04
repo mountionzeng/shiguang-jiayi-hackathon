@@ -1,11 +1,13 @@
 import type { ArticleChapter } from './articleModules';
-export interface ArticleSaveRequest { requestId: string; storyId: string; revisionId: string; expectedVersion: number; chapter: ArticleChapter }
+export interface ArticleSaveRequest { requestId: string; storyId: string; revisionId: string; expectedVersion: number; chapter: ArticleChapter; sourceMemoryIds?: string[] }
 export async function saveArticle(request: ArticleSaveRequest): Promise<{ revisionId: string; version: number }> {
   if (!wx.cloud) throw new Error('请连接网络后重试');
+  // Omitted on pre-upgrade pending requests: preserve their exact wire payload for safe retries.
+  const { sourceMemoryIds, ...data } = request;
   const { chapter } = request;
-  const response = await wx.cloud.callFunction({ name: 'storyBooks', data: { ...request, action: 'articleSave', chapter: {
+  const response = await wx.cloud.callFunction({ name: 'storyBooks', data: { ...data, action: 'articleSave', chapter: {
     ...(chapter.backdropImageId !== undefined ? {backdropImageId:chapter.backdropImageId} : {}),
-    id: chapter.id, title: chapter.title, content: chapter.content.map(block => ({ blockId: block.blockId,
+    id: chapter.id, title: chapter.title, ...(sourceMemoryIds ? {memoryIds:[...new Set(sourceMemoryIds)]} : {}), content: chapter.content.map(block => ({ blockId: block.blockId,
       ...(block.parentBlockId ? { parentBlockId: block.parentBlockId } : {}),
       ...(typeof block.text === 'string' ? { text: block.text } : { photoId: block.photoId }),
     })), layout: chapter.layout, packageAssets: chapter.packageAssets || {},

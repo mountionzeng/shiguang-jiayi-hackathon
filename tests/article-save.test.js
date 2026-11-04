@@ -83,3 +83,54 @@ test('saved edit records trusted editor and change summary, ignoring forged clie
  const r=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision;
  assert.equal(r.editorName,'小禾');assert.equal(r.editedByPrincipalId,f.ctx.principalId);assert.match(r.changeSummary,/修改 1 段文字/);
 });
+
+function seedArticleMemory(f,id,patch={}){
+ f.tables.set('family_members:family_owner_owner',{familyId:'family_owner',id:'owner',memberId:'owner',role:'owner',relation:'自己'});
+ const memory={familyId:'family_owner',id,authorMemberId:'owner',scope:'personal',text:'【虚构】'+id,reviewStatus:'confirmed',...patch};
+ f.tables.set('memories:family_owner_'+id,memory);return memory;
+}
+test('article save atomically adds reusable sources, preserves originals and earlier articles across retry and reopen',async()=>{
+ const f=await setup();const m1=seedArticleMemory(f,'memory-one'),m2=seedArticleMemory(f,'memory-two');
+ const row=f.tables.get('biography_drafts:family_owner_'+f.input.revisionId);
+ row.revision.draft.chapters.push({id:'chapter-earlier',title:'旧文章',memoryIds:['memory-one'],content:[{text:'原来的文章。'}]});
+ const earlier=structuredClone(row.revision.draft.chapters[1]);
+ f.tables.get('stories:family_owner_story-article').memoryIds=['memory-one'];
+ f.input.chapter.memoryIds=['memory-one','memory-two','memory-one'];
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ const saved=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft;
+ assert.deepEqual(saved.chapters[0].memoryIds,['memory-one','memory-two']);
+ assert.deepEqual(saved.chapters[1],earlier);assert.equal(saved.sourceCount,2);
+ assert.deepEqual(f.tables.get('stories:family_owner_story-article').memoryIds,['memory-one','memory-two']);
+ assert.deepEqual(f.tables.get('memories:family_owner_memory-one'),m1);assert.deepEqual(f.tables.get('memories:family_owner_memory-two'),m2);
+ assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,options),result);
+ const legacy={...f.input,requestId:'request-legacy-001',revisionId:result.revisionId,expectedVersion:result.version,chapter:{...f.input.chapter}};
+ delete legacy.chapter.memoryIds;
+ const edited=await saveArticle(f.repo,f.ctx,legacy,options);
+ assert.deepEqual(f.tables.get('biography_drafts:family_owner_'+edited.revisionId).revision.draft.chapters[0].memoryIds,['memory-one','memory-two'],'old clients preserve associations');
+});
+test('article references may reuse the same memory in another book without moving its first link',async()=>{
+ const f=await setup();seedArticleMemory(f,'memory-shared');
+ f.tables.set('stories:family_owner_story-earlier',{familyId:'family_owner',id:'story-earlier',memoryIds:['memory-shared']});
+ const before=structuredClone(f.tables.get('stories:family_owner_story-earlier'));
+ f.input.chapter.memoryIds=['memory-shared'];await saveArticle(f.repo,f.ctx,f.input,options);
+ assert.deepEqual(f.tables.get('stories:family_owner_story-earlier'),before);
+ assert.deepEqual(f.tables.get('stories:family_owner_story-article').memoryIds,['memory-shared']);
+});
+test('unavailable or foreign sources fail atomically without changing text, source links or revisions',async()=>{
+ for(const patch of [null,{deletedAt:'today'},{familyId:'family_other'},{authorMemberId:'other'},{scope:'family'},{sourcePolicyRequired:true},{sourceIds:['received']}]){
+  const f=await setup();seedArticleMemory(f,'memory-good');if(patch)seedArticleMemory(f,'memory-bad',patch);
+  f.input.chapter.memoryIds=['memory-good','memory-bad'];const before=structuredClone(f.tables);
+  await assert.rejects(saveArticle(f.repo,f.ctx,f.input,options),{code:'STORY_NOT_FOUND'});assert.deepEqual(f.tables,before);
+ }
+});
+
+test('invalid reference lists are rejected and an existing deleted source does not prevent editing the saved article',async()=>{
+ const f=await setup();seedArticleMemory(f,'memory-one');f.input.chapter.memoryIds=['memory-one'];
+ for(const memoryIds of [['../memory'],[''],[3],{},Array(501).fill('memory-one')]){
+  await assert.rejects(saveArticle(f.repo,f.ctx,{...f.input,chapter:{...f.input.chapter,memoryIds}},options),{code:'INVALID_INPUT'});
+ }
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ f.tables.get('memories:family_owner_memory-one').deletedAt='today';
+ const edited=await saveArticle(f.repo,f.ctx,{...f.input,requestId:'request-edited-002',revisionId:result.revisionId,expectedVersion:result.version},options);
+ assert.deepEqual(f.tables.get('biography_drafts:family_owner_'+edited.revisionId).revision.draft.chapters[0].memoryIds,['memory-one']);
+});
