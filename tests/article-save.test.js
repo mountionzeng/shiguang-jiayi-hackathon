@@ -134,3 +134,14 @@ test('invalid reference lists are rejected and an existing deleted source does n
  const edited=await saveArticle(f.repo,f.ctx,{...f.input,requestId:'request-edited-002',revisionId:result.revisionId,expectedVersion:result.version},options);
  assert.deepEqual(f.tables.get('biography_drafts:family_owner_'+edited.revisionId).revision.draft.chapters[0].memoryIds,['memory-one']);
 });
+
+test('confirmed article receipt is replayed before moderation so a lost success cannot turn into a rejection',async()=>{
+ const f=await setup();const first=await saveArticle(f.repo,f.ctx,f.input,options);
+ let checks=0;
+ const rejecting={...options,approveText:async()=>{checks++;return false;}};
+ assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,rejecting),first);
+ assert.equal(checks,0);
+ await assert.rejects(saveArticle(f.repo,f.ctx,{...f.input,chapter:{...f.input.chapter,title:'不同内容'}},rejecting),{code:'VERSION_CONFLICT'});
+ const family=f.tables.get('families:family_owner');family.ownerAccountId='account_'+'0'.repeat(24);
+ await assert.rejects(saveArticle(f.repo,f.ctx,f.input,rejecting),{code:'STORY_FORBIDDEN'});
+});

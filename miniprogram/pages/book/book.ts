@@ -4,7 +4,7 @@ import { bookCoverSource } from "../../services/bookCoverSource";
 import { articleChatMaterial } from '../../services/articleChatMaterial';
 import { organizeInlineAnswer } from '../../services/memoryOrganizerService';
 import { articleChapter, addArticlePhoto, appendArticleText, type ArticleChapter } from '../../services/articleModules';
-import { saveArticle, type ArticleSaveRequest } from '../../services/articleService';
+import { saveArticle, isArticleRejected, type ArticleSaveRequest } from '../../services/articleService';
 import { mergeArticleChanges, mergeBookChanges, sameArticleContent, sameDraftValue, DraftMergeConflict } from '../../services/draftMerge';
 import { loadDraftRecovery, syncStoredArticle, syncRetainedDraft } from '../../services/draftRecovery';
 import { ensurePhotoUploads } from '../../services/photoCloud';
@@ -386,6 +386,12 @@ Page({
         });
         return true;
       } catch (error) {
+        if (isArticleRejected(error)) {
+          this.articleAttempt = null;
+          this.backupArticle();
+          // Input entered while checking must be submitted as a new request.
+          if (this.articlePending && !sameDraftValue(this.articlePending, attempt.chapter)) return true;
+        }
         if ((error as { code?: string })?.code === 'VERSION_CONFLICT') {
           this.articleConflict = true;
           this.chapterBaselineStale = true;

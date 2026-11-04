@@ -3,7 +3,7 @@ import { cachedAccountScope } from './cloudRoomStorage';
 import { loadRoomStateRemoteFirst, usesCloudStorage } from './roomRepository';
 import { activeStory, loadStoryRevision } from './storyBooks';
 import { currentManuscript, makeRevision, saveManuscriptRevision } from './manuscript';
-import { saveArticle, type ArticleSaveRequest } from './articleService';
+import { saveArticle, isArticleRejected, type ArticleSaveRequest } from './articleService';
 import type { ArticleChapter } from './articleModules';
 import { mergeArticleChanges, mergeBookChanges, sameArticleContent, sameDraftValue, DraftMergeConflict } from './draftMerge';
 import { ensurePhotoUploads } from './photoCloud';
@@ -62,6 +62,13 @@ export async function syncStoredArticle(key: string, storyId: string,
       // The acknowledgement was for an older request; keep edits entered afterwards.
       wx.setStorageSync(key,{...saved,revisionId:result.revisionId,storyVersion:result.version,attempt:null,conflict:true});
     } catch(error) {
+      if (isArticleRejected(error)) {
+        // A different editor may have saved newer input while this request ran.
+        if (!unchanged()) continue;
+        wx.setStorageSync(key,{...saved,attempt:null});
+        if (!sameDraftValue(saved.chapter,attempt.chapter)) continue;
+        throw error;
+      }
       if ((error as {code?:string})?.code !== 'VERSION_CONFLICT') throw error;
       if (unchanged()) wx.setStorageSync(key,{...saved,conflict:true});
       if (tries===3) throw error;

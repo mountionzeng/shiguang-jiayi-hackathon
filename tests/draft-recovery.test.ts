@@ -116,3 +116,36 @@ test('retained draft persists its pending request before an interrupted save and
  assert.deepEqual(f.stored.get('backup:retained'),[]);
  assert.equal(f.stored.get('shiguang-family-room-v5').manuscriptRevisions.filter((r:any)=>r.id===pending.id).length,1);
 });
+
+test('a closed chapter replaces a definitively rejected attempt with newer saved input',async()=>{
+ const f=await server(),chapter=article();chapter.title='用户改好的标题';
+ const attempt={requestId:'request-rejected-001',storyId:f.story.id,revisionId:'revision-new',expectedVersion:2,chapter:{...chapter,title:'被拒绝的旧标题'}};
+ f.stored.set('draft',{revisionId:'revision-new',storyVersion:2,chapter,attempt});
+ const call=(wx as any).cloud.callFunction;
+ (wx as any).cloud.callFunction=async(input:any)=>input.data.requestId===attempt.requestId
+   ? {result:{error:'STORY_BOOK_ERROR',code:'CONTENT_REJECTED',message:'文字未通过内容检查'}} : call(input);
+ await syncStoredArticle('draft',f.story.id,f.load);
+ assert.equal(f.read(f.latest().currentRevisionId).chapters[0].title,chapter.title);
+ assert.equal(f.stored.has('draft'),false);
+});
+
+
+test('rejection during a concurrent local update preserves and saves the newer chapter',async()=>{
+ const f=await server(),chapter={...article(),title:'第一稿'};
+ f.stored.set('draft',{revisionId:'revision-new',storyVersion:2,chapter});
+ const call=(wx as any).cloud.callFunction;let first=true;
+ (wx as any).cloud.callFunction=async(input:any)=>{
+   if(first){first=false;const saved=f.stored.get('draft');f.stored.set('draft',{...saved,chapter:{...saved.chapter,title:'请求期间的新输入'}});return {result:{error:'STORY_BOOK_ERROR',code:'CONTENT_REJECTED',message:'拒绝'}};}
+   if(input.data.chapter.title==='第一稿')return {result:{error:'STORY_BOOK_ERROR',code:'CONTENT_REJECTED',message:'拒绝'}};
+   return call(input);
+ };
+ await syncStoredArticle('draft',f.story.id,f.load);
+ assert.equal(f.read(f.latest().currentRevisionId).chapters[0].title,'请求期间的新输入');assert.equal(f.stored.has('draft'),false);
+});
+
+test('an unchanged rejected draft stays local without looping or falsely confirming it',async()=>{
+ const f=await server(),chapter=article();f.stored.set('draft',{revisionId:'revision-new',storyVersion:2,chapter});let calls=0;
+ (wx as any).cloud.callFunction=async()=>{calls++;return {result:{error:'STORY_BOOK_ERROR',code:'MODERATION_REVIEW',message:'需复核'}};};
+ await assert.rejects(syncStoredArticle('draft',f.story.id,f.load),{code:'MODERATION_REVIEW'});
+ assert.equal(calls,1);assert.equal(f.stored.get('draft').attempt,null);assert.deepEqual(f.stored.get('draft').chapter,chapter);assert.equal(f.latest().version,2);
+});

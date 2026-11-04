@@ -468,3 +468,39 @@ test('returning to the page automatically retries a pending offline article with
  assert.equal(requests.length,1);assert.equal(p.articlePending,null);assert.equal(stored.has(p.articleKey()),false);
  assert.equal(p.chapters[0].content[0].text,'断网时写下的完整正文');
 });
+
+test('a rejected article request does not pin later corrected text to its old payload', async () => {
+  const {p,stored,requests}=await setup();
+  (wx as any).cloud.callFunction=async ({data}:any)=>{
+    requests.push(data);
+    return data.chapter.content[0].text==='第一份待修改的原稿'
+      ? {result:{error:'STORY_BOOK_ERROR',code:'CONTENT_REJECTED',message:'文字未通过内容检查'}}
+      : {result:{revisionId:'revision-corrected',version:3}};
+  };
+  await open(p,'a'); type(p,'第一份待修改的原稿');
+  assert.equal(await p.flushArticle(),false);
+  type(p,'用户已经改好的最新文字');
+  assert.equal(await p.flushArticle(),true);
+  assert.equal(requests[requests.length-1].chapter.content[0].text,'用户已经改好的最新文字');
+  assert.notEqual(requests[requests.length-1].requestId,requests[0].requestId);
+  assert.equal(stored.has(p.articleKey()),false);
+});
+
+
+test('new input during a rejection is saved automatically while unchanged review stays local',async()=>{
+ const {p,stored,requests}=await setup();await open(p,'a');type(p,'等待检测的原稿');
+ let release:any;
+ (wx as any).cloud.callFunction=async({data}:any)=>{
+   requests.push(data);
+   if(requests.length===1)return new Promise(resolve=>{release=()=>resolve({result:{error:'STORY_BOOK_ERROR',code:'MODERATION_REVIEW',message:'需复核'}});});
+   return {result:{revisionId:'revision-latest',version:3}};
+ };
+ const saving=p.flushArticle();while(!release)await Promise.resolve();type(p,'检测期间继续写的最新稿');release();
+ assert.equal(await saving,true);assert.equal(requests.length,2);assert.equal(requests[1].chapter.content[0].text,'检测期间继续写的最新稿');
+ assert.notEqual(requests[0].requestId,requests[1].requestId);assert.equal(stored.has(p.articleKey()),false);
+ type(p,'仍需复核的稿子');let rejectedCalls=0;
+ (wx as any).cloud.callFunction=async()=>{rejectedCalls++;return {result:{error:'STORY_BOOK_ERROR',code:'MODERATION_REVIEW',message:'需复核'}};};
+ assert.equal(await p.flushArticle(),false);assert.equal(rejectedCalls,1);assert.equal(p.articleAttempt,null);
+ assert.equal(stored.get(p.articleKey()).chapter.content[0].text,'仍需复核的稿子');
+ assert.match(p.data.articleStatus,/需复核/);
+});

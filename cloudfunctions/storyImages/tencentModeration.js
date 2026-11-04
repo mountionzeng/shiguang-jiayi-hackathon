@@ -132,11 +132,15 @@ async function moderateTextWithTencent({ content, dataId, env = process.env, cli
     ...(config.bizType ? { BizType: config.bizType } : {}),
   };
   const response = await runtimeClient.TextModeration(request);
-  const suggestion = String(response && response.Suggestion || "Review");
+  const suggestion = String(response && response.Suggestion || "");
+  if (!["pass", "review", "block"].includes(suggestion.toLowerCase())) {
+    return { available: false, reason: "invalid-verdict" };
+  }
   return {
     available: true,
     status: suggestion.toLowerCase() === "pass" ? "pass" : "reject",
     suggestion,
+    ...(response.RequestId ? { traceId: response.RequestId } : {}),
     provider: "tencent-tms",
   };
 }

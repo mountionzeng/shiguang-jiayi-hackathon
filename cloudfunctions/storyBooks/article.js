@@ -50,10 +50,18 @@ function moduleChanges(before,after){
 }
 async function saveArticle(repo,ctx,raw,{approveText,approveImage,approveBackdrop,now=()=>new Date().toISOString()}={}){
   const input=normalize(raw),stamp=now(),receipt='article-'+hash([ctx.principalId,input.requestId]),fingerprint=hash(input);
+  await repo.ensureCollection?.('story_chapter_edits');
+  // An immutable acknowledgement is authoritative even if the checker is now
+  // unavailable or returns a different verdict. Never mislabel a committed save.
+  const confirmed=await repo.get('story_chapter_edits',receipt);
+  if(confirmed){
+    await assertSpaceOwner(repo,ctx);
+    if(confirmed.familyId!==ctx.familyId||confirmed.fingerprint!==fingerprint)fail('保存请求已经改变','VERSION_CONFLICT');
+    return confirmed.result;
+  }
   if(typeof approveText!=='function'||typeof approveImage!=='function')fail('内容检查暂时不可用','MODERATION_UNAVAILABLE');
   if(!await approveText([input.chapter.title,...input.chapter.content.map(b=>b.text||'')].join('\n'),ctx.verifiedOpenid,'文章'))fail('文字未通过内容检查','CONTENT_REJECTED');
   const ownerMemberId=input.chapter.memoryIds?.length ? await getOwnerMemberId(repo,ctx.familyId) : undefined;
-  await repo.ensureCollection?.('story_chapter_edits');
   return repo.transaction(async tx=>{
     await assertSpaceOwner(tx,ctx);
     const prior=await tx.get('story_chapter_edits',receipt);

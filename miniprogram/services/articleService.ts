@@ -1,5 +1,10 @@
 import type { ArticleChapter } from './articleModules';
 export interface ArticleSaveRequest { requestId: string; storyId: string; revisionId: string; expectedVersion: number; chapter: ArticleChapter; sourceMemoryIds?: string[] }
+// These replies confirm that this attempt was not accepted. Network/unknown
+// failures must keep the original payload and request id for receipt recovery.
+export function isArticleRejected(error: unknown): boolean {
+  return ['CONTENT_REJECTED', 'MODERATION_REVIEW'].includes((error as { code?: string })?.code || '');
+}
 export async function saveArticle(request: ArticleSaveRequest): Promise<{ revisionId: string; version: number }> {
   if (!wx.cloud) throw new Error('请连接网络后重试');
   // Omitted on pre-upgrade pending requests: preserve their exact wire payload for safe retries.

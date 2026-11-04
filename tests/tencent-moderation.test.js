@@ -92,3 +92,12 @@ test("Tencent paid moderation can resolve short-lived CloudBase credentials", as
     expiresAtMs: 2_000_000_000_000,
   });
 });
+
+
+test("Tencent adapter does not manufacture a verdict for incomplete responses", async () => {
+  for (const response of [{}, { Suggestion: "Unknown" }]) {
+    const result = await moderation.moderateTextWithTencent({ content: "正文", env: { AI_PAID_MODERATION_ENABLED: "true" }, client: { TextModeration: async () => response } });
+    assert.equal(result.available, false);
+    assert.equal(result.reason, "invalid-verdict");
+  }
+});

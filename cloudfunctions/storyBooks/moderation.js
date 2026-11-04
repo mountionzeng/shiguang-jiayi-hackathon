@@ -1,75 +1,96 @@
 const {moderateTextWithTencent}=require('./tencentModeration');
 const OPENID=/^[0-9A-Za-z_-]{1,128}$/;
-/*
- * 内容安全检测的三态语义（2026-09-20 修正）：
- *   true  —— 内容通过
- *   false —— 内容确实违规，用户改文字可以解决
- *   抛错  —— 检测服务本身故障，用户改多少遍都没用
- *
- * 原实现把后两种都返回 false，四个调用点一律按 `!== true` 提示
- * 「这段内容没有通过内容安全检测，请修改后重试」。于是 security 接口没配置、
- * openid 取不到、msgSecCheck 超时，全被说成是用户写的东西违规，而且不留日志。
- * 系统的故障不能说成用户的错，所以故障改为抛 MODERATION_UNAVAILABLE 并打日志。
- */
-function unavailable(reason,detail){
-  console.error('[moderation] 内容安全检测不可用：',reason,detail||'');
-  throw Object.assign(new Error('内容安全检测暂时不可用，请稍后再试'),{code:'MODERATION_UNAVAILABLE'});
+// pass / explicit rejection / review / service failure are different outcomes.
+// Only service failures may use a fallback. No raw errors, text or openids in logs.
+function providerCode(value){
+  const code=value?.errCode ?? value?.errcode ?? value?.code;
+  if (/^-?\d{1,8}$/.test(String(code))) return Number(code);
+  const match=String(value?.errMsg || value?.message || value?.error || '').match(/\berrCode\s*[:=]\s*(-?\d{1,8})\b/i);
+  return match ? Number(match[1]) : undefined;
+}
+function diagnostic(provider,verdict,response){
+  const trace=String(response?.traceId || response?.trace_id || '');
+  const label=response?.result?.label ?? response?.label;
+  console.warn('[moderation]',{provider,verdict,
+    ...(providerCode(response)!==undefined?{code:providerCode(response)}:{}),
+    ...(/^[\w-]{1,128}$/.test(trace)?{traceId:trace}:{}),
+    ...(Number.isInteger(label)?{label}:{})});
+}
+function unavailable(provider,response){
+  diagnostic(provider,'unavailable',response);
+  throw Object.assign(new Error('内容检查服务暂时不可用，草稿已保留，请稍后重试'),{code:'MODERATION_UNAVAILABLE'});
+}
+function verdict(suggest,provider,response){
+  if(suggest==='pass')return true;
+  if(suggest==='risky'||suggest==='reject'||suggest==='block'){
+    diagnostic(provider,'reject',response);return false;
+  }
+  if(suggest==='review'){
+    diagnostic(provider,'review',response);
+    throw Object.assign(new Error('内容检查返回“需复核”，尚未确认通过；草稿已保留，暂未同步'),{code:'MODERATION_REVIEW'});
+  }
+  unavailable(provider,response);
 }
 function interpretResponse(response){
-  return response?.result?.suggest==='pass';
+  const code=providerCode(response);
+  if(code===87014)return verdict('risky','wechat',response);
+  if(code)unavailable('wechat',response);
+  return verdict(response?.result?.suggest,'wechat',response);
 }
-async function checkWithSharedFunction(callFunction,{content,title,scene,openid}){
-  if(typeof callFunction!=='function')unavailable('云开发 security 接口不可用');
+async function checkWithSharedFunction(callFunction,input){
+  if(typeof callFunction!=='function')unavailable('shared');
   let response;
   try{
-    response=await callFunction({name:'contentSecurityCheck',data:{content,scene,openid,...(title?{title}:{})}});
+    response=await callFunction({name:'contentSecurityCheck',data:input});
   }catch(error){
-    unavailable('共享内容安全云函数调用失败',error?.message||error?.errMsg||error);
+    if(providerCode(error)===87014)return verdict('risky','shared',error);
+    unavailable('shared',error);
   }
   const result=response?.result;
-  if(result?.ok===true)return true;
-  if(result?.error)unavailable('共享内容安全云函数不可用',result.error);
-  return false;
+  if(providerCode(result)===87014)return verdict('risky','shared',result);
+  if(result?.error || providerCode(result))unavailable('shared',result);
+  if(result?.ok===true && (!result.suggest || result.suggest==='pass'))return true;
+  if(result?.ok!==false || result.suggest==='pass')unavailable('shared',result);
+  return verdict(result.suggest,'shared',result);
 }
 async function checkWithFallback(callFunction,input,paidModeration){
   try { return await checkWithSharedFunction(callFunction,input); }
   catch(error){
     if(error?.code!=='MODERATION_UNAVAILABLE')throw error;
+    let result;
     try{
-      const result=await paidModeration({content:input.title ? `${input.title}\n${input.content}` : input.content});
-      if(result?.available===true)return result.status==='pass';
-    }catch(paidError){
-      console.warn('[moderation] paid-provider-unavailable', {code:String(paidError?.code || 'UNAVAILABLE').slice(0,80)});
-    }
-    throw error;
+      result=await paidModeration({content:input.title ? `${input.title}\n${input.content}` : input.content});
+    }catch(paidError){unavailable('tencent-tms',paidError);}
+    if(result?.available!==true)unavailable('tencent-tms');
+    // The shared adapter retains reject status for compatibility with AI callers;
+    // its original suggestion distinguishes Review from Block here.
+    return verdict(String(result.suggestion ?? result.status ?? '').toLowerCase(),'tencent-tms',result);
   }
 }
 function createTextModerator(security,callFunction,paidModeration=moderateTextWithTencent){
   return async (text,openid,title)=>{
-    if(!OPENID.test(openid || ''))unavailable('调用方 openid 无效');
+    if(!OPENID.test(openid || ''))unavailable('identity');
     const content=Array.from(String(text || '').trim());
     if(!content.length)return true;
     const safeTitle=Array.from(String(title || '').trim()).slice(0,100).join('');
-    try{
-      for(let offset=0;offset<content.length;offset+=2500){
-        const chunk=content.slice(offset,offset+2500).join('');
-        let passed;
-        if(security && typeof security.msgSecCheck==='function'){
-          try{
-            passed=interpretResponse(await security.msgSecCheck({content:chunk,version:2,scene:4,openid,...(safeTitle?{title:safeTitle}:{})}));
-          }catch(error){
-            passed=await checkWithFallback(callFunction,{content:chunk,title:safeTitle,scene:4,openid},paidModeration);
-          }
-        }else{
-          passed=await checkWithFallback(callFunction,{content:chunk,title:safeTitle,scene:4,openid},paidModeration);
+    for(let offset=0;offset<content.length;offset+=2500){
+      const input={content:content.slice(offset,offset+2500).join(''),scene:4,openid,...(safeTitle?{title:safeTitle}:{})};
+      let passed;
+      if(security && typeof security.msgSecCheck==='function'){
+        try{
+          passed=interpretResponse(await security.msgSecCheck({...input,version:2}));
+        }catch(error){
+          if(error?.code==='MODERATION_REVIEW')throw error;
+          if(providerCode(error)===87014)return verdict('risky','wechat',error);
+          if(error?.code!=='MODERATION_UNAVAILABLE')diagnostic('wechat','unavailable',error);
+          passed=await checkWithFallback(callFunction,input,paidModeration);
         }
-        if(passed!==true)return false;
+      }else{
+        passed=await checkWithFallback(callFunction,input,paidModeration);
       }
-      return true;
-    }catch(error){
-      if(error?.code==='MODERATION_UNAVAILABLE')throw error;
-      unavailable('msgSecCheck 调用失败',error?.message||error);
+      if(passed!==true)return false;
     }
+    return true;
   };
 }
 module.exports={createTextModerator};
