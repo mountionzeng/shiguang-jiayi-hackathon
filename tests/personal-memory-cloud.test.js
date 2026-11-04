@@ -233,6 +233,8 @@ test('article guidance reads the whole dialogue and returns one clarification wi
  assert.equal(question.body,'');assert.equal(question.clarification,response.clarification);
  assert.match(request.messages[1].content,/最初的关切不能被最后十轮截掉/);
  assert.match(request.messages[0].content,/前因、经过、结果/);assert.match(request.messages[0].content,/已经问过并得到回答的内容不得再问/);
+ assert.match(request.messages[0].content,/交代为何发生和结果/);assert.match(request.messages[0].content,/不声称/);
+ await assert.rejects(organizeCloud.main({...event,sourceOnly:false},{cloud:f.cloud,nowMs:Date.now()+5000}),/INVALID_ARTICLE_GUIDANCE_MODE/);
  event.conversation.push({role:'assistant',content:'[写作方向] '+response.clarification},{role:'user',content:'写读书时的感受'});
  await assert.rejects(organizeCloud.main(event,{cloud:f.cloud,nowMs:Date.now()+10000}),/EMPTY_MODEL_OUTPUT/);
  response={title:'书店',body:'我走进书店，想把这一刻的感受留下。'};

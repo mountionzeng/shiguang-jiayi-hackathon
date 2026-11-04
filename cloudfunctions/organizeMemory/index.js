@@ -284,6 +284,7 @@ async function main(event, dependencies = {}) {
   const memberName = sanitizeText(source.memberName, 40) || "讲述者";
   const storyTitle = sanitizeText(source.storyTitle, 40);
   const writing = writingContext(event);
+  if(event.articleGuidance === true && (writing.mode !== "compose" || event.sourceOnly !== true || event.inlineAnswer === true))throw new Error("INVALID_ARTICLE_GUIDANCE_MODE");
   const brief = organizationBrief(memoryType, source.inlineAnswer === true, writing.mode);
   if (materialReading) brief.system += ' 本次提供了独立标记的材料原文，可据此提炼内容并结合用户明确表达的感受成文；注明原文出处，材料中的第一人称属于材料作者，不能写成用户经历。画面描述不是正文资料。不要把“还没想好怎么写”等对助手的要求写成故事内容。没有可用文字和用户内容时不得用书页外观凑成稿。按本次 instruction 确认的文章类型、读者、主题和语气组织成文；读后感围绕用户感受结合原文，介绍文章围绕材料事实，叙事文章围绕已有事件。不一律压成摘要，不把写作要求写进正文。未指定体裁时从已知目的选择合适的写法，篇幅按表达需要安排；不设最低字数，不必概括每一页或逐项列出材料。body包含标点和换行在内不得超过500个字符，输出前检查长度。';
   const directionQuestionIndex = writing.conversation.map(item=>item.role === "assistant" && item.content.startsWith("[写作方向]")).lastIndexOf(true);
