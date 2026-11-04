@@ -58,7 +58,7 @@
     <button wx:if="{{panel === 'source-revision'}}" class="tool-button save-button" bindtap="saveProtectedRevision" disabled="{{protectedRevisionSaving}}">{{protectedRevisionSaving ? '保存中…' : '保存修订'}}</button>
   </view>
   <view class="book-generation" wx:if="{{loading && !draft && !loadError && !openingChapter}}"><generation-status text="正在打开这本书…" /></view>
-  <view class="book-generation" wx:if="{{generating}}"><generation-status text="正在整理正文，完成后可以先预览…" /></view>
+  <view class="book-generation" wx:if="{{generating}}"><generation-status text="{{articleSessionId ? '正在准备文章预览…' : '正在整理正文，完成后可以先预览…'}}" /></view>
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
   <scroll-view class="reading-panel contents-view" scroll-y="{{!draggingChapterId}}" hidden="{{openingChapter || !draft || panel || view !== 'contents'}}">
     <view class="panel-content contents-content">
@@ -473,9 +473,9 @@
     <button class="tool-button save-button add-chapter" data-action="new-chapter" bindtap="selectTool"><view class="action-icon icon-new" aria-hidden="true"></view>新开第一章</button>
   </view>
   <view class="organize-footer" wx:if="{{panel === 'organize' || panel === 'organize-preview'}}">
-    <view class="organize-summary">{{panel === 'organize' ? ('已选 ' + organizeCount + ' 段记忆 · ' + organizeBookTitle) : '先看看文字，满意后再写入'}}</view>
+    <view class="organize-summary">{{panel === 'organize' ? ((articleSessionId ? '当前文章' : '已选 ' + organizeCount + ' 段记忆') + ' · ' + organizeBookTitle) : '先看看文字，满意后再写入'}}</view>
     <view class="organize-footer-actions">
-      <button class="tool-button" bindtap="closePanel" disabled="{{saving || confirmingOrganize || generating || switchingBook}}">暂不整理</button>
+      <button class="tool-button" bindtap="closePanel" disabled="{{saving || confirmingOrganize || generating || switchingBook}}">{{articleSessionId ? '稍后再放' : '暂不整理'}}</button>
       <button wx:if="{{panel === 'organize'}}" class="tool-button workflow-next" bindtap="runOrganize" disabled="{{saving || confirmingOrganize || generating || switchingBook || !organizeCount}}">{{switchingBook ? '正在切换…' : generating ? '正在整理…' : '下一步：预览正文'}}</button>
       <button wx:else class="tool-button workflow-next" bindtap="confirmOrganize" disabled="{{saving || confirmingOrganize || generating}}">{{(saving || confirmingOrganize) ? '正在写入…' : '确认写入正文'}}</button>
     </view>

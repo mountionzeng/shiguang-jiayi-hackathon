@@ -1209,7 +1209,7 @@ Page({
       this.setData({ historyLoading: false, saveNotice: error instanceof Error ? error.message : "历史版本暂时加载失败，请重试" });
     }
   },
-  closePanel() { if (this.data.generating || this.data.saving || this.data.confirmingOrganize || this.data.appendingOwn || this.data.connectionSaving) return; this.connectionEpoch++; this.setData({ connectionBusy: false }); this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
+  closePanel() { if (this.data.generating || this.data.saving || this.data.confirmingOrganize || this.data.appendingOwn || this.data.connectionSaving) return; this.connectionEpoch++; this.setData({ connectionBusy: false }); this.organizeCandidate = undefined; if (!this.data.saving) this.setData({ panel: "", articleSessionId:"", showHistory: false, showSources: false, previewVersion: null, assignMemoryId: "" }); },
   showMore() {
     if (this.data.saving || this.data.generating || this.data.pickingPhoto) return;
     wx.hideKeyboard();

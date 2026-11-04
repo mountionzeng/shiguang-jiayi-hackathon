@@ -4473,3 +4473,11 @@ test('article handoff refuses unavailable or conflicting drafts instead of falli
  await callPage(page,'runOrganize');assert.equal(page.data.panel,'organize');assert.match(String(page.data.saveNotice),/尚未同步/);
  assert.equal(page.organizeCandidate,undefined);assert.equal(storage.roomState().manuscriptRevisions,undefined);
 });
+
+
+test('cancelling article placement clears the handoff so later memory organization is independent',async context=>{
+ const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
+ const page=instantiate(await pageDefinition('book'));page.setData({panel:'organize',articleSessionId:'demo-personal-rain'});
+ callPage(page,'closePanel');assert.equal(page.data.articleSessionId,'');assert.equal(page.data.panel,'');
+ assert.deepEqual(storage.roomState().contributions,state.contributions);
+});
