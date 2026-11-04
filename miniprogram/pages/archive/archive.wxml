@@ -9,7 +9,7 @@
   <view class="archive-empty" wx:if="{{loadError}}">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
   <view class="memory-editor" wx:if="{{editingId}}">
     <view class="memory-document-card">
-      <view class="editor-label">正在阅读已保存的记忆</view>
+      <view class="memory-document-tools"><view class="editor-label">正在阅读已保存的记忆</view><button class="memory-delete-visible" data-id="{{editingId}}" data-title="{{editTitle}}" bindtap="deleteMemory" disabled="{{savingPhotos || savingEdit || organizingPreview || chatAsking || !!deletingItemId}}">删除这段记忆</button></view>
       <view class="memory-document-title serif">{{editTitle || '一段记忆'}}</view>
       <view class="ai-label" wx:if="{{editAiLabel}}">{{editAiLabel}}</view>
       <view class="memory-document-text serif">{{editText}}</view>
@@ -169,12 +169,13 @@
             <view class="note-title serif">{{item.title}}</view>
             <view class="note-excerpt">{{item.excerpt}}</view>
             <view class="note-archive">{{item.archiveLabel}} · 点开阅读全文</view>
+            <view class="note-visible-actions"><button class="memory-delete-visible" data-id="{{item.id}}" data-title="{{item.title}}" catchtap="deleteMemory" disabled="{{savingPhotos || !!deletingItemId}}" aria-label="删除记忆：{{item.title}}">删除</button></view>
           </view>
         </view>
       </view>
     </block>
     <view class="archive-empty" wx:else><view class="archive-empty-title serif">从一句话开始</view><view class="archive-empty-note">随手记和慢慢聊留下的记录，都在这里。</view></view>
-    <view class="archive-version-note">点开可编辑与归类，左滑可删除。删掉的记忆在人生之书的「最近删除」里，可以恢复。</view>
+    <view class="archive-version-note">点开可编辑与归类，点「删除」可移入最近删除，也可左滑删除。删掉的记忆在人生之书的「最近删除」里，可以恢复。</view>
     <button class="btn btn-jade record-button" bindtap="startRecording">记录一段记忆</button>
   </block>
 </view>

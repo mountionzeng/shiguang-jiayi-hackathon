@@ -1068,11 +1068,11 @@ Page({
   }) {
     const contributionId = event.currentTarget.dataset.id || "";
     const title = event.currentTarget.dataset.title || "这条记忆";
-    if (!contributionId || this.data.deletingItemId) return;
+    if (!contributionId || this.data.deletingItemId || this.data.savingPhotos || this.data.savingEdit || this.data.organizingPreview || this.data.chatAsking) return;
 
     wx.showModal({
       title: "删除记忆",
-      content: `删除「${title}」吗？它会放进人生之书的「最近删除」，随时可以恢复；已经写进书里的文字不受影响。`,
+      content: `删除「${title}」吗？它会放进人生之书的「最近删除」，随时可以恢复；已经写进书里的文字不受影响。${this.data.editingId === contributionId && this.hasUnsavedEditorWork() ? "本页尚未保存的修改和对话将放弃。" : ""}`,
       confirmText: "删除",
       confirmColor: "#c54d3f",
       success: (result) => {
@@ -1087,7 +1087,8 @@ Page({
     try {
       await softDeleteMemoryRemoteFirst(contributionId);
       this.setData({ swipedItemId: "", deletingItemId: "" });
-      await this.refresh();
+      if (this.data.editingId === contributionId) this.discardEditor();
+      else await this.refresh();
       wx.showToast({ title: "已放进最近删除", icon: "none" });
     } catch (error) {
       this.setData({ deletingItemId: "" });

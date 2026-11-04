@@ -4225,3 +4225,40 @@ test('article opening requests one source-bound AI starter without consuming inp
   await callPage(page,'openXiaoyi');
   assert.equal(calls.filter(item=>item.name==='chatInterview').length,2);
 });
+
+test('book management deletes the chosen shelf row and cancel keeps all books and memories', async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition('stories')); await callPage(page, 'refresh');
+  const event = {currentTarget:{dataset:{key:'story:外公接我放学'}}};
+  callPage(page, 'toggleBookManagement'); assert.equal(page.data.managingBooks, true);
+  let confirmation: any;
+  (wx as any).showModal = (options: any) => { confirmation = options; };
+  const canceled = callPage(page, 'deleteSelectedStory', event);
+  assert.match(confirmation.title, /外公接我放学/);
+  assert.equal(page.data.deletingStoryKey, 'story:外公接我放学');
+  await callPage(page, 'deleteSelectedStory', event);
+  confirmation.success({confirm:false}); await canceled;
+  assert.equal(page.data.deletingStoryKey, '');
+  assert.equal(storage.roomState().deletedStories?.length || 0, 0);
+  const deleted = callPage(page, 'deleteSelectedStory', event);
+  await confirmation.success({confirm:true}); await deleted;
+  assert.ok(storage.roomState().deletedStories?.some(item => item.key === event.currentTarget.dataset.key));
+  assert.ok(storage.roomState().contributions.some(item => item.id === 'demo-personal-rain' && !item.deletedAt));
+  assert.equal(page.data.deletingStoryKey, '');
+});
+
+test('visible memory deletion closes the removed document and blocks deletion during a write', async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition('archive')); await callPage(page, 'refresh');
+  const memory = storage.roomState().contributions.find(item => item.id === 'demo-personal-rain')!;
+  callPage(page, 'showEditor', memory);
+  let modals = 0;
+  (wx as any).showModal = () => { modals++; };
+  page.setData({savingEdit:true});
+  callPage(page, 'deleteMemory', {currentTarget:{dataset:{id:memory.id,title:memory.text}}});
+  assert.equal(modals, 0);
+  page.setData({savingEdit:false});
+  await callPage(page, 'confirmDeleteMemory', memory.id);
+  assert.equal(page.data.editingId, '');
+  assert.ok(storage.roomState().contributions.find(item => item.id === memory.id)?.deletedAt);
+});

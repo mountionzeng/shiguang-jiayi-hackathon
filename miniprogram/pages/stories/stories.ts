@@ -56,6 +56,8 @@ Page({
   data: {
     stories: [] as StoryRow[],
     deletedStories: [] as DeletedStoryRow[],
+    managingBooks: false,
+    deletingStoryKey: "",
     trashOpen: false,
     trashLoading: false,
     deletedItems: [] as DeletedItemRow[],
@@ -157,17 +159,24 @@ Page({
   },
   openSelectedManuscript() { this.openManuscript(this.data.selectedKey); },
   backToStories() { this.setData({ selectedKey: "", selectedTitle: "", selectedBookTitle: "", memories: [] }); },
-  deleteSelectedStory() {
-    const key = this.data.selectedKey;
-    const title = this.data.selectedTitle;
-    if (!key || !title) return Promise.resolve();
+  toggleBookManagement() {
+    if (!this.data.deletingStoryKey) this.setData({ managingBooks: !this.data.managingBooks });
+  },
+  deleteSelectedStory(event?: { currentTarget: { dataset: { key?: string } } }) {
+    const requestedKey = event?.currentTarget.dataset.key;
+    const row = requestedKey ? this.data.stories.find(story => story.key === requestedKey) : undefined;
+    if (requestedKey && !row) return Promise.resolve();
+    const key = row?.key || this.data.selectedKey;
+    const title = row?.title || this.data.selectedTitle;
+    if (!key || !title || this.data.deletingStoryKey) return Promise.resolve();
+    this.setData({ deletingStoryKey: key });
     return new Promise<void>((resolve) => wx.showModal({
       title: `删除「${title}」？`,
       content: "故事会进入最近删除；原始记忆和书稿版本都会保留，恢复后原样回来。",
       confirmText: "删除",
       confirmColor: "#c75245",
       success: async (result) => {
-        if (!result.confirm) { resolve(); return; }
+        if (!result.confirm) { this.setData({ deletingStoryKey: "" }); resolve(); return; }
         try {
           await deleteStoryRemoteFirst(key, title);
           if (loadCurrentStoryId() === key) saveCurrentStoryId("");
@@ -178,9 +187,10 @@ Page({
         } catch (error) {
           wx.showToast({ title: error instanceof Error ? error.message : "删除没有完成，请重试", icon: "none" });
         }
+        this.setData({ deletingStoryKey: "" });
         resolve();
       },
-      fail: () => resolve(),
+      fail: () => { this.setData({ deletingStoryKey: "" }); resolve(); },
     }));
   },
   async restoreStory(event: { currentTarget: { dataset: { key: string } } }) {
