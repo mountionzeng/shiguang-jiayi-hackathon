@@ -170,7 +170,7 @@ test('成文模型接收五页云端OCR而非客户端照片概述，并核对�
   assert.doesNotMatch(request.messages[1].content,/一本打开的书/);
   assert.match(request.messages[0].content,/材料作者/);
   assert.match(request.messages[0].content,/instruction.*文章类型、读者、主题和语气/);
-  assert.match(request.messages[0].content,/未指定体裁时.*已知目的.*不必概括每一页.*包含标点和换行/);
+  assert.match(request.messages[0].content,/不能仅凭表达目的替用户选择体裁.*不必概括每一页.*包含标点和换行/);
   assert.match(request.messages[1].content,/写给孩子看的读后感，重点是传承/);
   row.evidence.pop();let calls=0;global.fetch=async()=>{calls++;throw new Error('must not reach provider');};
   await assert.rejects(organizeCloud.main({memoryId:'m2',materialSourceId:'m2',writingMode:'compose'},{cloud:f.cloud,nowMs:Date.now()+10000}),/尚未读完/);
@@ -232,7 +232,7 @@ test('article guidance reads the whole dialogue and returns one clarification wi
  const question=await organizeCloud.main(event,{cloud:f.cloud});
  assert.equal(question.body,'');assert.equal(question.clarification,response.clarification);
  assert.match(request.messages[1].content,/最初的关切不能被最后十轮截掉/);
- assert.match(request.messages[0].content,/前因、经过、结果/);assert.match(request.messages[0].content,/希望写成什么样/);assert.match(request.messages[0].content,/不能代替用户选择文章写法/);assert.match(request.messages[0].content,/不要把助手自己建议过的写法当作用户已选择/);assert.match(request.messages[0].content,/已经问过并得到回答的内容不得再问/);
+ assert.match(request.messages[0].content,/前因、经过、结果/);assert.match(request.messages[0].content,/希望写成什么样/);assert.match(request.messages[0].content,/必须仅返回 clarification/);assert.doesNotMatch(request.messages[0].content,/未指定体裁时从已知目的选择合适的写法/);assert.match(request.messages[0].content,/不能代替用户选择文章写法/);assert.match(request.messages[0].content,/不要把助手自己建议过的写法当作用户已选择/);assert.match(request.messages[0].content,/已经问过并得到回答的内容不得再问/);
  assert.match(request.messages[0].content,/交代为何发生和结果/);assert.match(request.messages[0].content,/不声称/);
  await assert.rejects(organizeCloud.main({...event,sourceOnly:false},{cloud:f.cloud,nowMs:Date.now()+5000}),/INVALID_ARTICLE_GUIDANCE_MODE/);
  event.conversation.push({role:'assistant',content:'[写作方向] '+response.clarification},{role:'user',content:'写读书时的感受'});

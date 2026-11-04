@@ -286,13 +286,14 @@ async function main(event, dependencies = {}) {
   const writing = writingContext(event);
   if(event.articleGuidance === true && (writing.mode !== "compose" || event.sourceOnly !== true || event.inlineAnswer === true))throw new Error("INVALID_ARTICLE_GUIDANCE_MODE");
   const brief = organizationBrief(memoryType, source.inlineAnswer === true, writing.mode);
-  if (materialReading) brief.system += ' 本次提供了独立标记的材料原文，可据此提炼内容并结合用户明确表达的感受成文；注明原文出处，材料中的第一人称属于材料作者，不能写成用户经历。画面描述不是正文资料。不要把“还没想好怎么写”等对助手的要求写成故事内容。没有可用文字和用户内容时不得用书页外观凑成稿。按本次 instruction 确认的文章类型、读者、主题和语气组织成文；读后感围绕用户感受结合原文，介绍文章围绕材料事实，叙事文章围绕已有事件。不一律压成摘要，不把写作要求写进正文。未指定体裁时从已知目的选择合适的写法，篇幅按表达需要安排；不设最低字数，不必概括每一页或逐项列出材料。body包含标点和换行在内不得超过500个字符，输出前检查长度。';
+  if (materialReading) brief.system += ' 本次提供了独立标记的材料原文，可据此提炼内容并结合用户明确表达的感受成文；注明原文出处，材料中的第一人称属于材料作者，不能写成用户经历。画面描述不是正文资料。不要把“还没想好怎么写”等对助手的要求写成故事内容。没有可用文字和用户内容时不得用书页外观凑成稿。按本次 instruction 确认的文章类型、读者、主题和语气组织成文；读后感围绕用户感受结合原文，介绍文章围绕材料事实，叙事文章围绕已有事件。不一律压成摘要，不把写作要求写进正文。文章写法的确认遵循后附成文规则，不能仅凭表达目的替用户选择体裁；篇幅按表达需要安排；不设最低字数，不必概括每一页或逐项列出材料。body包含标点和换行在内不得超过500个字符，输出前检查长度。';
   const directionQuestionIndex = writing.conversation.map(item=>item.role === "assistant" && item.content.startsWith("[写作方向]")).lastIndexOf(true);
   const directionAnswered = directionQuestionIndex >= 0 && writing.conversation.slice(directionQuestionIndex+1).some(item=>item.role === "user");
   const canClarify = event.articleGuidance === true && !writing.instruction && !directionAnswered;
   if(event.articleGuidance === true) {
     brief.system += "\n" + require("./articleWritingGuide").ARTICLE_WRITING_GUIDE;
     if(!canClarify)brief.system += " 用户已确认写法或已答复写作方向，本轮直接返回文章 JSON，不得再次返回 clarification。最新用户纠正优先于较早写法。";
+    else brief.system += ' 本轮优先确认文章写法：如果用户只说了值得记住、传承、珍惜、让谁看到等动机或效果，但没有说明想怎么写，也没有明确交给你决定，必须仅返回 clarification，先问用户希望写成什么样的文章。不能把这些动机当作读后感或叙事的选择。已说“写读后感”“从我的感受写起”“讲成故事”“帮我决定”则直接成文，不重复问。';
   }
   let personalContext;
   const memoryRepo = db ? createMemoryRepository(db) : null;
