@@ -1841,7 +1841,7 @@ test('article send offers return, web and WeChat without sending on cancellation
   }});
   try {
     const page = instantiate(await pageDefinition('book'));
-    Object.assign(page.data, {chapterDeliveryOn:true,protectedHasDeliveryLineage:true});
+    Object.assign(page.data, {chapterDeliveryOn:true,protectedHasDeliveryLineage:true,view:'chapter'});
     const calls: string[] = [];
     page.returnChapterDelivery = async () => { calls.push('return'); };
     page.openChapterDeliveryClaimLink = async (channel:string) => { calls.push(channel); };

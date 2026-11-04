@@ -365,23 +365,25 @@ Page({
     finally { this.setData({ pickingPhoto:false }); }
   },
   saveCurrentArticle() { return this.data.view === 'chapter' && this.data.article ? this.flushArticle() : this.saveEdits(); },
-  sendCurrentArticle() { if (this.data.article) void this.sendArticle(); else this.toggleSend(); },
+  sendCurrentArticle() { if (this.data.view === 'chapter' && this.data.article) void this.sendArticle(); else this.toggleSend(); },
   async sendArticle() {
     if (this.data.articleSending) return;
-    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
-    if (!this.data.chapterDeliveryOn) { this.setData({ articleStatus: '发送功能暂未开放' }); return; }
-    const choices = [...(this.data.protectedHasDeliveryLineage ? ['发回原作者'] : []), '发给网页用户', '发给微信用户'];
-    const index = await new Promise<number>(resolve => wx.showActionSheet({ itemList: choices,
-      success: result => resolve(result.tapIndex), fail: () => resolve(-1) }));
-    const choice = choices[index];
-    if (!choice || this.unloaded) return;
+    const chapterId = this.activeChapterId, epoch = this.sendEpoch;
     this.setData({ articleSending: true, articleShareUrl: '' });
     try {
+      if (!await this.finishEditing()) return;
+      if (!this.data.chapterDeliveryOn) { this.setData({ articleStatus: '发送功能暂未开放' }); return; }
+      const choices = [...(this.data.protectedHasDeliveryLineage ? ['发回原作者'] : []), '发给网页用户', '发给微信用户'];
+      const index = await new Promise<number>(resolve => wx.showActionSheet({ itemList: choices,
+        success: result => resolve(result.tapIndex), fail: () => resolve(-1) }));
+      const choice = choices[index];
+      if (!choice || this.unloaded || epoch !== this.sendEpoch || chapterId !== this.activeChapterId || this.data.view !== 'chapter') return;
       if (choice === '发回原作者') await this.returnChapterDelivery();
       else if (choice === '发给微信用户') await this.openChapterDeliveryClaimLink('wechat');
       else await this.openChapterDeliveryClaimLink('web');
-    } finally { this.setData({ articleSending: false }); }
+    } finally { if (!this.unloaded) this.setData({ articleSending: false }); }
   },
+
   onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string; chapterClaim?: string; articleSession?: string } = {}) {
     this.pendingChapterClaim = /^[A-Za-z0-9_-]{43}$/.test(options.chapterClaim || '') ? options.chapterClaim! : '';
     this.sendSnapshot = undefined;
@@ -1074,6 +1076,11 @@ Page({
     else await this.goHome();
   },
   async finishEditing(allowLocalDraft = false) {
+    if (!allowLocalDraft && !await this.flushArticle()) {
+      this.setData({ saveNotice: '最新修改尚未同步，请先保存成功再发送。', sendOpen: false });
+      wx.showToast({ title: '最新修改尚未同步，请先保存', icon: 'none' });
+      return false;
+    }
     if (this.editSave) await this.editSave;
     if (this.data.editing && !await this.saveEdits()) {
       if (!allowLocalDraft || !this.canLeaveEditor(true)) return false;
@@ -1339,6 +1346,23 @@ Page({
       this.sendSnapshot = snapshotFromState(state, { storyId: story.id, revisionId: story.currentRevisionId, version: story.version! }, this.sendAccountScope);
     } catch { /* Unsaved, protected or mismatched manuscripts use the normal fresh read. */ }
   },
+  allArticlesSynced(): boolean {
+    try {
+      for (const chapter of this.chapters) {
+        const local = wx.getStorageSync(this.articleKey(chapter.id));
+        if (local?.chapter?.id === chapter.id) {
+          const notice = `“${local.chapter.title || chapter.title || '未命名章节'}”还有未同步的修改，请进入该章保存后再分享。`;
+          this.setData({ saveNotice: notice });
+          wx.showToast({ title: notice, icon: 'none' });
+          return false;
+        }
+      }
+      return true;
+    } catch {
+      this.setData({ saveNotice: '暂时无法核对本机草稿，请重新打开后再分享。' });
+      return false;
+    }
+  },
   async chooseSend(event: WechatMiniprogram.TouchEvent) {
     const destination = event.currentTarget.dataset.destination as 'family' | 'social' | 'card';
     if (destination !== 'family' && destination !== 'social' && destination !== 'card') return;
@@ -1352,6 +1376,7 @@ Page({
       if (!story || story.sourcePolicyRequired || !this.data.savedRevisionId || !Number.isSafeInteger(story.version) || (story.version || 0) < 1) {
         this.setData({ saveNotice: '请从书架打开已保存的自有故事，再准备发送' }); return;
       }
+      if (!this.allArticlesSynced()) return;
       const base = '/packages/story-sharing/pages/' + ({ family: 'social', social: 'social', card: 'card' } as const)[destination] + '/index';
       const url = base + '?storyId=' + encodeURIComponent(story.id) + (destination !== 'card'
         ? '&revisionId=' + encodeURIComponent(this.data.savedRevisionId) + '&version=' + story.version : '')
@@ -1397,7 +1422,9 @@ Page({
       case "audio": this.openAudioStory(); break;
       case "invite": if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/invite/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
       case "people": if(this.data.storyId)wx.navigateTo({url:'/pages/room/room?storyId='+encodeURIComponent(this.data.storyId)}); break;
-      case "share-card": if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/card/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
+      case "share-card":
+        if (!this.allArticlesSynced()) return;
+        if(this.data.storyId)wx.navigateTo({url:'/packages/story-sharing/pages/card/index?storyId='+encodeURIComponent(this.data.storyId)}); break;
       case "mode": void this.switchWritingMode(); break;
       case "package-chapter": void this.packageActiveChapter(); break;
       case "import-package": void this.importLastPackage(); break;
@@ -2360,10 +2387,9 @@ Page({
   },
   async openChapterDeliverySend() {
     if (!this.data.chapterDeliveryOn || (this.data.protectedCopy && !this.data.protectedHasDeliveryLineage) || this.data.view !== "chapter" || this.data.editing || this.data.panel) return;
-    const chapter = this.activeChapterForDelivery();
-    if (!chapter) return;
+    const chapterId = this.activeChapterId, epoch = this.sendEpoch;
     try {
-      if (!await this.finishEditing()) return;
+      if (!await this.finishEditing() || this.unloaded || epoch !== this.sendEpoch || chapterId !== this.activeChapterId || this.data.view !== "chapter") return;
       const { contacts } = await listChapterDeliveryContacts();
       if (!contacts.length) { this.setData({ saveNotice: "还没有可投递的已连接亲友" }); return; }
       const choice = await new Promise<number>((resolve, reject) => wx.showActionSheet({
@@ -2371,6 +2397,9 @@ Page({
       }));
       const recipient = contacts[choice];
       if (!recipient || !this.data.chapterDeliveryOn) return;
+      if (!await this.finishEditing() || this.unloaded || epoch !== this.sendEpoch || chapterId !== this.activeChapterId || this.data.view !== "chapter") return;
+      const chapter = this.activeChapterForDelivery();
+      if (!chapter) return;
       wx.showLoading({ title: "准备章节…", mask: true });
       const result = await sendChapterDelivery(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined, recipient.contactId);
       wx.hideLoading();
@@ -2383,13 +2412,16 @@ Page({
   },
   async openChapterDeliveryClaimLink(channel: "web" | "wechat" = "web") {
     if (!this.data.chapterDeliveryOn || (this.data.protectedCopy && !this.data.protectedHasDeliveryLineage) || this.data.view !== "chapter" || this.data.editing || this.data.panel) return;
-    const chapter = this.activeChapterForDelivery();
-    if (!chapter) return;
+    const chapterId = this.activeChapterId, epoch = this.sendEpoch;
     try {
-      if (!await this.finishEditing()) return;
+      if (!await this.finishEditing() || this.unloaded || epoch !== this.sendEpoch || chapterId !== this.activeChapterId || this.data.view !== "chapter") return;
+      const chapter = this.activeChapterForDelivery();
+      if (!chapter) return;
+      const revisionId = this.revisionId;
       wx.showLoading({ title: "准备领取链接…", mask: true });
       const result = await createChapterClaimLink(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined);
       wx.hideLoading();
+      if (this.unloaded || epoch !== this.sendEpoch || chapterId !== this.activeChapterId || revisionId !== this.revisionId || this.articlePending || this.articleSaving) return;
       if (!result.claimUrl) throw new Error("这条领取链接已被使用，或已失效");
       if (channel === 'wechat') {
         this.setData({ articleShareUrl: result.claimUrl, articleShareTitle: chapter.title || this.story?.title || '一篇文章', articleShareRevision: this.revisionId, articleShareChapterId: chapter.id });
@@ -2490,10 +2522,11 @@ Page({
     if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
     this.closeMore();
     if (!this.data.chapterDeliveryOn || !this.data.protectedCopy || !this.data.protectedHasDeliveryLineage || this.data.protectedRevisionSaving) return;
+    const chapterId = this.activeChapterId, epoch = this.sendEpoch;
+    const confirmed = await this.confirm("把修改后的章节发回原作者？", "把这版文字和图片发回原作者。对方确认采用后才会更新原稿，之前的版本仍会保留。");
+    if (!confirmed || !await this.finishEditing() || this.unloaded || epoch !== this.sendEpoch || chapterId !== this.activeChapterId) return;
     const chapter = this.activeChapterForDelivery();
     if (!chapter) return;
-    const confirmed = await this.confirm("把修改后的章节发回原作者？", "把这版文字和图片发回原作者。对方确认采用后才会更新原稿，之前的版本仍会保留。");
-    if (!confirmed) return;
     try {
       wx.showLoading({ title: "发送修改稿…", mask: true });
       await returnChapterDelivery(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined);

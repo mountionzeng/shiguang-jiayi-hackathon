@@ -74,7 +74,7 @@ test('failed delivery retains the same package and request for retry without cre
   assert.ok(pending.package.packageId);
   h.fail(false);
   h.rename('小满');
-  await h.delivery.sendChapter({...chapter, content: [{text: '更晚的文字'}]}, '我', '虚构故事', undefined, 'contact-test');
+  await h.delivery.sendChapter(chapter, '我', '虚构故事', undefined, 'contact-test');
   assert.equal(h.sends[1].requestId, pending.requestId);
   assert.deepEqual(h.sends[1].package, h.sends[0].package);
   assert.equal(h.sends[1].package.sender.displayName, '小禾', 'retry keeps the original package signature');
@@ -90,4 +90,24 @@ test('explicit package export still uploads JSON and records its import recovery
   assert.equal(result.fileID, 'cloud://test/package');
   assert.equal(h.stored.get('chapterPackage.lastExport').fileID, result.fileID);
   assert.equal(h.stored.get('chapterPackage.lastExport').chapterId, chapter.id);
+});
+
+
+test('sending edited content after a failed attempt creates a new immutable package for all delivery routes', async () => {
+  for (const action of ['sendChapter','createChapterClaimLink','returnChapter']) {
+    const h=harness();
+    const original=action==='returnChapter' ? {...chapter,packageLineage:{rootPackageId:'cp_root0001',receivedPackageId:'cp_received0001',sourceChapterId:'chapter-original'}} : chapter;
+    const send=(value:any,title='虚构故事')=>h.delivery[action](value,'我',title,undefined,'contact-test');
+    h.fail(true); await assert.rejects(send(original),/network unavailable/);
+    const old=h.sends[0];
+    h.fail(false);
+    await send({...original,title:'新的章名',content:[{text:'更晚的完整正文'}]},'新的书名');
+    const latest=h.sends[1];
+    assert.notEqual(latest.requestId,old.requestId);
+    assert.notEqual(latest.package.packageId,old.package.packageId);
+    assert.equal(latest.package.storyTitle,'新的书名');
+    assert.equal(latest.package.chapters[0].title,'新的章名');
+    assert.equal(latest.package.chapters[0].blocks[0].text,'更晚的完整正文');
+    assert.equal(old.package.chapters[0].blocks[0].text,chapter.content[0].text.trim());
+  }
 });

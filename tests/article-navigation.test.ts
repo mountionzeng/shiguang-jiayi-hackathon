@@ -332,3 +332,65 @@ test('manual scrolling and leaving the page cancel pending automatic caret scrol
     assert.equal(p.data.articleScrollTop,200);
   }
 });
+
+
+const shareEvent = {currentTarget:{dataset:{destination:'family'}}};
+function prepareSharing(p: any) {
+  p.data.draft = {title:'验收故事',paragraphs:[],sourceCount:0,generatedAt:'',generationMode:'local-demo',chapters:p.chapters};
+  p.data.savedRevisionId = p.revisionId;
+  const urls: string[] = [];
+  (wx as any).navigateTo = ({url,success}:any) => { urls.push(url); success(); };
+  return urls;
+}
+
+test('sharing waits for every article save, including input typed while the first receipt is pending', async () => {
+  const {p, requests} = await setup(); await open(p,'a'); const urls = prepareSharing(p);
+  type(p,'第一份新正文'); p.onArticleTitle({detail:{value:'新章节名'}}); clearTimeout(p.articleTimer);
+  const receipts: Array<(value:any)=>void> = [];
+  (wx as any).cloud.callFunction=({data}:any)=>{requests.push(data);return new Promise(resolve=>receipts.push(resolve));};
+  const pending = p.chooseSend(shareEvent);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(urls.length,0,'must not navigate with the previous saved revision');
+  assert.equal(requests.length,1);
+  type(p,'第二份完整正文');
+  receipts[0]({result:{revisionId:'revision-first',version:3}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(urls.length,0);
+  assert.equal(requests.length,2);
+  receipts[1]({result:{revisionId:'revision-final',version:4}});
+  await pending;
+  assert.equal(urls.length,1);
+  assert.match(urls[0],/revisionId=revision-final&version=4/);
+  assert.equal(p.chapters[0].title,'新章节名');
+  assert.equal(p.chapters[0].content[0].text,'第二份完整正文');
+  assert.equal(p.articlePending,null);
+});
+
+test('sharing a failed or conflicted article never falls back to the older cloud manuscript', async () => {
+  for (const conflict of [false,true]) {
+    const {p, stored}=await setup(); await open(p,'a'); const urls=prepareSharing(p);
+    type(p,'只能留在本机的新正文'); p.articleConflict=conflict;
+    (wx as any).cloud.callFunction=async()=>{throw Error('network unavailable');};
+    await p.chooseSend(shareEvent);
+    assert.deepEqual(urls,[]);
+    assert.equal(stored.get(p.articleKey()).chapter.content[0].text,'只能留在本机的新正文');
+    assert.match(p.data.saveNotice,/同步|保存/);
+  }
+});
+
+test('whole-book sharing checks unsynced drafts in chapters other than the current one', async () => {
+  const {p,stored}=await setup(); await open(p,'b'); const urls=prepareSharing(p);
+  stored.set(p.articleKey('a'),{revisionId:'revision-old',conflict:true,chapter:{...p.chapters[0],title:'未同步的新标题'}});
+  await p.chooseSend(shareEvent);
+  assert.deepEqual(urls,[]);
+  assert.match(p.data.saveNotice,/未同步的新标题/);
+  assert.ok(stored.has(p.articleKey('a')));
+});
+
+test('send from contents opens the book menu even after reading an article', async () => {
+  const {p}=await setup(); await open(p,'a'); await p.backToContents();
+  let book=0, article=0;
+  p.toggleSend=()=>{book++;}; p.sendArticle=async()=>{article++;};
+  p.sendCurrentArticle();
+  assert.equal(book,1); assert.equal(article,0);
+});
