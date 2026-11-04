@@ -214,12 +214,12 @@ test('editing a conflicting article clears stale saved notices and stays explici
   assert.equal(requests.length,0);
 });
 
-test('native article keyboard adjustment does not also shrink the scroll viewport', async () => {
+test('article scrolling ends above the keyboard and restores its full height when dismissed', async () => {
   const {p} = await setup();
   await open(p,'a');
   p.fullWindowHeight=760;
   p.onKeyboardHeight({detail:{height:300}});
-  assert.equal(p.data.viewportHeight,760);
+  assert.equal(p.data.viewportHeight,460,'the last paragraph must be scrollable above the IME');
   p.setData({xiaoyiOpen:true});
   p.updateViewport();
   assert.equal(p.data.viewportHeight,460,'the companion keeps its manually sized keyboard layout');
@@ -286,4 +286,49 @@ test('unsynced chapter title appears in the directory with local-only status and
   assert.equal(p.data.chapterRows[0].title,'手机改过的章名');
   const reopened=page();assert.equal(reopened.data.chapterRows[0].title,'手机改过的章名');
   assert.equal(stored.get(p.articleKey().replace(/:b$/,':a')).chapter.title,'手机改过的章名');
+});
+
+
+test('article caret scrolls only enough to show the active line and ignores an old chapter', async () => {
+  const {p} = await setup(); await open(p,'a');
+  p.data.keyboardHeight=300;
+  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},exec(callback:any){callback([{top:60,bottom:460,scrollTop:800}]);}});
+  p.onArticleCaret({detail:{chapterId:'a',top:438,bottom:470}});
+  assert.equal(p.data.articleScrollTop,826);
+  p.onArticleCaret({detail:{chapterId:'a',top:80,bottom:112}});
+  assert.equal(p.data.articleScrollTop,826,'already visible text does not reset scroll or the caret');
+  p.onArticleCaret({detail:{chapterId:'a',top:48,bottom:80}});
+  assert.equal(p.data.articleScrollTop,772,'editing an earlier line scrolls up, not to paragraph end');
+  p.onArticleCaret({detail:{chapterId:'old',top:700,bottom:732}});
+  assert.equal(p.data.articleScrollTop,772);
+});
+
+test('late caret measurements cannot move the article after keyboard dismissal or newer input', async () => {
+  const {p} = await setup(); await open(p,'a'); p.data.keyboardHeight=300;
+  const callbacks:any[]=[];
+  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},exec(callback:any){callbacks.push(callback);}});
+  p.onArticleCaret({detail:{chapterId:'a',top:500,bottom:530}});
+  p.onArticleCaret({detail:{chapterId:'a',top:430,bottom:460}});
+  callbacks[1]([{top:60,bottom:460,scrollTop:800}]);
+  assert.equal(p.data.articleScrollTop,816);
+  callbacks[0]([{top:60,bottom:460,scrollTop:800}]);
+  assert.equal(p.data.articleScrollTop,816);
+  p.onArticleCaret({detail:{chapterId:'a',top:500,bottom:530}});
+  p.onKeyboardHeight({detail:{height:0}});
+  p.onKeyboardHeight({detail:{height:300}});
+  callbacks[2]([{top:60,bottom:460,scrollTop:800}]);
+  assert.equal(p.data.articleScrollTop,816);
+});
+
+
+test('manual scrolling and leaving the page cancel pending automatic caret scrolling', async () => {
+  const {p} = await setup(); await open(p,'a'); p.data.keyboardHeight=300;
+  const callbacks:any[]=[];
+  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},exec(callback:any){callbacks.push(callback);}});
+  for (const leave of [() => p.onArticleScroll({detail:{scrollTop:200}}), () => p.onHide(), () => p.onUnload()]) {
+    p.onArticleCaret({detail:{chapterId:'a',top:500,bottom:530}});
+    leave();
+    callbacks[callbacks.length-1]([{top:60,bottom:460,scrollTop:800}]);
+    assert.equal(p.data.articleScrollTop,200);
+  }
 });

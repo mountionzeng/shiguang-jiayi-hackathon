@@ -91,7 +91,7 @@ Page({
     retainedDrafts: [] as ChapterDraft[],
     articleSessionId: "",
     articleChatPhotos: [] as Array<{id:string;path:string}>,
-    article: null as ArticleChapter | null, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
+    article: null as ArticleChapter | null, articleScrollTop: 0, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
     openingChapter: null as { title: string; text: string } | null,
     photoMenu: "", photoAction: "", preparingPhoto: false, bookIntroduction: "", editIntroduction: "",
     coverUrl: "", coverImageId: "", sendOpen: false, preparingSend: false,
@@ -179,6 +179,7 @@ Page({
   collecting: false,
   unloaded: false,
   fullWindowHeight: 0,
+  articleCaretEpoch: 0,
   windowWidth: 0,
   refreshId: 0,
   historyRequestId: 0,
@@ -414,13 +415,32 @@ Page({
   },
   updateViewport() {
     if (!this.fullWindowHeight) return;
-    // Native article inputs already move the viewport to keep their caret visible.
-    // Resizing their scroll container as well can reset its scroll offset on phones.
-    const nativeArticleKeyboard = this.data.article && this.data.view === 'chapter' && !this.data.panel && !this.data.xiaoyiOpen;
-    const viewportHeight = Math.max(180, this.fullWindowHeight - (nativeArticleKeyboard ? 0 : this.data.keyboardHeight));
+    // One owner for keyboard avoidance: shrink the actual scroll viewport.
+    // Native page panning leaves its scroll end underneath the keyboard.
+    const viewportHeight = Math.max(180, this.fullWindowHeight - this.data.keyboardHeight);
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
+  onArticleScroll(event: WechatMiniprogram.ScrollViewScroll) {
+    this.articleCaretEpoch++;
+    this.data.articleScrollTop = event.detail.scrollTop;
+  },
+  onArticleTitleFocus() { this.articleCaretEpoch++; this.setData({ articleScrollTop: 0 }); },
+  onArticleCaret(event: { detail: { chapterId: string; top: number; bottom: number } }) {
+    const caret = event.detail;
+    if (this.unloaded || !this.data.keyboardHeight || this.data.panel || this.data.view !== 'chapter' || caret.chapterId !== this.data.article?.id) return;
+    const epoch = ++this.articleCaretEpoch;
+    this.createSelectorQuery().select('.article-scroll').fields({ rect: true, scrollOffset: true }).exec(results => {
+      if (this.unloaded || epoch !== this.articleCaretEpoch || !this.data.keyboardHeight || this.data.panel || this.data.view !== 'chapter' || caret.chapterId !== this.data.article?.id) return;
+      const viewport = results[0] as { top: number; bottom: number; scrollTop: number } | null;
+      if (!viewport || ![viewport.top, viewport.bottom, viewport.scrollTop, caret.top, caret.bottom].every(Number.isFinite)) return;
+      const gap = 16;
+      const delta = caret.bottom > viewport.bottom - gap ? caret.bottom - (viewport.bottom - gap)
+        : caret.top < viewport.top + gap ? caret.top - (viewport.top + gap) : 0;
+      if (Math.abs(delta) > 1) this.setData({ articleScrollTop: Math.max(0, viewport.scrollTop + delta) });
+    });
+  },
   onHide() {
+    this.articleCaretEpoch++;
     this.saveArticleChat();
     if (this.articlePending) void this.flushArticle();
     this.connectionEpoch++;
@@ -436,6 +456,7 @@ Page({
     }
   },
   onUnload() {
+    this.articleCaretEpoch++;
     this.saveArticleChat();
     if (this.articleTimer) clearTimeout(this.articleTimer);
     if (this.articlePending) void this.flushArticle();
@@ -816,6 +837,7 @@ Page({
     if (this.articleConflict) this.chapterBaselineStale = true;
     if (article && this.articlePending) article = this.articlePending;
     return {
+      ...(article?.id !== this.data.article?.id ? { articleScrollTop: 0 } : {}),
       article, articleWidth: Math.max(180, (this.windowWidth || 375) - 32), articlePaths: {...this.photoPaths},
       articleDirty: Boolean(this.articlePending), articleStatus:this.articleConflict?'仅存本机：云端有新版，请核对历史版本':this.articlePending?'已恢复本机草稿，等待保存':'',
       currentLayoutPages: this.story?.sourcePolicyRequired && active?.layout
@@ -1972,7 +1994,7 @@ Page({
   },
   onKeyboardHeight(event: { detail: { height: number } }) {
     const keyboardHeight = Math.max(0, event.detail.height || 0);
-    if (keyboardHeight !== this.data.keyboardHeight) this.setData({ keyboardHeight });
+    if (keyboardHeight !== this.data.keyboardHeight) { this.articleCaretEpoch++; this.setData({ keyboardHeight }); }
     this.updateViewport();
   },
   onVersionName(event: WechatMiniprogram.Input) { this.setData({ versionName: event.detail.value }); },

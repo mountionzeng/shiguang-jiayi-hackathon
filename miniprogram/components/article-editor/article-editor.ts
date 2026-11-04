@@ -2,9 +2,14 @@ import { articleEditorPages } from '../../services/articleEditorLayout';
 import type { ManuscriptChapter } from '../../domain/biography';
 import { articleChapter, changeArticleText, moveArticleModule, removeArticleModule, type ArticleChapter } from '../../services/articleModules';
 Component({
-  properties: { adjustPosition: {type:Boolean,value:true}, backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
-  data: { textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 1, note: '' },
+  options: { multipleSlots: true },
+  properties: { keyboardHeight: {type:Number,value:0}, adjustPosition: {type:Boolean,value:true}, backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
+  data: { editingBlock: '', caretCursor: null as number | null, caretRequest: 0, caretMeasureText: '', caretMeasureStyle: '', textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 1, note: '' },
+  lifetimes: { detached() { this.data.editingBlock = ''; this.data.caretRequest++; } },
   observers: {
+    keyboardHeight(height: number) {
+      if (height > 0) this.revealCaret(); else this.data.caretRequest++;
+    },
     'chapter, paths, width': function(chapter: ManuscriptChapter, _paths: Record<string, string>, width: number) {
       if (!chapter) return;
       try {
@@ -15,6 +20,7 @@ Component({
         if (current?.id === chapter.id && JSON.stringify(current) === JSON.stringify(chapter) && this.data.scale === scale) {
           this.syncGeometry(); return;
         }
+        if (current?.id !== chapter.id) { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; }
         this.data.textHeights = {};
         this.data.current = articleChapter(chapter);
         this.setData({ scale }); this.render();
@@ -42,7 +48,7 @@ Component({
     },
     render() {
       const pages = this.pageModels();
-      if (pages) this.setData({ pages });
+      if (pages) this.setData({ pages }, () => this.revealCaret());
     },
     syncGeometry() {
       const pages = this.pageModels();
@@ -61,17 +67,59 @@ Component({
           if (module.path !== previous.path) patch[`pages[${pageIndex}].modules[${moduleIndex}].path`] = module.path;
         });
       });
-      if (Object.keys(patch).length) this.setData(patch);
+      if (Object.keys(patch).length) this.setData(patch, () => this.revealCaret());
+      else this.revealCaret();
       return true;
+    },
+    beginEditing(event: WechatMiniprogram.TextareaFocus) {
+      if (this.data.editingBlock !== event.currentTarget.dataset.block) this.data.caretCursor = null;
+      this.data.editingBlock = event.currentTarget.dataset.block;
+      this.readCaret();
+    },
+    readCaret() {
+      const blockId = this.data.editingBlock;
+      if (!blockId) return;
+      const request = ++this.data.caretRequest;
+      const apply = (cursor: number) => {
+        if (request !== this.data.caretRequest || blockId !== this.data.editingBlock) return;
+        this.data.caretCursor = cursor; this.revealCaret();
+      };
+      // Reading the native range preserves a tap in the middle of a long paragraph.
+      if (wx.getSelectedTextRange) wx.getSelectedTextRange({success: range => apply(range.end)});
+    },
+    revealCaret() {
+      const blockId = this.data.editingBlock;
+      if (!this.properties.keyboardHeight || !blockId || this.data.caretCursor === null) return;
+      const chapter = this.data.current as ArticleChapter | null;
+      const module = this.pageModels()?.flatMap(page => page.modules).find(item => item.blockId === blockId);
+      if (!chapter || !module || module.kind !== 'text') return;
+      const request = ++this.data.caretRequest;
+      const cursor = Math.max(0, Math.min(module.text.length, this.data.caretCursor));
+      this.setData({ caretMeasureText: module.text.slice(0, cursor) + '\u200b',
+        caretMeasureStyle: `width:${module.width - 2}px;${module.fontStyle}` }, () => {
+        if (request !== this.data.caretRequest) return;
+        const query = this.createSelectorQuery();
+        query.select(`#article-input-${module.id}`).boundingClientRect();
+        query.select('#article-caret-measure').boundingClientRect();
+        query.exec(results => {
+          if (request !== this.data.caretRequest || !this.properties.keyboardHeight || chapter.id !== this.data.current?.id || blockId !== this.data.editingBlock) return;
+          const [input, prefix] = results as Array<{top:number;height:number} | null>;
+          if (!input || !prefix || !Number.isFinite(input.top) || !Number.isFinite(prefix.height)) return;
+          const lineHeight = Math.max(12, module.fontSize * this.data.scale) * 1.6;
+          const bottom = input.top + Math.max(lineHeight, prefix.height);
+          this.triggerEvent('caret', {chapterId:chapter.id, top:bottom-lineHeight, bottom});
+        });
+      });
     },
     select(event: WechatMiniprogram.TouchEvent) {
       const { id, block } = event.currentTarget.dataset;
       // Let the native textarea honor the tap's exact caret location. Only a
       // newly created paragraph after Return uses a programmatic focus request.
       this.setData({ selected: id, focused: block || '' });
+      if (block === this.data.editingBlock) this.readCaret();
       this.triggerEvent('selectmodule', { id });
     },
-    clear() { this.setData({ selected: '', focused: '', focusRequest: '' }); },
+    clear() { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ selected: '', focused: '', focusRequest: '' }); },
     change(event: WechatMiniprogram.Input) {
       try {
         const before = this.data.current!;
@@ -84,6 +132,9 @@ Component({
         const cursor = Math.max(0, Math.min(lines[lines.length - 1].length,
           (event.detail.cursor ?? normalized.length) - lastLineStart));
         this.data.cursor = cursor;
+        this.data.editingBlock = changed.focused;
+        this.data.caretCursor = cursor;
+        this.data.caretRequest++;
         const structureChanged = before.content.length !== changed.chapter.content.length || before.layout.pages.length !== changed.chapter.layout.pages.length ||
           before.layout.pages.some((page, index) => page.modules.map(item => item.id).join('|') !== changed.chapter.layout.pages[index]?.modules.map(item => item.id).join('|'));
         this.setData({ focused: changed.focused, selected: module?.id || '', note: '',
@@ -94,12 +145,14 @@ Component({
     },
     finishEditing(event: WechatMiniprogram.TouchEvent) {
       const blockId = event.currentTarget.dataset.block;
+      if (blockId === this.data.editingBlock) { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; }
       if (blockId === this.data.focusRequest) this.setData({ focusRequest: '' });
       this.render();
     },
     publish() { this.triggerEvent('change', { chapter: this.data.current! }); },
     start(event: WechatMiniprogram.TouchEvent) {
       const touch = event.touches[0]; if (!touch) return;
+      this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++;
       this.data.gesture = { id: event.currentTarget.dataset.id, resize: event.currentTarget.dataset.resize === true || event.currentTarget.dataset.resize === 'true', x: touch.clientX, y: touch.clientY, chapter: this.data.current! };
       this.setData({ selected: event.currentTarget.dataset.id, focused: '', focusRequest: '' });
     },

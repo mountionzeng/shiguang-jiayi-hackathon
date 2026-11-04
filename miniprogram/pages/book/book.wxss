@@ -184,9 +184,9 @@ page { height: 100%; overflow: hidden; }
 .article-share-note { margin:20rpx 0; font-size:28rpx; line-height:1.6; color:#627269; }
 .article-share-sheet button { margin-top:16rpx; font-size:32rpx; color:#315c4c; }
 
-/* The companion floats over the page; never reserve its height in the reading viewport. */
+/* Existing controls share an in-flow footer, so the bird never covers a line. */
 .article-scroll { padding:12rpx 24rpx 24rpx; }
-.article-bird.article-bird { position:absolute;left:24rpx;bottom:calc(28rpx + env(safe-area-inset-bottom));z-index:12;width:224rpx;height:224rpx;min-height:224rpx;margin:0;padding:0;background:transparent;border-radius:50%;color:#527c6c; }
+.article-bird.article-bird { position:relative;flex:none;width:224rpx;height:224rpx;min-height:224rpx;margin:0;padding:0;background:transparent;border-radius:50%;color:#527c6c; }
 .article-bird image { position:absolute;left:32rpx;top:32rpx;width:160rpx;height:160rpx; }
 .article-bird-label { position:absolute;inset:0; }
 .article-bird-letter { position:absolute;left:50%;top:50%;width:26rpx;height:28rpx;font-size:24rpx;font-weight:600;line-height:28rpx;text-align:center; }

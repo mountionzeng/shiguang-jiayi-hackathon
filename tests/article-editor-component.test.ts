@@ -98,3 +98,68 @@ test('native height changes patch geometry without replacing input, and stale me
   context.textLineChange({currentTarget:{dataset:{id:module.id,measure:'old-width-or-text'}},detail:{height:10}});
   assert.equal(context.data.textHeights[module.id],measurement);
 });
+
+
+async function caretEditor() {
+  const definition = await loadComponentDefinition();
+  const chapter = articleChapter({id:'caret-scroll',title:'',memoryIds:[],content:[{text:'开头，中间，最后一行'}]});
+  const queries:Array<{selectors:string[];callback:(results:any[])=>void}>=[];
+  const events:any[]=[];
+  const context:any={data:{...structuredClone(definition.data),current:chapter,scale:.4},
+    properties:{paths:{},keyboardHeight:300},
+    setData(patch:any,callback?:()=>void){Object.assign(this.data,patch);callback?.();},
+    triggerEvent(name:string,detail:any){events.push({name,detail});},
+    createSelectorQuery(){const selectors:string[]=[];return {select(selector:string){selectors.push(selector);return this;},boundingClientRect(){return this;},exec(callback:any){queries.push({selectors,callback});}};}};
+  Object.assign(context,definition.methods);context.render();
+  return {context,chapter,queries,events,definition};
+}
+
+test('focused article measures the prefix at the native cursor, not the end of a long paragraph', async () => {
+  const {context,chapter,queries,events}=await caretEditor();
+  const previous=(globalThis as any).wx;
+  (globalThis as any).wx={getSelectedTextRange:({success}:any)=>success({start:3,end:3})};
+  try {context.beginEditing({currentTarget:{dataset:{block:chapter.content[0].blockId}}});}
+  finally {(globalThis as any).wx=previous;}
+  assert.equal(context.data.caretMeasureText,'开头，\u200b');
+  const query=queries[queries.length - 1];
+  assert.match(query.selectors[0],/^#article-input-text-/);
+  query.callback([{top:400,height:120},{height:30.72}]);
+  const event=events.find(item=>item.name==='caret');
+  assert.equal(event.detail.chapterId,chapter.id);
+  assert.equal(event.detail.top,400);
+  assert.equal(event.detail.bottom,430.72);
+});
+
+test('typing and Return reveal the newly wrapped caret while the previous paragraph blurs', async () => {
+  const {context,chapter,queries,events}=await caretEditor();
+  const block=chapter.content[0].blockId;
+  context.change({currentTarget:{dataset:{block}},detail:{value:'前文\n末尾新的一行',cursor:10}});
+  const added=context.data.current.content[1];
+  assert.equal(context.data.editingBlock,added.blockId);
+  assert.equal(context.data.caretMeasureText,'末尾新的一行\u200b');
+  context.finishEditing({currentTarget:{dataset:{block}}});
+  assert.equal(context.data.editingBlock,added.blockId,'old blur cannot cancel the new paragraph');
+  queries[queries.length - 1].callback([{top:480,height:90},{height:61.44}]);
+  const caret=events.filter(item=>item.name==='caret').slice(-1)[0];
+  assert.equal(caret.detail.bottom,541.44);
+  assert.ok(Math.abs(caret.detail.top-510.72)<.001);
+});
+
+test('outdated caret geometry and delayed focus ranges cannot override newer typing or blur', async () => {
+  const {context,chapter,queries,events}=await caretEditor();
+  const block=chapter.content[0].blockId;
+  const previous=(globalThis as any).wx;let focusRange:any;
+  (globalThis as any).wx={getSelectedTextRange:({success}:any)=>{focusRange=success;}};
+  try {context.beginEditing({currentTarget:{dataset:{block}}});}
+  finally {(globalThis as any).wx=previous;}
+  context.change({currentTarget:{dataset:{block}},detail:{value:'新输入的文字',cursor:6}});
+  const first=queries[queries.length - 1];
+  focusRange({start:0,end:0});
+  assert.equal(context.data.caretCursor,6);
+  context.change({currentTarget:{dataset:{block}},detail:{value:'继续输入的文字',cursor:7}});
+  first.callback([{top:500,height:60},{height:60}]);
+  assert.equal(events.filter(item=>item.name==='caret').length,0);
+  context.finishEditing({currentTarget:{dataset:{block}}});
+  queries[queries.length - 1].callback([{top:500,height:60},{height:60}]);
+  assert.equal(events.filter(item=>item.name==='caret').length,0);
+});
