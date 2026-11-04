@@ -166,7 +166,7 @@
           <view class="capture-file" wx:for="{{captureDraft.audio}}" wx:key="id"><text>{{item.name}}</text><view data-kind="audio" data-index="{{index}}" bindtap="removeCaptureFile">移除</view></view>
         </scroll-view>
         <view wx:if="{{captureDraft.text}}">已加入文字素材</view>
-        <generation-status wx:if="{{captureBusy}}" text="正在保存原件…" />
+        <generation-status wx:if="{{captureBusy}}" text="{{captureReading ? '正在读取材料…' : '正在保存原件…'}}" />
       </view>
       <view class="input-row" wx:if="{{!captureReadOnly}}">
         <textarea
