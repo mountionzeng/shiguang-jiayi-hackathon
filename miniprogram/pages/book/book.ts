@@ -1,3 +1,4 @@
+import { WritingSession } from '../../services/writingSession';
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { bookCoverSource } from "../../services/bookCoverSource";
 import { articleChatMaterial } from '../../services/articleChatMaterial';
@@ -88,6 +89,7 @@ const memoryRow = (memory: MemoryContribution): MemoryRow => ({
 Page({
   data: {
     retainedDrafts: [] as ChapterDraft[],
+    articleSessionId: "",
     articleChatPhotos: [] as Array<{id:string;path:string}>,
     article: null as ArticleChapter | null, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
     openingChapter: null as { title: string; text: string } | null,
@@ -357,14 +359,15 @@ Page({
       else await this.openChapterDeliveryClaimLink('web');
     } finally { this.setData({ articleSending: false }); }
   },
-  onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string; chapterClaim?: string } = {}) {
+  onLoad(options: { storyId?: string; memberId?: string; chapterId?: string; memoryIds?: string; chapterClaim?: string; articleSession?: string } = {}) {
     this.pendingChapterClaim = /^[A-Za-z0-9_-]{43}$/.test(options.chapterClaim || '') ? options.chapterClaim! : '';
     this.sendSnapshot = undefined;
     this.sendAccountScope = "";
-    this.openOrganizeOnLoad = options.memoryIds !== undefined;
+    this.setData({articleSessionId:options.articleSession || ""});
+    this.openOrganizeOnLoad = options.memoryIds !== undefined || !!options.articleSession;
     this.requestedMemberId = options.memberId || "";
     this.requestedStoryKey = options.storyId || loadCurrentStoryId();
-    this.requestedMemoryIds = (options.memoryIds || "").split(",").filter(Boolean);
+    this.requestedMemoryIds = options.articleSession ? [options.articleSession] : (options.memoryIds || "").split(",").filter(Boolean);
     if (options.chapterId) { this.activeChapterId = options.chapterId; this.setData({ view: "chapter" }); }
     this.unloaded = false;
     // 非 data 字段挂在页面定义上，每次打开都从干净状态开始，避免串到上一次的书。
@@ -2799,12 +2802,17 @@ Page({
     const memoryIds = this.organizeSelection.filter(id => this.organizeMemories.some(memory => memory.id === id));
     if (!memoryIds.length) { this.setData({ saveNotice: "先勾选要整理的记忆" }); return; }
     const target = this.chapters.find(chapter => chapter.id === this.data.organizeTarget);
-    const inserting = Boolean(target && this.data.organizeMethod === "insert");
+    const inserting = Boolean(target && (this.data.articleSessionId || this.data.organizeMethod === "insert"));
     if (target && !inserting && plainText(target.content).length > 4000) { this.setData({ saveNotice: "这一章较长，请新开一章整理，避免遗漏已有正文" }); return; }
     if (!inserting && target?.handEdited && plainText(target.content).trim() && !await this.confirm("这一章你亲手改过",
       "AI 会重写这一章的正文，照片保留。原来的文字在历史版本里能找回，整理完也可以马上撤回。继续吗？")) return;
     this.setData({ generating: true, memoryPreviewPhotos: [], saveNotice: "正在整理，请稍候…" });
     try {
+      const loadedArticle = this.data.articleSessionId ? await WritingSession.open(this.data.articleSessionId,()=>{}) : undefined;
+      if (loadedArticle) await loadedArticle.session.flush();
+      if (loadedArticle && (!loadedArticle.session.canWrite || !loadedArticle.snapshot?.draftText.trim())) throw new Error("文章尚未同步，请回到聊天核对后重试");
+      const article = loadedArticle?.snapshot;
+      if (article && (memoryIds.length !== 1 || memoryIds[0] !== loadedArticle!.session.rootMemoryId)) throw new Error("文章来源已变动，请回到聊天重新打开");
       let state = await loadRoomStateRemoteFirst();
       let story = this.data.storyId ? activeStory(state, this.data.storyId) : undefined;
       if (story?.sourcePolicyRequired) throw new Error("亲友原文不能整篇改写，请使用“补充我的经历”。");
@@ -2823,10 +2831,10 @@ Page({
       if (inserting && target) {
         if (target.pendingRevision?.edits.some(edit => edit.status === "pending")) throw new Error("这一章还有待确认的修改，请先处理完再插入");
         if (selectedMemories.length !== memoryIds.length) throw new Error("所选记忆已变动，请重新选择");
-        const insertionText = selectedMemories.map(memory => memory.text.trim()).filter(Boolean).join("\n\n");
-        const photoIds = selectedMemories.flatMap(memory => memory.photoIds ?? []);
+        const insertionText = article ? article.draftText : selectedMemories.map(memory => memory.text.trim()).filter(Boolean).join("\n\n");
+        const photoIds = article ? [] : selectedMemories.flatMap(memory => memory.photoIds ?? []);
         const content = insertChapterText(target.content, this.data.insertionPoint, insertionText, photoIds);
-        const containsAiText = Boolean(target.containsAiText || target.generationMode === "cloud-ai" || selectedMemories.some(memory => memoryAiLabel(memory)));
+        const containsAiText = Boolean(article?.draftOrganizationMode === "cloud-ai" || target.containsAiText || target.generationMode === "cloud-ai" || selectedMemories.some(memory => memoryAiLabel(memory)));
         const chapter: ManuscriptChapter = { ...target, content, containsAiText,
           memoryIds: Array.from(new Set([...target.memoryIds, ...memoryIds])),
           memorySegmentCounts: { ...target.memorySegmentCounts, ...Object.fromEntries(selectedMemories.map(memory => [memory.id, memorySegmentCount(memory)])) },
@@ -2834,13 +2842,25 @@ Page({
         const chapters = this.chapters.map(item => item.id === target.id ? chapter : item);
         const label = this.data.chapterRows.find(row => row.id === target.id)?.label || chapterLabel(chapters.findIndex(item => item.id === target.id) + 1);
         this.organizeCandidate = { draft: draftWithChapters(this.data.draft ?? this.newBookBase(), chapters), fingerprint,
-          chapterId: target.id, label, notice: "记忆的文字和配图已一起写入，原章节图片位置保留。可以继续编辑文字，点图片可移除；换图请用顶部照片入口。", revisionId: this.revisionId,
+          chapterId: target.id, label, notice: article ? "文章已写入，原章节和原始记忆保留。" : "记忆的文字和配图已一起写入，原章节图片位置保留。可以继续编辑文字，点图片可移除；换图请用顶部照片入口。", revisionId: this.revisionId,
           insertion: { original: target.content.map(item => ({ ...item })), pointId: this.data.insertionPoint, photoIds },
         };
         this.setData({ panel: "organize-preview", previewInsertion: true, insertionText,
           previewTitle: target.title, previewText: content.map(item => item.text ?? "\n〔照片或插图，原位置保留〕\n").join(""),
-          previewAiLabel: containsAiText ? "含 AI 文字" : "", saveNotice: "尚未写入。记忆的配图也会一起带入，写入后可以修改图文。" });
+          previewAiLabel: containsAiText ? "含 AI 文字" : "", saveNotice: article ? "尚未写入。确认后插入文章，保留章节原文。" : "尚未写入。记忆的配图也会一起带入，写入后可以修改图文。" });
         await this.showMemoryPreviewPhotos(photoIds);
+        return;
+      }
+      if (article) {
+        if (selectedMemories.length !== memoryIds.length) throw new Error("文章来源已变动，请重新打开");
+        const organized: BiographyDraft = {title:article.draftTitle,paragraphs:[article.draftText],sourceCount:memoryIds.length,
+          generatedAt:new Date().toISOString(),generationMode:article.draftOrganizationMode};
+        const {chapters,chapterId} = applyOrganized(this.chapters,"new",organized,memoryIds,[]);
+        const label = chapterLabel(chapters.length);
+        this.organizeCandidate = {draft:draftWithChapters(this.data.draft ?? this.newBookBase(),chapters),fingerprint,chapterId,label,
+          notice:"已使用聊天中完成的文章，原始记忆保留。",revisionId:this.revisionId};
+        this.setData({panel:"organize-preview",previewInsertion:false,previewTitle:article.draftTitle,previewText:article.draftText,
+          previewAiLabel:article.draftOrganizationMode === "cloud-ai" ? "文字 AI 生成" : "",saveNotice:"确认后将文章写入新章节，原始记忆保留。"});
         return;
       }
       if (story?.writingMode === "creative" && usesCloudStorage()) {
@@ -2894,8 +2914,9 @@ Page({
         ? insertChapterText(candidate.insertion.original, candidate.insertion.pointId, this.data.insertionText, candidate.insertion.photoIds)
         : [{ text: this.data.previewText.trim() + "\n" }, ...chapter.content.filter(item => item.photoId)];
       const next = draftWithChapters(candidate.draft, updateChapter(chapters, chapter.id, { title: this.data.previewTitle, content }));
-      if (await this.persist(next, candidate.fingerprint, "version", (candidate.insertion ? "插入记忆到" : "AI 整理") + candidate.label)) {
+      if (await this.persist(next, candidate.fingerprint, "version", (this.data.articleSessionId ? "写入文章到" : candidate.insertion ? "插入记忆到" : "AI 整理") + candidate.label)) {
         this.organizeCandidate = undefined;
+        this.setData({articleSessionId:""});
         this.undoState = before;
         this.openChapter({ currentTarget: { dataset: { id: candidate.chapterId } } });
         this.setData({ canUndo: !!before, saveNotice: "已写入" + candidate.label + "。" + candidate.notice });

@@ -343,11 +343,12 @@
         </view>
       </block>
       <block wx:if="{{panel === 'organize'}}">
-        <view class="panel-title serif">把记忆写进故事</view>
-        <view class="panel-note">记忆各自保留。挑选、看看联系，再预览它们组成的故事。</view>
+        <view class="panel-title serif">{{articleSessionId ? '把文章放进书' : '把记忆写进故事'}}</view>
+        <view class="panel-note">{{articleSessionId ? '使用聊天里完成的文章，原始材料和聊天继续保留。' : '记忆各自保留。挑选、看看联系，再预览它们组成的故事。'}}</view>
         <view class="field-label">写进哪个故事</view>
         <radio-group bindchange="onOrganizeBook"><label class="memory-row" wx:for="{{organizeBooks}}" wx:key="id"><radio value="{{item.id}}" checked="{{organizeBookKey === item.id}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text class="memory-text">{{item.title}}</text><text class="version-date">{{item.detail}}</text></label></radio-group>
-        <view class="panel-note">切换故事会保留你勾选的记忆。没有章节也可以新开一章。</view>
+        <view class="panel-note">没有章节也可以新开一章。</view>
+        <block wx:if="{{!articleSessionId}}">
         <view class="field-label">1. 勾选要整理的记忆</view>
         <checkbox-group bindchange="onOrganizeMemories">
           <label class="memory-row" wx:for="{{organizeRows}}" wx:key="id">
@@ -375,7 +376,8 @@
           <textarea class="xiaoyi-answer" value="{{connectionReflection}}" maxlength="500" auto-height placeholder="只写你自己想到的，不必接受小忆的说法" bindinput="onConnectionReflection" disabled="{{connectionSaving}}" />
           <button class="btn btn-ghost" bindtap="saveConnectionReflection" loading="{{connectionSaving}}" disabled="{{!connectionReflection || connectionSaving || generating || switchingBook}}">把我的想法存成一段记忆</button>
         </view>
-        <view class="field-label contents-label">2. 放进哪一章</view>
+        </block>
+        <view class="field-label contents-label">放进哪一章</view>
         <radio-group bindchange="onOrganizeTarget">
           <label class="memory-row" wx:for="{{chapterRows}}" wx:key="id">
             <radio value="{{item.id}}" checked="{{organizeTarget === item.id}}" disabled="{{connectionSaving || generating || switchingBook}}" />
@@ -391,19 +393,19 @@
           <scroll-view class="chapter-original" scroll-y><text selectable>{{organizeOriginal || '这一章还没有正文'}}</text></scroll-view>
           <view class="field-label contents-label">3. 怎样放进去</view>
           <radio-group bindchange="onOrganizeMethod">
-            <label class="memory-row"><radio value="insert" checked="{{organizeMethod === 'insert'}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text>保留原文，插入这段记忆</text></label>
-            <label wx:if="{{writingMode === 'creative'}}" class="memory-row"><radio value="blend" checked="{{organizeMethod === 'blend'}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text>让 AI 结合本章重新衔接</text></label>
+            <label class="memory-row"><radio value="insert" checked="{{organizeMethod === 'insert'}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text>保留原文，{{articleSessionId ? '插入文章' : '插入这段记忆'}}</text></label>
+            <label wx:if="{{!articleSessionId && writingMode === 'creative'}}" class="memory-row"><radio value="blend" checked="{{organizeMethod === 'blend'}}" disabled="{{connectionSaving || generating || switchingBook}}" /><text>让 AI 结合本章重新衔接</text></label>
           </radio-group>
           <picker wx:if="{{organizeMethod === 'insert'}}" range="{{insertionPoints}}" range-key="label" value="{{insertionIndex}}" bindchange="onInsertionPoint" disabled="{{connectionSaving || generating || switchingBook}}">
             <view class="insertion-picker">插入位置：{{insertionPoints[insertionIndex].label}}　⌄</view>
           </picker>
           <view wx:else class="panel-note">AI 会读取整章原文与所选记忆，生成新的章节正文。请在下一步检查事实、语气和照片位置。</view>
         </block>
-        <block wx:if="{{writingMode === 'creative' && (organizeTarget === 'new' || organizeMethod === 'blend')}}">
+        <block wx:if="{{!articleSessionId && writingMode === 'creative' && (organizeTarget === 'new' || organizeMethod === 'blend')}}">
           <view class="field-label contents-label">这一章怎么写（可不填）</view>
           <textarea class="xiaoyi-answer" value="{{organizeWritingInstruction}}" maxlength="300" auto-height placeholder="例如：保留原来的开头，写得更口语，不用总结道理" bindinput="onOrganizeWritingInstruction" disabled="{{generating || saving || switchingBook}}" />
         </block>
-        <view class="panel-note">下一步会将所选记忆收进故事并生成预览；确认后才写入正文，旧版本和原始记忆保留。</view>
+        <view class="panel-note">{{articleSessionId ? '下一步直接预览这篇文章；确认后才写入正文。' : '下一步会将所选记忆收进故事并生成预览；确认后才写入正文，旧版本和原始记忆保留。'}}</view>
       </block>
       <block wx:if="{{panel === 'organize-preview'}}">
         <view class="panel-title serif">确认这一章的正文</view>

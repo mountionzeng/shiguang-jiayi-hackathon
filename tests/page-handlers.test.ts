@@ -4343,7 +4343,7 @@ test('reopened interview restores all turns and draft, and retains source contex
   assert.deepEqual(page.data.messages,messages.slice(0,-1));assert.equal(saved.writingInstruction,"写给孩子看的读后感");assert.deepEqual(saved.messages,messages.slice(0,-1));assert.equal(page.sourceText,root.text);assert.equal(page.messageSeq,6);assert.equal(page.data.writingInstruction,"写给孩子看的读后感");
   assert.equal(page.data.draftText,'整理的正文');assert.equal(page.data.stage,'chat');assert.equal(page.data.inputText,'未发送');
   await callPage(page,'persistSession');assert.equal(saved.outputMemoryId,output.id);await callPage(page,'organizeDraftIntoBook');
-  assert.equal(last(storage.navigations),'/pages/book/book?memoryIds=session-output');
+  assert.equal(last(storage.navigations),'/pages/book/book?articleSession='+root.id);
   WritingSession.open=async()=>({session:{rootMemoryId:root.id,canWrite:true,save:async(value:any)=>{saved=value;}} as any,snapshot:{messages,answers:['值得传承'],askedDimensions:['feeling'],inputText:'',draftTitle:'整理稿',draftText:'手动核正后的正文',draftAiText:'AI原来的正文',draftAiTitle:'原稿',draftSummary:'摘要',draftOrganizationMode:'cloud-ai',outputMemoryId:output.id,saved:false} as any});
   const edited=instantiate(await pageDefinition('interview'));await callPage(edited,'onLoad',{sourceId:root.id});
   assert.match(String(edited.data.draftAiLabel),/已由你修改/);
@@ -4388,7 +4388,7 @@ test('article action directly reads known intent, and only the clarification rep
 });
 
 
-test('reorganizing appends speech history while preserving the saved article on model failure',async context=>{
+test('reorganizing an existing source preserves all original memory data on model failure',async context=>{
  const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
  const page=instantiate(await pageDefinition('interview'));await callPage(page,'onLoad');
  const original=state.contributions.find(item=>item.id==='demo-personal-rain')!;
@@ -4397,7 +4397,7 @@ test('reorganizing appends speech history while preserving the saved article on 
  await callPage(page,'finish');
  const saved=storage.roomState().contributions.find(item=>item.id===original.id)!;
  assert.equal(saved.text,original.text);assert.equal(page.data.draftText,original.text);assert.equal(page.data.saved,true);
- assert.ok(memoryAiRevisions(saved).some(item=>item.kind==='spoken' && item.text==='我的新感受'));
+ assert.deepEqual(saved,original);
 });
 
 
@@ -4421,4 +4421,55 @@ test('interview writing guide is automatic and has no writing-form controls or s
  assert.doesNotMatch(template,/调整写法|compositionOpen|按这个写法整理|选择文章写法/);
  const snapshot=callPage(page,'sessionSnapshot') as any;
  assert.equal(snapshot.writingInstruction,undefined);assert.deepEqual(snapshot.messages,[]);
+});
+
+
+test('article completion persists the exact edited draft without saving another memory, and blocks on sync failure',async context=>{
+ const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
+ const page=instantiate(await pageDefinition('interview'));let snapshot:any;let canWrite=true;
+ page.writingSession={rootMemoryId:'demo-personal-rain',get canWrite(){return canWrite;},save:async(value:any)=>{snapshot=value;}};
+ page.setData({stage:'save',draftTitle:'读后感',draftText:'我改好的文章。',answers:['材料原话'],messages:[{id:'msg-1',kind:'answer',text:'写成读后感',label:''}]});
+ page.save=async()=>{throw new Error('must not save a memory');};
+ await callPage(page,'finishArticle');assert.equal(snapshot.draftText,'我改好的文章。');assert.equal(snapshot.messages.length,1);
+ assert.equal(page.data.stage,'chat');assert.deepEqual(storage.roomState().contributions,state.contributions);
+ canWrite=false;page.setData({stage:'save'});await callPage(page,'organizeDraftIntoBook');
+ assert.equal(storage.navigations.length,0);assert.equal(page.data.stage,'save');assert.match(String(page.data.saveError),/尚未完成/);
+ canWrite=true;await callPage(page,'organizeDraftIntoBook');assert.equal(last(storage.navigations),'/pages/book/book?articleSession=demo-personal-rain');
+ assert.deepEqual(storage.roomState().contributions,state.contributions);
+});
+
+test('an existing material session uses its source without creating or overwriting a memory',async context=>{
+ const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
+ const page=instantiate(await pageDefinition('interview'));page.writingSession={rootMemoryId:'demo-personal-rain'};
+ const source=await callPage(page,'persistSpokenAnswers',['新的对话回答']);
+ assert.equal((source as any).id,'demo-personal-rain');assert.deepEqual(storage.roomState().contributions,state.contributions);
+});
+
+for(const insert of [false,true])test(`article handoff ${insert?'inserts into existing text':'creates a chapter'} using the completed draft, retains sources and survives reopen`,async context=>{
+ const state=createInitialRoomState();
+ if(insert)state.personalDrafts={owner:{title:'原书',paragraphs:['原段落'],sourceCount:0,generatedAt:'',generationMode:'local-demo',chapters:[{id:'chapter-kept',title:'原章',memoryIds:[],content:[{text:'原段落。'},{photoId:'photo-kept'}]}]}};
+ const baseline=structuredClone(state.contributions),storage=installWxMock(state);context.after(storage.restore);
+ const {WritingSession}=await import('../miniprogram/services/writingSession');const old=WritingSession.open;context.after(()=>{WritingSession.open=old;});
+ WritingSession.open=async()=>({session:{rootMemoryId:'demo-personal-rain',canWrite:true,flush:async()=>{}} as any,snapshot:{draftTitle:'完成的读后感',draftText:'准确保留的文章。',draftOrganizationMode:'cloud-ai'} as any});
+ const page=instantiate(await pageDefinition('book'));
+ page.setData({articleSessionId:'demo-personal-rain'});page.requestedMemoryIds=['demo-personal-rain'];await callPage(page,'refresh');
+ callPage(page,'onOrganizeTarget',{detail:{value:insert?'chapter-kept':'new'}});
+ await callPage(page,'runOrganize');assert.equal(page.data.panel,'organize-preview',String(page.data.saveNotice));
+ assert.match(String(page.data.previewText),/准确保留的文章/);assert.doesNotMatch(String(page.data.previewText),/雨伞/);
+ await callPage(page,'confirmOrganize');assert.equal(page.data.articleSessionId,'',String(page.data.saveNotice));await callPage(page,'confirmOrganize');
+ assert.deepEqual(storage.roomState().contributions,baseline);
+ const reopened=instantiate(await pageDefinition('book'));await callPage(reopened,'refresh');
+ const chapters=(reopened.data.draft as any).chapters;assert.equal(chapters.length,1);
+ assert.match(JSON.stringify(chapters[0].content),/准确保留的文章/);assert.deepEqual(chapters[0].memoryIds,['demo-personal-rain']);
+ if(insert){assert.match(JSON.stringify(chapters[0].content),/原段落/);assert.match(JSON.stringify(chapters[0].content),/photo-kept/);}
+ assert.equal(page.data.articleSessionId,'');
+});
+
+test('article handoff refuses unavailable or conflicting drafts instead of falling back to source text',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+ const {WritingSession}=await import('../miniprogram/services/writingSession');const old=WritingSession.open;context.after(()=>{WritingSession.open=old;});
+ WritingSession.open=async()=>({session:{rootMemoryId:'demo-personal-rain',canWrite:false,flush:async()=>{}} as any,snapshot:{draftText:'未同步文章'} as any});
+ const page=instantiate(await pageDefinition('book'));page.setData({articleSessionId:'demo-personal-rain'});page.requestedMemoryIds=['demo-personal-rain'];await callPage(page,'refresh');
+ await callPage(page,'runOrganize');assert.equal(page.data.panel,'organize');assert.match(String(page.data.saveNotice),/尚未同步/);
+ assert.equal(page.organizeCandidate,undefined);assert.equal(storage.roomState().manuscriptRevisions,undefined);
 });

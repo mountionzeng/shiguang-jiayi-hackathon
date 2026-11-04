@@ -455,10 +455,26 @@ Page({
   },
   onHide() {if(this.writingSession)void this.persistSession();},
   showDraft() {if(this.data.draftText)this.setData({stage:"save"});},
+  async finishArticle() {
+    if(this.data.sharedFamilyId){await this.save();return;}
+    if(this.data.saving || this.data.organizing || this.data.asking || this.data.tooLong || !this.data.draftText.trim())return;
+    this.setData({saving:true,saveError:"",draftText:this.data.draftText,draftTitle:this.data.draftTitle});
+    try {
+      await this.ensureSession();
+      if(!this.writingSession)throw new Error("请连接云端后重试，文章仍在本页");
+      await this.persistSession();
+      if(!this.writingSession.canWrite)throw new Error("文章同步尚未完成，请重试保存");
+      this.setData({stage:"chat"});
+      wx.showToast({title:"文章已保留，可以随时修改",icon:"none"});
+    } catch(error) {this.setData({saveError:error instanceof Error ? error.message : "文章暂未同步，请重试"});}
+    finally {this.setData({saving:false});}
+  },
   async organizeDraftIntoBook() {
-    if(this.data.sharedFamilyId || this.data.asking || this.data.organizing || this.data.saving)return;
-    if(!this.data.saved)await this.save({stayOnPage:true});
-    if(this.data.saved && this.pendingContribution)wx.navigateTo({url:`/pages/book/book?memoryIds=${encodeURIComponent(this.pendingContribution.id)}`});
+    if(this.data.sharedFamilyId || this.data.asking || this.data.organizing || this.data.saving || this.data.tooLong || !this.data.draftText.trim())return;
+    await this.finishArticle();
+    if(this.data.saveError || !this.writingSession?.canWrite)return;
+    wx.navigateTo({url:`/pages/book/book?articleSession=${encodeURIComponent(this.writingSession.rootMemoryId)}`,
+      fail:()=>wx.showToast({title:"文章已保留，打开书籍失败，请重试",icon:"none"})});
   },
 
   /**
@@ -682,10 +698,19 @@ Page({
     if (!member) throw new Error("成员身份已失效，请重新接受邀请");
 
     const spokenText = normalizeMemoryText(answers.join(" "));
+    if (!this.pendingContribution && this.writingSession && !this.data.sharedFamilyId) {
+      const source = state.contributions.find(item => item.id === this.writingSession!.rootMemoryId && !item.deletedAt);
+      if (!source) throw new Error('原始记忆已变动，请重新打开');
+      this.pendingContribution = source;this.persistedContributionId = source.id;
+    }
     if (this.pendingContribution && !this.data.sharedFamilyId) {
       const saved = state.contributions.find(item => item.id === this.pendingContribution!.id && !item.deletedAt);
       if (!saved && this.persistedContributionId === this.pendingContribution.id) throw new Error('这段记忆已变动，请重新打开');
-      if (saved) this.pendingContribution = {...this.pendingContribution, photoIds:saved.photoIds};
+      if (saved) {
+        // Conversation and article live in the session; keep the source unchanged.
+        this.pendingContribution = {...this.pendingContribution, photoIds:saved.photoIds};
+        return saved;
+      }
     }
     const base = this.pendingContribution ?? createContribution({
       authorMemberId: member.id,

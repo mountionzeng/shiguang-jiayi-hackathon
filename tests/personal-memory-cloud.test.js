@@ -232,7 +232,7 @@ test('article guidance reads the whole dialogue and returns one clarification wi
  const question=await organizeCloud.main(event,{cloud:f.cloud});
  assert.equal(question.body,'');assert.equal(question.clarification,response.clarification);
  assert.match(request.messages[1].content,/最初的关切不能被最后十轮截掉/);
- assert.match(request.messages[0].content,/前因、经过、结果/);assert.match(request.messages[0].content,/已经问过并得到回答的内容不得再问/);
+ assert.match(request.messages[0].content,/前因、经过、结果/);assert.match(request.messages[0].content,/希望写成什么样/);assert.match(request.messages[0].content,/不能代替用户选择文章写法/);assert.match(request.messages[0].content,/不要把助手自己建议过的写法当作用户已选择/);assert.match(request.messages[0].content,/已经问过并得到回答的内容不得再问/);
  assert.match(request.messages[0].content,/交代为何发生和结果/);assert.match(request.messages[0].content,/不声称/);
  await assert.rejects(organizeCloud.main({...event,sourceOnly:false},{cloud:f.cloud,nowMs:Date.now()+5000}),/INVALID_ARTICLE_GUIDANCE_MODE/);
  event.conversation.push({role:'assistant',content:'[写作方向] '+response.clarification},{role:'user',content:'写读书时的感受'});

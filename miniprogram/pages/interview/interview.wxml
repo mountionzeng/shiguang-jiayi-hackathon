@@ -88,8 +88,8 @@
     <view wx:if="{{sourceTranscript || draftText || sessionNotice}}" class="session-toolbar">
       <view class="session-links">
         <button wx:if="{{sourceTranscript}}" class="capture-link" bindtap="toggleSourceTranscript">查看已读取材料</button>
-        <button wx:if="{{draftText}}" class="capture-link" bindtap="showDraft">查看{{saved ? '成稿' : '草稿'}}</button>
-        <button wx:if="{{draftText && !sharedFamilyId}}" class="capture-link" bindtap="organizeDraftIntoBook" disabled="{{saving || asking || organizing}}">整理进书</button>
+        <button wx:if="{{draftText}}" class="capture-link" bindtap="showDraft">查看文章</button>
+        <button wx:if="{{draftText && !sharedFamilyId}}" class="capture-link" bindtap="organizeDraftIntoBook" disabled="{{saving || asking || organizing}}">放进书</button>
       </view>
       <view wx:if="{{sessionRecoveryNote}}" class="session-notice">{{sessionRecoveryNote}}</view>
       <view class="session-notice">{{sessionNotice}}</view>
@@ -215,7 +215,7 @@
           wx:if="{{!captureEntry}}"
           class="tidy-btn {{(answers.length === 0 || organizing || asking || importing || saving) ? 'tidy-btn-off' : ''}}"
           bindtap="finish"
-        >{{organizing ? '正在整理…' : asking ? '小忆正在回应…' : '整理成文章'}}</button>
+        >{{organizing ? '正在整理…' : asking ? '小忆正在回应…' : '生成文章'}}</button>
       </view>
       <view wx:if="{{!captureEntry && sourceMaterials.length}}" class="capture-session-actions">
         <button class="capture-link" bindtap="readSourceMaterials" disabled="{{captureReading || asking || organizing}}">{{captureReading ? '正在逐份读取…' : '读取材料内容'}}</button>
@@ -231,7 +231,7 @@
   </block>
 
   <!-- ============ 整理与保存 ============ -->
-  <block wx:elif="{{saved}}">
+  <block wx:elif="{{saved && sharedFamilyId}}">
     <view class="chat-inner">
       <view class="organize-title serif">{{sharedFamilyId ? '故事已提交' : '记忆已保存'}}</view>
       <view class="organize-note">{{saveMessage}}</view>
@@ -249,7 +249,7 @@
         <textarea
           class="draft-title serif"
           value="{{draftTitle}}"
-          placeholder="给这段起个名字"
+          placeholder="文章标题"
           placeholder-class="input-placeholder"
           auto-height
           fixed="{{true}}"
@@ -332,6 +332,7 @@
           </view>
         </view>
 
+        <block wx:if="{{sharedFamilyId}}">
         <view class="organize-section">
           <view class="organize-title serif">要收进哪个故事？</view>
           <view class="organize-note">不必现在想好。留空就会安全地放进“未整理片段”。</view>
@@ -423,6 +424,8 @@
           </view>
         </view>
 
+        </block>
+        <view wx:if="{{!sharedFamilyId}}" class="session-notice">{{sessionNotice || '文章会随聊天自动保留，原始记忆仍在。'}}</view>
         <view class="scroll-tail"></view>
       </view>
     </scroll-view>
@@ -430,12 +433,12 @@
     <view class="composer">
       <view wx:if="{{saveError}}" class="organize-note">{{saveError}}</view>
       <view class="save-row">
-        <button class="btn btn-ghost save-back" bindtap="backToChat">继续编辑</button>
+        <button class="btn btn-ghost save-back" bindtap="backToChat">继续聊</button>
         <button
           class="btn btn-primary save-go {{(saving || tooLong) ? 'btn-disabled' : ''}}"
-          bindtap="save"
+          bindtap="finishArticle"
           disabled="{{saving || tooLong}}"
-        >{{saving ? '正在保存…' : (sharedFamilyId ? '提交给主人确认' : selectedStoryKey ? '保存并选择章节' : '保存这段记忆')}}</button>
+        >{{saving ? '正在同步…' : (sharedFamilyId ? '提交给主人确认' : '完成')}}</button>
       </view>
     </view>
   </block>
