@@ -258,8 +258,8 @@ export async function purgeAllDeletedMemoriesRemoteFirst(): Promise<FamilyRoomSt
 
 export async function deleteStoryRemoteFirst(key: string, title: string): Promise<FamilyRoomState> {
   if (key.startsWith('story-')) {
-    const story = activeStory(await loadRoomStateRemoteFirst(),key);
-    return storyCommand({action:'delete',storyId:key,expectedVersion:story.version,requestId:operationId()});
+    const story = activeStory(await loadRoomStateRemoteFirst({view:'home'}),key);
+    return storyCommand({action:'delete',storyId:key,expectedVersion:story.version,requestId:operationId()}, {view:'home'});
   }
   if (shouldUseCloudDatabase()) return await deleteCloudStory(key, title);
   return deleteStory(key, title);

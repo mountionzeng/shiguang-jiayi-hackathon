@@ -494,3 +494,34 @@ test('a source removed between initial load and creation transaction cannot crea
  assert.equal([...f.tables.keys()].some(key=>key.startsWith('stories:')),false);
  assert.equal([...f.tables.keys()].some(key=>key.startsWith('biography_drafts:')),false);
 });
+
+
+test('delete reads only its book metadata, preserves received originals and histories, and is retry-safe',async()=>{
+  const {handlers:h,repo,tables}=fixture(),ctx={familyId:'family_test'};
+  await h.command(ctx,{action:'create',storyId:'story-fast-delete',title:'收到的书',writingMode:'objective',memoryIds:[],requestId:'create-fast-delete'});
+  const key='stories:family_test_story-fast-delete';
+  tables.set(key,{...tables.get(key),sourcePolicyRequired:true,currentRevisionId:'revision-kept'});
+  tables.set('biography_drafts:family_test_revision-kept',{familyId:'family_test',storyId:'story-fast-delete',revision:{id:'revision-kept',storyId:'story-fast-delete',draft:{text:'保留原文'}}});
+  tables.set('stories:family_other_story-fast-delete',{familyId:'family_other',id:'story-fast-delete',version:1});
+  tables.set('memories:family_test_source',{familyId:'family_test',text:'原始记忆'});
+  const before=new Map([...tables].map(([k,v])=>[k,structuredClone(v)]));
+  repo.all=async()=>{throw new Error('delete must not scan histories or collections');};
+  const command={action:'delete',storyId:'story-fast-delete',expectedVersion:1,requestId:'delete-fast-book'};
+  assert.deepEqual(await h.command(ctx,command),{ok:true,storyId:'story-fast-delete'});
+  assert.ok(tables.get(key).deletedAt);
+  assert.equal(tables.get(key).currentRevisionId,'revision-kept');
+  for(const k of ['biography_drafts:family_test_revision-kept','stories:family_other_story-fast-delete','memories:family_test_source'])assert.deepEqual(tables.get(k),before.get(k));
+  assert.deepEqual(await h.command(ctx,command),{ok:true,storyId:'story-fast-delete'});
+  assert.equal(tables.get(key).version,2);
+});
+
+test('metadata-only delete still rejects concurrent changes and another family',async()=>{
+  const {handlers:h,repo,tables}=fixture(),ctx={familyId:'family_test'};
+  await h.command(ctx,{action:'create',storyId:'story-delete-conflict',title:'保留',writingMode:'objective',memoryIds:[],requestId:'create-delete-conflict'});
+  const key='stories:family_test_story-delete-conflict', transact=repo.transaction;
+  repo.transaction=fn=>{tables.get(key).version=2;return transact(fn);};
+  await assert.rejects(h.command(ctx,{action:'delete',storyId:'story-delete-conflict',expectedVersion:1,requestId:'delete-conflict-one'}),/已有更新/);
+  assert.equal(tables.get(key).deletedAt,undefined);
+  await assert.rejects(h.command({familyId:'family_other'},{action:'delete',storyId:'story-delete-conflict',expectedVersion:2,requestId:'delete-other-family'}));
+  assert.equal(tables.get(key).deletedAt,undefined);
+});

@@ -23,7 +23,7 @@ import {
   InterviewTurn,
 } from "../../domain/interview";
 import { BiographyFallbackReason, generateBiographyWithStatus } from "../../services/biographyService";
-import { appendContributionRemoteFirst, deleteStoryRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, takeStagedRoomStateForBook, usesCloudStorage } from "../../services/roomRepository";
+import { appendContributionRemoteFirst, deleteStoryRemoteFirst, loadCurrentMemberRemoteFirst, loadRoomStateRemoteFirst, roomDataModeLabel, stageRoomStateForStories, takeStagedRoomStateForBook, usesCloudStorage } from "../../services/roomRepository";
 import { cachedAccountScope } from "../../services/cloudRoomStorage";
 import { currentManuscript, makeRevision, manuscriptHistory, saveManuscriptRevision } from "../../services/manuscript";
 import {
@@ -1233,7 +1233,7 @@ Page({
       else if (!this.data.article) actions.push({label:"添加图片",action:"photo-menu"});
     }
     if (this.data.draft) actions.push({label:"历史版本",action:"history"});
-    if (this.data.storyId && this.data.savedRevisionId && !this.data.protectedCopy)
+    if (this.story && this.data.storyId)
       actions.push({label:"删除本书",action:"delete-story"});
     if (!actions.length) { wx.showToast({title:"先写下你的故事",icon:"none"});return; }
     wx.showActionSheet({
@@ -1252,18 +1252,21 @@ Page({
   },
   deleteCurrentStory() {
     const story = this.story;
-    if (!story || !this.data.storyId || this.data.protectedCopy || this.data.editing || this.data.saving || this.data.generating) return;
+    if (!story || !this.data.storyId || this.data.editing || this.data.saving || this.data.generating) return;
     this.setData({ saving: true });
     return new Promise<void>(resolve => wx.showModal({
       title: `删除「${this.data.draft?.title || story.bookTitle || story.title}」？`,
-      content: "整本书（包括所有章节）会进入最近删除；原始记忆和书稿版本都会保留，可在书架恢复。",
+      content: this.data.protectedCopy
+        ? "这本书在你书架中的副本会进入最近删除，可在书架恢复，不影响原作者的书。"
+        : "整本书（包括所有章节）会进入最近删除；原始记忆和书稿版本都会保留，可在书架恢复。",
       confirmText: "删除",
       confirmColor: "#c75245",
       success: async (result) => {
         if (!result.confirm) { this.setData({ saving: false }); resolve(); return; }
         wx.showLoading({ title: "正在删除", mask: true });
         try {
-          await deleteStoryRemoteFirst(story.id, story.title);
+          const state = await deleteStoryRemoteFirst(story.id, story.title);
+          stageRoomStateForStories(state);
           saveCurrentStoryId("");
           wx.hideLoading();
           wx.showToast({ title: "已放进最近删除", icon: "none" });

@@ -387,7 +387,18 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     // Saving edits only needs current manuscripts. Keep all memory provenance,
     // and point-read the submitted revision ID to preserve collision rejection.
     const writesManuscript=input.action==='save' || input.action==='create' && Boolean(input.revision);
-    const previous=await load(ctx,{home:writesManuscript && !input.restoreRevisionId,keepMemoryHistory:true});
+    // Soft deletion changes only this book's metadata. Never fetch every
+    // manuscript and memory just to mark one book deleted.
+    let previous;
+    if (input.action==='delete') {
+      const [family,story]=await Promise.all([
+        repo.get('families',ctx.familyId),
+        repo.get('stories',docId(ctx.familyId,String(input.storyId || ''))),
+      ]);
+      previous={storyMigration:family?.storyBooks,stories:story?.familyId===ctx.familyId && story.id===input.storyId ? [story] : [],manuscriptRevisions:[]};
+    } else {
+      previous=await load(ctx,{home:writesManuscript && !input.restoreRevisionId,keepMemoryHistory:true});
+    }
     if(writesManuscript && typeof input.revision?.id==='string') {
       const existing=await repo.get('biography_drafts',docId(ctx.familyId,input.revision.id));
       if(existing?.revision && !previous.manuscriptRevisions.some(r=>r.id===existing.revision.id)) {
@@ -456,7 +467,7 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         return {ok:true,storyId:retry.storyId};
       }
       let stored=await tx.get('stories',docId(ctx.familyId,story.id));
-      stored=await repairMissingRevision(tx,ctx.familyId,stored);
+      if (input.action!=='delete') stored=await repairMissingRevision(tx,ctx.familyId,stored);
       if (guardsContent) await assertLegacyTransaction(tx,ctx.familyId,stored);
       if((before && (!stored || stored.version!==before.version)) || (!before && stored))throw new Error('故事已有更新，请刷新后重试');
       if(input.action==='create' && input.revision) {

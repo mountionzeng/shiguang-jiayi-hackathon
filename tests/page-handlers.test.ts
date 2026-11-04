@@ -4601,7 +4601,7 @@ test('renamed book displays consistently on shelf and home while keeping origina
 });
 
 
-test('article more menu exposes recoverable whole-book deletion; cancel and protected copies preserve it', async context => {
+test('article more menu exposes recoverable whole-book deletion and cancel preserves it', async context => {
   const state=createInitialRoomState();
   const story={id:'fixture-delete-menu',title:'旧关联名称',bookTitle:'新书名',writingMode:'objective',memoryIds:[],version:1} as any;
   state.stories=[story];
@@ -4625,9 +4625,12 @@ test('article more menu exposes recoverable whole-book deletion; cancel and prot
   assert.equal(page.data.saving,false);
   assert.equal(storage.roomState().stories?.length,1);
   assert.deepEqual(storage.relaunches,[]);
-  page.setData({protectedCopy:true});actions=[];callPage(page,'showMore');
+  for (const protectedCopy of [false,true]) {
+    page.setData({protectedCopy,savedRevisionId:''});actions=[];callPage(page,'showMore');
+    assert.ok(actions.includes('删除本书'),'empty books and received copies both offer deletion');
+  }
+  page.story=undefined;page.setData({storyId:''});actions=[];callPage(page,'showMore');
   assert.equal(actions.includes('删除本书'),false);
-  await callPage(page,'deleteCurrentStory');assert.equal(duplicate,false);
 });
 
 test('whole-book delete waits for article save and refuses an unsaved failure', async context => {
@@ -4641,4 +4644,22 @@ test('whole-book delete waits for article save and refuses an unsaved failure', 
   page.flushArticle=async()=>{page.articlePending=null;return true;};
   await callPage(page,'selectTool',{currentTarget:{dataset:{action:'delete-story'}}});
   assert.equal(deleted,1);
+});
+
+
+test('deleting a received copy keeps sources and hands confirmed state to the shelf', async context => {
+  const state=createInitialRoomState();
+  const story={id:'story-received-delete',title:'收到的书',sourcePolicyRequired:true,writingMode:'objective',memoryIds:[],version:1} as any;
+  state.stories=[story,{...story,id:'story-other-kept',title:'保留的书',sourcePolicyRequired:false}];
+  state.storyMigration={status:'active',pending:[]} as any;
+  const storage=installWxMock(state);context.after(storage.restore);
+  const page=instantiate(await pageDefinition('book'));page.story=story;
+  page.setData({storyId:story.id,savedRevisionId:'',protectedCopy:true});
+  await callPage(page,'deleteCurrentStory');
+  assert.ok(storage.roomState().stories?.find(s=>s.id===story.id)?.deletedAt);
+  assert.equal(storage.roomState().stories?.find(s=>s.id==='story-other-kept')?.deletedAt,undefined);
+  assert.deepEqual(storage.roomState().contributions,JSON.parse(JSON.stringify(state.contributions)));
+  const {takeStagedRoomStateForStories}=await import('../miniprogram/services/roomRepository');
+  assert.ok(takeStagedRoomStateForStories()?.stories?.find(s=>s.id===story.id)?.deletedAt);
+  assert.deepEqual(storage.relaunches,['/pages/stories/stories']);
 });

@@ -179,11 +179,11 @@ Page({
       success: async (result) => {
         if (!result.confirm) { this.setData({ deletingStoryKey: "" }); resolve(); return; }
         try {
-          await deleteStoryRemoteFirst(key, title);
+          const state = await deleteStoryRemoteFirst(key, title);
           if (loadCurrentStoryId() === key) saveCurrentStoryId("");
           if (loadCurrentStoryTitle() === title) saveCurrentStoryTitle("");
           this.backToStories();
-          await this.refresh();
+          await this.refresh(state);
           wx.showToast({ title: "已放进最近删除", icon: "none" });
         } catch (error) {
           wx.showToast({ title: error instanceof Error ? error.message : "删除没有完成，请重试", icon: "none" });
