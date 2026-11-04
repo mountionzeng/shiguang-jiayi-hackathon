@@ -457,3 +457,40 @@ test('opt-in request timing stays outside state chunks and does not relax authen
   assert.equal(next.digest,chunk.digest,'per-request timings do not affect chunk fingerprints');
   assert.equal(next.offset,chunk.nextOffset);
 });
+
+function generatedCommand(){
+ const chapters=[{id:'chapter-writing',title:'虚构测试故事',memoryIds:['source-one'],content:[{text:'【虚构】雨后大家修好了桥。\n'}]}];
+ const draft={title:'虚构测试故事',chapters,...core.flatten(chapters),sourceCount:1,generatedAt:'',generationMode:'cloud-ai'};
+ return {action:'create',storyId:'story-generated',title:'虚构测试故事',writingMode:'creative',memoryIds:['source-one'],requestId:'generated-request-001',
+  revision:{id:'revision-generated-001',storyId:'story-generated',memberId:'',kind:'version',label:'生成故事',savedAt:'',sourceFingerprint:'',draft}};
+}
+function seedGeneratedSource(tables){
+ tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',relation:'自己',role:'owner',name:'我'});
+ tables.set('memories:family_test_source-one',{familyId:'family_test',id:'source-one',authorMemberId:'owner',scope:'personal',text:'【虚构】修桥原始材料',reviewStatus:'confirmed'});
+}
+test('generated story creation commits full text and shelf entry together and retries without duplicating source or story',async()=>{
+ const f=fixture();seedGeneratedSource(f.tables);const source=structuredClone(f.tables.get('memories:family_test_source-one'));
+ const {createStoryService}=require('../cloudfunctions/storyBooks/service');let checked='';
+ const service=createStoryService(f.repo,{approveChapterText:async text=>{checked=text;return true;}});
+ const input=generatedCommand();await service({OPENID:'test'},input);await service({OPENID:'test'},input);
+ const state=await f.handlers.state({familyId:'family_test'});assert.equal(state.stories.length,1);
+ assert.equal(state.stories[0].currentRevisionId,input.revision.id);assert.equal(state.manuscriptRevisions.length,1);
+ assert.deepEqual(state.manuscriptRevisions[0].draft.chapters,input.revision.draft.chapters);
+ assert.match(checked,/雨后大家修好了桥/);assert.deepEqual(f.tables.get('memories:family_test_source-one'),source);
+});
+test('initial manuscript moderation failure or invalid sources leave no empty shelf book',async()=>{
+ const f=fixture();seedGeneratedSource(f.tables);const before=structuredClone(f.tables);
+ const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+ await assert.rejects(createStoryService(f.repo,{approveChapterText:async()=>false})({OPENID:'test'},generatedCommand()),{code:'CONTENT_REJECTED'});
+ assert.deepEqual(f.tables,before);
+ const input=generatedCommand();input.revision.draft.chapters[0].memoryIds=['unrelated'];
+ await assert.rejects(f.handlers.command({familyId:'family_test'},input));assert.deepEqual(f.tables,before);
+});
+test('a source removed between initial load and creation transaction cannot create a generated story',async()=>{
+ const f=fixture();seedGeneratedSource(f.tables);const transact=f.repo.transaction;
+ f.repo.transaction=fn=>{f.tables.get('memories:family_test_source-one').deletedAt='today';return transact(fn);};
+ const handlers=createHandlers(f.repo);
+ await assert.rejects(handlers.command({familyId:'family_test'},generatedCommand()),/来源已变化/);
+ assert.equal([...f.tables.keys()].some(key=>key.startsWith('stories:')),false);
+ assert.equal([...f.tables.keys()].some(key=>key.startsWith('biography_drafts:')),false);
+});

@@ -215,7 +215,7 @@
           wx:if="{{!captureEntry}}"
           class="tidy-btn {{(answers.length === 0 || organizing || asking || importing || saving) ? 'tidy-btn-off' : ''}}"
           bindtap="finish"
-        >{{organizing ? '正在整理…' : asking ? '小忆正在回应…' : '生成文章'}}</button>
+        >{{organizing ? '正在生成…' : asking ? '小忆正在回应…' : '生成故事'}}</button>
       </view>
       <view wx:if="{{!captureEntry && sourceMaterials.length}}" class="capture-session-actions">
         <button class="capture-link" bindtap="readSourceMaterials" disabled="{{captureReading || asking || organizing}}">{{captureReading ? '正在逐份读取…' : '读取材料内容'}}</button>

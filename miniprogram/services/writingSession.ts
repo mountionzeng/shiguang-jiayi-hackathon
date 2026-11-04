@@ -6,6 +6,7 @@ export interface WritingSnapshot {
   draftAiText?:string;draftAiTitle?:string;
   /** Former form choice retained without a synthetic user chat bubble. */
   writingInstruction?:string;
+  outputStoryId?:string;outputStoryRevisionId?:string;
   draftOrganizationMode:'cloud-ai'|'local-demo';outputMemoryId:string;saved:boolean;
 }
 interface Pending {revision:number;mutationId:string;snapshot:WritingSnapshot;}

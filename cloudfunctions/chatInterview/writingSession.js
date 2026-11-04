@@ -30,6 +30,7 @@ function snapshot(value) {
     draftTitle:text(value.draftTitle || '',80),draftText:text(value.draftText || '',10000),draftSummary:text(value.draftSummary || '',500),
     ...(value.draftAiText ? {draftAiText:text(value.draftAiText,10000),draftAiTitle:text(value.draftAiTitle || '',80)} : {}),
     ...(value.writingInstruction ? {writingInstruction:text(value.writingInstruction,300)} : {}),
+    ...(value.outputStoryId ? {outputStoryId:text(value.outputStoryId,120),outputStoryRevisionId:text(value.outputStoryRevisionId || '',128)} : {}),
     draftOrganizationMode:value.draftOrganizationMode==='cloud-ai'?'cloud-ai':'local-demo',
     outputMemoryId:value.outputMemoryId ? text(value.outputMemoryId,128):'', saved:value.saved===true};
 }

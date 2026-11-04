@@ -32,6 +32,8 @@ import {
 } from "../../domain/interview";
 import {CLOUD_DATABASE_ENABLED} from "../../config/runtime";
 import {WritingSession, type WritingSnapshot} from "../../services/writingSession";
+import {saveWritingStory} from "../../services/writingStory";
+import {newStoryId} from "../../services/storyRecords";
 import {requestWritingSearch, writingSearchContext, isWritingSearchRequest, editWritingPreferences, type WritingSource} from '../../services/writingSupport';
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
@@ -253,6 +255,8 @@ Page({
 
   messageSeq: 0,
   writingSession: undefined as WritingSession | undefined,
+  outputStoryId:"",
+  outputStoryRevisionId:"",
   sessionInitializing: false,
   sourceText: "",
   researchText: "",
@@ -386,6 +390,8 @@ Page({
         : "材料已经读取好了，可以随时展开核对原文。我们不用急着决定写法，先从一个小问题开始：你为什么想留下这份材料？")
       : opening);
     if (restored) {
+      this.outputStoryId=restored.outputStoryId || "";
+      this.outputStoryRevisionId=restored.outputStoryRevisionId || "";
       const output = state.contributions.find(item => item.id === restored!.outputMemoryId && !item.deletedAt);
       this.pendingContribution = output;
       this.persistedContributionId = output?.id || "";
@@ -434,6 +440,7 @@ Page({
     return {messages:this.data.messages,answers:this.data.answers,askedDimensions:this.data.askedDimensions,
       inputText:this.data.inputText,draftTitle:this.data.draftTitle,draftText:this.data.draftText,
       ...(this.data.writingInstruction ? {writingInstruction:this.data.writingInstruction} : {}),
+      ...(this.outputStoryId ? {outputStoryId:this.outputStoryId,outputStoryRevisionId:this.outputStoryRevisionId} : {}),
       draftSummary:this.data.draftSummary,draftOrganizationMode:this.data.draftOrganizationMode,
       ...(aiRevision ? {draftAiText:aiRevision.text,draftAiTitle:aiRevision.title || ""} : {}),
       outputMemoryId:this.persistedContributionId,saved:this.data.saved};
@@ -455,17 +462,26 @@ Page({
   },
   onHide() {if(this.writingSession)void this.persistSession();},
   showDraft() {if(this.data.draftText)this.setData({stage:"save"});},
+  async publishStory() {
+    await this.ensureSession();
+    if(!this.writingSession)throw new Error("请连接云端后重试，故事草稿仍在本页");
+    if(!this.outputStoryId)this.outputStoryId=newStoryId();
+    await this.persistSession();
+    if(!this.writingSession.canWrite)throw new Error("故事同步尚未完成，请重试保存");
+    const result=await saveWritingStory({storyId:this.outputStoryId,revisionId:this.outputStoryRevisionId,
+      memoryId:this.writingSession.rootMemoryId,title:this.data.draftTitle,text:this.data.draftText,generationMode:this.data.draftOrganizationMode});
+    this.outputStoryRevisionId=result.revisionId;
+    await this.persistSession();
+    if(!this.writingSession.canWrite)throw new Error("故事已在书架，会话同步尚未完成，请重试保存");
+  },
   async finishArticle() {
     if(this.data.sharedFamilyId){await this.save();return;}
     if(this.data.saving || this.data.organizing || this.data.asking || this.data.tooLong || !this.data.draftText.trim())return;
     this.setData({saving:true,saveError:"",draftText:this.data.draftText,draftTitle:this.data.draftTitle});
     try {
-      await this.ensureSession();
-      if(!this.writingSession)throw new Error("请连接云端后重试，文章仍在本页");
-      await this.persistSession();
-      if(!this.writingSession.canWrite)throw new Error("文章同步尚未完成，请重试保存");
+      await this.publishStory();
       this.setData({stage:"chat"});
-      wx.showToast({title:"文章已保留，可以随时修改",icon:"none"});
+      wx.showToast({title:"故事已保存到人生之书",icon:"none"});
     } catch(error) {this.setData({saveError:error instanceof Error ? error.message : "文章暂未同步，请重试"});}
     finally {this.setData({saving:false});}
   },
@@ -790,6 +806,7 @@ Page({
         return;
       }
       const covered = detectCoveredDimensions(draft.body);
+      this.outputStoryId="";this.outputStoryRevisionId="";
 
       if (draft.generationMode === "cloud-ai") {
         this.pendingContribution = appendAiRevision(spoken, "ai", draft.body, draft.title, draft.generationMode);
@@ -797,6 +814,7 @@ Page({
 
       this.setData({
         stage: "save",
+        saveError:"",
         saved: false,
         answers,
         inputText: "",
@@ -813,6 +831,10 @@ Page({
         coveredChips: covered.map((dimension) => DIMENSION_CHIPS[dimension]),
       });
       await this.persistSession();
+      if(!this.data.sharedFamilyId) {
+        try {await this.publishStory();wx.showToast({title:"故事已保存到人生之书",icon:"none"});}
+        catch(error){this.setData({saveError:error instanceof Error ? error.message : "故事尚未放入书架，请点完成重试"});}
+      }
     } catch (error) {
       console.warn("按写法整理文章失败", error);
       wx.showToast({ title: "暂时无法整理，请稍后再试", icon: "none" });

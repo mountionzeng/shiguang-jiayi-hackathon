@@ -4342,7 +4342,9 @@ test('reopened interview restores all turns and draft, and retains source contex
   const page=instantiate(await pageDefinition('interview'));await callPage(page,'onLoad',{sourceId:output.id});
   assert.deepEqual(page.data.messages,messages.slice(0,-1));assert.equal(saved.writingInstruction,"写给孩子看的读后感");assert.deepEqual(saved.messages,messages.slice(0,-1));assert.equal(page.sourceText,root.text);assert.equal(page.messageSeq,6);assert.equal(page.data.writingInstruction,"写给孩子看的读后感");
   assert.equal(page.data.draftText,'整理的正文');assert.equal(page.data.stage,'chat');assert.equal(page.data.inputText,'未发送');
-  await callPage(page,'persistSession');assert.equal(saved.outputMemoryId,output.id);await callPage(page,'organizeDraftIntoBook');
+  await callPage(page,'persistSession');assert.equal(saved.outputMemoryId,output.id);
+  page.publishStory=async()=>{await callPage(page,'persistSession');}; // This test isolates restored-session navigation.
+  await callPage(page,'organizeDraftIntoBook');
   assert.equal(last(storage.navigations),'/pages/book/book?articleSession='+root.id);
   WritingSession.open=async()=>({session:{rootMemoryId:root.id,canWrite:true,save:async(value:any)=>{saved=value;}} as any,snapshot:{messages,answers:['值得传承'],askedDimensions:['feeling'],inputText:'',draftTitle:'整理稿',draftText:'手动核正后的正文',draftAiText:'AI原来的正文',draftAiTitle:'原稿',draftSummary:'摘要',draftOrganizationMode:'cloud-ai',outputMemoryId:output.id,saved:false} as any});
   const edited=instantiate(await pageDefinition('interview'));await callPage(edited,'onLoad',{sourceId:root.id});
@@ -4431,11 +4433,13 @@ test('article completion persists the exact edited draft without saving another 
  page.setData({stage:'save',draftTitle:'读后感',draftText:'我改好的文章。',answers:['材料原话'],messages:[{id:'msg-1',kind:'answer',text:'写成读后感',label:''}]});
  page.save=async()=>{throw new Error('must not save a memory');};
  await callPage(page,'finishArticle');assert.equal(snapshot.draftText,'我改好的文章。');assert.equal(snapshot.messages.length,1);
- assert.equal(page.data.stage,'chat');assert.deepEqual(storage.roomState().contributions,state.contributions);
+ assert.equal(page.data.stage,'chat');assert.equal(JSON.stringify(storage.roomState().contributions),JSON.stringify(state.contributions));
+ const published=storage.roomState().stories!.find(story=>story.id===page.outputStoryId)!;
+ assert.ok(published.currentRevisionId,'completion now creates a shelf story with a complete manuscript');
  canWrite=false;page.setData({stage:'save'});await callPage(page,'organizeDraftIntoBook');
  assert.equal(storage.navigations.length,0);assert.equal(page.data.stage,'save');assert.match(String(page.data.saveError),/尚未完成/);
  canWrite=true;await callPage(page,'organizeDraftIntoBook');assert.equal(last(storage.navigations),'/pages/book/book?articleSession=demo-personal-rain');
- assert.deepEqual(storage.roomState().contributions,state.contributions);
+ assert.equal(JSON.stringify(storage.roomState().contributions),JSON.stringify(state.contributions));
 });
 
 test('an existing material session uses its source without creating or overwriting a memory',async context=>{

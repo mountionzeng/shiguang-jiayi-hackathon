@@ -245,6 +245,12 @@ function createStoryService(repo, options = {}) {
     else {
       // Response shape is not part of a write's idempotency fingerprint.
       const {returnState, ...command} = event;
+      if (action === 'create' && command.revision) {
+        const draft=command.revision.draft;
+        const text=[command.title,draft?.title,...(draft?.chapters || []).flatMap(c=>[c.title,...(c.content || []).map(b=>b.text || '')])].join('\n');
+        if(typeof options.approveChapterText!=='function')throw Object.assign(new Error('内容检查暂时不可用'),{code:'MODERATION_UNAVAILABLE'});
+        if(!await options.approveChapterText(text,ctx.verifiedOpenid,'生成故事'))throw Object.assign(new Error('文字未通过内容检查'),{code:'CONTENT_REJECTED'});
+      }
       result = await handlers.command(ctx, command);
       if (action === 'save' && returnState === 'home' && result?.ok === true) {
         try {

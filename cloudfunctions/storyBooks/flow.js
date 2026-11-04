@@ -3,6 +3,7 @@ const core = require('./core');
 const { measurePerformance } = require('./performance');
 const { ownNamesByAccount } = require('./displayNames');
 const { assertLegacyWritable, protocolError } = require('./provenance');
+const {getMemory}=require('./memoryExports');
 const docId = (familyId,id) => familyId+'_'+id;
 const MIGRATION_BATCH_SIZE=80;
 const memberForClient = member => ({
@@ -385,8 +386,9 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     const input={...event,familyId:ctx.familyId};
     // Saving edits only needs current manuscripts. Keep all memory provenance,
     // and point-read the submitted revision ID to preserve collision rejection.
-    const previous=await load(ctx,{home:input.action==='save' && !input.restoreRevisionId,keepMemoryHistory:true});
-    if(input.action==='save' && typeof input.revision?.id==='string') {
+    const writesManuscript=input.action==='save' || input.action==='create' && Boolean(input.revision);
+    const previous=await load(ctx,{home:writesManuscript && !input.restoreRevisionId,keepMemoryHistory:true});
+    if(writesManuscript && typeof input.revision?.id==='string') {
       const existing=await repo.get('biography_drafts',docId(ctx.familyId,input.revision.id));
       if(existing?.revision && !previous.manuscriptRevisions.some(r=>r.id===existing.revision.id)) {
         previous.manuscriptRevisions.push(existing.revision);
@@ -457,6 +459,14 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       stored=await repairMissingRevision(tx,ctx.familyId,stored);
       if (guardsContent) await assertLegacyTransaction(tx,ctx.familyId,stored);
       if((before && (!stored || stored.version!==before.version)) || (!before && stored))throw new Error('故事已有更新，请刷新后重试');
+      if(input.action==='create' && input.revision) {
+        const owner=previous.members.find(m=>!m.deletedAt && m.kind!=='person' && (m.role==='owner' || m.relation==='自己'));
+        for(const id of story.memoryIds) {
+          const memory=await getMemory(tx,ctx.familyId,id);
+          if(!memory || memory.deletedAt || memory.scope!=='personal' || !owner || memory.authorMemberId!==owner.id ||
+            memory.sourcePolicyRequired || memory.sourceIds || memory.sourceSystem)throw new Error('故事来源已变化，请重新打开材料');
+        }
+      }
       for(const id of imageRefs) {
         const image=await tx.get('story_images',id);
         const link=await tx.get('story_image_links',docId(ctx.familyId,core.hash(story.id+'|'+id)));

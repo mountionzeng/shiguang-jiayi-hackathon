@@ -250,3 +250,9 @@ test('legacy writing form setting survives session storage without a fake conver
  assert.equal(result.writingInstruction,'写给孩子看，朴素一点');assert.equal(result.messages.length,2);
  assert.throws(()=>snapshot(sessionSnapshot({writingInstruction:'字'.repeat(301)})),/WRITING_SESSION_INVALID/);
 });
+
+test('writing session preserves the generated shelf story and acknowledged revision across reopen',async context=>{
+ const f=sessionFixture(context);
+ await f.call({operation:'save',revision:0,mutationId:'story-link-1',snapshot:sessionSnapshot({outputStoryId:'story-generated',outputStoryRevisionId:'revision-generated'})});
+ const result=await f.call();assert.equal(result.snapshot.outputStoryId,'story-generated');assert.equal(result.snapshot.outputStoryRevisionId,'revision-generated');
+});

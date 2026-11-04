@@ -122,7 +122,7 @@ function fingerprint(state, id) {
 }
 // Only an empty, independent story can be created before legacy migration.
 function isEmptyStoryCreate(command) {
-  return command.action === 'create' && (command.memoryIds === undefined || (Array.isArray(command.memoryIds) && command.memoryIds.length === 0));
+  return command.action === 'create' && !command.revision && (command.memoryIds === undefined || (Array.isArray(command.memoryIds) && command.memoryIds.length === 0));
 }
 function apply(state, command, now = new Date().toISOString()) {
   if (state.storyMigration?.status !== 'active' && !isEmptyStoryCreate(command)) fail('故事书迁移尚未完成，请先打开书架');
@@ -143,6 +143,16 @@ function apply(state, command, now = new Date().toISOString()) {
     story = {id:command.storyId, familyId:command.familyId || '', title:name, bookTitle:name, writingMode:command.writingMode,
       memoryIds:memories(next,command.memoryIds || []), protagonistMemberIds:[], createdAt:now,updatedAt:now,version:0,currentRevisionId:''};
     next.stories = [...(next.stories || []),story];
+    if (command.revision) {
+      const revision = copy(command.revision);
+      if (revision.storyId !== story.id || !/^revision-[a-zA-Z0-9-]{1,120}$/.test(revision.id) ||
+        (next.manuscriptRevisions || []).some(r => r.id === revision.id)) fail('书稿编号无效');
+      validateDraft(revision.draft,story);
+      Object.assign(revision.draft,flatten(revision.draft.chapters));
+      revision.savedAt=now;revision.sourceFingerprint=fingerprint(next,story.id);
+      next.manuscriptRevisions=[...(next.manuscriptRevisions || []),revision];
+      story.currentRevisionId=revision.id;story.bookTitle=revision.draft.title;
+    }
   } else {
     story = activeStory(next,command.storyId,command.action === 'restore');
     if (command.expectedVersion !== story.version) fail('故事已有更新，请刷新后重试');
