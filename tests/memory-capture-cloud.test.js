@@ -365,3 +365,39 @@ test('读取失败须明确重试，并发和重开不重复调用；用户删�
   await assert.rejects(handler.readMaterials({...input,photoConsent:true,retry:true}),/不可用/);
   assert.equal(calls,1);
 }));
+
+
+test('详情读取复用五页完整OCR，画面描述不进入成文材料，原记忆不改写',()=>withReadingFixture(async f=>{
+  const {prepareMemoryReading,loadMemoryReading}=require('../cloudfunctions/organizeMemory/memoryMaterialReading');
+  const input={...request(),text:'我还没想好怎么写。',sessionId:request().id,photoIds:[1,2,3,4,5].map(n=>'photo-page-'+n)};
+  for(const id of input.photoIds)f.state.set(`photos/${f.identity.familyId}__${id}`,{familyId:f.identity.familyId,_openid:f.identity.openid});
+  await f.handler.receive(input);const saved=await f.handler.saveOriginal(input);
+  const original=f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`).text;
+  f.state.get(`material_captures/${f.identity.accountId}_${input.id}`).evidence=input.photoIds.map((id,i)=>({sourceId:id,kind:'image-reading',text:`【可见文字】第${i+1}页史料正文，日期与人物。\n【画面内容】一本打开的书和五个人站成一排。\n【不确定处】无。`}));
+  const id=await prepareMemoryReading(f.db,f.identity,saved.memoryId);
+  assert.equal(await prepareMemoryReading(f.db,f.identity,saved.memoryId),id);
+  const reading=await loadMemoryReading(f.db,f.identity,saved.memoryId);
+  for(let i=1;i<=5;i++)assert.match(reading.text,new RegExp('第'+i+'页史料正文'));
+  assert.doesNotMatch(reading.text,/打开的书|五个人|站成一排/);
+  assert.equal(f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`).text,original);
+  assert.equal([...f.state.keys()].filter(k=>k.startsWith('memories/')).length,1);
+  const receipt=await f.handler.read({id});assert.equal(receipt.evidence.length,5);
+  await f.handler.readMaterials({id}); // all five reuse cache; no vision or consent call
+  f.state.get(`memories/${f.identity.familyId}_${saved.memoryId}`).photoIds.pop();
+  await assert.rejects(f.handler.readMaterials({id}),/照片已改变/);
+  await assert.rejects(loadMemoryReading(f.db,f.identity,saved.memoryId),/请先读取/);
+}));
+test('旧记忆的九张照片都进入读取任务，旧图片概述不充当OCR，删除和越权均拒绝',()=>withReadingFixture(async f=>{
+  const {prepareMemoryReading,loadMemoryReading,readingText}=require('../cloudfunctions/organizeMemory/memoryMaterialReading');
+  const ids=Array.from({length:9},(_,i)=>'photo-legacy-'+i);
+  f.state.set('memories/family_owner_old',{familyId:f.identity.familyId,_openid:f.identity.openid,scope:'personal',photoIds:ids,text:'原文',frontendContributionId:'old'});
+  for(const id of ids)f.state.set(`photos/${f.identity.familyId}__${id}`,{familyId:f.identity.familyId,_openid:f.identity.openid});
+  const id=await prepareMemoryReading(f.db,f.identity,'old');
+  const row=await f.handler.read({id});assert.equal(row.photoIds.length,9);
+  await assert.rejects(loadMemoryReading(f.db,f.identity,'old'),/尚未读完/);
+  assert.throws(()=>readingText({evidence:[{sourceId:ids[0],kind:'image-description',text:'书上有文字'}]},[ids[0]]),/尚未读完/);
+  assert.throws(()=>readingText({evidence:[{sourceId:ids[0],kind:'image-reading',text:'书上有文字'}]},[ids[0]]),/未返回文字/);
+  await assert.rejects(prepareMemoryReading(f.db,{...f.identity,openid:'stranger'},'old'),/不可用/);
+  f.state.get('memories/family_owner_old').deletedAt='now';
+  await assert.rejects(prepareMemoryReading(f.db,f.identity,'old'),/不可用/);
+}));

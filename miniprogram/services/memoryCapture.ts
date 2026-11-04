@@ -144,7 +144,7 @@ export async function readCaptureMaterials(
   if(!audioConsent || !isActive())return false;
   for(const item of pending) {
     let current=item;
-    for(let step=0;step<8 && captureHasUnreadMedia(current);step++) {
+    for(let step=0;step<12 && captureHasUnreadMedia(current);step++) {
       if(!isActive())return false;
       current=await call<MemoryCaptureReceipt>('captureReadMaterials',{id:item.id,photoConsent,audioConsent,...(step===0 && item.analysis?.status==='uncertain'?{retry:true}:{})},item.familyId);
       if(!isActive())return false;
@@ -159,4 +159,23 @@ export async function readCaptureMaterials(
     if(item!==pending[pending.length-1])await new Promise(resolve=>setTimeout(resolve,1100));
   }
   return true;
+}
+
+/** All attached original photos, including legacy memories without a capture session. */
+export async function readAttachedMemoryMaterials(memoryId:string,isActive:()=>boolean,onProgress?:(text:string)=>void):Promise<string> {
+  let receipt=await call<MemoryCaptureReceipt>('capturePrepareMemory',{memoryId});
+  if(!receipt || !Array.isArray(receipt.photoIds) || !Array.isArray(receipt.evidence))throw new Error('照片文字读取入口尚未更新，请稍后再试');
+  if(!isActive())throw new Error('当前记忆已切换');
+  const allowed=await readCaptureMaterials([receipt], updated=>{
+    receipt=updated;
+    onProgress?.(`已读取 ${receipt.photoIds.filter(id=>receipt.evidence.some(e=>e.sourceId===id && e.kind==='image-reading')).length}/${receipt.photoIds.length} 张照片的文字`);
+  },isActive);
+  if(!allowed || !isActive())throw new Error('尚未完成材料文字读取，原文和照片均保留');
+  // Show the same textual section the server uses for composition; visual reference stays separate.
+  return receipt.photoIds.map((id,index)=>{
+    const raw=receipt.evidence.find(e=>e.sourceId===id && e.kind==='image-reading')?.text;
+    const match=raw?.match(/【可见文字】([\s\S]*?)(?=【画面内容】|【不确定处】|$)/);
+    if(!match || !match[1].trim())throw new Error('这张照片未返回正文，请先核对读取结果');
+    return `【图片${index+1}：材料原文，机器提取，请核对】\n${match[1].trim()}`;
+  }).join('\n\n');
 }

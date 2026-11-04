@@ -36,7 +36,7 @@ import { organizeMemory } from "../../services/memoryOrganizerService";
 
 import { readLocalPhotos, saveLocalPhoto, isStoryImageReference } from "../../services/bookImages";
 import { ensurePhotoUploads } from "../../services/photoCloud";
-import { confirmPhotoWritingReference, ConfirmedPhotoReference, writingReferencePhotoIds } from "../../services/photoWritingReference";
+import {readAttachedMemoryMaterials} from "../../services/memoryCapture";
 
 type ArchiveTab = "note" | "memoir";
 
@@ -190,6 +190,8 @@ Page({
     storageLabel: "",
     editAiLabel: "",
     materialCaptureId: "",
+    materialReadText: "",
+    materialReadOpen: false,
     showOriginal: false,
     originalText: "",
     canRevertToSpoken: false,
@@ -209,7 +211,7 @@ Page({
   organizeRequestId: 0,
   openMemoryRequestId: 0,
   pendingMemorySocialSend: false,
-  photoWritingReference: undefined as {key: string; value?: ConfirmedPhotoReference} | undefined,
+
   editingOriginal: undefined as MemoryContribution | undefined,
   xiaoyiAskedDimensions: [] as InterviewDimension[],
   xiaoyiConversation: [] as InterviewTurn[],
@@ -440,6 +442,7 @@ Page({
       editTitle: memory.title || "",
       editText: memory.text,
       materialCaptureId: memory.materialCaptureId || "",
+      materialReadText: "", materialReadOpen: false,
       selectedRevisionId: currentRevision?.id || "",
       selectedVersionLabel: memoryVersionLabel(currentRevision),
       isCurrentVersion: true,
@@ -570,6 +573,13 @@ Page({
     const memory = this.editingOriginal;
     this.setData({ chatAsking: true, chatNotice: "" });
     try {
+      let materialText = '';
+      if (memory?.photoIds?.some(id=>/^photo-(?!ai-)/.test(id))) {
+        const isActive=()=>!this.archiveUnloaded && requestId===this.chatRequestId && this.editingOriginal?.id===memory.id;
+        materialText=await readAttachedMemoryMaterials(memory.id,isActive,chatNotice=>this.setData({chatNotice}));
+        if (!isActive()) return;
+        this.setData({materialReadText:materialText});
+      }
       const reply = await generateInterviewPrompt({
         answer,
         askedDimensions: this.data.coeditingAskedDimensions,
@@ -579,7 +589,7 @@ Page({
         storyTitle: this.data.editStory || (memory ? contributionStoryTitle(memory) : ""),
         previousAnswers,
         conversation,
-        sourceText: baseText,
+        sourceText: [baseText,materialText].filter(Boolean).join("\n\n"),
         sourceOnly: true,
       });
       if (requestId !== this.chatRequestId || !this.editingOriginal || this.editingOriginal.id !== memory?.id) return;
@@ -603,6 +613,19 @@ Page({
       if (requestId === this.chatRequestId) this.setData({ chatAsking: false });
     }
   },
+
+  async viewMaterialReading() {
+    if (this.data.organizingPreview || this.data.chatAsking || this.data.savingPhotos || this.data.savingEdit || !this.editingOriginal) return;
+    const memory=this.editingOriginal, requestId=++this.organizeRequestId;
+    this.setData({organizingPreview:true,previewNotice:'正在读取照片中的正文…'});
+    try {
+      const isActive=()=>!this.archiveUnloaded && requestId===this.organizeRequestId && this.editingOriginal?.id===memory.id;
+      const text=await readAttachedMemoryMaterials(memory.id,isActive,previewNotice=>this.setData({previewNotice}));
+      if(isActive())this.setData({materialReadText:text,materialReadOpen:true,previewNotice:'文字已提取，请核对；照片画面仍保留作配图参考。'});
+    } catch(error) {if(requestId===this.organizeRequestId)this.setData({previewNotice:error instanceof Error?error.message:'文字尚未读完'});}
+    finally {if(requestId===this.organizeRequestId)this.setData({organizingPreview:false});}
+  },
+  toggleMaterialReading() {this.setData({materialReadOpen:!this.data.materialReadOpen});},
 
   async createDocumentPreview() {
     if (this.data.organizingPreview || this.data.savingPhotos || this.data.savingEdit || this.data.chatAsking || !this.editingOriginal) return;
@@ -630,19 +653,16 @@ Page({
     this.setData({ organizingPreview: true, previewNotice: "正在结合原稿和对话成文，原记忆不会因此改变。" });
     try {
       const isActive = () => !this.archiveUnloaded && requestId === this.organizeRequestId && this.editingOriginal?.id === memory.id;
-      const photoIds = writingReferencePhotoIds(memory.photoIds || []);
-      const referenceKey = JSON.stringify([memory.id, photoIds]);
-      if (this.photoWritingReference?.key !== referenceKey) {
-        if (photoIds.length) this.setData({previewNotice:"正在参考原稿和照片；照片描述核对后再成文。"});
-        const value = await confirmPhotoWritingReference(photoIds, isActive);
+      const hasMaterials = (memory.photoIds || []).some(id=>/^photo-(?!ai-)/.test(id));
+      if (hasMaterials) {
+        this.setData({previewNotice:'正在读取全部照片中的文字；读完后再成文。'});
+        const materialReadText = await readAttachedMemoryMaterials(memory.id,isActive,previewNotice=>this.setData({previewNotice}));
         if (!isActive()) return;
-        this.photoWritingReference = {key:referenceKey, value};
+        this.setData({materialReadText,previewNotice:'正在依据已提取的材料正文和你的表达成文。'});
       }
-      const photoReference = this.photoWritingReference.value;
-      this.setData({previewNotice: photoReference ? "正在结合原稿和已核对的照片描述成文。" : "正在根据原稿和你的文字补充成文。"});
       const draft = await organizeMemory({
         transcript: [draftText, ...userAdditions],
-        ...(photoReference ? {photoReference} : {}),
+        ...(hasMaterials ? {materialSourceId:memory.id} : {}),
         writingMode: "compose",
         writingInstruction,
         conversation,
@@ -661,6 +681,7 @@ Page({
         this.setData({ previewNotice: "文档已更新，请重新整理预览。" });
         return;
       }
+      if (hasMaterials && draft.generationMode !== 'cloud-ai') throw new Error('尚未完成基于材料正文的整理，未生成预览。原文和照片均保留。');
       const aiSucceeded = draft.generationMode === "cloud-ai";
       this.setData({
         previewOpen: true,

@@ -49,7 +49,7 @@ import { ImportFileLike } from "../../services/memoryImport";
 import { activeStory, linkStoryMemories } from "../../services/storyBooks";
 import { storyShelf } from "../../services/storyShelf";
 import {recordCaptureAudio,stopCaptureAudio,cancelCaptureAudio} from '../../services/captureAudio';
-import {captureHasUnreadMedia,captureSourceText,readCaptureMaterials,readCaptureSession,pendingCaptureDrafts,assertCaptureScope,loadCaptureDraft,storeCaptureDraft,stageCaptureFiles,sendMemoryCapture,continueMemoryCapture,saveCaptureOriginal,captureAudioUrl,type MemoryCaptureDraft,type MemoryCaptureReceipt} from '../../services/memoryCapture';
+import {readAttachedMemoryMaterials,captureHasUnreadMedia,captureSourceText,readCaptureMaterials,readCaptureSession,pendingCaptureDrafts,assertCaptureScope,loadCaptureDraft,storeCaptureDraft,stageCaptureFiles,sendMemoryCapture,continueMemoryCapture,saveCaptureOriginal,captureAudioUrl,type MemoryCaptureDraft,type MemoryCaptureReceipt} from '../../services/memoryCapture';
 
 interface CaptureMessageView extends MemoryCaptureReceipt {hasReading:boolean;photoPaths:string[];localStatus?:''|'sending'|'failed'}
 
@@ -243,6 +243,8 @@ Page({
   messageSeq: 0,
   sourceText: "",
   researchText: "",
+  materialSourceMemoryId: "",
+  materialSourceBaseText: "",
   pendingContribution: undefined as MemoryContribution | undefined,
   persistedContributionId: "",
   interviewUnloaded: false,
@@ -293,6 +295,8 @@ Page({
     const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
     const storyTitle = requestedStory?.title || sourceStoryTitle || requestedStoryTitle;
     let sourceText = source?.text || "";
+    this.materialSourceMemoryId = !sharedFamilyId && source?.photoIds?.some(id=>/^photo-(?!ai-)/.test(id)) ? source.id : "";
+    this.materialSourceBaseText = source?.text || "";
     let sourceMediaNote = "";
     if (source?.materialCaptureId && !sharedFamilyId) {
       const session = await readCaptureSession(source.materialCaptureId);
@@ -500,6 +504,12 @@ Page({
     });
 
     try {
+      if (this.materialSourceMemoryId) {
+        const reading = await readAttachedMemoryMaterials(this.materialSourceMemoryId,()=>!this.interviewUnloaded);
+        if(this.interviewUnloaded)return;
+        this.sourceText=[this.materialSourceBaseText,reading].filter(Boolean).join('\n\n');
+        this.setData({sourceTranscript:reading});
+      }
       const prompt = await generateInterviewPrompt({
         answer,
         askedDimensions: this.data.askedDimensions,
@@ -612,6 +622,11 @@ Page({
     this.setData({ organizing: true });
 
     try {
+      if (this.materialSourceMemoryId) {
+        const reading=await readAttachedMemoryMaterials(this.materialSourceMemoryId,()=>!this.interviewUnloaded);
+        if(this.interviewUnloaded)return;
+        this.setData({sourceTranscript:reading});
+      }
       const spoken = await this.persistSpokenAnswers(answers);
       const draft = await organizeMemory({
         transcript: [spoken.text],
@@ -621,6 +636,7 @@ Page({
         // The organizer authorizes personal memories; shared-family records stay as spoken text.
         useAi: this.data.writingMode === "creative" && !this.data.sharedFamilyId,
         memoryId: spoken.id,
+        ...(this.materialSourceMemoryId ? {materialSourceId:this.materialSourceMemoryId} : {}),
         expectedSavedText: spoken.text,
         writingMode: "compose",
         conversation: this.data.messages.slice(-10).map(message => ({
@@ -628,6 +644,7 @@ Page({
           content: message.text,
         })),
       });
+      if(this.materialSourceMemoryId && draft.generationMode!=='cloud-ai')throw new Error('尚未完成基于材料正文的整理，原话已保存');
       const covered = detectCoveredDimensions(draft.body);
 
       if (draft.generationMode === "cloud-ai") {

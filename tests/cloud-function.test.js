@@ -613,8 +613,8 @@ test("the interview request carries the current-line rule only when a line is ma
     const bounded = requests[3].messages[1].content;
     assert.match(bounded, /很长原话开头/);
     assert.match(bounded, /最近补充：今天想用淡蓝色/);
-    assert.match(bounded, /中间原文未纳入本次上下文/);
-    assert.ok(bounded.length < requests[1].messages[1].content.length + 6000);
+    assert.ok(bounded.includes(longSource), 'all supplied page text reaches the conversation without silent middle omission');
+    await assert.rejects(chatInterviewMain({...base, sourceText:'文'.repeat(40001)}), /MATERIAL_CONTEXT_TOO_LONG/);
   } finally {
     global.fetch = previousFetch;
     for (const [key, value] of saved) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }

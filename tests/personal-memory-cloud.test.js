@@ -151,3 +151,25 @@ test('search cloud entry enforces explicit search consent and identity before ca
   await assert.rejects(chatCloud.main({action:'writingSearch',query:'满城',searchConsent:true},{cloud:f.cloud}),error=>error.code==='IDENTITY_UNLINKED');
   assert.equal(calls,1);
 });
+
+
+test('成文模型接收五页云端OCR而非客户端照片概述，并核对材料回执',async context=>{
+  env(context);const f=fixture(),old=global.fetch;context.after(()=>global.fetch=old);
+  const {captureIdOf}=require('../cloudfunctions/organizeMemory/memoryMaterialReading');
+  const ids=[1,2,3,4,5].map(n=>'photo-page-'+n),memory=f.records.get('memories:family_alice_m2');
+  memory._openid='alice-openid';memory.photoIds=ids;memory.text='还没想好怎么写';
+  const captureId=captureIdOf('m2',ids);
+  for(const id of ids)f.records.set('photos:family_alice__'+id,{familyId:'family_alice',_openid:'alice-openid'});
+  const row={accountId:'account_aaaaaaaaaaaaaaaaaaaaaaaa',familyId:'family_alice',memoryId:'m2',evidence:ids.map((id,i)=>({sourceId:id,kind:'image-reading',text:`【可见文字】第${i+1}页，1945年9月18日满城解放。\n【画面内容】一本打开的书。`}))};
+  f.records.set('material_captures:'+row.accountId+'_'+captureId,row);
+  let request;
+  global.fetch=async(_url,options)=>{request=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({title:'街道与往事',body:'读到满城解放的记述，我想记住这些往事。',summary:'读书感想',emotions:[],people:[],places:[]})}}]})};};
+  const result=await organizeCloud.main({memoryId:'m2',materialSourceId:'m2',sourceOnly:true,expectedText:memory.text,transcript:[memory.text],writingMode:'compose'},{cloud:f.cloud});
+  assert.equal(result.materialReadingApplied,true);
+  for(let i=1;i<=5;i++)assert.match(request.messages[1].content,new RegExp('第'+i+'页'));
+  assert.doesNotMatch(request.messages[1].content,/一本打开的书/);
+  assert.match(request.messages[0].content,/材料作者/);
+  row.evidence.pop();let calls=0;global.fetch=async()=>{calls++;throw new Error('must not reach provider');};
+  await assert.rejects(organizeCloud.main({memoryId:'m2',materialSourceId:'m2',writingMode:'compose'},{cloud:f.cloud,nowMs:Date.now()+10000}),/尚未读完/);
+  assert.equal(calls,0);
+});

@@ -89,7 +89,10 @@
     </view>
     <view class="coediting-panel">
       <view class="editor-label">这篇想怎么写（可不填）</view>
-      <view class="photo-notice">成文以你的原稿和补充为准。有照片时参考前 3 张用户照片，先核对画面描述；AI 配图不会作为真实经历的依据。</view>
+      <view class="photo-notice">先提取全部原照片上的文字，再结合你的表达整理。书中作者的经历不会写成你的亲历；照片画面保留作配图参考。</view>
+      <button wx:if="{{memoryPhotos.length}}" class="btn btn-ghost" bindtap="viewMaterialReading" disabled="{{organizingPreview || chatAsking || savingPhotos || savingEdit}}">读取 / 核对照片文字</button>
+      <view wx:if="{{materialReadText}}"><button class="btn btn-ghost" bindtap="toggleMaterialReading">{{materialReadOpen ? '收起提取文字' : '查看提取文字'}}</button><text wx:if="{{materialReadOpen}}" selectable>{{materialReadText}}</text></view>
+      <view class="photo-notice" wx:if="{{previewNotice && !previewOpen}}">{{previewNotice}}</view>
       <textarea class="coediting-input" value="{{documentWritingInstruction}}" maxlength="300" auto-height placeholder="例如：保留我的口气，把刚聊到的细节融进去" bindinput="onDocumentWritingInstruction" disabled="{{savingPhotos || savingEdit || organizingPreview}}" cursor-spacing="48" />
       <button wx:if="{{!isEditingDocument}}" class="btn btn-jade" bindtap="createDocumentPreview" loading="{{organizingPreview}}" disabled="{{savingPhotos || savingEdit || organizingPreview || chatAsking}}">生成成文预览</button>
     </view>

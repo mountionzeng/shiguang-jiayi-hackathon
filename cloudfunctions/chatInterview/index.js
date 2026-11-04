@@ -102,11 +102,8 @@ function sanitizeText(value, maxLength) {
 
 function interviewSourceText(value) {
   const text = String(value || "").trim();
-  const budget = 6000;
-  if (text.length <= budget) return text;
-  const omitted = "\n【中间原文未纳入本次上下文，不推断省略内容】\n";
-  const head = Math.floor((budget - omitted.length) / 2);
-  return text.slice(0, head) + omitted + text.slice(-(budget - omitted.length - head));
+  if (text.length > 40000) throw new Error('MATERIAL_CONTEXT_TOO_LONG');
+  return text;
 }
 
 function validateDimension(value) {

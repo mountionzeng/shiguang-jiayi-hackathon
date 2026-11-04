@@ -4288,3 +4288,31 @@ test('a delayed research result after leaving the interview does not mutate the 
   page.interviewUnloaded=true;resolve({result:{text:'资料',query:'满城',sources:[{index:1,title:'资料',url:'https://example.org'}]}});
   await request;assert.deepEqual(page.data.messages,[]);assert.equal(page.data.inputText,'请搜一下满城');
 });
+
+
+test('详情成文先使用全部五张照片的OCR，不再请求短图像概述，失败不显示预览',async context=>{
+  const state=createInitialRoomState();const memory=state.contributions.find(item=>item.id==='demo-personal-rain')!;
+  memory.photoIds=[1,2,3,4,5].map(n=>'photo-page-'+n);
+  const storage=installWxMock(state);context.after(storage.restore);
+  const oldApp=(globalThis as any).getApp;(globalThis as any).getApp=()=>({globalData:{cloudReady:true,aiReady:true}});context.after(()=>(globalThis as any).getApp=oldApp);
+  const page=instantiate(await pageDefinition('archive'));await callPage(page,'refresh');callPage(page,'showEditor',memory);
+  const {clearAiConsent}=await import('../miniprogram/services/aiConsent');clearAiConsent();context.after(clearAiConsent);
+  const requests:any[]=[];let applied=true;
+  (wx as any).cloud={callFunction:async(request:any)=>{
+    requests.push(request);
+    if(request.name==='getOpenId')return {result:{openid:'fixture-user'}};
+    if(request.name==='recordAiConsent')return {result:{}};
+    if(request.name==='organizeMemory' && request.data.action==='capturePrepareMemory')return {result:{id:'capture-material-12345678',status:'saved',familyId:request.data.expectedFamilyId,text:'',memoryId:memory.id,audio:[],photoIds:memory.photoIds,evidence:memory.photoIds!.map((id,i)=>({sourceId:id,kind:'image-reading',text:`【可见文字】第${i+1}页的正文。\n【画面内容】书上有黑色字。`}))}};
+    if(request.name==='organizeMemory')return {result:{title:'往事',body:'我读到书中记载的往事。',generationMode:'cloud-ai',materialReadingApplied:applied}};
+    throw new Error('unexpected '+request.name);
+  }};
+  await callPage(page,'createDocumentPreview');
+  assert.equal(page.data.previewOpen,true);
+  assert.match(page.data.materialReadText as string,/第5页的正文/);
+  assert.doesNotMatch(page.data.materialReadText as string,/黑色字/);
+  const compose=requests.find(request=>request.name==='organizeMemory' && !request.data.action);
+  assert.equal(compose.data.materialSourceId,memory.id);assert.equal(compose.data.photoReference,undefined);
+  callPage(page,'closeDocumentPreview');applied=false;
+  await callPage(page,'createDocumentPreview');assert.equal(page.data.previewOpen,false);
+  assert.match(page.data.previewNotice as string,/尚未完成/);
+});

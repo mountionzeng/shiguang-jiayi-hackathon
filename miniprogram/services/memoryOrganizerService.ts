@@ -39,6 +39,7 @@ interface CloudOrganizedMemoryResult {
   memoryType?: unknown;
   generationMode?: unknown;
   photoReferenceApplied?: unknown;
+  materialReadingApplied?: unknown;
 }
 
 function canUseCloudAi(): boolean {
@@ -112,6 +113,7 @@ export interface OrganizeMemoryInput extends WritingOptions {
   storyTitle?: string;
   useAi?: boolean;
   memoryId?: string;
+  materialSourceId?: string;
   /** Editing an existing saved memory: require the cloud copy to still match this base text. */
   expectedSavedText?: string;
   photoReference?: ConfirmedPhotoReference;
@@ -146,6 +148,7 @@ export async function organizeMemory(
       name: "organizeMemory",
       data: {
         memoryId: input.memoryId,
+        ...(input.materialSourceId ? {materialSourceId:input.materialSourceId} : {}),
         memoryType: input.memoryType,
         memberName: input.memberName,
         storyTitle: input.storyTitle,
@@ -162,6 +165,9 @@ export async function organizeMemory(
         } : {}),
       },
     }));
+    if (input.materialSourceId && (response.result as CloudOrganizedMemoryResult | undefined)?.materialReadingApplied !== true) {
+      throw new Error('材料文字尚未得到云端确认，不能生成成文预览');
+    }
     if (input.photoReference && (response.result as CloudOrganizedMemoryResult | undefined)?.photoReferenceApplied !== true) {
       throw new Error("照片参考尚未得到云端确认，已保留原稿");
     }
