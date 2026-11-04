@@ -4548,3 +4548,26 @@ test('failed composition keeps the earlier draft sources instead of linking newl
  assert.deepEqual(page.articleDraftSourceIds,['memory-earlier']);assert.equal(page.data.xiaoyiDraftText,'此前的成稿');
  assert.match(String(page.data.xiaoyiStatus),/材料暂不可用/);
 });
+
+test('enter chapter memory opens its own source, preserves unsaved text and supports multiple sources', async context => {
+  const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
+  const page = instantiate(await pageDefinition('book')) as any;
+  page.activeChapterId='first';page.data.storyId='story-test';page.data.article={id:'first',content:[]};
+  page.data.chapterMemories=[{id:'source/a',title:'材料甲'}];
+  page.saveArticleChat=()=>{};
+  await page.enterChapterMemory();
+  assert.equal(storage.navigations[storage.navigations.length - 1],'/pages/archive/archive?id=source%2Fa');
+  page.articlePending={id:'first'};page.flushArticle=async()=>false;
+  await page.enterChapterMemory();
+  assert.equal(storage.navigations.length,1,'failed save retains the editor');
+  page.articlePending=null;page.data.chapterMemories.push({id:'source-b',title:'材料乙'});
+  let panel='';page.selectTool=async(event:any)=>{panel=event.currentTarget.dataset.action;};
+  await page.enterChapterMemory();assert.equal(panel,'memories');
+  await page.enterChapterMemory({currentTarget:{dataset:{id:'source-b'}}});
+  assert.equal(storage.navigations[storage.navigations.length - 1],'/pages/archive/archive?id=source-b');
+  await page.enterChapterMemory({currentTarget:{dataset:{id:'unrelated'}}});
+  assert.equal(storage.navigations.length,2);
+  page.data.protectedCopy=true;
+  await page.enterChapterMemory({currentTarget:{dataset:{id:'source-b'}}});
+  assert.equal(storage.navigations.length,2,'received copies do not expose private source navigation');
+});

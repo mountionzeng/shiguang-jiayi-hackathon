@@ -193,7 +193,8 @@ page { height: 100%; overflow: hidden; }
 .xiaoyi-materials image { width:100rpx;height:100rpx;border-radius:8rpx; }
 .xiaoyi-materials button { width:auto;margin:0;padding:8rpx 12rpx;font-size:25rpx;background:#f2f3ec;color:#527c6c; }
 
-.article-memory-entry { margin: 8rpx 24rpx 16rpx; padding: 8rpx 16rpx; width: fit-content; font-size: 26rpx; color: #617e70; background: transparent; }
+.article-memory-actions { display: flex; justify-content: center; gap: 24rpx; margin: 8rpx 24rpx 16rpx; }
+.article-memory-entry { margin: 0; padding: 8rpx 16rpx; width: fit-content; font-size: 26rpx; color: #617e70; background: transparent; }
 .article-memory-entry::after { border: 0; }
 .article-memory-picker { margin: 12rpx 24rpx; padding: 20rpx; background: #faf8f1; border-radius: 16rpx; }
 .article-memory-list { max-height: 360rpx; }

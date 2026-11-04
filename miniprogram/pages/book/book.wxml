@@ -71,7 +71,7 @@
         <view class="contents-book-copy">
           <view class="field-label">书名</view>
           <input class="manuscript-title serif" value="{{editTitle}}" maxlength="80" bindinput="onEditTitle" bindkeyboardheightchange="onKeyboardHeight" adjust-position="{{false}}" disabled="{{protectedCopy || saving || generating}}" placeholder="写一个标题" />
-          <view class="contents-summary">{{chapterRows.length}} 章 · {{unassigned.length}} 段记忆还没写进</view>
+          <view class="contents-summary">{{chapterRows.length}} 章 · {{sourceCount}} 段记忆<text wx:if="{{unassigned.length}}"> · {{unassigned.length}} 段还没写进</text></view>
           <view class="contents-intro-label"><text>内容简介<text wx:if="{{!protectedCopy}}"> · 可编辑</text></text><button wx:if="{{!protectedCopy && !editing}}" class="intro-edit" bindtap="editIntroduction">编辑</button></view>
           <textarea wx:if="{{editing && view === 'contents'}}" class="contents-introduction contents-introduction-edit" value="{{editIntroduction}}" maxlength="500" auto-height bindinput="onEditIntroduction" placeholder="写几句话介绍这本故事" />
           <view wx:else class="contents-introduction">{{bookIntroduction || '还没有正文。从一段记忆开始，慢慢写成这本书。'}}</view>
@@ -110,7 +110,10 @@
   <scroll-view wx:if="{{article && !panel && view === 'chapter' && !openingChapter}}" class="article-scroll" scroll-y>
     <input adjust-position="{{!xiaoyiOpen}}" class="article-title serif" value="{{article.title}}" bindinput="onArticleTitle" maxlength="40" placeholder="给这一章起个名字" />
     <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
-    <button wx:if="{{!protectedCopy}}" class="article-memory-entry" bindtap="openArticleMemories" disabled="{{xiaoyiLoading || articleMemoryLoading}}">＋ 加入记忆</button>
+    <view wx:if="{{!protectedCopy}}" class="article-memory-actions">
+      <button class="article-memory-entry" bindtap="openArticleMemories" disabled="{{xiaoyiLoading || articleMemoryLoading}}">＋ 加入记忆</button>
+      <button class="article-memory-entry" bindtap="enterChapterMemory" disabled="{{xiaoyiLoading || articleMemoryLoading || saving}}">进入记忆</button>
+    </view>
     <view wx:if="{{articleMemoryOpen}}" class="article-memory-picker">
       <view class="field-label">想把哪些记忆写进来？</view>
       <view class="panel-note">结合当前文章生成一段草稿，你可以边改边聊。</view>
@@ -445,9 +448,10 @@
       </block>
       <block wx:if="{{panel === 'memories'}}">
         <view class="panel-title serif">{{chapterLabelText}}用到的记忆</view>
+        <view wx:if="{{chapterMemories.length}}" class="panel-note">点击一段记忆，查看原文、照片和详细记录。</view>
         <view wx:if="{{!chapterMemories.length}}" class="panel-note">这一章还没有放进记忆。</view>
         <view class="memory-row" wx:for="{{chapterMemories}}" wx:key="id">
-          <view class="memory-row-body">
+          <view class="memory-row-body" data-id="{{item.id}}" bindtap="enterChapterMemory" role="button" aria-label="进入记忆：{{item.title}}">
             <text class="memory-text">{{item.text}}</text>
             <view wx:if="{{item.aiLabel}}" class="chapter-ai-label">{{item.aiLabel}}</view>
           </view>

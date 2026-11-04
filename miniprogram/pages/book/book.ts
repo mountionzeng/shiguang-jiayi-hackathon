@@ -1364,6 +1364,22 @@ Page({
       fail: () => wx.showToast({ title: "没有读到选中的文字，请重新选择", icon: "none" }),
     });
   },
+  async enterChapterMemory(event?: { currentTarget: { dataset: { id?: string } } }) {
+    if (this.data.protectedCopy || this.data.saving || this.data.generating || this.data.xiaoyiLoading) return;
+    const key = this.articleChatKey();
+    if ((this.articlePending || this.articleSaving || this.articleAttempt) && !await this.flushArticle()) return;
+    if (this.unloaded || key !== this.articleChatKey()) return;
+    const sources = this.data.chapterMemories;
+    const id = event?.currentTarget.dataset.id || (sources.length === 1 ? sources[0].id : '');
+    if (!id) {
+      await this.selectTool({currentTarget:{dataset:{action:'memories'}}});
+      return;
+    }
+    if (!sources.some(memory => memory.id === id)) return;
+    this.saveArticleChat();
+    wx.navigateTo({url:'/pages/archive/archive?id=' + encodeURIComponent(id),
+      fail: () => wx.showToast({title:'记忆暂时没打开，请重试',icon:'none'})});
+  },
   async openArticleMemories() {
     if (!this.data.article || this.data.protectedCopy || this.data.xiaoyiLoading || this.data.articleMemoryLoading) return;
     const key = this.articleChatKey();
