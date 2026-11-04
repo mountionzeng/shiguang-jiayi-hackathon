@@ -469,6 +469,14 @@ async function main(event, dependencies = {}) {
     };
   }
 
+  if (event?.action === 'writingSession') {
+    const c=dependencies.cloud || require('wx-server-sdk');
+    if(c.init)c.init({env:c.DYNAMIC_CURRENT_ENV});
+    const d=dependencies.db || c.database();
+    const identity=await resolveActiveIdentity(d,c.getWXContext());
+    return require('./writingSession').writingSession(event,d,identity);
+  }
+
   if (event?.action === 'writingPreferences') {
     const preferenceCloud = dependencies.cloud || require('wx-server-sdk');
     if (preferenceCloud.init) preferenceCloud.init({env:preferenceCloud.DYNAMIC_CURRENT_ENV});

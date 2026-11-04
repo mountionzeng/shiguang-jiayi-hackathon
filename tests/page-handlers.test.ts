@@ -532,6 +532,7 @@ test("interview continuation loads the complete requested memory outside the hom
       if (captureError) throw new Error("offline");
       return { result: { sessionId: "source-capture", items: captureItems } };
     }
+    if(name === "chatInterview" && data.action === "writingSession") return {result:{memoryId:source.id,revision:data.operation === "get" ? 0 : 1,mutationId:data.mutationId || ""}};
     assert.equal(name, "storyBooks");
     views.push(data.view);
     return { result: { ...initial, roomStateVersion: 1, stories: [], manuscriptRevisions: [], deletedStories: [],
@@ -1383,6 +1384,7 @@ test("objective story keeps asking local follow-ups when online AI is unavailabl
   let aiCalls = 0;
   (wx as any).cloud = { callFunction: async () => { aiCalls += 1; throw new Error("AI must not run"); } };
   const page = instantiate(await pageDefinition("interview"));
+  page.ensureSession=async()=>undefined; // This test isolates the AI path; session persistence is covered separately.
   page.setData({ inputText: "只记录这句事实。", writingMode: "objective", storyId: "story-a", answers: [], messages: [] });
 
   await callPage(page, "send");
@@ -1398,6 +1400,7 @@ test("daily question keeps guiding the next two answers even in an objective boo
   const storage = installWxMock(state);
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
+  page.ensureSession=async()=>undefined; // This test isolates the AI path; session persistence is covered separately.
   await callPage(page, "onLoad", { storyId: "story-daily", question: "最近哪个小瞬间让你放松下来？" });
   const previousApp = (globalThis as any).getApp;
   (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
@@ -1423,6 +1426,7 @@ test("interview explains exhausted content-check quota beside its local template
   const storage = installWxMock(createInitialRoomState());
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
+  page.ensureSession=async()=>undefined; // This test isolates the AI path; session persistence is covered separately.
   const previousApp = (globalThis as any).getApp;
   const previousWarn = console.warn;
   console.warn = () => undefined;
@@ -1446,6 +1450,7 @@ test("continue chatting in an objective book keeps all three turns without modif
   const storage = installWxMock(state);
   context.after(storage.restore);
   const page = instantiate(await pageDefinition("interview"));
+  page.ensureSession=async()=>undefined; // This test isolates the AI path; session persistence is covered separately.
   await callPage(page, "onLoad", { storyId: "story-daily" });
   const previousApp = (globalThis as any).getApp;
   (globalThis as any).getApp = () => ({ globalData: { cloudReady: true, aiReady: true } });
@@ -2559,6 +2564,7 @@ test("finish() persists the spoken answer as a real memory before asking organiz
         personalDraftSourceFingerprints: Object.fromEntries(Object.keys(storage.roomState().personalDrafts ?? {}).map(memberId => [memberId, ""])),
       },
     };
+    if (name === "chatInterview" && data.action === "writingSession") return {result:{memoryId:data.memoryId,revision:data.operation === "get" ? 0 : 1,mutationId:data.mutationId || ""}};
     if (name === "recordAiConsent") return { result: { success: true } };
     if (name === "organizeMemory") {
       // organizeMemory must see the memory that was just persisted, proving finish()
@@ -4315,4 +4321,37 @@ test('详情成文先使用全部五张照片的OCR，不再请求短图像概�
   callPage(page,'closeDocumentPreview');applied=false;
   await callPage(page,'createDocumentPreview');assert.equal(page.data.previewOpen,false);
   assert.match(page.data.previewNotice as string,/尚未完成/);
+});
+
+test('reopened interview restores all turns and draft, and retains source context when opened from output',async context=>{
+  const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
+  const {WritingSession}=await import('../miniprogram/services/writingSession');
+  const oldOpen=WritingSession.open,oldApp=(globalThis as any).getApp;
+  context.after(()=>{WritingSession.open=oldOpen;(globalThis as any).getApp=oldApp;});
+  (globalThis as any).getApp=()=>({globalData:{cloudReady:true}});
+  const root=state.contributions.find(m=>m.id==='demo-personal-rain')!;
+  const output={...root,id:'session-output',text:'整理的正文',title:'整理稿'};state.contributions.push(output);
+  const messages=[{id:'msg-3',kind:'opening',text:'为什么留下？',label:''},{id:'msg-4',kind:'answer',text:'值得传承',label:''},{id:'msg-5',kind:'followup',text:'想让谁读到？',label:'小忆'}];
+  let saved:any;
+  WritingSession.open=async()=>({session:{rootMemoryId:root.id,canWrite:true,save:async(value:any)=>{saved=value;}} as any,snapshot:{messages,answers:['值得传承'],askedDimensions:['feeling'],inputText:'未发送',draftTitle:'整理稿',draftText:'整理的正文',draftSummary:'摘要',draftOrganizationMode:'cloud-ai',outputMemoryId:output.id,saved:true} as any});
+  (wx as any).cloud={callFunction:async({name}:any)=>({result:name==='getOpenId'?{openid:'restore-session'}:{...state,roomStateVersion:1,stories:[],manuscriptRevisions:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}}})};
+  const page=instantiate(await pageDefinition('interview'));await callPage(page,'onLoad',{sourceId:output.id});
+  assert.deepEqual(page.data.messages,messages);assert.equal(page.sourceText,root.text);assert.equal(page.messageSeq,5);
+  assert.equal(page.data.draftText,'整理的正文');assert.equal(page.data.stage,'chat');assert.equal(page.data.inputText,'未发送');
+  await callPage(page,'persistSession');assert.equal(saved.outputMemoryId,output.id);await callPage(page,'organizeDraftIntoBook');
+  assert.equal(last(storage.navigations),'/pages/book/book?memoryIds=session-output');
+});
+test('material reader opens independently of last-message scroll position and closes without resetting chat',async context=>{
+  const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+  const page=instantiate(await pageDefinition('interview'));page.setData({sourceTranscript:'第267页\n第268页',scrollIntoView:'msg-20',messages:[{id:'msg-20',text:'原来的聊天'}]});
+  callPage(page,'toggleSourceTranscript');assert.equal(page.data.sourceTranscriptOpen,true);assert.equal(page.data.scrollIntoView,'msg-20');
+  callPage(page,'toggleSourceTranscript');assert.equal(page.data.sourceTranscriptOpen,false);assert.equal((page.data.messages as any[])[0].text,'原来的聊天');
+});
+test('leaving a persisted interview flushes full session instead of creating a duplicate memory',async context=>{
+  const state=createInitialRoomState(),storage=installWxMock(state);context.after(storage.restore);
+  const page=instantiate(await pageDefinition('interview'));let snapshot:any;
+  page.writingSession={save:async(value:any)=>{snapshot=value;}};
+  page.setData({answers:['未整理的原话'],inputText:'打了一半',messages:[{id:'msg-1',kind:'answer',text:'未整理的原话',label:''}]});
+  callPage(page,'onUnload');await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(snapshot.inputText,'打了一半');assert.equal(snapshot.messages.length,1);assert.equal(storage.roomState().contributions.length,state.contributions.length);
 });

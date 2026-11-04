@@ -85,6 +85,16 @@
 
   <!-- ============ 对话 ============ -->
   <block wx:elif="{{stage === 'chat'}}">
+    <view wx:if="{{sourceTranscript || draftText || sessionNotice}}" class="session-toolbar">
+      <view class="session-links">
+        <button wx:if="{{sourceTranscript}}" class="capture-link" bindtap="toggleSourceTranscript">查看已读取材料</button>
+        <button wx:if="{{draftText}}" class="capture-link" bindtap="showDraft">查看{{saved ? '成稿' : '草稿'}}</button>
+        <button wx:if="{{draftText && !sharedFamilyId}}" class="capture-link" bindtap="organizeDraftIntoBook" disabled="{{saving || asking || organizing}}">整理进书</button>
+      </view>
+      <view wx:if="{{sessionRecoveryNote}}" class="session-notice">{{sessionRecoveryNote}}</view>
+      <view class="session-notice">{{sessionNotice}}</view>
+      <button wx:if="{{sessionBlocked}}" class="capture-link" bindtap="retrySessionSave">重试保存</button>
+    </view>
     <scroll-view
       class="chat-scroll"
       scroll-y
@@ -92,10 +102,6 @@
       scroll-into-view="{{scrollIntoView}}"
     >
       <view class="chat-inner">
-        <view wx:if="{{sourceTranscript}}" class="source-transcript">
-          <button class="capture-link" bindtap="toggleSourceTranscript">{{sourceTranscriptOpen ? '收起材料原文' : '查看已读取材料'}}</button>
-          <text wx:if="{{sourceTranscriptOpen}}" selectable>{{sourceTranscript}}</text>
-        </view>
         <block wx:for="{{messages}}" wx:key="id">
           <!-- 追问：单独的卡片，和普通气泡区分开 -->
           <view class="ask-card" wx:if="{{item.kind === 'followup' || item.kind === 'research'}}" id="{{item.id}}">
@@ -230,7 +236,9 @@
       <view class="organize-title serif">{{sharedFamilyId ? '故事已提交' : '记忆已保存'}}</view>
       <view class="organize-note">{{saveMessage}}</view>
       <view class="organize-note">{{storageLabel}}</view>
-      <button wx:if="{{selectedStoryKey}}" class="btn btn-primary" bindtap="continueToChapter">继续选择章节</button>
+      <button wx:if="{{!sharedFamilyId}}" class="btn btn-primary" bindtap="organizeDraftIntoBook">整理进书 · 选择章节</button>
+      <view class="organize-note" selectable>{{draftText}}</view>
+      <button class="btn btn-ghost" bindtap="backToChat">回到之前的聊天</button>
       <button class="btn btn-ghost" bindtap="viewSavedMemory">查看这段记忆</button>
       <button class="btn btn-ghost" bindtap="leaveSavedMemory">返回</button>
     </view>
@@ -431,4 +439,10 @@
       </view>
     </view>
   </block>
+  <view wx:if="{{sourceTranscriptOpen}}" class="material-reader-mask" bindtap="toggleSourceTranscript">
+    <view class="material-reader" catchtap="stopTranscriptTap">
+      <view class="material-reader-head"><text class="serif">已读取的材料原文</text><button class="capture-link" bindtap="toggleSourceTranscript">关闭</button></view>
+      <scroll-view class="material-reader-scroll" scroll-y><text selectable>{{sourceTranscript}}</text></scroll-view>
+    </view>
+  </view>
 </view>

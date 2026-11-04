@@ -174,3 +174,47 @@ test('成文模型接收五页云端OCR而非客户端照片概述，并核对�
   await assert.rejects(organizeCloud.main({memoryId:'m2',materialSourceId:'m2',writingMode:'compose'},{cloud:f.cloud,nowMs:Date.now()+10000}),/尚未读完/);
   assert.equal(calls,0);
 });
+
+function sessionSnapshot(overrides={}) {return {messages:[{id:'msg-1',kind:'opening',text:'为什么留下这篇文章？',label:''},{id:'msg-2',kind:'answer',text:'值得传承。',label:''}],answers:['值得传承。'],askedDimensions:['feeling'],inputText:'还没发出的想法',draftTitle:'街道',draftText:'那些牺牲值得记住。',draftSummary:'读后感',draftOrganizationMode:'cloud-ai',outputMemoryId:'m2',saved:true,...overrides};}
+function sessionFixture(context) {
+  env(context);const f=fixture();for(const id of ['m1','m2'])f.records.get('memories:family_alice_'+id)._openid='alice-openid';
+  f.call=(data={})=>chatCloud.main({action:'writingSession',memoryId:'m1',expectedFamilyId:'family_alice',operation:'get',...data},{cloud:f.cloud});return f;
+}
+test('writing session roundtrips complete dialogue, unsent text and draft from source and output memory',async context=>{
+  const f=sessionFixture(context);delete process.env.CHAT_AI_API_KEY;
+  assert.equal((await f.call()).snapshot,null);
+  const snapshot=sessionSnapshot();await f.call({operation:'save',revision:0,mutationId:'turn-1',snapshot});
+  for(const memoryId of ['m1','m2']) {const result=await f.call({memoryId});assert.equal(result.memoryId,'m1');assert.deepEqual(result.snapshot,{...snapshot,messages:snapshot.messages.map(m=>({...m,sources:[]}))});}
+});
+test('session retries are idempotent and stale writers cannot overwrite another device',async context=>{
+  const f=sessionFixture(context),request={operation:'save',revision:0,mutationId:'turn-1',snapshot:sessionSnapshot()};
+  assert.equal((await f.call(request)).revision,1);assert.equal((await f.call(request)).revision,1);
+  await assert.rejects(f.call({...request,mutationId:'turn-2'}),/CONFLICT/);
+  assert.equal((await f.call()).snapshot.inputText,'还没发出的想法');
+});
+test('sessions reject another account, switched scope, deleted source, family memories and unowned output',async context=>{
+  const f=sessionFixture(context);
+  await assert.rejects(f.call({expectedFamilyId:'family_bob'}),/SCOPE_CHANGED/);
+  await assert.rejects(f.call({memoryId:'family'}),/MEMORY_UNAVAILABLE/);
+  f.records.get('memories:family_alice_m2')._openid='bob-openid';
+  await assert.rejects(f.call({operation:'save',revision:0,mutationId:'x',snapshot:sessionSnapshot()}),/MEMORY_UNAVAILABLE/);
+  f.records.get('memories:family_alice_m1').deletedAt='today';await assert.rejects(f.call(),/MEMORY_UNAVAILABLE/);
+  f.as('bob');await assert.rejects(f.call({expectedFamilyId:'family_bob'}),/MEMORY_UNAVAILABLE/);
+});
+test('session transaction rechecks revoked identity before any write',async context=>{
+  const f=sessionFixture(context),transaction=f.db.runTransaction;
+  f.db.runTransaction=fn=>{f.records.get('user_accounts:'+accountDocumentIdFor('alice-openid')).status='disabled';return transaction(fn);};
+  await assert.rejects(f.call({operation:'save',revision:0,mutationId:'x',snapshot:sessionSnapshot()}),error=>error.code==='IDENTITY_REVOKED');
+  assert.equal([...f.records.keys()].some(k=>k.startsWith('writing_sessions:')),false);
+});
+test('session storage bounds malformed payloads without silently truncating dialogue',async context=>{
+  const f=sessionFixture(context);
+  for(const snapshot of [sessionSnapshot({messages:Array(201).fill({})}),sessionSnapshot({draftText:'字'.repeat(10001)}),sessionSnapshot({messages:[{id:'x',kind:'system',text:'bad'}]})]) {
+    await assert.rejects(f.call({operation:'save',revision:0,mutationId:'x',snapshot}),/WRITING_SESSION_(INVALID|TOO_LARGE)/);
+  }
+});
+test('session read propagates storage outage instead of inventing an empty conversation',async context=>{
+  const f=sessionFixture(context),collection=f.db.collection;
+  f.db.collection=name=>name==='writing_sessions'?{doc(){return {get:async()=>{throw new Error('collection writing_sessions does not exist');}};}}:collection(name);
+  await assert.rejects(f.call(),/collection writing_sessions/);
+});

@@ -30,6 +30,8 @@ import {
   pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
+import {CLOUD_DATABASE_ENABLED} from "../../config/runtime";
+import {WritingSession, type WritingSnapshot} from "../../services/writingSession";
 import {requestWritingSearch, writingSearchContext, isWritingSearchRequest, editWritingPreferences, type WritingSource} from '../../services/writingSupport';
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
@@ -182,6 +184,9 @@ Page({
     sourceReadError: '',
     sourceTranscript: "",
     sourceTranscriptOpen: false,
+    sessionNotice: "",
+    sessionRecoveryNote: "",
+    sessionBlocked: false,
     captureRecording: false,
     captureEntry: false,
     captureError: '',
@@ -241,6 +246,8 @@ Page({
   },
 
   messageSeq: 0,
+  writingSession: undefined as WritingSession | undefined,
+  sessionInitializing: false,
   sourceText: "",
   researchText: "",
   materialSourceMemoryId: "",
@@ -284,7 +291,7 @@ Page({
           ? "note"
           : undefined;
     // 记忆库是共用的：接着聊的那一段可以是任何人讲的。
-    const source = (sharedFamilyId ? state.contributions : memoryPool(state.contributions)).find((memory) => (
+    let source = (sharedFamilyId ? state.contributions : memoryPool(state.contributions)).find((memory) => (
       memory.id === requestedSourceId &&
       !memory.deletedAt &&
       (!sharedFamilyId || (
@@ -292,6 +299,15 @@ Page({
       ))
     ));
     if (requestedSourceId && !source) throw new Error("这段记忆已不可用");
+    let restored: WritingSnapshot | undefined;
+    if (source && !sharedFamilyId && CLOUD_DATABASE_ENABLED && wx.cloud) {
+      const loaded = await WritingSession.open(source.id, text => this.sessionStatus(text));
+      this.writingSession = loaded.session;
+      restored = loaded.snapshot;
+      source = state.contributions.find(item => item.id === loaded.session.rootMemoryId && !item.deletedAt);
+      if(!source)throw new Error("会话原材料暂未读到，请重新打开");
+      this.setData({sessionBlocked:!loaded.session.canWrite,sessionRecoveryNote:restored ? "" : "此前未保存完整聊天；原记忆仍在。从这次起，对话与草稿会一起保存。"});
+    }
     const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
     const storyTitle = requestedStory?.title || sourceStoryTitle || requestedStoryTitle;
     let sourceText = source?.text || "";
@@ -358,11 +374,32 @@ Page({
     });
 
     this.setData({sourceTranscript: source?.materialCaptureId ? sourceText : ""});
-    this.pushMessage("opening", source?.materialCaptureId
+    if (!restored) this.pushMessage("opening", source?.materialCaptureId
       ? (this.data.sourceMaterials.some(captureHasUnreadMedia)
         ? "原件已保存。先读取材料里的内容，再一起整理，你不用先想好怎么写。"
         : "材料已经读取好了，可以随时展开核对原文。我们不用急着决定写法，先从一个小问题开始：你为什么想留下这份材料？")
       : opening);
+    if (restored) {
+      const output = state.contributions.find(item => item.id === restored!.outputMemoryId && !item.deletedAt);
+      this.pendingContribution = output;
+      this.persistedContributionId = output?.id || "";
+      if (output && !restored.saved && restored.draftText && restored.draftOrganizationMode === "cloud-ai") {
+        this.pendingContribution = appendAiRevision(output, "ai", restored.draftText, restored.draftTitle, "cloud-ai");
+      }
+      this.setData({messages:restored.messages, answers:restored.answers, inputText:restored.inputText,
+        askedDimensions:restored.askedDimensions.filter((item):item is InterviewDimension=>INTERVIEW_DIMENSIONS.includes(item as InterviewDimension)),
+        draftTitle:restored.draftTitle,draftText:restored.draftText,draftSummary:restored.draftSummary,
+        draftLength:restored.draftText.length,tooLong:restored.draftText.length>MAX_MEMORY_LENGTH,
+        draftOrganizationMode:restored.draftOrganizationMode,saved:!!output && restored.saved,
+        draftAiLabel:output ? memoryAiLabel(this.pendingContribution!) : "",
+        stage:"chat",scrollIntoView:restored.messages[restored.messages.length-1]?.id || ""});
+      this.messageSeq=Math.max(0,...restored.messages.map(item=>Number(item.id.replace("msg-","")) || 0));
+      this.researchText=restored.messages.filter(item=>item.kind==="research").map(item=>item.text+"\n"+(item.sources || []).map(source=>`[${source.index}] ${source.title} ${source.url}`).join("\n")).join("\n\n");
+    } else if (source && !source.materialCaptureId && !this.materialSourceMemoryId) {
+      this.pendingContribution=source;this.persistedContributionId=source.id;
+      this.setData({draftText:source.text,draftTitle:source.title || "",draftLength:source.text.length,saved:true,draftAiLabel:memoryAiLabel(source)});
+    }
+    if (this.writingSession && !restored) await this.persistSession();
     if(captureEntry){
       wx.setNavigationBarTitle({title:'随手记'});
       if(options.captureId)await this.restoreCaptureSession(decodeQueryValue(options.captureId));
@@ -372,6 +409,38 @@ Page({
     } catch (error) {
       wx.showModal({ title: "暂时无法加载", content: "请返回后重新打开，不会切换到另一份本地数据。", showCancel: false, success: () => wx.navigateBack() });
     }
+  },
+
+  sessionStatus(text:string) {
+    if (!this.interviewUnloaded) this.setData({sessionNotice:text,sessionBlocked:!!this.writingSession && !this.writingSession.canWrite});
+  },
+  sessionSnapshot():WritingSnapshot {
+    return {messages:this.data.messages,answers:this.data.answers,askedDimensions:this.data.askedDimensions,
+      inputText:this.data.inputText,draftTitle:this.data.draftTitle,draftText:this.data.draftText,
+      draftSummary:this.data.draftSummary,draftOrganizationMode:this.data.draftOrganizationMode,
+      outputMemoryId:this.persistedContributionId,saved:this.data.saved};
+  },
+  async persistSession() {if(this.writingSession)await this.writingSession.save(this.sessionSnapshot());},
+  checkpointSession() {this.writingSession?.checkpoint(this.sessionSnapshot());},
+  async ensureSession() {
+    if(this.writingSession || this.data.sharedFamilyId || !CLOUD_DATABASE_ENABLED || !wx.cloud)return;
+    this.sessionInitializing=true;
+    try {
+      const root=this.pendingContribution || await this.persistSpokenAnswers(this.data.answers);
+      const loaded=await WritingSession.open(root.id,text=>this.sessionStatus(text));
+      this.writingSession=loaded.session;
+    } finally {this.sessionInitializing=false;}
+  },
+  async retrySessionSave() {
+    try {await this.writingSession?.retry();}
+    catch(error){this.sessionStatus(error instanceof Error ? error.message : "同步尚未完成，请稍后重试");}
+  },
+  onHide() {if(this.writingSession)void this.persistSession();},
+  showDraft() {if(this.data.draftText)this.setData({stage:"save"});},
+  async organizeDraftIntoBook() {
+    if(this.data.sharedFamilyId || this.data.asking || this.data.organizing || this.data.saving)return;
+    if(!this.data.saved)await this.save({stayOnPage:true});
+    if(this.data.saved && this.pendingContribution)wx.navigateTo({url:`/pages/book/book?memoryIds=${encodeURIComponent(this.pendingContribution.id)}`});
   },
 
   /**
@@ -385,6 +454,8 @@ Page({
     if(this.data.captureDraft && !this.data.captureDraft.submitted)void storeCaptureDraft({...this.data.captureDraft,composerText:this.data.inputText});
     if(this.data.captureEntry || this.data.captureDraft || this.data.captureBusy)return;
     wx.disableAlertBeforeUnload();
+    if(this.writingSession){void this.persistSession();return;}
+    if(this.sessionInitializing)return;
     const unsentText = this.data.inputText.trim();
     const rawAnswers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (this.data.saved || this.data.saving || rawAnswers.length === 0) return;
@@ -458,6 +529,7 @@ Page({
     // Keep the native keyboard in charge while composing (including voice IME).
     // setData is reserved for explicit seeds/resets, never input echo.
     this.data.inputText = inputText;
+    this.checkpointSession();
     if(this.data.captureDraft && !this.data.captureDraft.submitted) {this.data.captureDraft.composerText=inputText;void storeCaptureDraft(this.data.captureDraft);}
     if (inputText.trim()) {
       wx.enableAlertBeforeUnload({
@@ -473,6 +545,7 @@ Page({
   },
 
   async send() {
+    if(this.data.sessionBlocked){wx.showToast({title:"请先重试保存会话",icon:"none"});return;}
     if(this.data.captureReadOnly)return;
     if(this.data.captureEntry){
       if(this.data.captureBusy || this.data.importing || this.data.captureRecording)return;
@@ -504,6 +577,9 @@ Page({
     });
 
     try {
+      await this.ensureSession();
+      await this.persistSession();
+      if(this.writingSession && !this.writingSession.canWrite)throw new Error("聊天尚未同步");
       if (this.materialSourceMemoryId) {
         const reading = await readAttachedMemoryMaterials(this.materialSourceMemoryId,()=>!this.interviewUnloaded);
         if(this.interviewUnloaded)return;
@@ -531,6 +607,7 @@ Page({
         : prompt.fallbackReason === "consent-declined" ? CONSENT_REQUIRED_FOLLOW_UP_LABEL
         : prompt.fallbackReason === "moderation-quota-exhausted" ? QUOTA_EXHAUSTED_FOLLOW_UP_LABEL : FOLLOW_UP_LABEL;
       this.pushMessage("followup", prompt.text, label);
+      await this.persistSession();
     } catch (error) {
       console.warn("追问生成失败", error);
       this.setData({ asking: false });
@@ -538,6 +615,7 @@ Page({
     }
   },
 
+  stopTranscriptTap() {},
   toggleSourceTranscript() { this.setData({sourceTranscriptOpen: !this.data.sourceTranscriptOpen}); },
   async searchWritingMaterials() { await this.runWritingSearch(this.data.inputText.trim() || this.data.searchQuery); },
   async runWritingSearch(initialQuery:string) {
@@ -550,6 +628,7 @@ Page({
       this.pushMessage('request', `帮我查资料：${result.query}`);
       this.pushMessage('research', result.text, '联网参考 · 请核对来源', result.sources);
       if (this.data.inputText.trim() === initialQuery) this.setData({inputText:''});
+      await this.ensureSession();await this.persistSession();
     } catch {
       if (!this.interviewUnloaded) this.setData({searchError:'搜索未完成，尚未获得可核对的来源。检索词已保留，可点 AI查资料重试。'});
     } finally { if (!this.interviewUnloaded) this.setData({asking:false,searching:false}); }
@@ -611,7 +690,7 @@ Page({
   },
 
   async finish() {
-    if (this.data.captureReading || this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
+    if (this.data.sessionBlocked || this.data.captureReading || this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
     const unsentText = this.data.inputText.trim();
     const answers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (answers.length === 0) {
@@ -619,7 +698,7 @@ Page({
       return;
     }
 
-    this.setData({ organizing: true });
+    this.setData({ organizing: true, saved: false });
 
     try {
       if (this.materialSourceMemoryId) {
@@ -627,7 +706,10 @@ Page({
         if(this.interviewUnloaded)return;
         this.setData({sourceTranscript:reading});
       }
+      this.setData({answers});
       const spoken = await this.persistSpokenAnswers(answers);
+      await this.ensureSession();
+      await this.persistSession();
       const draft = await organizeMemory({
         transcript: [spoken.text],
         memoryType: this.data.memoryType,
@@ -653,6 +735,7 @@ Page({
 
       this.setData({
         stage: "save",
+        saved: false,
         answers,
         inputText: "",
         draftTitle: draft.title,
@@ -667,6 +750,7 @@ Page({
         tooLong: draft.body.length > MAX_MEMORY_LENGTH,
         coveredChips: covered.map((dimension) => DIMENSION_CHIPS[dimension]),
       });
+      await this.persistSession();
     } catch (error) {
       console.warn("整理成片段失败", error);
       wx.showToast({ title: "暂时无法整理，请稍后再试", icon: "none" });
@@ -717,11 +801,13 @@ Page({
     const next = normalizeMemoryText([this.data.draftText.trim(), text.trim()].filter(Boolean).join("\n\n"));
     const previewLabel = this.pendingContribution ? memoryAiLabel({ ...this.pendingContribution, text: next }) : this.data.draftAiLabel;
     this.setData({ draftText: next, draftLength: next.length, tooLong: next.length > MAX_MEMORY_LENGTH, draftAiLabel: previewLabel, xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiStatus: "已接到草稿后面，你还可以继续改。" });
+    this.checkpointSession();
     return Promise.resolve(true);
   },
 
   onTitleInput(event: { detail: { value: string } }) {
     this.data.draftTitle = event.detail.value;
+    this.checkpointSession();
   },
 
   onDraftInput(event: { detail: { value: string } }) {
@@ -732,6 +818,7 @@ Page({
       ? memoryAiLabel({ ...this.pendingContribution, text: draftText })
       : this.data.draftOrganizationMode === "cloud-ai" ? "文字 AI 生成 · 已由你修改" : "";
     this.data.draftText = draftText;
+    this.checkpointSession();
     this.setData({
       draftAiLabel: previewLabel,
       draftLength: draftText.length,
@@ -1027,6 +1114,7 @@ Page({
         this.sourceText=captureSourceText(this.data.sourceMaterials);
         this.setData({sourceTranscript:this.sourceText});
         this.pushMessage('opening','材料已经读取好了，可以展开核对。你为什么想留下这份材料？');
+        await this.persistSession();
       } else this.setData({sourceReadError:'原件已保留。允许读取后，小忆才能根据内容帮你整理。'});
     } catch(error) {if(!this.interviewUnloaded)this.setData({sourceReadError:error instanceof Error?error.message:'材料未能读完，可继续读取。'});}
     finally {if(!this.interviewUnloaded)this.setData({captureReading:false});}
@@ -1164,6 +1252,7 @@ Page({
         icon: "none",
         duration: 2400,
       });
+      await this.ensureSession();await this.persistSession();
       if (this.data.selectedStoryKey && !options.stayOnPage) this.continueToChapter();
     } catch (error) {
       this.setData({
