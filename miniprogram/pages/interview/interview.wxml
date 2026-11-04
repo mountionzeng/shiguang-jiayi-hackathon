@@ -191,9 +191,9 @@
           bindinput="onInput"
           bindkeyboardheightchange="onKeyboardHeightChange"
         ></textarea>
-        <view class="send-btn" bindtap="send" role="button" aria-label="{{asking ? '小忆正在回应' : '发送'}}" aria-disabled="{{asking || organizing || importing || saving}}">
+        <button class="send-btn" bindtap="send" aria-label="{{asking ? '小忆正在回应' : '发送'}}" aria-disabled="{{asking || organizing || importing || saving}}">
           <text class="send-arrow">→</text>
-        </view>
+        </button>
       </view>
 
       <view wx:if="{{!captureEntry && !captureReadOnly}}" class="writing-search-note">AI查资料只把你确认的检索词发给腾讯云 TokenHub，不发送照片和私人对话。</view>
@@ -202,14 +202,14 @@
       <generation-status wx:if="{{organizing}}" text="正在把刚才的对话整理成片段…" />
       <view class="tool-row" wx:if="{{!captureReadOnly}}">
         <view class="tool-chip {{importing ? 'tool-chip-off' : ''}}" bindtap="importMemory">{{importing ? '正在导入…' : captureEntry ? '添加素材' : '导入'}}</view>
-        <view wx:if="{{!captureEntry && !captureDraft}}" class="tool-chip" bindtap="searchWritingMaterials" role="button">AI查资料</view>
-        <view wx:if="{{!captureEntry && !sharedFamilyId}}" class="tool-chip" bindtap="editWritingPreferences" role="button">写作偏好</view>
+        <button wx:if="{{!captureEntry && !captureDraft}}" class="tool-chip" bindtap="searchWritingMaterials">AI查资料</button>
+        <button wx:if="{{!captureEntry && !sharedFamilyId}}" class="tool-chip" bindtap="editWritingPreferences">写作偏好</button>
         <view class="tool-spacer"></view>
-        <view
+        <button
           wx:if="{{!captureEntry}}"
           class="tidy-btn {{(answers.length === 0 || organizing || asking || importing || saving) ? 'tidy-btn-off' : ''}}"
           bindtap="finish"
-        >{{organizing ? '正在整理…' : asking ? '小忆正在回应…' : '整理成片段'}}</view>
+        >{{organizing ? '正在整理…' : asking ? '小忆正在回应…' : '整理成片段'}}</button>
       </view>
       <view wx:if="{{!captureEntry && sourceMaterials.length}}" class="capture-session-actions">
         <button class="capture-link" bindtap="readSourceMaterials" disabled="{{captureReading || asking || organizing}}">{{captureReading ? '正在逐份读取…' : '读取材料内容'}}</button>

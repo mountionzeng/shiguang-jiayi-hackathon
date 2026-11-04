@@ -779,3 +779,9 @@
 .writing-search-note { color: #7b8078; font-size: 21rpx; line-height: 1.5; margin: 10rpx 0; }
 
 .source-transcript { margin-bottom: 20rpx; padding: 16rpx 22rpx; background: rgba(82,119,99,.05); border-radius: 16rpx; font-size: 26rpx; line-height: 1.8; white-space: pre-wrap; }
+
+/* Native buttons keep their explicit action names for touch and accessibility. */
+button.send-btn { margin: 0; padding: 0; }
+button.tool-chip { width: auto; margin: 0 12rpx 0 0; background: transparent; color: inherit; }
+button.tidy-btn { width: auto; margin: 0; }
+button.send-btn::after, button.tool-chip::after, button.tidy-btn::after { border: 0; }

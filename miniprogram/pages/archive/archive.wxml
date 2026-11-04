@@ -172,7 +172,7 @@
             <view class="note-title serif">{{item.title}}</view>
             <view class="note-excerpt">{{item.excerpt}}</view>
             <view class="note-archive">{{item.archiveLabel}} · 点开阅读全文</view>
-            <view class="note-visible-actions"><button class="memory-delete-visible" data-id="{{item.id}}" data-title="{{item.title}}" catchtap="deleteMemory" disabled="{{savingPhotos || !!deletingItemId}}" aria-label="删除记忆：{{item.title}}">删除</button></view>
+            <view class="note-visible-actions"><button class="memory-open-visible" data-id="{{item.id}}" catchtap="openMemory">阅读全文</button><button class="memory-delete-visible" data-id="{{item.id}}" data-title="{{item.title}}" catchtap="deleteMemory" disabled="{{savingPhotos || !!deletingItemId}}" aria-label="删除记忆：{{item.title}}">删除</button></view>
           </view>
         </view>
       </view>
