@@ -35,8 +35,13 @@ async function approveArticleImage(repo, ctx, id, storyId, chapterId, purpose = 
       ['png','jpg','jpeg','webp'].some(ext => image.fileID.endsWith(`/story-images/${ctx.familyId}/${storyId}/${id.slice(9)}.${ext}`)));
   }
   const photo = await repo.get('photos', `${ctx.familyId}__${id}`);
-  return Boolean(photo && photo.familyId === ctx.familyId && photo._openid === ctx.verifiedOpenid && !photo.deletedAt &&
-    !photo.sourcePolicyRequired && photo.sourceIds === undefined && photo.moderation?.ok === true && photo.moderation?.suggest === 'pass');
+  // This gate only saves the owner's private manuscript. Uploaded photos are
+  // checked asynchronously; that result must not discard accompanying text.
+  // Distribution and shared media reads retain their own moderation gates.
+  return Boolean(photo && photo.familyId === ctx.familyId && photo.photoId === id && photo._openid === ctx.verifiedOpenid && !photo.deletedAt &&
+    !photo.sourcePolicyRequired && photo.sourceIds === undefined &&
+    typeof photo.displayFileID === 'string' && photo.displayFileID.startsWith('cloud://') &&
+    photo.displayFileID.endsWith(`/user-photos/${ctx.familyId}/${id}/display.jpg`));
 }
 
 function createStoryService(repo, options = {}) {

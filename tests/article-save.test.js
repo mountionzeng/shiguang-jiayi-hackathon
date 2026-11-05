@@ -171,3 +171,35 @@ test('a privately saved revision is readable by its owner but an existing reader
  let checked='';const shared=await readAuthorizedStory(f.repo,reader,input,{approveText:async(text)=>{checked=text;return true;}});
  assert.match(checked,/新标题/);assert.match(checked,/最新正文/);assert.equal(shared.revisionId,saved.revisionId);
 });
+
+
+test('uploaded owner photos preserve private edits before asynchronous moderation completes',async()=>{
+ const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+ const {publicPhoto}=require('../cloudfunctions/photoAccess/core');
+ for(const suggest of ['review','risky','pass']) {
+  const f=await setup(),photoId='photo-private-001';
+  const photo={familyId:'family_owner',photoId,_openid:'owner',displayFileID:`cloud://env/user-photos/family_owner/${photoId}/display.jpg`,moderation:{ok:suggest==='pass',suggest}};
+  f.tables.set(`photos:family_owner__${photoId}`,photo);
+  f.input.chapter.title='她';
+  f.input.chapter.content[0].text='本机修改的正文';
+  f.input.chapter.content.push({blockId:bid('b'),photoId});
+  const service=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original'});
+  const result=await service({APPID:'wx-original',OPENID:'owner'},{...f.input,action:'articleSave'});
+  const draft=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft;
+  assert.equal(draft.chapters[0].title,'她');
+  assert.equal(draft.chapters[0].content[0].text,'本机修改的正文');
+  assert.equal(draft.chapters[0].content[1].photoId,photoId);
+  assert.ok(f.tables.get('biography_drafts:family_owner_'+f.input.revisionId));
+  if(suggest!=='pass') assert.equal(publicPhoto(photo,{familyId:'family_owner',photoId,purpose:'view'},'other',[{photoIds:[photoId]}]).status,'forbidden');
+ }
+});
+
+test('private photo saves still reject foreign, missing, deleted and source-bound assets',async()=>{
+ const {approveArticleImage}=require('../cloudfunctions/storyBooks/service');
+ const ctx={familyId:'family_owner',verifiedOpenid:'owner'},id='photo-private-001';
+ const photo={familyId:ctx.familyId,photoId:id,_openid:'owner',displayFileID:`cloud://env/user-photos/family_owner/${id}/display.jpg`,moderation:{ok:false,suggest:'review'}};
+ for(const patch of [{_openid:'other'},{familyId:'other'},{photoId:'photo-other'},{deletedAt:1},{sourcePolicyRequired:true},{sourceIds:[]},{displayFileID:undefined},{displayFileID:'cloud://env/user-photos/other/photo-private-001/display.jpg'}]) {
+  assert.equal(await approveArticleImage({get:async()=>({...photo,...patch})},ctx,id,'story-test','chapter-test'),false,JSON.stringify(patch));
+ }
+ assert.equal(await approveArticleImage({get:async()=>null},ctx,id,'story-test','chapter-test'),false);
+});
