@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {renderBookImages} from '../miniprogram/services/bookImageRenderer';
-import {PAGE_HEIGHT, TEXT_WIDTH} from '../miniprogram/services/bookImageLayout';
+import {renderBookImages} from '../miniprogram/packages/story-sharing/services/bookImageRenderer';
+import {PAGE_HEIGHT, TEXT_WIDTH} from '../miniprogram/packages/story-sharing/services/bookImageLayout';
 const material={descriptor:{id:'test',storyId:'story-test',revisionId:'revision-test',storyVersion:1,title:'虚构测试书',chapters:[{id:'chapter-one',title:'第一章',text:'测试正文🌿'.repeat(100)}],coverImageId:'',containsAiText:false},coverUrl:''};
 function runtime(options: {path: string; width: number; height: number} | ((text:string,size:number)=>number)={path:'local-cover',width:600,height:800}){
   const imageInfo=typeof options==='function'?{path:'local-cover',width:600,height:800}:options;

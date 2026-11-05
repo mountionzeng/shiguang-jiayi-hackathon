@@ -1,6 +1,6 @@
-import { BookExportMaterial } from './bookExport';
+import { BookExportMaterial } from '../../../services/bookExport';
 import { ImageLayoutMode, ImageFontSize, IMAGE_WIDTH, PAGE_HEIGHT, TEXT_WIDTH, layoutTextImages, wrapImageText } from './bookImageLayout';
-import { measurePerformance } from './performanceLog';
+import { measurePerformance } from '../../../services/performanceLog';
 
 export function removeImageFiles(paths: string[]) {
   for (const filePath of paths) wx.getFileSystemManager().unlink({ filePath, fail: () => undefined });

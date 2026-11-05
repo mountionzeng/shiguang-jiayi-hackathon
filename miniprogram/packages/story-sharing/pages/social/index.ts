@@ -3,8 +3,8 @@ import { loadSendSnapshot, selectSendText, SendChapter, SendScope, SendSnapshot,
 import { cachedAccountScope } from '../../../../services/cloudRoomStorage';
 import { storyCoverApi, ShareCoverCandidate } from '../../../../services/storyCoverService';
 import { bookExportApi, bookExportSelection, memoryBookExportSelection, BookExportSelection, BookExportDescriptor } from '../../../../services/bookExport';
-import { renderBookImages, removeImageFiles } from '../../../../services/bookImageRenderer';
-import { ImageLayoutMode, ImageFontSize } from '../../../../services/bookImageLayout';
+import { renderBookImages, removeImageFiles } from '../../services/bookImageRenderer';
+import { ImageLayoutMode, ImageFontSize } from '../../services/bookImageLayout';
 import { sharingHome, storySharing, invitationPath } from '../../../../services/storySharing';
 import { memoryExportApi, MemoryExportSource } from '../../../../services/memoryExport';
 
