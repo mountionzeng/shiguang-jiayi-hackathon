@@ -242,6 +242,7 @@ Page({
     return task;
   },
   async syncBookDraftsNow(): Promise<boolean> {
+    const previousNotice = this.data.saveNotice;
     let ok=await this.flushArticle(), changed=false;
     if (this.data.editing && !await this.saveEdits(true)) ok=false;
     const story=this.story;
@@ -268,6 +269,7 @@ Page({
         if (this.data.editing && !await this.saveEdits(true)) ok=false;
         if (!this.unloaded && !this.articlePending && !this.data.editing) await this.refresh();
         else this.chapterBaselineStale=true;
+        if (ok && this.data.saveNotice === previousNotice) this.setData({saveNotice:''});
       }
     } catch(error) { ok=false; this.setData({saveNotice:error instanceof Error?error.message:'暂时无法同步，修改已留在本机'}); }
     return ok;
@@ -1315,9 +1317,6 @@ Page({
     this.chapterDrag = undefined;
     this.suppressNextChapterTap();
     this.setData({ ...this.chapterData(), draggingChapterId: '' });
-  },
-  showRetainedDrafts() {
-    this.setData({ panel: 'retained-drafts', moreOpen: false });
   },
   copyRetainedDraft(event: { currentTarget: { dataset: { token: string } } }) {
     const retained = this.data.retainedDrafts.find(item => item.token === event.currentTarget.dataset.token);

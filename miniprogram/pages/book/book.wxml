@@ -62,10 +62,6 @@
   <!-- Contents: the book title and its chapters. Kept mounted so the native title input keeps its value. -->
   <scroll-view class="reading-panel contents-view" scroll-y="{{!draggingChapterId}}" hidden="{{openingChapter || !draft || panel || view !== 'contents'}}">
     <view class="panel-content contents-content">
-      <view wx:if="{{retainedDrafts.length}}" class="retained-draft-notice">
-        <text>有 {{retainedDrafts.length}} 份未同步草稿单独保留，不影响当前章节。</text>
-        <button class="tool-button" bindtap="showRetainedDrafts">查看保留草稿</button>
-      </view>
       <view class="contents-head">
         <image wx:if="{{coverUrl}}" class="contents-cover-background" src="{{coverUrl}}" mode="aspectFill" binderror="onCoverError" aria-hidden="true"></image>
         <view class="contents-book-copy">
@@ -272,20 +268,6 @@
     </view>
   <scroll-view class="reading-panel" scroll-y wx:if="{{panel}}">
     <view class="panel-content">
-      <block wx:if="{{panel === 'retained-drafts'}}">
-        <view class="panel-title serif">保留的本机草稿</view>
-        <view class="panel-note">这些草稿没有覆盖云端新版。可复制需要的文字，返回章节后继续编辑；原稿的图片和布局信息仍保留在本机，请勿清理缓存。</view>
-        <view wx:for="{{retainedDrafts}}" wx:key="token" wx:for-item="saved" class="retained-draft-card">
-          <view class="contents-section serif">{{saved.draft.title}}</view>
-          <view class="panel-note">{{saved.savedAt}}</view>
-          <button class="tool-button" data-token="{{saved.token}}" bindtap="copyRetainedDraft">复制整份文字</button>
-          <text class="retained-draft-text" user-select>{{saved.draft.introduction}}</text>
-          <view wx:for="{{saved.draft.chapters}}" wx:key="id" wx:for-item="chapter">
-            <view class="contents-section serif">{{chapter.title || '还没起名字'}}</view>
-            <text wx:for="{{chapter.content}}" wx:key="index" wx:for-item="block" class="retained-draft-text" user-select>{{block.text === undefined ? '〔原稿图片已保留〕' : block.text}}</text>
-          </view>
-        </view>
-      </block>
       <block wx:if="{{panel === 'version'}}">
         <view class="panel-title serif">给这一版起个名字</view>
         <input class="version-name" value="{{versionName}}" maxlength="30" bindinput="onVersionName" placeholder="例如：补充了大学经历" />
@@ -330,6 +312,20 @@
       </block>
       <block wx:if="{{panel === 'history'}}">
         <view class="panel-title serif">历史版本</view>
+      <block wx:if="{{retainedDrafts.length}}">
+        <view class="panel-title serif">保留的本机草稿</view>
+        <view class="panel-note">尚未同步的修改保留在这里，系统会尝试自动保存。</view>
+        <view wx:for="{{retainedDrafts}}" wx:key="token" wx:for-item="saved" class="retained-draft-card">
+          <view class="contents-section serif">{{saved.draft.title}}</view>
+          <view class="panel-note">{{saved.savedAt}}</view>
+          <button class="tool-button" data-token="{{saved.token}}" bindtap="copyRetainedDraft">复制整份文字</button>
+          <text class="retained-draft-text" user-select>{{saved.draft.introduction}}</text>
+          <view wx:for="{{saved.draft.chapters}}" wx:key="id" wx:for-item="chapter">
+            <view class="contents-section serif">{{chapter.title || '还没起名字'}}</view>
+            <text wx:for="{{chapter.content}}" wx:key="index" wx:for-item="block" class="retained-draft-text" user-select>{{block.text === undefined ? '〔原稿图片已保留〕' : block.text}}</text>
+          </view>
+        </view>
+      </block>
         <button wx:if="{{!protectedCopy && draft && view === 'contents'}}" class="tool-button" data-action="version" bindtap="selectTool">为当前版本命名存档</button>
         <view wx:if="{{historyLoading}}" class="panel-note">正在加载历史版本…</view>
         <view wx:elif="{{!history.length}}" class="panel-note">保存修改后，这里会保留版本记录。</view>
