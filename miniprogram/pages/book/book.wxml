@@ -66,7 +66,7 @@
         <text>有 {{retainedDrafts.length}} 份未同步草稿单独保留，不影响当前章节。</text>
         <button class="tool-button" bindtap="showRetainedDrafts">查看保留草稿</button>
       </view>
-      <view class="contents-head {{coverUrl ? 'contents-head-covered' : ''}}">
+      <view class="contents-head">
         <image wx:if="{{coverUrl}}" class="contents-cover-background" src="{{coverUrl}}" mode="aspectFill" binderror="onCoverError" aria-hidden="true"></image>
         <view class="contents-book-copy">
           <view class="field-label">书名</view>
@@ -131,7 +131,11 @@
       </view>
     </view>
     <article-editor id="article-editor" adjust-position="{{false}}" keyboard-height="{{keyboardHeight}}" backdrop="{{backdropUrl}}" chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindcaret="onArticleCaret" bindselectmodule="onArticleModuleSelected" bindaddimage="addArticleImage">
-      <button slot="companion" wx:if="{{!xiaoyiOpen && !keyboardHeight}}" class="article-bird" hover-class="none" bindtap="openXiaoyi" aria-label="小忆帮我写，和小忆聊这篇文章">
+
+    </article-editor>
+  </scroll-view>
+  <view wx:if="{{article && !panel && view === 'chapter' && !openingChapter && !xiaoyiOpen}}" class="article-companion-dock">
+      <button class="article-bird" hover-class="none" bindtap="openXiaoyi" aria-label="小忆帮我写，和小忆聊这篇文章">
         <image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" aria-hidden="true" />
         <view class="article-bird-label" aria-hidden="true">
           <text class="article-bird-letter article-bird-letter-1">小</text>
@@ -141,8 +145,7 @@
           <text class="article-bird-letter article-bird-letter-5">写</text>
         </view>
       </button>
-    </article-editor>
-  </scroll-view>
+  </view>
   <view wx:if="{{articleShareUrl}}" class="article-share-mask" bindtap="closeArticleShare">
     <view class="article-share-sheet" catchtap="keepArticleShareOpen">
       <view class="serif">发给微信用户</view>
