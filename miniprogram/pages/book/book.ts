@@ -3255,7 +3255,11 @@ Page({
   },
   onShareAppMessage(event: WechatMiniprogram.Page.IShareAppMessageOption): { title: string; path: string } {
     if (event?.from === 'button' && event.target?.dataset?.chapterShare && this.data.articleShareUrl && this.data.articleShareRevision === this.revisionId && this.data.articleShareChapterId === this.activeChapterId) {
-      return { title: this.data.articleShareTitle, path: '/pages/book/book?chapterClaim=' + chapterClaimToken(this.data.articleShareUrl) };
+      const message = { title: this.data.articleShareTitle, path: '/pages/book/book?chapterClaim=' + chapterClaimToken(this.data.articleShareUrl) };
+      // A claim belongs to one recipient. A subsequent send must prepare a new card,
+      // including when the native share panel is cancelled (no reliable success callback).
+      this.closeArticleShare();
+      return message;
     }
     return { title: "拾光家忆｜把重要的故事慢慢写下来", path: "/pages/index/index" };
   },

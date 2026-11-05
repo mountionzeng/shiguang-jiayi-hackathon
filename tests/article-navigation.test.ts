@@ -513,3 +513,18 @@ test('leaving after moderation review keeps the real cause instead of promising 
  assert.doesNotMatch(p.data.saveNotice,/恢复联网|重新打开时会自动保存/);
  assert.equal(stored.get(p.articleKey()).chapter.content[0].text,'本机完整原稿');
 });
+
+
+test('opening WeChat sharing dismisses the old claim sheet so another send prepares a fresh card', async () => {
+  const {p}=await setup(); await open(p,'a');
+  const token='A'.repeat(43);
+  p.setData({articleShareUrl:`https://www.drinkingtime.top/chapter/claim/${token}`,articleShareTitle:'最新标题',articleShareRevision:p.revisionId,articleShareChapterId:p.activeChapterId});
+  const message=p.onShareAppMessage({from:'button',target:{dataset:{chapterShare:true}}});
+  assert.equal(message.title,'最新标题');
+  assert.equal(message.path,`/pages/book/book?chapterClaim=${token}`);
+  assert.equal(p.data.articleShareUrl,'');
+  let sends=0;
+  p.sendArticle=async()=>{sends++;};
+  p.sendCurrentArticle();
+  assert.equal(sends,1);
+});
