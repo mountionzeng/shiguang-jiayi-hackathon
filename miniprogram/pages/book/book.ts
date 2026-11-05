@@ -2573,7 +2573,7 @@ Page({
       if (this.unloaded || epoch !== this.sendEpoch || chapterId !== this.activeChapterId || revisionId !== this.revisionId || this.articlePending || this.articleSaving) return;
       if (!result.claimUrl) throw new Error("这条领取链接已被使用，或已失效");
       if (channel === 'wechat') {
-        this.setData({ articleShareUrl: result.claimUrl, articleShareTitle: chapter.title || this.story?.title || '一篇文章', articleShareRevision: this.revisionId, articleShareChapterId: chapter.id });
+        this.setData({ saveNotice: '', articleShareUrl: result.claimUrl, articleShareTitle: chapter.title || this.story?.title || '一篇文章', articleShareRevision: this.revisionId, articleShareChapterId: chapter.id });
       } else {
         await new Promise<void>((resolve, reject) => wx.setClipboardData({ data: result.claimUrl!, success: () => resolve(), fail: reject }));
         this.setData({ articleStatus: '网页领取链接已复制', saveNotice: '链接已复制。发给对方，登录网页后即可领取文字和图片；每条链接限一个账号。' });
