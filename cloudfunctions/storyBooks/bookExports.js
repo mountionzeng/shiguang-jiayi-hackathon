@@ -172,7 +172,7 @@ async function buildMemory(repo, ctx, input) {
   return { descriptor: { id, ...descriptor }, coverFileID: '', photoFileIDs };
 }
 
-async function previewBookExport(repo, ctx, raw, { approve } = {}) {
+async function approvedBookMaterial(repo, ctx, raw, { approve } = {}) {
   const input = normalize(raw), first = await build(repo, ctx, input);
   const d = first.descriptor;
   if (typeof approve !== 'function' || await approve([d.title, ...d.chapters.flatMap(c => [c.title, c.text])].join('\n'), ctx.verifiedOpenid) !== true) {
@@ -180,14 +180,18 @@ async function previewBookExport(repo, ctx, raw, { approve } = {}) {
   }
   const checked = await build(repo, ctx, input);
   if (first.descriptor.id !== checked.descriptor.id) fail('VERSION_CONFLICT', '书稿已有更新，请重新预览');
-  return { descriptor: checked.descriptor };
+  return checked;
+}
+
+async function previewBookExport(repo, ctx, raw, options) {
+  const material = await approvedBookMaterial(repo, ctx, raw, options);
+  return { descriptor: material.descriptor };
 }
 
 async function exportBookImages(repo, ctx, raw, { approve, sign } = {}) {
   const input = normalize(raw, true), { descriptorId, ...selection } = input;
-  const preview = await previewBookExport(repo, ctx, selection, { approve });
-  if (preview.descriptor.id !== descriptorId) fail('VERSION_CONFLICT', '图片预览已失效，请重新生成');
-  const before = await build(repo, ctx, selection);
+  const before = await approvedBookMaterial(repo, ctx, selection, { approve });
+  if (before.descriptor.id !== descriptorId) fail('VERSION_CONFLICT', '图片预览已失效，请重新生成');
   const coverUrls = [];
   for (const coverFileID of before.coverFileIDs || (before.coverFileID ? [before.coverFileID] : [])) {
     if (typeof sign !== 'function') deny();

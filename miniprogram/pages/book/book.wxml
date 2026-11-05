@@ -74,7 +74,7 @@
           <view class="contents-summary">{{chapterRows.length}} 章 · {{sourceCount}} 段记忆<text wx:if="{{unassigned.length}}"> · {{unassigned.length}} 段还没写进</text></view>
           <view class="contents-intro-label"><text>内容简介<text wx:if="{{!protectedCopy}}"> · 可编辑</text></text><button wx:if="{{!protectedCopy && !editing}}" class="intro-edit" bindtap="editIntroduction">编辑</button></view>
           <textarea wx:if="{{editing && view === 'contents'}}" class="contents-introduction contents-introduction-edit" value="{{editIntroduction}}" maxlength="500" auto-height bindinput="onEditIntroduction" placeholder="写几句话介绍这本故事" />
-          <view wx:else class="contents-introduction">{{bookIntroduction || '还没有正文。从一段记忆开始，慢慢写成这本书。'}}</view>
+          <view wx:else class="contents-introduction">{{bookIntroduction || '还没有填写简介。'}}</view>
         </view>
       </view>
       <view class="contents-section serif"><text>目录</text></view>

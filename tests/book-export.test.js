@@ -259,3 +259,12 @@ test('memory export rebuilds the descriptor from the saved memory source and rej
   f.tables.get('memories:family_owner_memory-one').aiRevisions[0].text = '后来修改的记忆。';
   await assert.rejects(previewBookExport(f.repo, owner, input, { approve }), { code:'VERSION_CONFLICT' });
 });
+
+test('image export reuses the post-moderation material and still reloads after signing',async()=>{
+  const f=await setup();
+  const {descriptor}=await previewBookExport(f.repo,f.owner,f.input,{approve});
+  const transaction=f.repo.transaction;let storyReads=0;
+  f.repo.transaction=fn=>transaction(tx=>fn({...tx,get:async(table,id)=>{if(table==='stories')storyReads++;return tx.get(table,id);}}));
+  await exportBookImages(f.repo,f.owner,{...f.input,descriptorId:descriptor.id},{approve});
+  assert.equal(storyReads,3,'before moderation, after moderation, after external signing');
+});
