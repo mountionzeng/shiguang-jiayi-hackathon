@@ -11,13 +11,15 @@ async function storyMaterials(tx,context,action='view') {
   const {source:story,sourceFamily:family,selected}=context;
   const memoryIds=[...new Set(selected.flatMap(c=>c.memoryIds || []))];
   if(memoryIds.length>100)fail('这份故事关联材料过多，请分章节发送');
-  const memories=await Promise.all(memoryIds.map(async id=>{
+  // CloudBase permits only one in-flight operation per transaction.
+  const memories=[];
+  for(const id of memoryIds){
     const row=await getMemory(tx,story.familyId,id);
-    if(!row || row.deletedAt)return null;
+    if(!row || row.deletedAt)continue;
     if(row.reviewStatus!=='confirmed')fail('关联记忆尚未确认，暂时不能发送');
     if(row.sourcePolicyRequired && (!Array.isArray(row.sourceIds) || !await allowsSources(tx,row.sourceIds,action)))throw identityError();
-    return {id,title:row.title || '',text:row.text || '',photoIds:row.photoIds || []};
-  }));
+    memories.push({id,title:row.title || '',text:row.text || '',photoIds:row.photoIds || []});
+  }
   const refs=new Map();
   const add=(key,type,id,chapterId,memoryId)=>{
     if(!refs.has(key))refs.set(key,{key,type,id,chapterId,memoryId});
@@ -29,9 +31,10 @@ async function storyMaterials(tx,context,action='view') {
     for(const block of chapter.content)if(block.photoId)add(block.photoId,'photo',block.photoId,chapter.id);
     for(const asset of Object.values(chapter.packageAssets || {}))if(asset.photoId)add(asset.photoId,'photo',asset.photoId,chapter.id);
   }
-  for(const memory of memories.filter(Boolean))for(const id of memory.photoIds)add(id,'photo',id,undefined,memory.id);
+  for(const memory of memories)for(const id of memory.photoIds)add(id,'photo',id,undefined,memory.id);
   if(refs.size>100)fail('这份故事图片过多，请分章节发送');
-  const assets=await Promise.all([...refs.values()].map(async ref=>{
+  const assets=[];
+  for(const ref of refs.values()){
     let fileID;
     if(ref.id.startsWith('photo-copy-')){
       const row=await tx.get('story_copy_assets',`${story.familyId}__${ref.id}`);
@@ -54,10 +57,10 @@ async function storyMaterials(tx,context,action='view') {
       fileID=row.displayFileID;
       if(typeof fileID!=='string' || !fileID.startsWith('cloud://') || !fileID.endsWith(`/user-photos/${story.familyId}/${ref.id}/display.jpg`))throw identityError();
     }
-    return {key:ref.key,sourceFileID:fileID};
-  }));
+    assets.push({key:ref.key,sourceFileID:fileID});
+  }
   const inheritedCover=selected.map(chapter=>chapter.packageAssets?.[chapter.packageCoverAssetId]?.photoId).find(Boolean);
-  const result={memories:memories.filter(Boolean),assets,coverKey:story.coverImageId?'cover:'+story.coverImageId:(inheritedCover || '')};
+  const result={memories,assets,coverKey:story.coverImageId?'cover:'+story.coverImageId:(inheritedCover || '')};
   return {...result,digest:hash(result)};
 }
 module.exports={storyMaterials};

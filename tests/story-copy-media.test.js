@@ -138,7 +138,8 @@ test('whole-story receive retains the cover, ordered images and only linked memo
   f.tables.set('story_images:'+story.coverImageId,{familyId:'family_owner',storyId:'story-a',purpose:'cover',moderation:'pass',fileID});
   f.files.set(fileID,'cover-image');
   const draft=f.tables.get('biography_drafts:family_owner_revision-a').revision.draft;
-  draft.chapters[0].memoryIds=['memory-one'];story.memoryIds=['memory-one'];
+  draft.chapters[0].memoryIds=['memory-one','memory-two'];story.memoryIds=['memory-one','memory-two'];
+  f.tables.set('memories:family_owner_memory-two',{id:'memory-two',familyId:'family_owner',reviewStatus:'confirmed',text:'第二段相关记忆',photoIds:[]});
   f.tables.set('memories:family_owner_memory-one',{id:'memory-one',familyId:'family_owner',scope:'personal',reviewStatus:'confirmed',text:'相关记忆原文',title:'记忆标题',photoIds:['photo-two']});
   f.tables.set('memories:family_owner_private',{id:'private',familyId:'family_owner',reviewStatus:'confirmed',text:'不要传的记忆',photoIds:[]});
   const service=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,copyStorage:f.storage,
@@ -146,7 +147,7 @@ test('whole-story receive retains the cover, ordered images and only linked memo
   const read=await service({APPID:'wx-original',OPENID:'reader'},{action:'sharedRead',familyId:'family_owner',storyId:'story-a'});
   assert.ok(read.coverUrl.includes('cover.png'));
   assert.deepEqual(read.chapters[0].content,[{text:'我们的夏天'},{photoId:'photo-one'},{photoId:'photo-two'}]);
-  assert.equal(read.memories.length,1);assert.equal(read.memories[0].text,'相关记忆原文');
+  assert.deepEqual(read.memories.map(m=>m.id),['memory-one','memory-two']);assert.equal(read.memories[0].text,'相关记忆原文');
   assert.ok(read.media['photo-two']);assert.ok(!JSON.stringify(read).includes('不要传'));
   const result=await service({APPID:'wx-original',OPENID:'reader'},{action:'copyReceive',...f.input});
   const received=f.tables.get('stories:family_reader_'+result.storyId);
@@ -155,7 +156,7 @@ test('whole-story receive retains the cover, ordered images and only linked memo
   const cover=chapter.packageAssets[chapter.packageCoverAssetId].photoId;
   assert.match(cover,/^photo-copy-/);
   assert.equal(chapter.content[0].text,'我们的夏天');
-  assert.equal(chapter.memoryIds.length,1);
+  assert.equal(chapter.memoryIds.length,2);
   const memory=f.tables.get('memories:family_reader_'+chapter.memoryIds[0]);
   assert.equal(memory.text,'相关记忆原文');
   assert.equal(memory.photoIds[0],chapter.content[2].photoId);

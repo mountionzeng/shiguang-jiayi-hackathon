@@ -15,7 +15,17 @@ function fixture() {
     transaction: fn => {
       const result = chain.then(async () => {
         const before = structuredClone(tables);
-        try { return await fn(io); } catch (error) {
+        // CloudBase rejects overlapping operations within one transaction.
+        let busy = false;
+        const tx = Object.fromEntries(Object.entries(io).map(([name, operation]) => [name, async (...args) => {
+          if (busy) throw new Error('[ResourceUnavailable.TransactionBusy] Transaction is busy.');
+          busy = true;
+          try {
+            await new Promise(resolve => setImmediate(resolve));
+            return await operation(...args);
+          } finally { busy = false; }
+        }]));
+        try { return await fn(tx); } catch (error) {
           tables.clear(); for (const [key, value] of before) tables.set(key, value);
           throw error;
         }
