@@ -4,7 +4,7 @@ import { articleChapter, changeArticleText, moveArticleModule, removeArticleModu
 Component({
   options: { multipleSlots: true },
   properties: { keyboardHeight: {type:Number,value:0}, adjustPosition: {type:Boolean,value:true}, backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
-  data: { editingBlock: '', caretCursor: null as number | null, caretRequest: 0, caretMeasureText: '', caretMeasureStyle: '', textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
+  data: { focusRequest: '', selectionCursor: -1, editingBlock: '', caretCursor: null as number | null, caretRequest: 0, caretMeasureText: '', caretMeasureStyle: '', textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
   lifetimes: { detached() { this.data.editingBlock = ''; this.data.caretRequest++; } },
   observers: {
     keyboardHeight(height: number) {
@@ -113,25 +113,36 @@ Component({
     },
     select(event: WechatMiniprogram.TouchEvent) {
       const { id, block } = event.currentTarget.dataset;
-      // The native textarea owns selection, including ordinary Return/newlines.
+      // Tapping keeps the native selection; only splitting requests a new focus.
       this.setData({ selected: id, focused: block || '' });
       if (block === this.data.editingBlock) this.readCaret();
       this.triggerEvent('selectmodule', { id });
     },
-    clear() { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ selected: '', focused: '' }); },
+    clear() { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ selected: '', focused: '', focusRequest: '', selectionCursor: -1 }); },
     change(event: WechatMiniprogram.Input) {
       try {
         const before = this.data.current!;
-        const changed = changeArticleText(before, event.currentTarget.dataset.block, event.detail.value);
+        const changed = changeArticleText(before, event.currentTarget.dataset.block, event.detail.value, event.detail.cursor);
         this.data.current = changed.chapter;
         const module = changed.chapter.layout.pages.flatMap(page => page.modules).find(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === changed.focused);
         const normalized = event.detail.value.replace(/\r\n?/g, '\n');
         const cursor = Math.max(0, Math.min(normalized.length, event.detail.cursor ?? normalized.length));
         this.data.editingBlock = changed.focused;
-        this.data.caretCursor = cursor;
+        this.data.caretCursor = changed.split ? 0 : cursor;
         this.data.caretRequest++;
         this.setData({ focused: changed.focused, selected: module?.id || '', note: '' });
-        this.syncGeometry();
+        if (changed.split) {
+          const target = changed.focused;
+          this.setData({ pages: this.pageModels(), focusRequest: '', selectionCursor: -1 }, () => {
+            wx.nextTick(() => {
+              if (this.data.current !== changed.chapter || this.data.editingBlock !== target) return;
+              this.setData({ focusRequest: target, selectionCursor: 0 }, () => this.revealCaret());
+            });
+          });
+        } else {
+          if (this.data.selectionCursor !== -1) this.setData({ selectionCursor: -1 });
+          this.syncGeometry();
+        }
         this.publish();
       } catch (error) { this.setData({ note: error instanceof Error ? error.message : '没有写入，请重试' }); }
     },

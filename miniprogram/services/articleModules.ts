@@ -42,14 +42,51 @@ export function articleChapter(input: ManuscriptChapter): ArticleChapter {
   if (!chapter.content.some(block => typeof block.text === 'string')) { const id = chapterPackageBlockId(['article-empty',input.id]); chapter.content.push({ blockId: id, text: '' }); place(chapter, textModule(id, { x: 48, y: 48, width: 804, height: 130 })); }
   return chapter;
 }
-export function changeArticleText(input: ArticleChapter, blockId: string, value: string) {
+export function changeArticleText(input: ArticleChapter, blockId: string, value: string, cursor?: number) {
   const next = clone(input), index = next.content.findIndex(block => block.blockId === blockId);
   if (index < 0) throw new Error('找不到这段文字');
   const original = next.content[index];
   if (typeof original.text !== 'string') throw new Error('这不是文字模块');
-  next.content[index] = { ...original, text: value.replace(/\r\n?/g, '\n') };
+  const normalized = value.replace(/\r\n?/g, '\n');
+  // A single inserted Return (including replacement of a selection) splits here.
+  // Pasted multiline text and existing line breaks stay in their original block.
+  const at = cursor === undefined ? -1 : cursor - 1;
+  const prefix = normalized.slice(0, at), suffix = normalized.slice(at + 1);
+  if (at >= 0 && normalized[at] === '\n' && original.text.startsWith(prefix) &&
+      original.text.endsWith(suffix) && prefix.length + suffix.length <= original.text.length) {
+    const id = freshId();
+    next.content.splice(index, 1, { ...original, text: prefix },
+      { ...original, blockId: id, parentBlockId: original.parentBlockId || blockId, text: suffix });
+    const page = next.layout.pages.find(p => p.modules.some(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === blockId));
+    if (!page) throw new Error('找不到这段文字的排版');
+    const position = page.modules.findIndex(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === blockId);
+    const source = page.modules[position];
+    if (source.kind !== 'text') throw new Error('这不是文字模块');
+    const rect = { ...source.rect, y: source.rect.y + source.rect.height + 24, height: 110 };
+    // Insert beside the source in both content and layout order, never at book end.
+    for (const item of page.modules.slice(position + 1)) {
+      if (item.rect.y >= rect.y) item.rect.y += rect.height + 24;
+    }
+    page.modules.splice(position + 1, 0, { ...source, id: textModule(id, rect).id,
+      bind: { blockId: id }, rect, contentHeight: rect.height });
+    fitArticleText(next, blockId); fitArticleText(next, id);
+    // Positioned layouts do not auto-flow; carry overflow to an adjacent page.
+    for (let i = 0; i < next.layout.pages.length; i++) {
+      const current = next.layout.pages[i];
+      const overflow = current.modules.findIndex(m => m.rect.y + m.rect.height > 1200);
+      if (overflow < 0) continue;
+      if (next.layout.pages.length >= 9) throw new Error('最多九页，请另开一章');
+      const tail = current.modules.splice(overflow);
+      const top = Math.min(...tail.map(m => m.rect.y));
+      for (const item of tail) item.rect.y = 48 + item.rect.y - top;
+      next.layout.pages.splice(i + 1, 0, { label: '', modules: tail });
+    }
+    next.layout.pages.forEach((p, i) => { p.label = String(i + 1); });
+    return { chapter: next, focused: id, split: true };
+  }
+  next.content[index] = { ...original, text: normalized };
   fitArticleText(next, blockId);
-  return { chapter: next, focused: blockId };
+  return { chapter: next, focused: blockId, split: false };
 }
 export function moveArticleModule(input: ArticleChapter, id: string, dx: number, dy: number, resize = false): ArticleChapter {
   const next = clone(input);

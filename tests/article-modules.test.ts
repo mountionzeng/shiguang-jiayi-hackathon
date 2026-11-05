@@ -4,7 +4,7 @@ import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,rem
 import { articleEditorPages } from '../miniprogram/services/articleEditorLayout';
 import {groupAccountActivity} from '../miniprogram/services/accountActivity';
 const base=()=>articleChapter({id:'chapter-test',title:'纸船',memoryIds:[],content:[{text:'第一句'}]});
-test('Return preserves newlines and the original block instead of creating paragraphs at the end',()=>{
+test('multiline updates without a Return cursor preserve existing line breaks',()=>{
  const before=base(),id=before.content[0].blockId;
  const value='first\nsecond\nsecond\n';
  const {chapter,focused}=changeArticleText(before,id,value);
@@ -75,3 +75,33 @@ test('typing preserves manually arranged image and text geometry',()=>{
  assert.ok(modules[modules.length-1].rect.height>110);
  assert.equal(before.content.length,1);
  });
+
+for (const at of [0, 2, 4]) test(`Return at ${at} splits in place and survives reopening`,()=>{
+ const before=articleChapter({id:'chapter-split',title:'',memoryIds:[],content:[{text:'前段后段'},{photoId:'photo-next'},{text:'末尾'}]});
+ const id=before.content[0].blockId, original=before.content[0].text!;
+ const value=original.slice(0,at)+'\n'+original.slice(at);
+ const result=changeArticleText(before,id,value,at+1), after=result.chapter;
+ assert.deepEqual(after.content.map(b=>b.text ?? b.photoId),[original.slice(0,at),original.slice(at),'photo-next','末尾']);
+ assert.equal(after.content[0].blockId,id);assert.equal(result.focused,after.content[1].blockId);
+ assert.equal(after.content[1].parentBlockId,id);
+ assert.deepEqual(articleChapter(after).content,after.content);
+ assert.deepEqual(articleEditorPages(after,.4,{}).flatMap(p=>p.modules).filter(m=>m.blockId).map(m=>m.blockId),[id,result.focused,after.content[3].blockId]);
+ const again=changeArticleText(after,result.focused,'\n'+original.slice(at),1);
+ assert.equal(again.chapter.content[2].parentBlockId,id);
+ assert.equal(again.chapter.content[2].text,original.slice(at));
+ assert.equal(before.content.length,3);
+});
+test('Return replaces a selection but multiline paste does not split modules',()=>{
+ const before=articleChapter({id:'chapter-select',title:'',memoryIds:[],content:[{text:'abcdef'}]}),id=before.content[0].blockId;
+ assert.deepEqual(changeArticleText(before,id,'ab\nef',3).chapter.content.map(b=>b.text),['ab','ef']);
+ assert.equal(changeArticleText(before,id,'abX\nYcdef',5).split,false);
+});
+
+test('splitting near the bottom of positioned print layout stays inside the canvas',()=>{
+ const before=base(),id=before.content[0].blockId;
+ const module=before.layout.pages[0].modules[0];module.positioned=true;module.rect.y=1050;
+ const after=changeArticleText(before,id,'第\n一句',2).chapter;
+ assert.equal(after.layout.pages.length,2);
+ for(const page of after.layout.pages)for(const m of page.modules)assert.ok(m.rect.y+m.rect.height<=1200);
+ assert.equal(after.content[1].text,'一句');
+});

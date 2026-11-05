@@ -37,19 +37,27 @@ test('typing updates layout geometry without resetting the native textarea value
   assert.equal(context.data.current.content[0].text, '第二句' + '文字'.repeat(5));
 });
 
-test('Return in the middle preserves the native input, absolute caret and text after the caret', async () => {
+test('Return inserts a new module immediately after the source and focuses its beginning', async () => {
   const definition=await loadComponentDefinition();
   const chapter=articleChapter({id:'chapter-return',title:'',memoryIds:[],content:[{text:'first\nlast'},{text:'next block'}]});
   const patches:Array<Record<string,unknown>>=[];
   const context:any={data:{current:chapter,pages:[],scale:.4,textHeights:{}},properties:{paths:{},width:360},
-    setData(patch:Record<string,unknown>){patches.push(patch);Object.assign(this.data,patch);},triggerEvent(){}};
+    setData(patch:Record<string,unknown>,callback?:()=>void){patches.push(patch);Object.assign(this.data,patch);callback?.();},triggerEvent(){}};
   Object.assign(context,definition.methods);context.render();patches.length=0;
   const block=chapter.content[0].blockId;
-  context.change({currentTarget:{dataset:{block}},detail:{value:'first\n\nlast',cursor:7}});
-  assert.equal(context.data.current.content[0].text,'first\n\nlast');
-  assert.equal(context.data.current.content[1].text,'next block');
-  assert.equal(context.data.editingBlock,block);assert.equal(context.data.caretCursor,7);
-  assert.ok(!patches.some(p=>'pages' in p || 'focusRequest' in p || 'cursor' in p || Object.keys(p).some(k=>/\.text$/.test(k))));
+  const previous=(globalThis as any).wx;let focus:()=>void=()=>{};
+  (globalThis as any).wx={nextTick:(callback:()=>void)=>{focus=callback;}};
+  try {context.change({currentTarget:{dataset:{block}},detail:{value:'first\n\nlast',cursor:7}});}
+  finally {(globalThis as any).wx=previous;}
+  assert.equal(context.data.focusRequest,'');focus();
+  assert.deepEqual(context.data.current.content.map((b:any)=>b.text),['first\n','last','next block']);
+  const newBlock=context.data.current.content[1].blockId;
+  assert.equal(context.data.editingBlock,newBlock);assert.equal(context.data.caretCursor,0);
+  assert.equal(context.data.focusRequest,newBlock);assert.equal(context.data.selectionCursor,0);
+  assert.equal(context.data.current.content[0].blockId,block);
+  context.change({currentTarget:{dataset:{block:newBlock}},detail:{value:'新last',cursor:1}});
+  assert.equal(context.data.current.content[1].text,'新last');
+  assert.equal(context.data.selectionCursor,-1);
 });
 
 test('native height changes patch geometry without replacing input, and stale measurements are ignored', async () => {
