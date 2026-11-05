@@ -155,46 +155,54 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
         const old = await tx.get('story_invitations', id);
         if (old && old.status !== 'revoked' && (old.status === 'approved' || old.expiresAtMs > time)) retained.push(id);
       }
-      const target = input.targetMemberId !== undefined ? await targetMember(tx,story.familyId,input.targetMemberId) : undefined;
+      let targetId = input.targetMemberId;
+      let target = targetId !== undefined ? await targetMember(tx,story.familyId,targetId) : undefined;
       if (target && (!owner || target.accountId === space.accountId)) fail();
       const name = inviteeName(target ? target.name : input.inviteeName), relation = inviteeRelation(target ? target.relation : input.relation);
-      // 新人物仍受名称唯一约束；复用已有资料必须由主人明确传入人物编号。
+      // The owner's existing share action may select an existing person by their
+      // unique directory name. Acceptance still checks the bound account ID.
       const family = await tx.get('families', story.familyId);
       const claim = family?.memberNameClaims?.[claimKey(name)];
+      if (input.resendAccepted === true && owner && !target && claim?.name === name) {
+        targetId = claim.memberId;
+        target = await targetMember(tx,story.familyId,targetId);
+        if (target.accountId === space.accountId) fail();
+      }
       // Resending a book to its already-bound recipient updates that grant and
       // rotates the card. A name alone must never bind a different WeChat account.
       if (input.resendAccepted === true && owner && claim?.name === name) {
         const member = await targetMember(tx, story.familyId, claim.memberId);
         for (const previousId of directory.ids) {
           const previous = await tx.get('story_invitations', previousId);
-          if (previous?.status !== 'approved' || previous.creatorPrincipalId !== ctx.principalId ||
+          if (!['approved','revoked'].includes(previous?.status) || !previous.recipientPrincipalId || previous.creatorPrincipalId !== ctx.principalId ||
               (previous.targetMemberId || memberIdFor(previousId)) !== claim.memberId) continue;
           const recipient = await tx.get('story_principals', previous.recipientPrincipalId);
           const gid = grantIdFor(story.familyId, story.id, previous.recipientPrincipalId);
           const grant = await tx.get('story_grants', gid);
           if (!member.accountId || recipient?.status !== 'active' || recipient.accountId !== member.accountId ||
-              grant?.status !== 'active' || grant.invitationId !== previousId) continue;
+              !['active','revoked'].includes(grant?.status) || grant.invitationId !== previousId) continue;
           await rate(tx,ctx.principalId,time);
           const token = crypto.randomBytes(24).toString('hex'), id = digest(token);
           await tx.set('story_invitations', previousId, {...previous,status:'revoked'});
-          await tx.set('story_invitations', id, {...previous,targetMemberId:claim.memberId,
+          await tx.set('story_invitations', id, {...previous,status:'approved',targetMemberId:claim.memberId,
             chapterIds:[...input.chapterIds],permissions,expiresAtMs:time+TTL});
-          await tx.set('story_grants', gid, {...grant,version:grant.version+1,invitationId:id,
+          await tx.set('story_grants', gid, {...grant,status:'active',version:grant.version+1,invitationId:id,
             scope:{type:'chapters',chapterIds:[...input.chapterIds]},permissions});
           await tx.set('story_invite_indexes',directoryId,{ids:[...retained.filter(oldId=>oldId!==previousId),id]});
           return {invitationId:id,token,expiresAtMs:time+TTL};
         }
       }
-      if (claim && claim.name === name && claim.memberId !== input.targetMemberId && await tx.get('family_members', `${story.familyId}_${claim.memberId}`)) alreadyThere();
+      if (claim && claim.name === name && claim.memberId !== targetId && await tx.get('family_members', `${story.familyId}_${claim.memberId}`)) alreadyThere();
       const replaced = [];
       for (const id of retained) {
         const waiting = await tx.get('story_invitations', id);
         if (waiting && ((waiting.status === 'pending' && waiting.inviteeName === name) ||
-            (target && waiting.targetMemberId === input.targetMemberId && ['pending','approved'].includes(waiting.status)))) {
+            (target && waiting.targetMemberId === targetId && ['pending','approved'].includes(waiting.status)))) {
           // Only the owner may replace their own unaccepted card. Never replace
           // an accepted grant or infer an existing person's identity from a name.
           if (input.renewPending === true && owner && waiting.creatorPrincipalId === ctx.principalId &&
-              waiting.status === 'pending' && waiting.targetMemberId === input.targetMemberId) replaced.push({id, invitation:waiting});
+              waiting.status === 'pending' && (waiting.targetMemberId === targetId ||
+                (input.resendAccepted === true && target && !waiting.targetMemberId))) replaced.push({id, invitation:waiting});
           else alreadyThere();
         }
       }
@@ -205,7 +213,7 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
       const token = crypto.randomBytes(24).toString('hex'), id = digest(token);
       const inv = {familyId:story.familyId,storyId:story.id,ownerPrincipalId:space.principalId,creatorPrincipalId:ctx.principalId,
         chapterIds:[...input.chapterIds],permissions,inviteeName:name,relation,status:'pending',expiresAtMs:time+TTL,applicants:[],
-        ...(target ? {targetMemberId:input.targetMemberId} : {}), ...(parentGrantVersion ? {parentGrantVersion} : {})};
+        ...(target ? {targetMemberId:targetId} : {}), ...(parentGrantVersion ? {parentGrantVersion} : {})};
       await tx.set('story_invitations',id,inv);
       await tx.set('story_invite_indexes',directoryId,{ids:[...activeIds,id]});
       return {invitationId:id,token,expiresAtMs:inv.expiresAtMs};

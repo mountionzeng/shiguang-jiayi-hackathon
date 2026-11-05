@@ -438,3 +438,42 @@ test('owner resends the latest chapters to the same bound recipient without dupl
   await f.call('owner','inviteRevoke',{familyId:'family_owner',storyId:'story-a',invitationId:invitation.invitationId});
   await assert.rejects(f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'}),{code:'STORY_FORBIDDEN'});
 });
+
+test('share preparation reuses an existing unbound person and renews the pending invitation by member id',async()=>{
+  const f=await setup();addMember(f,'小岚');
+  const first=await f.invite({targetMemberId:'member-manual'});
+  const next=await f.invite({renewPending:true,resendAccepted:true});
+  assert.equal(f.tables.get('story_invitations:'+next.invitationId).targetMemberId,'member-manual');
+  await assert.rejects(f.call('friend','inviteAccept',{token:first.token}),{code:'STORY_FORBIDDEN'});
+  assert.equal((await f.call('friend','inviteAccept',{token:next.token})).status,'approved');
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('family_members:family_owner_')).length,1);
+});
+
+test('sending again after revocation restores only the previously bound recipient',async()=>{
+  const f=await setup();const first=await f.invite();
+  await f.call('friend','inviteAccept',{token:first.token});
+  await f.call('owner','inviteRevoke',access(first));
+  const next=await f.invite({renewPending:true,resendAccepted:true});
+  assert.equal((await f.call('friend','inviteAccept',{token:next.token})).status,'approved');
+  await assert.rejects(f.call('other','inviteAccept',{token:next.token}),{code:'STORY_FORBIDDEN'});
+});
+
+test('legacy pending invitation followed by a same-name person is renewed against that person',async()=>{
+  const f=await setup();const first=await f.invite();addMember(f,'小岚');
+  const next=await f.invite({renewPending:true,resendAccepted:true});
+  assert.equal(f.tables.get('story_invitations:'+next.invitationId).targetMemberId,'member-manual');
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('story_grants:')).length,0);
+  await assert.rejects(f.call('friend','inviteAccept',{token:first.token}),{code:'STORY_FORBIDDEN'});
+  await f.call('friend','inviteAccept',{token:next.token});
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('family_members:family_owner_')).length,1);
+});
+
+test('existing bound person without an invitation for this book can receive a new share but another account cannot claim it',async()=>{
+  const f=await setup();addMember(f,'小岚');
+  const member=f.tables.get('family_members:family_owner_member-manual');
+  member.accountId=f.account('friend').accountId;
+  const next=await f.invite({renewPending:true,resendAccepted:true});
+  await assert.rejects(f.call('other','inviteAccept',{token:next.token}),{code:'STORY_FORBIDDEN'});
+  await f.call('friend','inviteAccept',{token:next.token});
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('family_members:family_owner_')).length,1);
+});
