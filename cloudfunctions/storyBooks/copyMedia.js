@@ -31,21 +31,34 @@ async function receiveMediaCopy(repo,ctx,raw,storage,{nowMs=Date.now,approveText
   });
   if(claimed.complete)return receiveTextCopy(repo,ctx,input,{approveText});
   try{
-    for(const asset of claimed.assets){
-      if(asset.status==='ready')continue;
-      const destination=claimed.candidates.find(candidate=>candidate.token===token && candidate.photoId===asset.photoId).fileID;
-      const result=validateMetadata(await storage.copy(asset.sourceFileID,destination),destination);
+    const pending=claimed.assets.filter(asset=>asset.status!=='ready');
+    for(let offset=0;offset<pending.length;offset+=3){
+      // Finish every in-flight upload before releasing the lease. Persist each
+      // success even if another upload failed, so retry never recopies it.
+      const batch=pending.slice(offset,offset+3);
+      const results=await Promise.allSettled(batch.map(async asset=>{
+        const destination=claimed.candidates.find(candidate=>candidate.token===token && candidate.photoId===asset.photoId).fileID;
+        return validateMetadata(await storage.copy(asset.sourceFileID,destination),destination);
+      }));
       await repo.transaction(async tx=>{
         await assertSpaceOwner(tx,ctx);
         const operation=await tx.get('story_copy_media',keys.copyId);
         if(operation?.status!=='pending' || operation.leaseToken!==token || operation.leaseUntilMs<=nowMs())throw busy();
-        operation.assets=operation.assets.map(item=>item.photoId===asset.photoId?{...item,...result,status:'ready'}:item);
+        results.forEach((result,index)=>{
+          if(result.status==='fulfilled')operation.assets=operation.assets.map(item=>item.photoId===batch[index].photoId?{...item,...result.value,status:'ready'}:item);
+        });
         await tx.set('story_copy_media',keys.copyId,operation);
       });
+      const failure=results.find(result=>result.status==='rejected');
+      if(failure)throw failure.reason;
     }
     const ready=await repo.get('story_copy_media',keys.copyId);
     if(ready?.status!=='pending' || ready.leaseToken!==token || ready.leaseUntilMs<=nowMs())throw busy();
-    for(const asset of ready.assets)await storage.verify(asset);
+    for(let offset=0;offset<ready.assets.length;offset+=3){
+      const results=await Promise.allSettled(ready.assets.slice(offset,offset+3).map(asset=>storage.verify(asset)));
+      const failure=results.find(result=>result.status==='rejected');
+      if(failure)throw failure.reason;
+    }
     return await commitMediaCopy(repo,ctx,input,{mediaTicket:{token,nowMs},approveText});
   }catch(error){
     // Release only this attempt; a newer lease/completed copy must stay intact.

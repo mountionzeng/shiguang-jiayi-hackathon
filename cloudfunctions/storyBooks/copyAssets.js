@@ -2,7 +2,8 @@ const crypto=require('node:crypto');
 const core=require('./core');
 const {identityError}=require('./identity');
 const digest=value=>crypto.createHash('sha256').update(core.stable(value)).digest('hex');
-const MAX_BYTES=2*1024*1024;
+// Match the existing story image upload limit, including PNG covers.
+const MAX_BYTES=20*1024*1024;
 const busy=()=>Object.assign(new Error('图片保存正在处理中，请稍后重试'),{code:'STORY_COPY_BUSY'});
 const copiedPath=/^cloud:\/\/[^/]+\/story-sharing\/copies\/copy-[a-f0-9]{64}\/[a-f0-9]{32}\/photo-copy-[a-f0-9]{64}\.jpg$/;
 function candidateFile(sourceFileID,operationId,token,photoId){
@@ -12,21 +13,11 @@ function candidateFile(sourceFileID,operationId,token,photoId){
   return fileID;
 }
 async function sourceMediaPlan(tx,ctx,input,sourceContext,copyId){
-  const {selected,sourceFamily,source,grant}=sourceContext;
-  if(selected.some(chapter=>chapter.backdropImageId))throw Object.assign(new Error('章节底图尚未支持独立保留'),{code:'STORY_COPY_MEDIA_PENDING'});
-  const ids=[...new Set(selected.flatMap(chapter=>chapter.content.filter(block=>block.photoId).map(block=>block.photoId)))].sort();
-  if(!ids.length || ids.length>9)throw identityError();
-  const assets=[],records=[];
-  for(const photoId of ids){
-    const photo=await tx.get('photos',`${input.sourceFamilyId}__${photoId}`);
-    if(!photo || photo.familyId!==input.sourceFamilyId || photo.photoId!==photoId || !sourceFamily._openid || photo._openid!==sourceFamily._openid ||
-      photo.deletedAt || photo.sourcePolicyRequired || photo.sourceIds!==undefined || photo.moderation?.ok!==true || photo.moderation.suggest!=='pass' ||
-      typeof photo.displayFileID!=='string' || !photo.displayFileID.startsWith('cloud://') || !photo.displayFileID.endsWith(`/user-photos/${input.sourceFamilyId}/${photoId}/display.jpg`) ||
-      !Number.isSafeInteger(photo.displayBytes) || photo.displayBytes<=0 || photo.displayBytes>MAX_BYTES)throw identityError();
-    records.push(photo);
-    assets.push({sourcePhotoId:photoId,sourceFileID:photo.displayFileID,photoId:'photo-copy-'+digest([copyId,photoId]),status:'pending'});
-  }
-  return {assets,sourceDigest:digest([selected,source.version,grant,records])};
+  const {storyMaterials}=require('./sharedMaterials');
+  const materials=await storyMaterials(tx,sourceContext,'copy');
+  const assets=materials.assets.map(asset=>({sourcePhotoId:asset.key,sourceFileID:asset.sourceFileID,
+    photoId:'photo-copy-'+digest([copyId,asset.key]),status:'pending'}));
+  return {assets,sourceDigest:digest([sourceContext.selected,sourceContext.source.version,sourceContext.grant,materials.digest])};
 }
 function validateMetadata(result,expected){
   if(!result || result.fileID!==expected || !copiedPath.test(result.fileID) || !/^[a-f0-9]{64}$/.test(result.sha256 || '') ||

@@ -137,11 +137,11 @@ test('read permission alone, guessed chapters, stale revisions and caller-suppli
   }
   const f=await setup();await assert.rejects(receiveTextCopy(f.repo,f.stranger,f.input, {approveText:async()=>true}));
 });
-test('photos and backdrops reject the entire copy instead of silently dropping media',async()=>{
+test('missing or unauthorized photos and backdrops reject the entire copy instead of silently dropping media',async()=>{
   for(const modify of [c=>{c.content.push({photoId:'photo-original'});},c=>{c.backdropImageId='family_owner_img_req-example12';}]){
     const f=await setup(),draft=f.tables.get('biography_drafts:family_owner_revision-source').revision.draft;
     modify(draft.chapters[1]);Object.assign(draft,core.flatten(draft.chapters));const before=structuredClone(f.tables);
-    await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}),{code:'STORY_COPY_MEDIA_PENDING'});assert.deepEqual(f.tables,before);
+    await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}),{code:'STORY_FORBIDDEN'});assert.deepEqual(f.tables,before);
   }
 });
 test('duplicate target title, target version conflict and transactional write failure leave no partial copy',async()=>{

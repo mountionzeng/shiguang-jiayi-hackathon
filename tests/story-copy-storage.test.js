@@ -22,3 +22,13 @@ test('upload path mismatch and per-file deletion failure remain failures',async(
   const storage=createCopyStorage({downloadFile:async()=>({fileContent:jpeg}),uploadFile:async()=>({fileID:source}),deleteFile:async()=>({fileList:[{fileID:destination,status:-1}]})});
   await assert.rejects(storage.copy(source,destination));await assert.rejects(storage.remove([destination]));
 });
+
+ test('PNG and WebP story images retain their original bytes, including covers above 2 MiB',async()=>{
+  for(const [extension,signature] of [['png',Buffer.from([137,80,78,71,13,10,26,10])],['webp',Buffer.from('RIFF0000WEBP')]]){
+    const bytes=Buffer.alloc(3*1024*1024);signature.copy(bytes);
+    let uploaded;
+    const storage=createCopyStorage({downloadFile:async()=>({fileContent:bytes}),uploadFile:async input=>{uploaded=input;return {fileID:destination};}});
+    const asset=await storage.copy(`cloud://env.bucket/story-images/family_owner/story-a/cover.${extension}`,destination);
+    assert.deepEqual(uploaded.fileContent,bytes);await storage.verify(asset);
+  }
+});

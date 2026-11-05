@@ -90,13 +90,31 @@ function createStoryService(repo, options = {}) {
       return invitations(ctx, event.action === 'inviteManage' && event.includePeople === true
         ? {...event,familyId:ctx.familyId} : event);
     }
+    if (action === 'copyMediaRead') {
+      await require('./identity').assertSpaceOwner(repo,ctx);
+      if(!Array.isArray(event.photoIds) || event.photoIds.length>100 || event.photoIds.some(id=>!/^photo-copy-[a-f0-9]{64}$/.test(id)))throw accessError('STORY_FORBIDDEN');
+      const readFiles=()=>Promise.all([...new Set(event.photoIds)].map(async id=>{
+        const asset=await repo.get('story_copy_assets',`${ctx.familyId}__${id}`);
+        if(!asset || asset.familyId!==ctx.familyId || asset.photoId!==id || asset.status!=='active' || !asset.sourceIds?.length ||
+          !require('./copyAssets').copiedPath.test(asset.fileID || '') || !await require('./provenance').allowsSources(repo,asset.sourceIds,'view'))throw accessError('STORY_FORBIDDEN');
+        const story=await repo.get('stories',`${ctx.familyId}_${asset.storyId}`);
+        if(!story || story.deletedAt)throw accessError('STORY_FORBIDDEN');
+        return asset;
+      }));
+      const files=await readFiles();
+      const urls={};
+      for(let i=0;i<files.length;i+=4)await Promise.all(files.slice(i,i+4).map(async asset=>{urls[asset.photoId]=await options.signMedia(asset.fileID,300);}));
+      await require('./identity').assertSpaceOwner(repo,ctx);
+      if(JSON.stringify(await readFiles())!==JSON.stringify(files))throw accessError('STORY_FORBIDDEN');
+      return {urls};
+    }
     if (action === 'sharedMedia') {
       if (!accessEnabled || options.sharedMediaEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return readStoryMedia(repo,ctx,event,options.signMedia);
     }
     if (action === 'sharedRead') {
       if (!accessEnabled || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
-      const result = await readAuthorizedStory(repo, ctx, event, {approveText:options.approveChapterText,sharedEditEnabled:options.sharedEditEnabled === true,copyReceiveEnabled:options.copyReceiveEnabled === true});
+      const result = await readAuthorizedStory(repo, ctx, event, {approveText:options.approveChapterText,sharedEditEnabled:options.sharedEditEnabled === true,copyReceiveEnabled:options.copyReceiveEnabled === true,signMedia:options.signMedia});
       result.capabilities.requestInvitation = options.invitationsEnabled === true && result.capabilities.requestInvitation;
       return result;
     }

@@ -161,3 +161,15 @@ test('keep does nothing when copying is not allowed',async()=>{
   try{const p=await reader();p.data.canCopy=false;await p.keep({currentTarget:{dataset:{intent:'keep'}}});assert.equal(calls.length,0);}
   finally{(globalThis as any).wx=prior;}
 });
+
+test('reader loads image and memory content and clears all of it when subsequent access fails',async()=>{
+  const prior=(globalThis as any).wx;let denied=false;
+  (globalThis as any).wx={hideShareMenu:()=>{},cloud:{callFunction:async()=>({result:denied
+    ? {error:'STORY_BOOK_ERROR',code:'STORY_FORBIDDEN',message:'不可访问'}
+    : {story:{title:'图文故事',version:1},revisionId:'revision-one',draftScope:'scope',chapters:[{id:'chapter-one',title:'一',content:[{text:'前文'},{photoId:'photo-one'},{text:'后文'}],textBlocks:[]}],coverUrl:'https://example.com/cover.png',media:{'photo-one':'https://example.com/photo.jpg'},memories:[{id:'memory-one',title:'记忆',text:'原文',photoIds:['photo-one']}]}})}};
+  try{
+    const p=instance(read);p.onLoad({familyId:'family_owner',storyId:'story-a'});await p.refresh();
+    assert.equal(p.data.coverUrl,'https://example.com/cover.png');assert.equal(p.data.memories[0].text,'原文');assert.equal(p.data.chapters[0].content[1].photoId,'photo-one');
+    denied=true;await p.refresh();assert.equal(p.data.coverUrl,'');assert.deepEqual(p.data.media,{});assert.deepEqual(p.data.memories,[]);assert.deepEqual(p.data.chapters,[]);
+  }finally{(globalThis as any).wx=prior;}
+});

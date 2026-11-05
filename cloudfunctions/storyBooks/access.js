@@ -29,11 +29,11 @@ function evaluateStoryAccess({ principalId, ownerPrincipalId, story, grant, acti
   return grant.scope?.type === 'chapters' && validChapterIds(grant.scope.chapterIds) && chapterIds.every(id => grant.scope.chapterIds.includes(id));
 }
 
-async function readAuthorizedStory(repo, ctx, input, { approveText, now = Date.now, sharedEditEnabled = false, copyReceiveEnabled = false } = {}) {
+async function readAuthorizedStory(repo, ctx, input, { approveText, now = Date.now, sharedEditEnabled = false, copyReceiveEnabled = false, signMedia } = {}) {
   if (!input || !FAMILY_ID.test(input.familyId || '') || !STORY_ID.test(input.storyId || '') ||
       (input.chapterIds !== undefined && !validChapterIds(input.chapterIds))) throw identityError();
   let requiresCheck=false;
-  const result=await repo.transaction(async tx => {
+  const load=()=>repo.transaction(async tx => {
     await assertCurrentIdentity(tx, ctx);
     const family = await tx.get('families', input.familyId);
     const space = await tx.get('story_principal_spaces', input.familyId);
@@ -56,7 +56,8 @@ async function readAuthorizedStory(repo, ctx, input, { approveText, now = Date.n
     if (!validChapterIds(chapterIds) || !check(chapterIds) || chapterIds.some(id => !allChapters.some(chapter => chapter.id === id))) throw identityError();
     const chapters = allChapters.filter(chapter => chapterIds.includes(chapter.id)).map(chapter => ({
       id: chapter.id, title: chapter.title,
-      content: chapter.content.map(item => typeof item.text === 'string' ? { text: item.text } : { text: '〔图片共享尚未开放〕' }),
+      content: chapter.content.map(item => typeof item.text === 'string' ? { text: item.text } : signMedia ? {photoId:item.photoId} : { text: '〔图片共享尚未开放〕' }),
+      ...(signMedia?{memoryIds:chapter.memoryIds || [],...(chapter.backdropImageId?{backdropKey:'backdrop:'+chapter.id}:{})}:{}),
       textBlocks: chapter.content.flatMap((item,index) => typeof item.text === 'string' && item.photoId === undefined ? [{index,text:item.text}] : []),
     }));
     requiresCheck=ctx.principalId!==space.principalId;
@@ -64,15 +65,31 @@ async function readAuthorizedStory(repo, ctx, input, { approveText, now = Date.n
       ownerPrincipalId:space.principalId,story,grant,action:'edit',chapterIds:[chapterId],nowMs:now()}));
     const canCopy = copyReceiveEnabled === true && ctx.familyId !== input.familyId && chapterIds.every(chapterId => evaluateStoryAccess({principalId:ctx.principalId,
       ownerPrincipalId:space.principalId,story,grant,action:'copy',chapterIds:[chapterId],nowMs:now()}));
+    const materials=signMedia?await require('./sharedMaterials').storyMaterials(tx,{source:story,sourceFamily:family,selected:allChapters.filter(c=>chapterIds.includes(c.id))}):undefined;
     return {
+      ...(materials?{materials}:{}),
       story: { id: story.id, title: story.bookTitle || story.title, version: story.version },
       revisionId: story.currentRevisionId, chapters,
       draftScope: crypto.createHash('sha256').update(JSON.stringify([ctx.principalId,input.familyId,input.storyId])).digest('hex').slice(0,32),
-      capabilities: { sharedTextRead: true, sharedEdit: canEdit, mediaRead: false, copy: canCopy, forward: false, publish: false,
+      capabilities: { sharedTextRead: true, sharedEdit: canEdit, mediaRead: !!signMedia, copy: canCopy, forward: false, publish: false,
         requestInvitation: evaluateStoryAccess({principalId:ctx.principalId,ownerPrincipalId:space.principalId,story,grant,action:'forward',chapterIds,nowMs:now()}) },
     };
   });
-  if(requiresCheck)await approveOutgoingText(approveText,ctx,result.story.title,result.chapters);
+  const result=await load();
+  if(requiresCheck)await approveOutgoingText(approveText,ctx,result.story.title,[...result.chapters,...(result.materials?.memories || []).map(m=>({title:m.title,content:[{text:m.text}]}))]);
+  if(signMedia){
+    const media={};
+    const files=[...new Set(result.materials.assets.map(a=>a.sourceFileID))];
+    for(let i=0;i<files.length;i+=4)await Promise.all(files.slice(i,i+4).map(async file=>{
+      const url=await signMedia(file,300);
+      if(typeof url!=='string' || !url.startsWith('https://'))throw identityError();
+      for(const asset of result.materials.assets)if(asset.sourceFileID===file)media[asset.key]=url;
+    }));
+    const after=await load();
+    if(JSON.stringify(after)!==JSON.stringify(result))throw Object.assign(new Error('故事已有更新，请重新打开'),{code:'VERSION_CONFLICT'});
+    const {materials,...publicResult}=result;
+    return {...publicResult,media,coverUrl:media[materials.coverKey] || '',memories:materials.memories};
+  }
   return result;
 }
 

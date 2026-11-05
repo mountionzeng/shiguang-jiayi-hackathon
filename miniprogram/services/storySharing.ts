@@ -7,8 +7,8 @@ export interface BookPerson { id:string; name:string; relation:string; avatarTex
 export interface ManagedBookPeople extends ManagedStory { bookPeople?:boolean; familyId:string; copyAvailable:boolean; people:BookPerson[]; availablePeople:BookPerson[] }
 export interface InviteStatus { status:string; expiresAtMs:number; inviteeName?:string; relation?:string; displayName?:string; applicantId?:string; verificationCode?:string; familyId?:string; storyId?:string }
 export interface ChapterChange { revisionId:string; by:string; savedAt:string; title?:{before:string;after:string}; blocks:Array<{index:number;before:string;after:string}> }
-export interface SharedChapter { id:string; title:string; content:Array<{text:string;blockIndex?:number}>; textBlocks:Array<{index:number;text:string}> }
-export interface SharedStory { story:{id:string;title:string;version:number}; revisionId:string; draftScope:string; chapters:SharedChapter[]; capabilities?:{requestInvitation?:boolean;sharedEdit?:boolean;copy?:boolean} }
+export interface SharedChapter { id:string; title:string; content:Array<{text?:string;photoId?:string;blockIndex?:number}>;memoryIds?:string[];backdropKey?:string; textBlocks:Array<{index:number;text:string}> }
+export interface SharedStory { media?:Record<string,string>;coverUrl?:string;memories?:Array<{id:string;title:string;text:string;photoIds:string[]}>; story:{id:string;title:string;version:number}; revisionId:string; draftScope:string; chapters:SharedChapter[]; capabilities?:{requestInvitation?:boolean;sharedEdit?:boolean;copy?:boolean} }
 export interface SharedExcerptInput {storyId:string;revisionId:string;expectedVersion:number;chapterId:string;text:string;recipientMemberIds:string[];requestId:string}
 export const sharingHome = {title:'拾光家忆｜把重要的故事慢慢写下来',path:'/pages/index/index',imageUrl:'/assets/illustrations/story-book-cover.png'};
 export const invitationPath = (token:string) => '/packages/story-sharing/pages/invite/index?token='+encodeURIComponent(token);

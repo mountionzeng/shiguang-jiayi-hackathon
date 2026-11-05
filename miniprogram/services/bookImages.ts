@@ -108,9 +108,16 @@ export async function readLocalPhotos(ids: string[]): Promise<{
 }> {
   const uniqueIds = [...new Set(ids)];
   const paths = new Map<string, string>();
+  const copied=uniqueIds.filter(id=>/^photo-copy-[a-f0-9]{64}$/.test(id));
+  if(copied.length && wx.cloud){
+    const response=await wx.cloud.callFunction({name:'storyBooks',data:{action:'copyMediaRead',photoIds:copied}});
+    const result=response.result as {urls?:Record<string,string>;error?:string;message?:string};
+    if(result?.error)throw new Error(result.message || '接收图片暂时无法读取，请重试');
+    for(const id of copied)if(result?.urls?.[id]?.startsWith('https://'))paths.set(id,result.urls[id]);
+  }
   for (let offset = 0; offset < uniqueIds.length; offset += 4) {
     const batch = await Promise.all(uniqueIds.slice(offset, offset + 4).map(async id =>
-      [id, await readLocalPhoto(id)] as const));
+      [id, copied.includes(id) ? (paths.get(id) || '') : await readLocalPhoto(id)] as const));
     for (const [id, path] of batch) paths.set(id, path);
   }
   const photoPaths: Record<string, string> = {};
@@ -123,6 +130,13 @@ export async function readLocalPhotos(ids: string[]): Promise<{
 }
 
 export async function readLocalPhoto(id: string): Promise<string> {
+  if(/^photo-copy-[a-f0-9]{64}$/.test(id)){
+    if(!wx.cloud)return '';
+    const response=await wx.cloud.callFunction({name:'storyBooks',data:{action:'copyMediaRead',photoIds:[id]}});
+    const result=response.result as {urls?:Record<string,string>;error?:string;message?:string};
+    if(result?.error)throw new Error(result.message || '接收图片暂时无法读取，请重试');
+    return result?.urls?.[id]?.startsWith('https://')?result.urls[id]:'';
+  }
   if (isStoryImageReference(id)) {
     if (!wx.cloud) return '';
     try {

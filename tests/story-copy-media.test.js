@@ -128,3 +128,61 @@ test('copied asset access is rechecked during signing and is unavailable through
   const request={familyId:'family_reader',storyId:'story-copy',chapterId:draft.chapters[0].id,photoId,purpose:'view'};
   await assert.rejects(readStoryMedia(f.repo,f.reader,request,async()=>{f.tables.get(key).status='disabled';return 'https://example.com/private';}),{code:'STORY_FORBIDDEN'});
 });
+
+
+test('whole-story receive retains the cover, ordered images and only linked memories after reopening',async()=>{
+  const f=await setup();
+  const story=f.tables.get('stories:family_owner_story-a');
+  story.coverImageId='family_owner_img_req-cover0001';
+  const fileID='cloud://env.bucket/story-images/family_owner/story-a/cover.png';
+  f.tables.set('story_images:'+story.coverImageId,{familyId:'family_owner',storyId:'story-a',purpose:'cover',moderation:'pass',fileID});
+  f.files.set(fileID,'cover-image');
+  const draft=f.tables.get('biography_drafts:family_owner_revision-a').revision.draft;
+  draft.chapters[0].memoryIds=['memory-one'];story.memoryIds=['memory-one'];
+  f.tables.set('memories:family_owner_memory-one',{id:'memory-one',familyId:'family_owner',scope:'personal',reviewStatus:'confirmed',text:'相关记忆原文',title:'记忆标题',photoIds:['photo-two']});
+  f.tables.set('memories:family_owner_private',{id:'private',familyId:'family_owner',reviewStatus:'confirmed',text:'不要传的记忆',photoIds:[]});
+  const service=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,copyStorage:f.storage,
+    bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner','family_reader'],signMedia:async file=>'https://example.com/'+encodeURIComponent(file)});
+  const read=await service({APPID:'wx-original',OPENID:'reader'},{action:'sharedRead',familyId:'family_owner',storyId:'story-a'});
+  assert.ok(read.coverUrl.includes('cover.png'));
+  assert.deepEqual(read.chapters[0].content,[{text:'我们的夏天'},{photoId:'photo-one'},{photoId:'photo-two'}]);
+  assert.equal(read.memories.length,1);assert.equal(read.memories[0].text,'相关记忆原文');
+  assert.ok(read.media['photo-two']);assert.ok(!JSON.stringify(read).includes('不要传'));
+  const result=await service({APPID:'wx-original',OPENID:'reader'},{action:'copyReceive',...f.input});
+  const received=f.tables.get('stories:family_reader_'+result.storyId);
+  const saved=f.tables.get('biography_drafts:family_reader_'+received.currentRevisionId).revision.draft;
+  const chapter=saved.chapters[0];
+  const cover=chapter.packageAssets[chapter.packageCoverAssetId].photoId;
+  assert.match(cover,/^photo-copy-/);
+  assert.equal(chapter.content[0].text,'我们的夏天');
+  assert.equal(chapter.memoryIds.length,1);
+  const memory=f.tables.get('memories:family_reader_'+chapter.memoryIds[0]);
+  assert.equal(memory.text,'相关记忆原文');
+  assert.equal(memory.photoIds[0],chapter.content[2].photoId);
+  assert.ok(received.memoryIds.includes(memory.id));
+  const copies=f.copies.length;
+  await service({APPID:'wx-original',OPENID:'reader'},{action:'copyReceive',...f.input});
+  assert.equal(f.copies.length,copies);
+  for(const [key] of f.tables)if(key.includes(':family_owner'))f.tables.delete(key);
+  const urls=await service({APPID:'wx-original',OPENID:'reader'},{action:'copyMediaRead',photoIds:[cover,...memory.photoIds]});
+  assert.ok(urls.urls[cover]);assert.ok(urls.urls[memory.photoIds[0]]);
+  await assert.rejects(service({APPID:'wx-original',OPENID:'owner'},{action:'copyMediaRead',photoIds:[cover]}));
+});
+
+test('shared image URLs are not released when access is revoked during signing',async()=>{
+  const f=await setup();
+  const service=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,
+    bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner','family_reader'],signMedia:async()=>{
+      f.tables.get('story_grants:'+f.grantId).status='revoked';return 'https://example.com/photo';}});
+  await assert.rejects(service({APPID:'wx-original',OPENID:'reader'},{action:'sharedRead',familyId:'family_owner',storyId:'story-a'}));
+});
+
+test('recipient photo batch rejects a policy revoked while URLs are signed',async()=>{
+  const f=await setup();await receiveMediaCopy(f.repo,f.reader,f.input,f.storage,{approveText:async()=>true});
+  const asset=[...f.tables].find(([key])=>key.startsWith('story_copy_assets:'))[1];
+  const service=createStoryService(f.repo,{bootstrapAppId:'wx-original',signMedia:async()=>{
+    f.tables.get('story_copy_assets:family_reader__'+asset.photoId).status='disabled';
+    return 'https://example.com/private';
+  }});
+  await assert.rejects(service({APPID:'wx-original',OPENID:'reader'},{action:'copyMediaRead',photoIds:[asset.photoId]}),{code:'STORY_FORBIDDEN'});
+});
