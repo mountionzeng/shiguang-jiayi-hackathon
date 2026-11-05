@@ -20,7 +20,7 @@
         <button class="scope {{scope === 'chapters' ? 'selected' : ''}}" data-scope="chapters" bindtap="chooseScope" disabled="{{loading || checking || exportBusy || albumSaving}}">选择章节</button>
         <button wx:if="{{destination !== 'family'}}" class="scope {{scope === 'text' ? 'selected' : ''}}" data-scope="text" bindtap="chooseScope" disabled="{{loading || checking || exportBusy || albumSaving}}">选择文字</button>
       </view>
-      <view class="caption" wx:if="{{sourceKind === 'story' && scope === 'book'}}">包含这本书全部 {{chapters.length}} 章的文字。封面之外的照片不自动加入。</view>
+      <view class="caption" wx:if="{{sourceKind === 'story' && scope === 'book'}}">{{destination === 'family' ? '包含这本书全部章节、封面、图片和关联记忆。' : '包含这本书全部 ' + chapters.length + ' 章的文字。封面之外的照片不自动加入。'}}</view>
       <checkbox-group wx:if="{{sourceKind === 'story' && scope === 'chapters'}}" bindchange="chooseChapters">
         <label class="chapter-choice" wx:for="{{chapters}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" disabled="{{loading || checking || exportBusy || albumSaving}}" color="#4f7f6b" /><view><view>{{item.title}}</view><view class="caption">{{item.characterCount}} 字</view></view></label>
       </checkbox-group>
