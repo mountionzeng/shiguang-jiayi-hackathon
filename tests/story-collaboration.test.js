@@ -9,7 +9,7 @@ const core = require('../cloudfunctions/storyBooks/core');
 async function setup() {
   const f = fixture(); f.account('owner'); f.account('editor');
   let approvals = 0; const approvedOpenids=[];
-  const options = {accessEnabled:true,rulesReady:true,invitationsEnabled:true,sharedEditEnabled:true,bootstrapAppId:'wx-original',
+  const options = {approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,invitationsEnabled:true,sharedEditEnabled:true,bootstrapAppId:'wx-original',
     sharedReadFamilyIds:['family_owner','family_editor'],approveSharedEdit:async(_text,openid)=>{approvals++;approvedOpenids.push(openid);return true;}};
   const service=createStoryService(f.repo,options),call=(who,action,input={})=>service({APPID:'wx-original',OPENID:who},{action,...input});
   await call('owner','create',{storyId:'story-a',title:'故事',writingMode:'objective',memoryIds:[],requestId:'create-story-a'});

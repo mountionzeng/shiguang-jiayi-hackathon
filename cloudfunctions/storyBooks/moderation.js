@@ -18,7 +18,7 @@ function diagnostic(provider,verdict,response){
 }
 function unavailable(provider,response){
   diagnostic(provider,'unavailable',response);
-  throw Object.assign(new Error('内容检查服务暂时不可用，草稿已保留，请稍后重试'),{code:'MODERATION_UNAVAILABLE'});
+  throw Object.assign(new Error('内容检查服务暂时不可用，请稍后重试'),{code:'MODERATION_UNAVAILABLE'});
 }
 function verdict(suggest,provider,response){
   if(suggest==='pass')return true;
@@ -27,7 +27,7 @@ function verdict(suggest,provider,response){
   }
   if(suggest==='review'){
     diagnostic(provider,'review',response);
-    throw Object.assign(new Error('内容检查返回“需复核”，尚未确认通过；草稿已保留，暂未同步'),{code:'MODERATION_REVIEW'});
+    throw Object.assign(new Error('内容检查返回“需复核”，暂未通过检查'),{code:'MODERATION_REVIEW'});
   }
   unavailable(provider,response);
 }

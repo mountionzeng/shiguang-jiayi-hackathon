@@ -1,3 +1,4 @@
+const {approveOutgoingText}=require('./outgoingText');
 const {revisionAttribution}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
@@ -23,8 +24,20 @@ function normalizeSend(input){
     !/^chapter-[a-z0-9-]{1,60}$/.test(input.chapterId||'')||!REQUEST.test(input.requestId||''))throw identityError();
   return input;
 }
-async function sendOwnReturn(repo,ctx,raw,{now=()=>new Date().toISOString()}={}){
+async function sendOwnReturn(repo,ctx,raw,{approveText,now=()=>new Date().toISOString()}={}){
   const input=normalizeSend(raw),stamp=now(),returnId='return-'+digest([ctx.principalId,input.requestId]),fingerprint=digest(input);
+  await assertSpaceOwner(repo,ctx);
+  let approvedSnapshot;
+  if(!await repo.get('story_returns',returnId)){
+    const story=await repo.get('stories',docId(ctx.familyId,input.storyId));
+    if(!story||story.familyId!==ctx.familyId||story.deletedAt||story.sourcePolicyRequired!==true||story.version!==input.expectedVersion||story.currentRevisionId!==input.revisionId)conflict();
+    const route=story.receivedSources?.find(item=>item.destinationChapterId===input.chapterId);
+    if(!route||!/^principal_[0-9a-f]{32}$/.test(route.sourceOwnerPrincipalId||''))throw identityError();
+    const current=await revision(repo,ctx.familyId,story),chapter=current.draft?.chapters?.find(item=>item.id===input.chapterId);
+    if(!chapter)throw identityError();
+    if(route.sourceOwnerPrincipalId!==ctx.principalId)await approveOutgoingText(approveText,ctx,route.senderName||'一位亲友',[chapter]);
+    approvedSnapshot=digest([route,chapter]);
+  }
   return repo.transaction(async tx=>{
     await assertSpaceOwner(tx,ctx);
     const prior=await tx.get('story_returns',returnId);
@@ -35,6 +48,7 @@ async function sendOwnReturn(repo,ctx,raw,{now=()=>new Date().toISOString()}={})
     if(!route||!/^principal_[0-9a-f]{32}$/.test(route.sourceOwnerPrincipalId||''))throw identityError();
     const current=await revision(tx,ctx.familyId,story),chapter=current.draft?.chapters?.find(item=>item.id===input.chapterId);
     if(!chapter)throw identityError();
+    if(approvedSnapshot!==digest([route,chapter]))conflict();
     const returned=new Set(Array.isArray(story.returnedOwnBlockIds)?story.returnedOwnBlockIds:[]);
     const returnedSources=story.returnedSourceEdits&&typeof story.returnedSourceEdits==='object'?story.returnedSourceEdits:{};
     const blocks=chapter.content.filter(block=>typeof block.text==='string'&&Array.isArray(block.sourceIds)&&block.sourceIds.length===0&&!returned.has(block.blockId))

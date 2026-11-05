@@ -6,7 +6,7 @@ const { grantIdFor } = require('../cloudfunctions/storyBooks/access');
 const { aliasIdFor } = require('../cloudfunctions/storyBooks/identity');
 async function setup() {
   const f = fixture(); for (const id of ['owner', 'reader', 'stranger']) f.account(id);
-  const options = { accessEnabled:true, rulesReady:true, invitationsEnabled:true, bootstrapAppId:'wx-original', sharedReadFamilyIds:['family_owner','family_reader','family_stranger'] };
+  const options = {approveChapterText:async()=>true, accessEnabled:true, rulesReady:true, invitationsEnabled:true, bootstrapAppId:'wx-original', sharedReadFamilyIds:['family_owner','family_reader','family_stranger'] };
   const service = createStoryService(f.repo, options);
   const call = (who, action, input={}) => service({APPID:'wx-original',OPENID:who},{action,...input});
   await call('owner','create',{storyId:'story-a',title:'私密题名',writingMode:'objective',memoryIds:[],requestId:'create-story-a'});

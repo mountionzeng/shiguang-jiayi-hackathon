@@ -61,12 +61,12 @@ async function sharedFixture() {
 test('real authorization and repository chain projects only current authorized text without loading family state', async () => {
   const { repo, reader } = await sharedFixture();
   repo.all = () => { throw new Error('must not read whole family'); };
-  const result = await readAuthorizedStory(repo, reader, { familyId: 'family_owner', storyId: 'story-a', chapterIds: ['chapter-three'] });
+  const result = await readAuthorizedStory(repo, reader, { familyId: 'family_owner', storyId: 'story-a', chapterIds: ['chapter-three'] }, {approveText:async()=>true});
   assert.deepEqual(result.chapters.map(chapter => chapter.id), ['chapter-three']);
   assert.equal(result.chapters[0].content[0].text, '允许阅读');
   for (const secret of ['绝不泄露', 'secret-', 'photo-secret', 'memoryIds', 'backdropImageId']) assert.equal(JSON.stringify(result).includes(secret), false, secret);
   assert.equal(result.capabilities.sharedEdit, false, 'U1 does not advertise unimplemented collaborative writes');
-  await assert.rejects(readAuthorizedStory(repo, reader, { familyId: 'family_owner', storyId: 'story-a', chapterIds: ['chapter-one'] }), { code: 'STORY_FORBIDDEN' });
+  await assert.rejects(readAuthorizedStory(repo, reader, { familyId: 'family_owner', storyId: 'story-a', chapterIds: ['chapter-one'] }, {approveText:async()=>true}), { code: 'STORY_FORBIDDEN' });
 });
 
 test('revocation/deletion/mismatched revision deny reads and never fall back to older history', async () => {
@@ -77,6 +77,6 @@ test('revocation/deletion/mismatched revision deny reads and never fall back to 
     setup => { setup.tables.delete('biography_drafts:family_owner_revision-current'); },
   ]) {
     const setup = await sharedFixture(); mutate(setup);
-    await assert.rejects(readAuthorizedStory(setup.repo, setup.reader, { familyId: 'family_owner', storyId: 'story-a', chapterIds: ['chapter-three'] }), { code: 'STORY_FORBIDDEN' });
+    await assert.rejects(readAuthorizedStory(setup.repo, setup.reader, { familyId: 'family_owner', storyId: 'story-a', chapterIds: ['chapter-three'] }, {approveText:async()=>true}), { code: 'STORY_FORBIDDEN' });
   }
 });

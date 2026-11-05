@@ -1,3 +1,4 @@
+const {approveOutgoingText}=require('./outgoingText');
 const {revisionAttribution}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
@@ -73,8 +74,16 @@ async function loadCopySource(tx,ctx,input){
 // wired to dispatch or advertised as a capability. ctx must be server-resolved.
 // Media requires a server-issued lease and verified private copies. This final
 // transaction never performs external storage I/O or drops unsupported images.
-async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTicket}={}){
+async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTicket,approveText}={}){
   const input=normalize(raw),stamp=now();
+  await assertSpaceOwner(repo,ctx);
+  const completed=await repo.get('story_copies',copyKeys(ctx,input).copyId);
+  let approvedSnapshot;
+  if(!completed){
+    const source=await loadCopySource(repo,ctx,input);
+    await approveOutgoingText(approveText,ctx,source.source.bookTitle||source.source.title,source.selected);
+    approvedSnapshot=digest([source.source.bookTitle||source.source.title,source.selected]);
+  }
   return repo.transaction(async tx=>{
     await assertSpaceOwner(tx,ctx);
     const recipient=await tx.get('families',ctx.familyId);
@@ -91,6 +100,7 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     }
     if(request)throw protocolError();
     const sourceContext=await loadCopySource(tx,ctx,input),{space,source,grant,sourceRevision,selected,permitted}=sourceContext;
+    if(approvedSnapshot!==digest([source.bookTitle||source.title,selected]))conflict();
     let media;
     if(mediaTicket)media=await readyMedia(tx,ctx,input,sourceContext,copyId,fingerprint,mediaTicket);
     if(selected.some(chapter=>chapter.backdropImageId || chapter.content.some(block=>typeof block.text!=='string' && !media?.assets.some(asset=>asset.sourcePhotoId===block.photoId))))throw error('STORY_COPY_MEDIA_PENDING','这些图片尚未完成独立保留，故事没有保存');
@@ -167,7 +177,7 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     return {ok:true,storyId:story.id,revisionId,alreadyReceived:false};
   });
 }
-const receiveTextCopy=(repo,ctx,input,{now}={})=>commitCopy(repo,ctx,input,{now});
+const receiveTextCopy=(repo,ctx,input,{now,approveText}={})=>commitCopy(repo,ctx,input,{now,approveText});
 function normalizeAppend(input){
   if(!exact(input,['storyId','revisionId','expectedVersion','chapterId','text','requestId']) ||
     !core.STORY_ID.test(input.storyId || '') || !REVISION.test(input.revisionId || '') ||

@@ -1,3 +1,4 @@
+const {approveOutgoingText}=require('./outgoingText');
 const crypto = require('node:crypto');
 const { PRINCIPAL_ID, FAMILY_ID, assertCurrentIdentity, identityError } = require('./identity');
 
@@ -28,10 +29,11 @@ function evaluateStoryAccess({ principalId, ownerPrincipalId, story, grant, acti
   return grant.scope?.type === 'chapters' && validChapterIds(grant.scope.chapterIds) && chapterIds.every(id => grant.scope.chapterIds.includes(id));
 }
 
-async function readAuthorizedStory(repo, ctx, input, { now = Date.now, sharedEditEnabled = false, copyReceiveEnabled = false } = {}) {
+async function readAuthorizedStory(repo, ctx, input, { approveText, now = Date.now, sharedEditEnabled = false, copyReceiveEnabled = false } = {}) {
   if (!input || !FAMILY_ID.test(input.familyId || '') || !STORY_ID.test(input.storyId || '') ||
       (input.chapterIds !== undefined && !validChapterIds(input.chapterIds))) throw identityError();
-  return repo.transaction(async tx => {
+  let requiresCheck=false;
+  const result=await repo.transaction(async tx => {
     await assertCurrentIdentity(tx, ctx);
     const family = await tx.get('families', input.familyId);
     const space = await tx.get('story_principal_spaces', input.familyId);
@@ -57,6 +59,7 @@ async function readAuthorizedStory(repo, ctx, input, { now = Date.now, sharedEdi
       content: chapter.content.map(item => typeof item.text === 'string' ? { text: item.text } : { text: '〔图片共享尚未开放〕' }),
       textBlocks: chapter.content.flatMap((item,index) => typeof item.text === 'string' && item.photoId === undefined ? [{index,text:item.text}] : []),
     }));
+    requiresCheck=ctx.principalId!==space.principalId;
     const canEdit = sharedEditEnabled === true && chapterIds.every(chapterId => evaluateStoryAccess({principalId:ctx.principalId,
       ownerPrincipalId:space.principalId,story,grant,action:'edit',chapterIds:[chapterId],nowMs:now()}));
     const canCopy = copyReceiveEnabled === true && ctx.familyId !== input.familyId && chapterIds.every(chapterId => evaluateStoryAccess({principalId:ctx.principalId,
@@ -69,6 +72,8 @@ async function readAuthorizedStory(repo, ctx, input, { now = Date.now, sharedEdi
         requestInvitation: evaluateStoryAccess({principalId:ctx.principalId,ownerPrincipalId:space.principalId,story,grant,action:'forward',chapterIds,nowMs:now()}) },
     };
   });
+  if(requiresCheck)await approveOutgoingText(approveText,ctx,result.story.title,result.chapters);
+  return result;
 }
 
 module.exports = { evaluateStoryAccess, grantIdFor, readAuthorizedStory };

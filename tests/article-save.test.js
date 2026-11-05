@@ -11,12 +11,12 @@ async function setup(){const f=fixture();f.account('owner');const ctx=await reso
  const chapter=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft.chapters[0];
  return {...f,ctx,chapter,input:{requestId:'request-article-001',storyId:'story-article',revisionId:result.revisionId,expectedVersion:1,chapter:{id:chapter.id,title:chapter.title,content:chapter.content.map(({blockId,text})=>({blockId,text})),layout:chapter.layout,packageAssets:{}}}};}
 const options={approveText:async()=>true,approveImage:async()=>true};
-test('own article saves outside sharing rollout while moderation and cross-account boundaries remain enforced',async()=>{
+test('own article saves outside sharing rollout without text moderation while cross-account boundaries remain enforced',async()=>{
  const {createStoryService}=require('../cloudfunctions/storyBooks/service');
  const f=await setup();
  const config={accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:[],chapterPackageEnabled:false,approveChapterText:async()=>true};
  const service=createStoryService(f.repo,config),context={APPID:'wx-original',OPENID:'owner'};
- await assert.rejects(createStoryService(f.repo,{...config,approveChapterText:async()=>false})(context,{...f.input,action:'articleSave'}),{code:'CONTENT_REJECTED'});
+ config.approveChapterText=async()=>{throw new Error('private saves must not call moderation');};
  f.account('other');
  await assert.rejects(service({APPID:'wx-original',OPENID:'other'},{...f.input,action:'articleSave'}));
  const result=await service(context,{...f.input,action:'articleSave'});
@@ -33,11 +33,11 @@ test('direct edits, line splits and resize save one retry-safe version retaining
  assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,options),result);
  await assert.rejects(saveArticle(f.repo,f.ctx,{...f.input,requestId:'request-article-002'},options),{code:'VERSION_CONFLICT'});
 });
-test('rejects spoofed sources, missing parents, unapproved photos and moderation failures without writes',async()=>{const f=await setup(),before=structuredClone(f.tables);
+test('rejects spoofed sources, missing parents, unapproved photos without writes',async()=>{const f=await setup(),before=structuredClone(f.tables);
  const spoof=structuredClone(f.input);spoof.chapter.content[0].sourceIds=[];await assert.rejects(saveArticle(f.repo,f.ctx,spoof,options));
  const parent=structuredClone(f.input);parent.chapter.content.push({blockId:bid('b'),parentBlockId:bid('f'),text:'x'});await assert.rejects(saveArticle(f.repo,f.ctx,parent,options));
  const image=structuredClone(f.input);image.chapter.content.push({blockId:bid('b'),photoId:'photo-other'});await assert.rejects(saveArticle(f.repo,f.ctx,image,{...options,approveImage:async()=>false}));
- await assert.rejects(saveArticle(f.repo,f.ctx,f.input,{...options,approveText:async()=>false}),{code:'CONTENT_REJECTED'});assert.deepEqual(f.tables,before);
+ assert.deepEqual(f.tables,before);
 });
 test('activity is owner scoped, groups by trusted account and distinguishes missing comparison',async()=>{const f=await setup();
  for(const [id,senderKey] of [['one','account-a'],['two','account-b']])f.tables.set('account_message_receipts:'+id,{familyId:'family_owner',deliveryId:'delivery-'+id,direction:'received',senderKey,senderName:'同名',createdAt:'2026-10-25',kind:'return',package:{storyTitle:'纸船',lineage:{parentPackageId:'missing'},chapters:[{blocks:[{type:'text',text:'收到文字'}]}],assets:[]}});
@@ -144,4 +144,30 @@ test('confirmed article receipt is replayed before moderation so a lost success 
  await assert.rejects(saveArticle(f.repo,f.ctx,{...f.input,chapter:{...f.input.chapter,title:'不同内容'}},rejecting),{code:'VERSION_CONFLICT'});
  const family=f.tables.get('families:family_owner');family.ownerAccountId='account_'+'0'.repeat(24);
  await assert.rejects(saveArticle(f.repo,f.ctx,f.input,rejecting),{code:'STORY_FORBIDDEN'});
+});
+
+test('private edits save the newest title and text even when external moderation requires review',async()=>{
+ const f=await setup();let checks=0;
+ f.input.chapter.title='解放';f.input.chapter.content[0].text='修改后的完整文章';
+ const saved=await saveArticle(f.repo,f.ctx,f.input,{...options,approveText:async()=>{checks++;throw Object.assign(new Error('review'),{code:'MODERATION_REVIEW'});}});
+ const story=f.tables.get('stories:family_owner_story-article');
+ const reopened=f.tables.get('biography_drafts:family_owner_'+story.currentRevisionId).revision;
+ assert.equal(story.currentRevisionId,saved.revisionId);assert.equal(reopened.draft.chapters[0].title,'解放');
+ assert.equal(reopened.draft.chapters[0].content[0].text,'修改后的完整文章');assert.equal(checks,0);
+ assert.ok(f.tables.get('biography_drafts:family_owner_'+f.input.revisionId));
+});
+
+test('a privately saved revision is readable by its owner but an existing reader grant cannot bypass outgoing checks',async()=>{
+ const {readAuthorizedStory,grantIdFor}=require('../cloudfunctions/storyBooks/access');
+ const f=await setup();f.account('reader');
+ const reader=await resolveStoryIdentity(f.repo,{APPID:'wx-original',OPENID:'reader'},{bootstrapAppId:'wx-original'});
+ f.input.chapter.title='新标题';f.input.chapter.content[0].text='最新正文';
+ const saved=await saveArticle(f.repo,f.ctx,f.input,options);
+ const input={familyId:f.ctx.familyId,storyId:f.input.storyId};
+ f.tables.set('story_grants:'+grantIdFor(f.ctx.familyId,f.input.storyId,reader.principalId),{familyId:f.ctx.familyId,storyId:f.input.storyId,principalId:reader.principalId,ownerPrincipalId:f.ctx.principalId,status:'active',version:1,scope:{type:'story'},permissions:{read:true}});
+ assert.equal((await readAuthorizedStory(f.repo,f.ctx,input)).revisionId,saved.revisionId);
+ await assert.rejects(readAuthorizedStory(f.repo,reader,input),{code:'MODERATION_UNAVAILABLE'});
+ await assert.rejects(readAuthorizedStory(f.repo,reader,input,{approveText:async()=>false}),{code:'CONTENT_REJECTED'});
+ let checked='';const shared=await readAuthorizedStory(f.repo,reader,input,{approveText:async(text)=>{checked=text;return true;}});
+ assert.match(checked,/新标题/);assert.match(checked,/最新正文/);assert.equal(shared.revisionId,saved.revisionId);
 });

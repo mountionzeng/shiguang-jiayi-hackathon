@@ -48,7 +48,7 @@ function moduleChanges(before,after){
   if(core.stable(before.layout||null)!==core.stable(after.layout||null))changes.push({kind:'layout',action:'changed',before:'',after:''});
   return changes;
 }
-async function saveArticle(repo,ctx,raw,{approveText,approveImage,approveBackdrop,now=()=>new Date().toISOString()}={}){
+async function saveArticle(repo,ctx,raw,{approveImage,approveBackdrop,now=()=>new Date().toISOString()}={}){
   const input=normalize(raw),stamp=now(),receipt='article-'+hash([ctx.principalId,input.requestId]),fingerprint=hash(input);
   await repo.ensureCollection?.('story_chapter_edits');
   // An immutable acknowledgement is authoritative even if the checker is now
@@ -59,8 +59,8 @@ async function saveArticle(repo,ctx,raw,{approveText,approveImage,approveBackdro
     if(confirmed.familyId!==ctx.familyId||confirmed.fingerprint!==fingerprint)fail('保存请求已经改变','VERSION_CONFLICT');
     return confirmed.result;
   }
-  if(typeof approveText!=='function'||typeof approveImage!=='function')fail('内容检查暂时不可用','MODERATION_UNAVAILABLE');
-  if(!await approveText([input.chapter.title,...input.chapter.content.map(b=>b.text||'')].join('\n'),ctx.verifiedOpenid,'文章'))fail('文字未通过内容检查','CONTENT_REJECTED');
+  // Private edits use the existing immutable version flow. Text is checked at distribution.
+  if(typeof approveImage!=='function')fail('图片检查暂时不可用','MODERATION_UNAVAILABLE');
   const ownerMemberId=input.chapter.memoryIds?.length ? await getOwnerMemberId(repo,ctx.familyId) : undefined;
   return repo.transaction(async tx=>{
     await assertSpaceOwner(tx,ctx);

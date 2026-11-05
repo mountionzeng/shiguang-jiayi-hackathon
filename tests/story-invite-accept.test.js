@@ -13,7 +13,7 @@ async function setup(extra = {}) {
   const f = fixture();
   f.account('owner'); f.account('friend'); f.account('other');
   // 朋友的家庭不在灰度名单里：这正是新朋友的真实处境。
-  const options = {
+  const options = {approveChapterText:async()=>true,
     accessEnabled: true, rulesReady: true, invitationsEnabled: true, copyReceiveEnabled: true, sharedEditEnabled: true,
     bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner'], ...extra,
   };

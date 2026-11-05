@@ -26,7 +26,7 @@ function copied(f,id='story-copy'){
 }
 test('authorized text copy is an independent sanitized snapshot with immutable source receipt',async()=>{
   const f=await setup(),before=structuredClone(f.tables.get('stories:family_owner_story-original'));
-  const result=await receiveTextCopy(f.repo,f.reader,f.input);
+  const result=await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});
   assert.equal(result.storyId,'story-copy');assert.equal(result.alreadyReceived,false);
   const {story,revision}=copied(f);assert.equal(story.sourcePolicyRequired,true);
   assert.equal(revision.draft.chapters.length,1);assert.deepEqual(revision.draft.chapters[0].memoryIds,[]);
@@ -38,18 +38,18 @@ test('authorized text copy is an independent sanitized snapshot with immutable s
   f.tables.delete('stories:family_owner_story-original');f.tables.delete('biography_drafts:family_owner_revision-source');f.tables.delete('story_grants:'+f.grantId);
   assert.equal(copied(f).revision.draft.chapters[0].content[0].text,'那年的夏天');
   assert.equal(await allowsSources(f.repo,ids,'view'),true);
-  assert.equal((await receiveTextCopy(f.repo,f.reader,f.input)).alreadyReceived,true);
+  assert.equal((await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true})).alreadyReceived,true);
 });
 test('concurrent requests and new request IDs for same source selection create only one copy',async()=>{
-  const f=await setup();const results=await Promise.all([receiveTextCopy(f.repo,f.reader,f.input),receiveTextCopy(f.repo,f.reader,{...f.input,requestId:'receive-request-002'})]);
+  const f=await setup();const results=await Promise.all([receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}),receiveTextCopy(f.repo,f.reader,{...f.input,requestId:'receive-request-002'}, {approveText:async()=>true})]);
   assert.equal(results.filter(r=>!r.alreadyReceived).length,1);
-  const repeated=await receiveTextCopy(f.repo,f.reader,{...f.input,requestId:'receive-request-003',target:{mode:'new',storyId:'story-second',title:'另一本'}});
+  const repeated=await receiveTextCopy(f.repo,f.reader,{...f.input,requestId:'receive-request-003',target:{mode:'new',storyId:'story-second',title:'另一本'}}, {approveText:async()=>true});
   assert.equal(repeated.storyId,'story-copy');assert.equal(repeated.alreadyReceived,true);
   assert.equal([...f.tables.keys()].filter(k=>k.startsWith('stories:family_reader_')).length,1);
-  await assert.rejects(receiveTextCopy(f.repo,f.reader,{...f.input,target:{...f.input.target,title:'冲突请求'}}),{code:'VERSION_CONFLICT'});
+  await assert.rejects(receiveTextCopy(f.repo,f.reader,{...f.input,target:{...f.input.target,title:'冲突请求'}}, {approveText:async()=>true}),{code:'VERSION_CONFLICT'});
 });
 test('append preserves existing own blocks and old revision, and explicit new experiences remain independent',async()=>{
-  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input);
+  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});
   const service=createStoryService(f.repo);await service({OPENID:'reader'},{action:'create',storyId:'story-existing',title:'旧故事',writingMode:'objective',memoryIds:[],requestId:'create-existing-story'});
   const chapters=[{id:'chapter-mine',title:'我的',memoryIds:[],content:[{text:'我的旧经历'}]}];
   await service({OPENID:'reader'},{action:'save',storyId:'story-existing',expectedVersion:1,expectedRevisionId:'',requestId:'save-existing-story',revision:{id:'revision-mine',storyId:'story-existing',draft:{title:'旧故事',chapters,...core.flatten(chapters)}}});
@@ -57,7 +57,7 @@ test('append preserves existing own blocks and old revision, and explicit new ex
   const source=f.tables.get('biography_drafts:family_owner_revision-source');source.revision.id='revision-source-two';
   f.tables.set('biography_drafts:family_owner_revision-source-two',source);f.tables.get('stories:family_owner_story-original').currentRevisionId='revision-source-two';
   const old=structuredClone(f.tables.get('biography_drafts:family_reader_revision-mine'));
-  await receiveTextCopy(f.repo,f.reader,{...f.input,sourceRevisionId:'revision-source-two',requestId:'append-request-001',target:{mode:'append',storyId:'story-existing',expectedVersion:2,expectedRevisionId:'revision-mine'}});
+  await receiveTextCopy(f.repo,f.reader,{...f.input,sourceRevisionId:'revision-source-two',requestId:'append-request-001',target:{mode:'append',storyId:'story-existing',expectedVersion:2,expectedRevisionId:'revision-mine'}}, {approveText:async()=>true});
   const {story,revision}=copied(f,'story-existing');assert.equal(story.version,3);assert.equal(revision.draft.chapters.length,2);
   assert.deepEqual(revision.draft.chapters[0].content[0].sourceIds,[]);assert.equal(revision.draft.chapters[1].content[0].sourceIds.length,1);
   assert.deepEqual(f.tables.get('biography_drafts:family_reader_revision-mine'),old);
@@ -66,7 +66,7 @@ test('append preserves existing own blocks and old revision, and explicit new ex
   await assert.rejects(service({OPENID:'reader'},{action:'context',storyId:story.id}),{code:'STORY_PROTOCOL_REQUIRED'});
 });
 test('protected copy append creates an immutable revision containing only a new owned block',async()=>{
-  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input);
+  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});
   const before=copied(f),sourceBefore=structuredClone(before.revision.draft.chapters[0].content[0]);
   const input={storyId:before.story.id,revisionId:before.story.currentRevisionId,expectedVersion:before.story.version,
     chapterId:before.revision.draft.chapters[0].id,text:'我后来又回到了这里',requestId:'append-own-request-001'};
@@ -85,7 +85,7 @@ test('protected copy append rejects stale, cross-story and caller-shaped edits a
     input=>{input.expectedVersion=99;},input=>{input.chapterId='chapter-guessed';},input=>{input.text='';},
     input=>{input.sourceIds=[];},input=>{input.action='edit';},
   ]){
-    const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input);const {story,revision}=copied(f);
+    const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});const {story,revision}=copied(f);
     const input={storyId:story.id,revisionId:story.currentRevisionId,expectedVersion:story.version,
       chapterId:revision.draft.chapters[0].id,text:'我的补充',requestId:'append-own-request-002'};
     change(input);const before=structuredClone(f.tables);
@@ -93,21 +93,21 @@ test('protected copy append rejects stale, cross-story and caller-shaped edits a
   }
 });
 test('copy append is available only through the receive gate and ignores unrelated client fields',async()=>{
-  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input);const {story,revision}=copied(f),context={APPID:'wx-original',OPENID:'reader'};
+  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});const {story,revision}=copied(f),context={APPID:'wx-original',OPENID:'reader'};
   const input={storyId:story.id,revisionId:story.currentRevisionId,expectedVersion:story.version,
     chapterId:revision.draft.chapters[0].id,text:'我记得那天很热',requestId:'append-own-request-003'};
-  const closed=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_reader']});
+  const closed=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_reader']});
   await assert.rejects(closed(context,{action:'copyAppendOwn',...input}),{code:'STORY_ACCESS_DISABLED'});
-  const open=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_reader']});
+  const open=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_reader']});
   const result=await open(context,{action:'copyAppendOwn',...input,edits:[{action:'edit'}],sourceIds:['forged']});
   assert.equal(result.ok,true);assert.equal(copied(f).revision.draft.chapters[0].content.at(-1).text,input.text);
 });
 test('recipient can return only own appended blocks and owner acceptance creates a protected immutable revision',async()=>{
-  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input);let copy=copied(f),chapterId=copy.revision.draft.chapters[0].id;
+  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});let copy=copied(f),chapterId=copy.revision.draft.chapters[0].id;
   await appendOwnExperience(f.repo,f.reader,{storyId:copy.story.id,revisionId:copy.story.currentRevisionId,expectedVersion:copy.story.version,
     chapterId,text:'我记得你当时还带着一把蓝伞',requestId:'append-returnable-001'});
   copy=copied(f);const send={storyId:copy.story.id,revisionId:copy.story.currentRevisionId,expectedVersion:copy.story.version,chapterId,requestId:'send-return-001'};
-  const sent=await sendOwnReturn(f.repo,f.reader,send);assert.equal(sent.status,'pending');
+  const sent=await sendOwnReturn(f.repo,f.reader,send, {approveText:async()=>true});assert.equal(sent.status,'pending');
   const pending=await listReturns(f.repo,f.owner);assert.equal(pending.returns.length,1);
   assert.deepEqual(pending.returns[0].blocks.map(block=>block.text),['我记得你当时还带着一把蓝伞']);
   assert.equal(JSON.stringify(pending).includes('那年的夏天'),false);
@@ -119,29 +119,29 @@ test('recipient can return only own appended blocks and owner acceptance creates
   assert.equal(added.text,'我记得你当时还带着一把蓝伞');assert.equal(added.sourceIds.length,1);
   assert.equal(await allowsSources(f.repo,added.sourceIds,'view'),true);assert.equal(await allowsSources(f.repo,added.sourceIds,'copy'),false);
   assert.equal((await decideReturn(f.repo,f.owner,{returnId:sent.returnId,decision:'accept',requestId:'accept-return-001'})).alreadyDecided,true);
-  await assert.rejects(sendOwnReturn(f.repo,f.reader,{...send,requestId:'send-return-002'}),{code:'STORY_RETURN_EMPTY'});
+  await assert.rejects(sendOwnReturn(f.repo,f.reader,{...send,requestId:'send-return-002'}, {approveText:async()=>true}),{code:'STORY_RETURN_EMPTY'});
 });
 test('rejecting a returned memory does not alter the original story',async()=>{
-  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input);let copy=copied(f),chapterId=copy.revision.draft.chapters[0].id;
+  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});let copy=copied(f),chapterId=copy.revision.draft.chapters[0].id;
   await appendOwnExperience(f.repo,f.reader,{storyId:copy.story.id,revisionId:copy.story.currentRevisionId,expectedVersion:copy.story.version,
     chapterId,text:'我的不同记忆',requestId:'append-returnable-002'});copy=copied(f);
   const sent=await sendOwnReturn(f.repo,f.reader,{storyId:copy.story.id,revisionId:copy.story.currentRevisionId,expectedVersion:copy.story.version,
-    chapterId,requestId:'send-return-003'}),before=structuredClone(f.tables.get('stories:family_owner_story-original'));
+    chapterId,requestId:'send-return-003'}, {approveText:async()=>true}),before=structuredClone(f.tables.get('stories:family_owner_story-original'));
   const result=await decideReturn(f.repo,f.owner,{returnId:sent.returnId,decision:'reject',requestId:'reject-return-001'});
   assert.equal(result.status,'rejected');assert.deepEqual(f.tables.get('stories:family_owner_story-original'),before);
 });
 test('read permission alone, guessed chapters, stale revisions and caller-supplied policies cannot copy',async()=>{
   for(const modify of [f=>{f.tables.get('story_grants:'+f.grantId).permissions.copy=false;},f=>{f.input.chapterIds=['chapter-one'];},f=>{f.input.sourceRevisionId='revision-stale';},f=>{f.input.permissions={publish:true};},f=>{f.input.target.familyId='family_owner';},f=>{f.tables.get('story_grants:'+f.grantId).status='revoked';}]){
     const f=await setup();modify(f);const before=structuredClone(f.tables);
-    await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input));assert.deepEqual(f.tables,before);
+    await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}));assert.deepEqual(f.tables,before);
   }
-  const f=await setup();await assert.rejects(receiveTextCopy(f.repo,f.stranger,f.input));
+  const f=await setup();await assert.rejects(receiveTextCopy(f.repo,f.stranger,f.input, {approveText:async()=>true}));
 });
 test('photos and backdrops reject the entire copy instead of silently dropping media',async()=>{
   for(const modify of [c=>{c.content.push({photoId:'photo-original'});},c=>{c.backdropImageId='family_owner_img_req-example12';}]){
     const f=await setup(),draft=f.tables.get('biography_drafts:family_owner_revision-source').revision.draft;
     modify(draft.chapters[1]);Object.assign(draft,core.flatten(draft.chapters));const before=structuredClone(f.tables);
-    await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input),{code:'STORY_COPY_MEDIA_PENDING'});assert.deepEqual(f.tables,before);
+    await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}),{code:'STORY_COPY_MEDIA_PENDING'});assert.deepEqual(f.tables,before);
   }
 });
 test('duplicate target title, target version conflict and transactional write failure leave no partial copy',async()=>{
@@ -153,45 +153,45 @@ test('duplicate target title, target version conflict and transactional write fa
       f.input.target.title='唯一名称';const transaction=f.repo.transaction;
       f.repo.transaction=fn=>transaction(tx=>fn({...tx,set:async(table,id,value)=>{if(table==='stories')throw new Error('storage offline');return tx.set(table,id,value);}}));
     }
-    const before=structuredClone(f.tables);await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input));assert.deepEqual(f.tables,before);
+    const before=structuredClone(f.tables);await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}));assert.deepEqual(f.tables,before);
   }
 });
 test('identity and source access are checked inside the write transaction',async()=>{
   const f=await setup(),transaction=f.repo.transaction;
   f.repo.transaction=fn=>{f.tables.get('story_grants:'+f.grantId).status='revoked';return transaction(fn);};
-  await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input),{code:'STORY_FORBIDDEN'});
+  await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}),{code:'STORY_FORBIDDEN'});
   assert.equal(f.tables.has('stories:family_reader_story-copy'),false);
 });
 test('completed replay cannot bypass identity revocation or resurrect a deleted destination',async()=>{
-  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input);
+  const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});
   f.tables.get('stories:family_reader_story-copy').deletedAt='2026-09-18';
-  assert.equal((await receiveTextCopy(f.repo,f.reader,f.input)).alreadyReceived,true);
+  assert.equal((await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true})).alreadyReceived,true);
   assert.equal(f.tables.get('stories:family_reader_story-copy').deletedAt,'2026-09-18');
   f.tables.get('story_identity_aliases:'+f.reader.aliasId).status='revoked';
-  await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input),{code:'STORY_FORBIDDEN'});
+  await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}),{code:'STORY_FORBIDDEN'});
 });
 test('copy count and protocol bounds fail without persisting receipts',async()=>{
   for(const mode of ['version','blocks']){
     const f=await setup(),draft=f.tables.get('biography_drafts:family_owner_revision-source').revision.draft;
     if(mode==='version')draft.provenanceVersion=99;
     else {draft.chapters[1].content=Array.from({length:513},()=>({text:'字'}));Object.assign(draft,core.flatten(draft.chapters));}
-    const before=structuredClone(f.tables);await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input));assert.deepEqual(f.tables,before);
+    const before=structuredClone(f.tables);await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}));assert.deepEqual(f.tables,before);
   }
 });
 test('late failure rolls back manuscript, receipts, name reservation and operation together',async()=>{
   const f=await setup(),before=structuredClone(f.tables),transaction=f.repo.transaction;
   f.repo.transaction=fn=>transaction(tx=>fn({...tx,set:async(table,id,value)=>{if(table==='story_copy_requests')throw new Error('last write failed');return tx.set(table,id,value);}}));
-  await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input),/last write failed/);assert.deepEqual(f.tables,before);
-  f.repo.transaction=transaction;assert.equal((await receiveTextCopy(f.repo,f.reader,f.input)).alreadyReceived,false);
+  await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}),/last write failed/);assert.deepEqual(f.tables,before);
+  f.repo.transaction=transaction;assert.equal((await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true})).alreadyReceived,false);
 });
 test('copy implementation stays closed at the public dispatcher while its dedicated gate is off',async()=>{
-  const f=await setup(),before=structuredClone(f.tables),service=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner','family_reader']});
+  const f=await setup(),before=structuredClone(f.tables),service=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner','family_reader']});
   assert.equal((await service({APPID:'wx-original',OPENID:'reader'},{action:'capabilities'})).copy,false);
   await assert.rejects(service({APPID:'wx-original',OPENID:'reader'},{action:'copyReceive',...f.input}));
   assert.deepEqual(f.tables,before);
 });
 test('gated dispatcher receives only a source reference and creates the server-read snapshot',async()=>{
-  const f=await setup(),service=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,
+  const f=await setup(),service=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,
     bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner','family_reader']});
   const context={APPID:'wx-original',OPENID:'reader'};
   assert.equal((await service(context,{action:'capabilities'})).copy,true);
@@ -205,8 +205,8 @@ test('gated dispatcher receives only a source reference and creates the server-r
 });
 test('overlapping chapter selections cannot receive the same source chapter twice',async()=>{
   const f=await setup();f.tables.get('story_grants:'+f.grantId).scope.chapterIds=['chapter-one','chapter-three'];
-  await receiveTextCopy(f.repo,f.reader,f.input);const before=structuredClone(f.tables);
-  await assert.rejects(receiveTextCopy(f.repo,f.reader,{...f.input,requestId:'receive-overlapping-001',chapterIds:['chapter-one','chapter-three'],target:{mode:'new',storyId:'story-another',title:'两章'}}),{code:'VERSION_CONFLICT'});
+  await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});const before=structuredClone(f.tables);
+  await assert.rejects(receiveTextCopy(f.repo,f.reader,{...f.input,requestId:'receive-overlapping-001',chapterIds:['chapter-one','chapter-three'],target:{mode:'new',storyId:'story-another',title:'两章'}}, {approveText:async()=>true}),{code:'VERSION_CONFLICT'});
   assert.deepEqual(f.tables,before);
 });
 test('inherited policies must still permit retained viewing and fit bounds after adding the copy receipt',async()=>{
@@ -219,9 +219,34 @@ test('inherited policies must still permit retained viewing and fit bounds after
     record.revision.draft.chapters[1].content[0].sourceIds=[ids[0]];Object.assign(record.revision.draft,core.flatten(record.revision.draft.chapters));
     const before=structuredClone(f.tables);
     if(mode==='allowed'){
-      await receiveTextCopy(f.repo,f.reader,f.input);
+      await receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true});
       const sources=copied(f).revision.draft.chapters[0].content[0].sourceIds;
       assert.equal(await allowsSources(f.repo,sources,'view'),true);assert.equal(await allowsSources(f.repo,sources,'publish'),false);
-    }else {await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input),{code:'STORY_FORBIDDEN'});assert.deepEqual(f.tables,before);}
+    }else {await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input, {approveText:async()=>true}),{code:'STORY_FORBIDDEN'});assert.deepEqual(f.tables,before);}
   }
+});
+
+test('outgoing copy checks the exact selected latest text and denial writes nothing',async()=>{
+ const f=await setup(),before=structuredClone(f.tables);let checked='';
+ await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input,{approveText:async(text)=>{checked=text;return false;}}),{code:'CONTENT_REJECTED'});
+ assert.match(checked,/那年的夏天/);assert.doesNotMatch(checked,/秘密正文/);assert.deepEqual(f.tables,before);
+ await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input),{code:'MODERATION_UNAVAILABLE'});
+ assert.deepEqual(f.tables,before);
+});
+
+test('a source changed during the outgoing check cannot be copied under an old approval',async()=>{
+ const f=await setup();
+ await assert.rejects(receiveTextCopy(f.repo,f.reader,f.input,{approveText:async()=>{
+  f.tables.get('stories:family_owner_story-original').bookTitle='检查之后修改的书名';return true;
+ }}),{code:'VERSION_CONFLICT'});
+ assert.equal(f.tables.has('stories:family_reader_story-copy'),false);
+});
+test('a rejected return preserves private edits and creates no recipient-visible return',async()=>{
+ const f=await setup();await receiveTextCopy(f.repo,f.reader,f.input,{approveText:async()=>true});
+ let copy=copied(f);const chapterId=copy.revision.draft.chapters[0].id;
+ await appendOwnExperience(f.repo,f.reader,{storyId:copy.story.id,revisionId:copy.story.currentRevisionId,expectedVersion:copy.story.version,chapterId,text:'私人补充',requestId:'append-outgoing-test'});
+ copy=copied(f);const before=structuredClone(f.tables);
+ const input={storyId:copy.story.id,revisionId:copy.story.currentRevisionId,expectedVersion:copy.story.version,chapterId,requestId:'return-outgoing-test'};
+ await assert.rejects(sendOwnReturn(f.repo,f.reader,input,{approveText:async()=>false}),{code:'CONTENT_REJECTED'});
+ assert.deepEqual(f.tables,before);
 });

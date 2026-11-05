@@ -88,7 +88,7 @@ function createStoryService(repo, options = {}) {
     }
     if (action === 'sharedRead') {
       if (!accessEnabled || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
-      const result = await readAuthorizedStory(repo, ctx, event, {sharedEditEnabled:options.sharedEditEnabled === true,copyReceiveEnabled:options.copyReceiveEnabled === true});
+      const result = await readAuthorizedStory(repo, ctx, event, {approveText:options.approveChapterText,sharedEditEnabled:options.sharedEditEnabled === true,copyReceiveEnabled:options.copyReceiveEnabled === true});
       result.capabilities.requestInvitation = options.invitationsEnabled === true && result.capabilities.requestInvitation;
       return result;
     }
@@ -96,11 +96,11 @@ function createStoryService(repo, options = {}) {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.sourceFamilyId)) throw accessError('STORY_ACCESS_DISABLED');
       const input={sourceFamilyId:event.sourceFamilyId,sourceStoryId:event.sourceStoryId,sourceRevisionId:event.sourceRevisionId,
         chapterIds:event.chapterIds,requestId:event.requestId,target:event.target};
-      try{return await receiveTextCopy(repo,ctx,input,{now:options.now});}
+      try{return await receiveTextCopy(repo,ctx,input,{now:options.now,approveText:options.approveChapterText});}
       catch(error){
         if(error?.code!=='STORY_COPY_MEDIA_PENDING')throw error;
         if(!options.copyStorage)throw accessError('STORY_ACCESS_NOT_READY');
-        return receiveMediaCopy(repo,ctx,input,options.copyStorage,{nowMs:options.nowMs});
+        return receiveMediaCopy(repo,ctx,input,options.copyStorage,{nowMs:options.nowMs,approveText:options.approveChapterText});
       }
     }
     if (action === 'chapterPackageImport') {
@@ -127,9 +127,9 @@ function createStoryService(repo, options = {}) {
     }
     if (action === 'articleSave') {
       // Saving one's own article is core writing, independent of sharing rollout.
-      // saveArticle still checks space ownership, sources, moderation and versions.
+      // saveArticle still checks space ownership, sources, images and versions.
       if (!accessEnabled) throw accessError('STORY_ACCESS_DISABLED');
-      return saveArticle(repo,ctx,event,{now:options.now,approveText:options.approveChapterText,
+      return saveArticle(repo,ctx,event,{now:options.now,
         approveImage:(c,id)=>approveArticleImage(repo,c,id,event.storyId,event.chapter?.id),
         approveBackdrop:(c,id)=>id.startsWith(c.familyId+'_img_') && approveArticleImage(repo,c,'photo-ai-'+id.slice(id.lastIndexOf('_img_')+5),event.storyId,event.chapter?.id,'backdrop')});
     }
@@ -148,7 +148,7 @@ function createStoryService(repo, options = {}) {
     if (action === 'copyReturnOwn') {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return sendOwnReturn(repo,ctx,{storyId:event.storyId,revisionId:event.revisionId,expectedVersion:event.expectedVersion,
-        chapterId:event.chapterId,requestId:event.requestId},{now:options.now});
+        chapterId:event.chapterId,requestId:event.requestId},{now:options.now,approveText:options.approveChapterText});
     }
     if (action === 'copyReturns') {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');

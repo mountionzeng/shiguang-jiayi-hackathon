@@ -1,3 +1,5 @@
+const {createTextModerator}=require('./moderation');
+const {checkOutgoingPackage}=require('./outgoingText');
 const { recordDeliveryActivity } = require('./activity');
 const cloud = require("wx-server-sdk");
 const { loginDisplayName } = require("./loginProfile");
@@ -10,6 +12,7 @@ const { prepareDesktopBody, prepareWebImportIdentity } = require("./egress");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db=cloud.database();
+const moderate=(...args)=>createTextModerator(cloud.openapi?.security,cloud.callFunction?.bind(cloud))(...args);
 function reader(target){
   return {async get(table,id){
     try{return (await target.collection(table).doc(id).get()).data;}
@@ -225,6 +228,7 @@ async function main(event = {}) {
   if (action === "cacheChapterDeliveryAssets") return cacheDeliveryAssets(event, context, baseUrl, secret);
   if (deliveryAction) {
     const { path, body } = chapterDeliveryBody(action, event, context, { appIdFallback: process.env.WECHAT_APP_ID });
+    await checkOutgoingPackage(action,body.package,context,moderate);
     const result = await post(baseUrl, path, body, secret,
       (contentType, data) => chapterDeliveryResultShapeError(contentType, data, action), 256 * 1024);
     if (["sendChapter", "createChapterClaimLink", "returnChapter"].includes(action)) {

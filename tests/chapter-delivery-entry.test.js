@@ -11,7 +11,7 @@ const id = '123e4567-e89b-42d3-a456-426614174000';
 const assetId = 'asset-' + 'a'.repeat(32);
 const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBhoAAAAASUVORK5CYII=', 'base64');
 const asset = { assetId, mime: 'image/png', bytes: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
-const pkg = { packageId: 'cp_abcdefgh1234', assets: [asset] };
+const pkg = { packageId: 'cp_abcdefgh1234', storyTitle:'书', sender:{displayName:'作者'}, chapters:[{title:'章节',blocks:[{type:'text',text:'正文'}]}], assets: [asset] };
 async function harness(run, rows = {}) {
   const env = { CHAPTER_PACKAGE_ENABLED: 'true', CHAPTER_DELIVERY_ENABLED: 'true', DRINKING_TIME_BRIDGE_BASE_URL: base + '/api/shiguang', DRINKING_TIME_BRIDGE_SECRET: secret };
   const oldEnv = Object.fromEntries(Object.keys(env).map(k => [k, process.env[k]]));
@@ -21,6 +21,7 @@ async function harness(run, rows = {}) {
   Module._load = function(name, ...rest) {
     if (name === 'wx-server-sdk') return {
       init() {}, getWXContext: () => context,
+      openapi:{security:{msgSecCheck:async()=>({result:{suggest:"pass"}})}},
       database: () => ({ collection: table => ({ doc: () => ({ get: async () => ({ data: rows[table] ?? (table === 'user_accounts' ? { primaryFamilyId: 'family_test' } : { _openid: context.OPENID, familyId: 'family_test', moderation: { suggest: 'pass' } }) }) }) }) }),
       downloadFile: async () => ({ fileContent: bytes }),
       uploadFile: async () => ({ fileID: 'cloud://test/inbox/image.png' }),

@@ -7,7 +7,7 @@ const conflict=()=>Object.assign(new Error('接收内容或目标已变化，请
 // Internal orchestration only; no public dispatcher or production worker yet.
 // Persist destination candidates BEFORE uploading. Attempts get unique paths,
 // so a timed-out worker can never overwrite the winning worker's objects.
-async function receiveMediaCopy(repo,ctx,raw,storage,{nowMs=Date.now}={}){
+async function receiveMediaCopy(repo,ctx,raw,storage,{nowMs=Date.now,approveText}={}){
   if(!storage || typeof storage.copy!=='function' || typeof storage.verify!=='function')throw identityError();
   const input=normalizeCopyInput(raw),keys=copyKeys(ctx,input),token=crypto.randomBytes(16).toString('hex');
   const claimed=await repo.transaction(async tx=>{
@@ -29,7 +29,7 @@ async function receiveMediaCopy(repo,ctx,raw,storage,{nowMs=Date.now}={}){
       assets,candidates,attempts:(previous?.attempts || 0)+1,leaseToken:token,leaseUntilMs:nowMs()+120000};
     await tx.set('story_copy_media',keys.copyId,operation);return operation;
   });
-  if(claimed.complete)return receiveTextCopy(repo,ctx,input);
+  if(claimed.complete)return receiveTextCopy(repo,ctx,input,{approveText});
   try{
     for(const asset of claimed.assets){
       if(asset.status==='ready')continue;
@@ -46,7 +46,7 @@ async function receiveMediaCopy(repo,ctx,raw,storage,{nowMs=Date.now}={}){
     const ready=await repo.get('story_copy_media',keys.copyId);
     if(ready?.status!=='pending' || ready.leaseToken!==token || ready.leaseUntilMs<=nowMs())throw busy();
     for(const asset of ready.assets)await storage.verify(asset);
-    return await commitMediaCopy(repo,ctx,input,{mediaTicket:{token,nowMs}});
+    return await commitMediaCopy(repo,ctx,input,{mediaTicket:{token,nowMs},approveText});
   }catch(error){
     // Release only this attempt; a newer lease/completed copy must stay intact.
     await repo.transaction(async tx=>{

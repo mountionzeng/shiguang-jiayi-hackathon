@@ -43,3 +43,24 @@
 4. 清理虚构测试书并补充证据，全部涉及路径验收后才按内部体验授权出新码。旧 d910480 二维码不代表本轮。
 
 外部记录：/Users/yuandai/.codex/visualizations/2026/11/04/01a1a475-8d35-7062-b667-bdf431d3267e/shiguang-moderation-recovery/deployment-checkpoint.json。没有将未完成项填 passed。
+
+## 继续：简化私人保存（2026-11-05，尚未部署或页面验收）
+
+用户明确拒绝新增隔离草稿库、复核队列及按钮，要求编辑直接自动保存、退出重开最新、分享最新。
+
+真实补存日志已确认：storyBooks request `ed81f2b4-71c8-42a7-bf2b-9565d99190ca`，微信返回 45009，shared unavailable，腾讯 TMS 返回 review，trace `f8fc8377-760a-4c41-829b-75672b21d69b`。这是保存前文字检查阻塞，不是手机断网。
+
+本次代码：
+- articleSave 去掉私人持久化前的文字审核，复用既有不可变版本、幂等回执、所有权和来源检查；图片检查保留。不新增存储集合或用户步骤。
+- sharedRead 对实际授权章节的返回快照检查；复制和发回在事务外检查，在事务内再次校验同一快照。已完成的幂等回执仍可恢复。
+- 章节包的 sendChapter/createChapterClaimLink/returnChapter 在 drinkingTimeBridge 实际投递前检查标题、正文、署名、图片说明和页名，身份来自微信运行时。复用相同 moderation/TMS 适配器，不改环境变量、不复制密钥、不开启付费开关。
+- 不再用“草稿已保留，暂未同步”的审核提示描述已经保存的文章。
+- 既有分享导出检查仍保留。没有部署这批更改；不能只部署 storyBooks 而遗留旧投递出口。
+
+验证：全量类型检查及 1808 项测试通过（/tmp/sg-private-save-check4.log）；之后增加两项并发变更/拒绝发回测试，22 项复制测试通过（/tmp/sg-egress-final-tests.log）。最终全量类型检查与 1810 项测试通过，日志见 /tmp/sg-private-save-final.log。
+
+阻塞与下一步：
+- CUA 返回 Mac locked，已请用户解锁。尚未进行当前代码的电脑完整流程验收，没有创建测试书，没有新二维码。
+- storyBooks 云部署已获授权；drinkingTimeBridge 不在既有部署授权内，更新前仍需用户明确授权。
+- 上轮 storyBooks 部署后业务源码下载比对尚未完成；新增 drinkingTimeBridge 部署前也需下载当前线上源码比较，避免覆盖其他工作。
+- 两个服务按已核验版本更新后，再用正常 UI 验证编辑、直接退出、重开、目录标题/正文和分享最新快照，清理测试增量后生成二维码。不要清理手机缓存，手机“解放”原稿仍是待恢复的真实数据。

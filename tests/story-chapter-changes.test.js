@@ -11,7 +11,7 @@ const core = require('../cloudfunctions/storyBooks/core');
 async function setup() {
   const f = fixture();
   f.account('owner'); f.account('friend'); f.account('other');
-  const service = createStoryService(f.repo, {
+  const service = createStoryService(f.repo, {approveChapterText:async()=>true,
     accessEnabled: true, rulesReady: true, invitationsEnabled: true, sharedEditEnabled: true, copyReceiveEnabled: true,
     bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner'], approveSharedEdit: async () => true,
   });

@@ -13,7 +13,7 @@ const core = require('../cloudfunctions/storyBooks/core');
 async function setup() {
   const f = fixture();
   f.account('owner'); f.account('friend');
-  const service = createStoryService(f.repo, {
+  const service = createStoryService(f.repo, {approveChapterText:async()=>true,
     accessEnabled: true, rulesReady: true, invitationsEnabled: true, copyReceiveEnabled: true,
     bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner', 'family_friend'],
   });
@@ -133,7 +133,7 @@ test('撤销邀请后朋友读不到原稿，但已存的副本仍可用', async
 test('第三方看不到主人的回应列表', async () => {
   const f = await setup();
   f.account('stranger');
-  const strangerService = createStoryService(f.repo, {
+  const strangerService = createStoryService(f.repo, {approveChapterText:async()=>true,
     accessEnabled: true, rulesReady: true, invitationsEnabled: true, copyReceiveEnabled: true,
     bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner', 'family_friend', 'family_stranger'],
   });
