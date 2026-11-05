@@ -15,7 +15,7 @@ async function prepareInvitation(repo, ctx, event, invitations, options) {
   const material=await exportBookImages(repo,ctx,{...selection,familyId:ctx.familyId},
     {approve:options.approveShareCard,sign:options.signMedia});
   const descriptor=material.descriptor;
-  const invitation=await invitations(ctx,{action:'inviteCreate',renewPending:true,familyId:ctx.familyId,storyId:descriptor.storyId,
+  const invitation=await invitations(ctx,{action:'inviteCreate',renewPending:true,resendAccepted:true,familyId:ctx.familyId,storyId:descriptor.storyId,
     chapterIds:descriptor.chapters.map(c=>c.id),permissions:{read:true,copy:true,edit:false,forward:false},inviteeName:event.inviteeName},
   async (tx,story)=>{
     await verifyAccount(tx);

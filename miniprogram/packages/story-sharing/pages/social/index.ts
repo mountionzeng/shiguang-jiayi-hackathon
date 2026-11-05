@@ -327,7 +327,11 @@ Page({
     this.setData({ inviteeName: event.detail.value });
   },
   async prepareFamilyInvitation() {
-    if (this.hidden || this.busy() || this.data.familyShareReady || this.data.destination !== 'family' || !this.data.preview || !this.snapshot || !this.descriptor || !this.exportSelection || !this.data.imagePaths.length) return;
+    if (this.hidden || this.data.invitationBusy || this.data.familyShareReady) return;
+    if (this.busy()) { this.setData({familyInviteNotice:'正在准备分享内容，请稍候再试。'}); return; }
+    if (this.data.destination !== 'family' || !this.data.preview || !this.snapshot || !this.descriptor || !this.exportSelection) {
+      this.setData({familyInviteNotice:'分享内容尚未准备好，请重新选择章节后再试。'}); return;
+    }
     if (this.data.scope === 'text') {
       this.setData({ familyInviteNotice: '阅读邀请按整章授权，请重新选择整章；选段图片可以从发送到社交媒体进入。' }); return;
     }
@@ -389,7 +393,7 @@ Page({
       outcome = 'ok';
     } catch (error) {
       if (!this.hidden && this.epoch === epoch) this.setData({ familyInviteNotice: (error instanceof Error ? error.message : '暂时无法准备邀请。')
-        + (creating ? ' 若结果未确认，请到“亲友阅读与权限”查看，避免重复生成。' : '') });
+        + (creating ? ' 可以直接重试准备邀请。' : '') });
     } finally { finish(outcome); if (!this.hidden && this.epoch === epoch) this.setData({ invitationBusy: false }); }
   },
   async checkExportCapability(epoch: number) {

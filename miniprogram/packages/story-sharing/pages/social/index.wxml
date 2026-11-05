@@ -2,7 +2,7 @@
   <view class="eyebrow">{{destination === 'family' ? '发送给家人' : '发送到社交媒体'}}</view>
   <view class="heading serif">{{preview ? '看看这次分享的内容' : '想分享多少，由你决定'}}</view>
   <view class="intro" wx:if="{{destination === 'family'}}">先预览，再把带图片和标题的小程序卡片发给亲友。ta 点开接受邀请后读文章，可以保留下来，或在自己的故事里继续补充。</view>
-  <view class="notice" wx:if="{{destination === 'family' && familyInviteNotice}}">{{familyInviteNotice}}</view>
+
   <view class="intro" wx:if="{{loading}}">{{title ? '正在核对最新保存版本…' : '正在读取已保存的书稿…'}}</view>
   <view class="notice" wx:if="{{notice}}">{{notice}}</view>
   <block wx:if="{{title}}">
@@ -48,6 +48,7 @@
           <view class="caption">卡片展示上面的标题和图片；点开可读本次选中的 {{selectedCount}} 章，显示最新已保存版本。亲友可以收入自己的故事、补充并回信，不能直接修改你的原稿。</view>
           <input class="family-invite-name" value="{{inviteeName}}" maxlength="30" bindinput="enterInviteeName" disabled="{{invitationBusy}}" placeholder="怎么称呼这位亲友，例如：小岚" aria-label="亲友的称呼" />
           <view class="caption">这份邀请供一位亲友使用，24 小时内有效；请直接发给 ta。</view>
+          <view class="notice" wx:if="{{familyInviteNotice}}" role="alert">{{familyInviteNotice}}</view>
           <button wx:if="{{!familyShareReady}}" class="primary" bindtap="prepareFamilyInvitation" loading="{{invitationBusy}}" disabled="{{!familyInviteAvailable || invitationBusy || exportBusy || albumSaving || sharingIndex >= 0}}">{{invitationBusy ? '正在准备邀请…' : '确认预览，准备邀请'}}</button>
           <button wx:else class="primary" open-type="share">把卡片发给这位亲友</button>
           <view class="caption">已发出的邀请可在书稿“发送 → 亲友阅读与权限”中管理和撤销。</view>

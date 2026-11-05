@@ -161,6 +161,30 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
       // 新人物仍受名称唯一约束；复用已有资料必须由主人明确传入人物编号。
       const family = await tx.get('families', story.familyId);
       const claim = family?.memberNameClaims?.[claimKey(name)];
+      // Resending a book to its already-bound recipient updates that grant and
+      // rotates the card. A name alone must never bind a different WeChat account.
+      if (input.resendAccepted === true && owner && claim?.name === name) {
+        const member = await targetMember(tx, story.familyId, claim.memberId);
+        for (const previousId of directory.ids) {
+          const previous = await tx.get('story_invitations', previousId);
+          if (previous?.status !== 'approved' || previous.creatorPrincipalId !== ctx.principalId ||
+              (previous.targetMemberId || memberIdFor(previousId)) !== claim.memberId) continue;
+          const recipient = await tx.get('story_principals', previous.recipientPrincipalId);
+          const gid = grantIdFor(story.familyId, story.id, previous.recipientPrincipalId);
+          const grant = await tx.get('story_grants', gid);
+          if (!member.accountId || recipient?.status !== 'active' || recipient.accountId !== member.accountId ||
+              grant?.status !== 'active' || grant.invitationId !== previousId) continue;
+          await rate(tx,ctx.principalId,time);
+          const token = crypto.randomBytes(24).toString('hex'), id = digest(token);
+          await tx.set('story_invitations', previousId, {...previous,status:'revoked'});
+          await tx.set('story_invitations', id, {...previous,targetMemberId:claim.memberId,
+            chapterIds:[...input.chapterIds],permissions,expiresAtMs:time+TTL});
+          await tx.set('story_grants', gid, {...grant,version:grant.version+1,invitationId:id,
+            scope:{type:'chapters',chapterIds:[...input.chapterIds]},permissions});
+          await tx.set('story_invite_indexes',directoryId,{ids:[...retained.filter(oldId=>oldId!==previousId),id]});
+          return {invitationId:id,token,expiresAtMs:time+TTL};
+        }
+      }
       if (claim && claim.name === name && claim.memberId !== input.targetMemberId && await tx.get('family_members', `${story.familyId}_${claim.memberId}`)) alreadyThere();
       const replaced = [];
       for (const id of retained) {

@@ -416,3 +416,25 @@ test('renewing a pending card at the directory limit does not consume an extra s
   assert.ok(ids.includes(renewed.invitationId));
   assert.ok(!ids.includes(old.invitationId));
 });
+
+test('owner resends the latest chapters to the same bound recipient without duplicate people or an extra approval',async()=>{
+  const f=await setup();let invitation=await f.invite();
+  await f.call('friend','inviteAccept',{token:invitation.token});
+  const membersBefore=[...f.tables.keys()].filter(k=>k.startsWith('family_members:'));
+  for(let version=2;version<=3;version++){
+    const previous=invitation;
+    f.tables.get('biography_drafts:family_owner_revision-a').revision.draft.chapters[0].title='新版标题'+version;
+    invitation=await f.invite({resendAccepted:true,renewPending:true,chapterIds:['chapter-one']});
+    assert.notEqual(invitation.token,previous.token);
+    assert.equal((await f.call('friend','inviteGet',{token:invitation.token})).status,'approved');
+    assert.equal((await f.call('friend','inviteAccept',{token:invitation.token})).status,'approved');
+    const read=await f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'});
+    assert.equal(read.chapters.length,1);assert.equal(read.chapters[0].title,'新版标题'+version);
+    await assert.rejects(f.call('other','inviteAccept',{token:invitation.token}),{code:'STORY_FORBIDDEN'});
+    await assert.rejects(f.call('friend','inviteAccept',{token:previous.token}),{code:'STORY_FORBIDDEN'});
+    assert.deepEqual([...f.tables.keys()].filter(k=>k.startsWith('family_members:')),membersBefore);
+    assert.equal(f.tables.get('story_invite_indexes:family_owner_story-a').ids.length,1);
+  }
+  await f.call('owner','inviteRevoke',{familyId:'family_owner',storyId:'story-a',invitationId:invitation.invitationId});
+  await assert.rejects(f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'}),{code:'STORY_FORBIDDEN'});
+});

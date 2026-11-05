@@ -261,7 +261,7 @@ test('支持新版服务时邀请只调用一次服务器，失败不降级重�
       assert.equal(calls,1);
       assert.equal(page.data.familyShareReady,mode==='ok');
       if(mode==='ok')assert.match(page.familyShare.path,/token=token/);
-      if(mode==='error')assert.match(page.data.familyInviteNotice,/避免重复生成/);
+      if(mode==='error')assert.match(page.data.familyInviteNotice,/直接重试/);
     }
   } finally {storySharing.prepare=original;}
 });
@@ -745,4 +745,17 @@ test('旧文章和新文章菜单都保留AI与历史，旧编辑先保存再打
   page.showMore();assert.deepEqual(sheet.itemList,['AI 帮我写','添加图片','历史版本']);
   sheet.success({tapIndex:2});await Promise.resolve();await Promise.resolve();
   assert.equal(saved,1);assert.equal(loads,1);assert.equal(page.data.panel,'history');
+});
+
+test('family link preparation does not silently depend on rendered text-image files',async()=>{
+  const {storySharing}=await import('../miniprogram/services/storySharing');
+  const original=storySharing.prepare;
+  try{
+    const page=await familyCardPage();page.preparedInvitationAvailable=true;
+    page.data.imagePaths=[];let calls=0;
+    storySharing.prepare=async(_selection,id)=>{calls++;return {token:'fresh',invitationId:'id',descriptorId:id,imageUrl:'https://approved-cover'};};
+    await page.prepareFamilyInvitation();assert.equal(calls,1);assert.equal(page.data.familyShareReady,true);
+    const missing=await familyCardPage();missing.descriptor=undefined;
+    await missing.prepareFamilyInvitation();assert.match(missing.data.familyInviteNotice,/尚未准备好/);
+  }finally{storySharing.prepare=original;}
 });

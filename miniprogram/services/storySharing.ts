@@ -27,7 +27,7 @@ export const storySharing = {
     measurePerformance('invite.create',()=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,
       permissions:{read:true,forward:false,edit:false,copy},inviteeName:person.name,relation:person.relation || '家人',
       ...(person.memberId?{targetMemberId:person.memberId}:{})})),
-  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string,relation?:string)=>measurePerformance('invite.create',()=>call<{token:string;invitationId:string}>('inviteCreate',{familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{}),...(relation?{relation}:{})})),
+  create:(familyId:string,storyId:string,chapterIds:string[],forward:boolean,edit=false,copy=false,inviteeName?:string,relation?:string)=>measurePerformance('invite.create',()=>call<{token:string;invitationId:string}>('inviteCreate',{renewPending:true,resendAccepted:true,familyId,storyId,chapterIds,permissions:{read:true,forward,edit,copy},...(inviteeName?{inviteeName}:{}),...(relation?{relation}:{})})),
   status:(token:string)=>call<InviteStatus>('inviteGet',{token}),
   accept:(token:string)=>call<InviteStatus>('inviteAccept',{token}),
   revoke:(familyId:string,storyId:string,invitationId:string)=>call('inviteRevoke',{familyId,storyId,invitationId}),
