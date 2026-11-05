@@ -155,7 +155,6 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
         const old = await tx.get('story_invitations', id);
         if (old && old.status !== 'revoked' && (old.status === 'approved' || old.expiresAtMs > time)) retained.push(id);
       }
-      if (retained.length >= LIMIT) fail('STORY_INVITE_LIMIT');
       const target = input.targetMemberId !== undefined ? await targetMember(tx,story.familyId,input.targetMemberId) : undefined;
       if (target && (!owner || target.accountId === space.accountId)) fail();
       const name = inviteeName(target ? target.name : input.inviteeName), relation = inviteeRelation(target ? target.relation : input.relation);
@@ -163,18 +162,28 @@ function createInvitationService(repo, { sharedReadFamilyIds = [], sharedEditEna
       const family = await tx.get('families', story.familyId);
       const claim = family?.memberNameClaims?.[claimKey(name)];
       if (claim && claim.name === name && claim.memberId !== input.targetMemberId && await tx.get('family_members', `${story.familyId}_${claim.memberId}`)) alreadyThere();
+      const replaced = [];
       for (const id of retained) {
         const waiting = await tx.get('story_invitations', id);
         if (waiting && ((waiting.status === 'pending' && waiting.inviteeName === name) ||
-            (target && waiting.targetMemberId === input.targetMemberId && ['pending','approved'].includes(waiting.status)))) alreadyThere();
+            (target && waiting.targetMemberId === input.targetMemberId && ['pending','approved'].includes(waiting.status)))) {
+          // Only the owner may replace their own unaccepted card. Never replace
+          // an accepted grant or infer an existing person's identity from a name.
+          if (input.renewPending === true && owner && waiting.creatorPrincipalId === ctx.principalId &&
+              waiting.status === 'pending' && waiting.targetMemberId === input.targetMemberId) replaced.push({id, invitation:waiting});
+          else alreadyThere();
+        }
       }
+      const activeIds = retained.filter(id => !replaced.some(item => item.id === id));
+      if (activeIds.length >= LIMIT) fail('STORY_INVITE_LIMIT');
       await rate(tx,ctx.principalId,time);
+      for (const item of replaced) await tx.set('story_invitations',item.id,{...item.invitation,status:'revoked'});
       const token = crypto.randomBytes(24).toString('hex'), id = digest(token);
       const inv = {familyId:story.familyId,storyId:story.id,ownerPrincipalId:space.principalId,creatorPrincipalId:ctx.principalId,
         chapterIds:[...input.chapterIds],permissions,inviteeName:name,relation,status:'pending',expiresAtMs:time+TTL,applicants:[],
         ...(target ? {targetMemberId:input.targetMemberId} : {}), ...(parentGrantVersion ? {parentGrantVersion} : {})};
       await tx.set('story_invitations',id,inv);
-      await tx.set('story_invite_indexes',directoryId,{ids:[...retained,id]});
+      await tx.set('story_invite_indexes',directoryId,{ids:[...activeIds,id]});
       return {invitationId:id,token,expiresAtMs:inv.expiresAtMs};
     }
     const byToken = action === 'inviteGet' || action === 'inviteApply' || action === 'inviteAccept';

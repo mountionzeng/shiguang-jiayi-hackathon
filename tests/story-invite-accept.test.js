@@ -393,3 +393,26 @@ test('关系过长或带控制字符的邀请被拒绝', async () => {
   await assert.rejects(f.invite({ relation: '关'.repeat(13) }), { code: 'STORY_FORBIDDEN' });
   await assert.rejects(f.invite({ relation: '同‮学' }), { code: 'STORY_FORBIDDEN' });
 });
+
+test('owner can renew an unaccepted invitation without leaving two usable cards', async () => {
+  const f=await setup();
+  const old=await f.invite();
+  const renewed=await f.invite({renewPending:true});
+  assert.notEqual(renewed.token,old.token);
+  assert.equal(f.tables.get('story_invitations:'+old.invitationId).status,'revoked');
+  await assert.rejects(f.call('friend','inviteAccept',{token:old.token}),{code:'STORY_FORBIDDEN'});
+  assert.equal((await f.call('friend','inviteAccept',{token:renewed.token})).status,'approved');
+  await assert.rejects(f.invite({renewPending:true}),{code:'STORY_INVITEE_EXISTS'});
+  assert.equal((await f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'})).chapters[0].id,'chapter-three');
+});
+
+test('renewing a pending card at the directory limit does not consume an extra slot', async () => {
+  const f=await setup();
+  const old=await f.invite();
+  for(let i=0;i<11;i++)await f.invite({inviteeName:'朋友'+i});
+  const renewed=await f.invite({renewPending:true});
+  const ids=f.tables.get('story_invite_indexes:family_owner_story-a').ids;
+  assert.equal(ids.length,12);
+  assert.ok(ids.includes(renewed.invitationId));
+  assert.ok(!ids.includes(old.invitationId));
+});
