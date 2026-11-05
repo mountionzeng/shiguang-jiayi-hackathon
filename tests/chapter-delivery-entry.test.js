@@ -21,7 +21,7 @@ async function harness(run, rows = {}) {
   Module._load = function(name, ...rest) {
     if (name === 'wx-server-sdk') return {
       init() {}, getWXContext: () => context,
-      openapi:{security:{msgSecCheck:async()=>({result:{suggest:"pass"}})}},
+      callFunction:async()=>({result:{ok:true}}),
       database: () => ({ collection: table => ({ doc: () => ({ get: async () => ({ data: rows[table] ?? (table === 'user_accounts' ? { primaryFamilyId: 'family_test' } : { _openid: context.OPENID, familyId: 'family_test', moderation: { suggest: 'pass' } }) }) }) }) }),
       downloadFile: async () => ({ fileContent: bytes }),
       uploadFile: async () => ({ fileID: 'cloud://test/inbox/image.png' }),

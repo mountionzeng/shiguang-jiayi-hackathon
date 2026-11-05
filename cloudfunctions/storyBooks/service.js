@@ -56,6 +56,14 @@ function createStoryService(repo, options = {}) {
       ? {...await measure('state.identity',()=>resolveStoryIdentity(repo, context, { bootstrapAppId: options.bootstrapAppId })),verifiedOpenid:context.OPENID}
       : { familyId: `family_${context.OPENID}`, verifiedOpenid: context.OPENID };
     const action = String(event?.action || '');
+    if (action === 'checkOutgoingText') {
+      if(!accessEnabled)throw accessError('STORY_ACCESS_DISABLED');
+      await assertSpaceOwner(repo,ctx);
+      if(typeof event.text!=='string'||Buffer.byteLength(event.text)>240000)throw Object.assign(new Error('分享内容格式不正确'),{code:'INVALID_INPUT'});
+      if(typeof options.approveChapterText!=='function')throw Object.assign(new Error('分享检查暂时不可用，请稍后重试'),{code:'MODERATION_UNAVAILABLE'});
+      if(await options.approveChapterText(event.text,ctx.verifiedOpenid,'分享故事')!==true)throw Object.assign(new Error('内容未通过分享检查'),{code:'CONTENT_REJECTED'});
+      return {ok:true};
+    }
     if (action === 'capabilities') {
       const inRollout = accessEnabled && await rolledOut(ctx.familyId);
       return { apiVersion: 1, independentStories: true, identityVersion: accessEnabled ? 1 : 0,
