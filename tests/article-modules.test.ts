@@ -1,25 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto} from '../miniprogram/services/articleModules';
+import { articleEditorPages } from '../miniprogram/services/articleEditorLayout';
 import {groupAccountActivity} from '../miniprogram/services/accountActivity';
 const base=()=>articleChapter({id:'chapter-test',title:'纸船',memoryIds:[],content:[{text:'第一句'}]});
-test('return creates distinct editable blocks, including duplicate and empty lines',()=>{
+test('Return preserves newlines and the original block instead of creating paragraphs at the end',()=>{
  const before=base(),id=before.content[0].blockId;
- const {chapter}=changeArticleText(before,id,'第一句\n第二句\n第二句\n');
- assert.deepEqual(chapter.content.map(b=>b.text),['第一句','第二句','第二句','']);
- assert.equal(new Set(chapter.content.map(b=>b.blockId)).size,4);
- assert.equal(chapter.content[0].blockId,id);assert.equal(chapter.content[1].parentBlockId,id);
- assert.equal(before.content.length,1);
+ const value='first\nsecond\nsecond\n';
+ const {chapter,focused}=changeArticleText(before,id,value);
+ assert.equal(chapter.content.length,1);assert.equal(chapter.content[0].text,value);
+ assert.equal(chapter.content[0].blockId,id);assert.equal(focused,id);
+ assert.equal(before.content[0].text,'第一句');
+ assert.equal(articleChapter(chapter).content[0].text,value,'reopening preserves trailing newlines');
 });
-test('each paragraph created by Return grows to fit wrapped text instead of clipping at the starter height',()=>{
- const before=base(),originalId=before.content[0].blockId,longLine='上下移动和光标定位'.repeat(8);
- const {chapter}=changeArticleText(before,originalId,`原文\n${longLine}`);
- const added=chapter.content[1],module=chapter.layout.pages.flatMap(page=>page.modules).find(item=>item.kind==='text'&&'blockId'in item.bind&&item.bind.blockId===added.blockId);
- if(!module||module.kind!=='text')throw new Error('expected the new paragraph to have a text module');
- assert.equal(chapter.content[0].blockId,originalId);
- assert.ok(module&&module.rect.height>130,'wrapped paragraph must be taller than the 130px starter box');
- assert.equal(module.contentHeight,module.rect.height);
- assert.equal(before.content.length,1,'the prior revision remains unchanged');
+test('typing preserves the editor hierarchy while print layout repaginates',()=>{
+ const before=articleChapter({id:'chapter-many',title:'',memoryIds:[],content:[{text:'a'},{text:'b'},{text:'c'}]});
+ const id=before.content[1].blockId;
+ const positions=articleEditorPages(before,.4,{}).map(p=>({id:p.id,modules:p.modules.map(m=>m.id)}));
+ const {chapter}=changeArticleText(before,id,'middle\n'+'long text '.repeat(300));
+ assert.deepEqual(articleEditorPages(chapter,.4,{}).map(p=>({id:p.id,modules:p.modules.map(m=>m.id)})),positions);
+ assert.ok(chapter.layout.pages.length>before.layout.pages.length);
+ assert.equal(chapter.content[2].text,'c');assert.equal(chapter.content.length,3);
 });
 test('move and resize preserve content and clamp geometry to the page',()=>{
  const before=base(),id=before.layout.pages[0].modules[0].id;

@@ -1,4 +1,3 @@
-import {displayLines} from "../../../../services/lineContext";
 import {storySharing,SharedChapter,sharingHome,invitationPath} from '../../../../services/storySharing';
 import {newStoryId} from '../../../../services/storyRecords';
 import {saveCurrentStoryId} from '../../../../services/storySelection';
@@ -6,19 +5,19 @@ import {copyRequestId,storyCopies} from '../../../../services/storyCopies';
 type EditBlock={index:number;text:string};
 type LocalDraft={title:string;textBlocks:EditBlock[];revisionId:string;version:number;requestId:string};
 Page({
-  data:{loading:false,title:'',coverUrl:'',media:{} as Record<string,string>,memories:[] as Array<{id:string;title:string;text:string;photoIds:string[]}>,chapters:[] as SharedChapter[],readingLines:{} as Record<string,Array<{text:string}>>,notice:'',canInvite:false,canEdit:false,canCopy:false,busy:false,shareReady:false,
+  data:{loading:false,title:'',coverUrl:'',media:{} as Record<string,string>,memories:[] as Array<{id:string;title:string;text:string;photoIds:string[]}>,chapters:[] as SharedChapter[],notice:'',canInvite:false,canEdit:false,canCopy:false,busy:false,shareReady:false,
     editChapterId:'',editTitle:'',editBlocks:[] as EditBlock[]},
   keepRequestId:'',keepStoryId:'',
   familyId:'',storyId:'',revisionId:'',version:0,draftScope:'',epoch:0,hidden:false,shareToken:'',editRequestId:'',editBaseRevisionId:'',editBaseVersion:0,
   onLoad(options:{familyId?:string;storyId?:string}={}){this.familyId=options.familyId || '';this.storyId=options.storyId || '';wx.hideShareMenu();},
   onShow(){this.hidden=false;if(!this.data.editChapterId)void this.refresh();},
-  onHide(){this.hidden=true;this.epoch++;this.shareToken='';this.revisionId='';this.version=0;this.draftScope='';this.setData({title:'',coverUrl:'',media:{},memories:[],chapters:[],readingLines:{},loading:false,canInvite:false,canEdit:false,canCopy:false,busy:false,shareReady:false,editChapterId:'',editTitle:'',editBlocks:[]});},
+  onHide(){this.hidden=true;this.epoch++;this.shareToken='';this.revisionId='';this.version=0;this.draftScope='';this.setData({title:'',coverUrl:'',media:{},memories:[],chapters:[],loading:false,canInvite:false,canEdit:false,canCopy:false,busy:false,shareReady:false,editChapterId:'',editTitle:'',editBlocks:[]});},
   onUnload(){this.onHide();},
   async refresh(){
     const epoch=++this.epoch;this.shareToken='';this.setData({loading:true,title:'',coverUrl:'',media:{},memories:[],chapters:[],notice:'',canInvite:false,canEdit:false,canCopy:false,shareReady:false});
     try {const result=await storySharing.read(this.familyId,this.storyId);if(this.hidden || epoch!==this.epoch)return;
       this.revisionId=result.revisionId;this.version=result.story.version;this.draftScope=result.draftScope;
-      this.setData({title:result.story.title,coverUrl:result.coverUrl || '',media:result.media || {},memories:result.memories || [],chapters:result.chapters,readingLines:Object.fromEntries(result.chapters.map(chapter=>[chapter.id,displayLines(chapter.content)])),canInvite:result.capabilities?.requestInvitation===true,
+      this.setData({title:result.story.title,coverUrl:result.coverUrl || '',media:result.media || {},memories:result.memories || [],chapters:result.chapters,canInvite:result.capabilities?.requestInvitation===true,
         canEdit:result.capabilities?.sharedEdit===true,canCopy:result.capabilities?.copy===true});}
     catch(error){if(!this.hidden && epoch===this.epoch)this.setData({notice:error instanceof Error?error.message:'暂时无法读取，请重试'});}
     finally{if(!this.hidden && epoch===this.epoch)this.setData({loading:false});}

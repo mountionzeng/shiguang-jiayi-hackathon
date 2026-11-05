@@ -5,10 +5,11 @@ type TextHeights = Record<string, { key: string; height: number }>;
 /** Editing is a continuous scroll surface. Keep the stored print canvas intact,
  * but give every paragraph its natural height, including manually moved text. */
 export function articleEditorPages(chapter: ArticleChapter, scale: number, paths: Record<string, string>, measured: TextHeights = {}) {
-  return chapter.layout.pages.map((page, index) => {
+  const textByBlock = new Map(chapter.content.map(block => [block.blockId, block.text || '']));
+  const pages = chapter.layout.pages.map((page, index) => {
     const modules = page.modules.map(module => {
       const text = module.kind === 'text' ? ('blockId' in module.bind
-        ? chapter.content.find(block => block.blockId === ('blockId' in module.bind ? module.bind.blockId : ''))?.text || ''
+        ? textByBlock.get(module.bind.blockId) || ''
         : chapter.title) : '';
       const width = module.rect.width * scale;
       const fontSize = module.kind === 'text' ? Math.max(12, module.fontSize * scale) : 0;
@@ -43,4 +44,16 @@ export function articleEditorPages(chapter: ArticleChapter, scale: number, paths
     }
     return { id: index, height: Math.max(220 * scale, ...modules.map(module => module.top + module.height + 36 * scale)), modules };
   });
+  // Print pagination must not move a textarea between parent views while typing.
+  // Keep every module under one stable editor page; only its geometry changes.
+  let offset = 0;
+  const modules = pages.flatMap(page => {
+    const shifted = page.modules.map(module => ({ ...module, top: module.top + offset,
+      style: `left:${module.rect.x * scale}px;top:${module.top + offset}px;width:${module.width}px;height:${module.height}px;`,
+    }));
+    offset += page.height;
+    return shifted;
+  });
+  return [{ id: chapter.id, height: offset, modules }];
+
 }

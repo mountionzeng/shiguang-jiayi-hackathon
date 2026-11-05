@@ -37,49 +37,19 @@ test('typing updates layout geometry without resetting the native textarea value
   assert.equal(context.data.current.content[0].text, '第二句' + '文字'.repeat(5));
 });
 
-test('Return creates a sized next paragraph and focuses its caret at the end', async () => {
-  const definition = await loadComponentDefinition();
-  const chapter = articleChapter({ id: 'chapter-return', title: '回车测试', memoryIds: [], content: [{ text: '第一句' }] });
-  const context: any = {
-    data: { current: chapter, pages: [], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 0.4, note: '' },
-    properties: { paths: {}, width: 360 },
-    setData(patch: Record<string, unknown>) { Object.assign(this.data, patch); },
-    triggerEvent() {},
-  };
-  Object.assign(context, definition.methods);
-  definition.methods.render.call(context);
-  const longLine = '新段落不能裁切'.repeat(8);
-  definition.methods.change.call(context, {
-    currentTarget: { dataset: { block: chapter.content[0].blockId } },
-    detail: { value: `第一句\n${longLine}`, cursor: longLine.length + 4 },
-  });
-
-  const added = context.data.current.content[1];
-  const module = context.data.current.layout.pages.flatMap((page: any) => page.modules)
-    .find((item: any) => item.kind === 'text' && 'blockId' in item.bind && item.bind.blockId === added.blockId);
-  assert.equal(context.data.focusRequest, added.blockId);
-  assert.equal(context.data.cursor, longLine.length);
-  assert.ok(module.rect.height > 130);
-  assert.equal(context.data.pages.flatMap((page: any) => page.modules).find((item: any) => item.blockId === added.blockId).text, longLine);
-});
-
-test('a caret before the remaining text stays at that offset after Return splits the paragraph', async () => {
-  const definition = await loadComponentDefinition();
-  const chapter = articleChapter({ id: 'chapter-return-middle', title: '回车光标测试', memoryIds: [], content: [{ text: '前后文字' }] });
-  const context: any = {
-    data: { current: chapter, pages: [], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 0.4, note: '' },
-    properties: { paths: {}, width: 360 },
-    setData(patch: Record<string, unknown>) { Object.assign(this.data, patch); },
-    triggerEvent() {},
-  };
-  Object.assign(context, definition.methods);
-  definition.methods.render.call(context);
-  definition.methods.change.call(context, {
-    currentTarget: { dataset: { block: chapter.content[0].blockId } },
-    detail: { value: '前\n后文字', cursor: 2 },
-  });
-
-  assert.equal(context.data.cursor, 0, 'the new paragraph caret belongs before its remaining text');
+test('Return in the middle preserves the native input, absolute caret and text after the caret', async () => {
+  const definition=await loadComponentDefinition();
+  const chapter=articleChapter({id:'chapter-return',title:'',memoryIds:[],content:[{text:'first\nlast'},{text:'next block'}]});
+  const patches:Array<Record<string,unknown>>=[];
+  const context:any={data:{current:chapter,pages:[],scale:.4,textHeights:{}},properties:{paths:{},width:360},
+    setData(patch:Record<string,unknown>){patches.push(patch);Object.assign(this.data,patch);},triggerEvent(){}};
+  Object.assign(context,definition.methods);context.render();patches.length=0;
+  const block=chapter.content[0].blockId;
+  context.change({currentTarget:{dataset:{block}},detail:{value:'first\n\nlast',cursor:7}});
+  assert.equal(context.data.current.content[0].text,'first\n\nlast');
+  assert.equal(context.data.current.content[1].text,'next block');
+  assert.equal(context.data.editingBlock,block);assert.equal(context.data.caretCursor,7);
+  assert.ok(!patches.some(p=>'pages' in p || 'focusRequest' in p || 'cursor' in p || Object.keys(p).some(k=>/\.text$/.test(k))));
 });
 
 test('native height changes patch geometry without replacing input, and stale measurements are ignored', async () => {
@@ -130,19 +100,14 @@ test('focused article measures the prefix at the native cursor, not the end of a
   assert.equal(event.detail.bottom,430.72);
 });
 
-test('typing and Return reveal the newly wrapped caret while the previous paragraph blurs', async () => {
+test('Return measures the actual caret prefix, including earlier newlines', async () => {
   const {context,chapter,queries,events}=await caretEditor();
   const block=chapter.content[0].blockId;
-  context.change({currentTarget:{dataset:{block}},detail:{value:'前文\n末尾新的一行',cursor:10}});
-  const added=context.data.current.content[1];
-  assert.equal(context.data.editingBlock,added.blockId);
-  assert.equal(context.data.caretMeasureText,'末尾新的一行\u200b');
-  context.finishEditing({currentTarget:{dataset:{block}}});
-  assert.equal(context.data.editingBlock,added.blockId,'old blur cannot cancel the new paragraph');
-  queries[queries.length - 1].callback([{top:480,height:90},{height:61.44}]);
-  const caret=events.filter(item=>item.name==='caret').slice(-1)[0];
-  assert.equal(caret.detail.bottom,541.44);
-  assert.ok(Math.abs(caret.detail.top-510.72)<.001);
+  context.change({currentTarget:{dataset:{block}},detail:{value:'first\n\nlast',cursor:7}});
+  assert.equal(context.data.editingBlock,block);
+  assert.equal(context.data.caretMeasureText,'first\n\n\u200b');
+  queries[queries.length-1].callback([{top:480,height:90},{height:61.44}]);
+  assert.equal(events.filter(e=>e.name==='caret').slice(-1)[0].detail.bottom,541.44);
 });
 
 test('outdated caret geometry and delayed focus ranges cannot override newer typing or blur', async () => {

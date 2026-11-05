@@ -102,26 +102,29 @@ export async function discardLocalPhotos(photos: Array<{ id: string; path: strin
   })));
 }
 
-/** Resolve each photo once, cap I/O concurrency, then build mappings in document order. */
+/** Local files, generated images and received copies have distinct access paths.
+ * Resolve each ID once and batch the ordinary-photo API, preserving document order. */
 export async function readLocalPhotos(ids: string[]): Promise<{
   photoPaths: Record<string, string>; imageIds: Record<string, string>;
 }> {
   const uniqueIds = [...new Set(ids)];
   const paths = new Map<string, string>();
-  const copied=uniqueIds.filter(id=>/^photo-copy-[a-f0-9]{64}$/.test(id));
-  if(copied.length && wx.cloud){
-    const response=await wx.cloud.callFunction({name:'storyBooks',data:{action:'copyMediaRead',photoIds:copied}});
-    const result=response.result as {urls?:Record<string,string>;error?:string;message?:string};
-    if(result?.error)throw new Error(result.message || '接收图片暂时无法读取，请重试');
-    for(const id of copied)if(result?.urls?.[id]?.startsWith('https://'))paths.set(id,result.urls[id]);
+  const copied = uniqueIds.filter(id => /^photo-copy-[a-f0-9]{64}$/.test(id));
+  const local = uniqueIds.filter(id => !copied.includes(id));
+  const missing: string[] = [];
+  for (let offset = 0; offset < local.length; offset += 4) {
+    const batch = await Promise.all(local.slice(offset, offset + 4).map(async id => {
+      const path = isStoryImageReference(id) ? await readAiPhoto(id) : LOCAL_PHOTO_ID.test(id) ? await readStoredPhoto(id) : '';
+      return [id, path] as const;
+    }));
+    for (const [id, path] of batch) {
+      if (path) paths.set(id, path);
+      else if (LOCAL_PHOTO_ID.test(id)) missing.push(id);
+    }
   }
-  for (let offset = 0; offset < uniqueIds.length; offset += 4) {
-    const batch = await Promise.all(uniqueIds.slice(offset, offset + 4).map(async id =>
-      [id, copied.includes(id) ? (paths.get(id) || '') : await readLocalPhoto(id)] as const));
-    for (const [id, path] of batch) paths.set(id, path);
-  }
-  const photoPaths: Record<string, string> = {};
-  const imageIds: Record<string, string> = {};
+  const results = await Promise.all([readCloudPhotos(missing), readCopiedPhotos(copied)]);
+  for (const result of results) for (const [id, path] of Object.entries(result)) paths.set(id, path);
+  const photoPaths: Record<string, string> = {}, imageIds: Record<string, string> = {};
   for (const id of ids) {
     const path = paths.get(id);
     if (path) { photoPaths[id] = path; imageIds[path] = id; }
@@ -130,14 +133,43 @@ export async function readLocalPhotos(ids: string[]): Promise<{
 }
 
 export async function readLocalPhoto(id: string): Promise<string> {
-  if(/^photo-copy-[a-f0-9]{64}$/.test(id)){
-    if(!wx.cloud)return '';
-    const response=await wx.cloud.callFunction({name:'storyBooks',data:{action:'copyMediaRead',photoIds:[id]}});
+  return (await readLocalPhotos([id])).photoPaths[id] || '';
+}
+
+async function readCopiedPhotos(ids: string[]): Promise<Record<string,string>> {
+  const paths:Record<string,string> = {};
+  if (!ids.length || !wx.cloud) return paths;
+  for (let offset=0;offset<ids.length;offset+=100) {
+    const photoIds=ids.slice(offset,offset+100);
+    const response=await wx.cloud.callFunction({name:'storyBooks',data:{action:'copyMediaRead',photoIds}});
     const result=response.result as {urls?:Record<string,string>;error?:string;message?:string};
     if(result?.error)throw new Error(result.message || '接收图片暂时无法读取，请重试');
-    return result?.urls?.[id]?.startsWith('https://')?result.urls[id]:'';
+    for(const id of photoIds)if(result?.urls?.[id]?.startsWith('https://'))paths[id]=result.urls[id];
   }
-  if (isStoryImageReference(id)) {
+  return paths;
+}
+
+async function readCloudPhotos(ids: string[]): Promise<Record<string,string>> {
+  const paths:Record<string,string> = {};
+  if (!ids.length || !wx.cloud) return paths;
+  try {
+    const familyId=await currentFamilyId();
+    for (let offset=0;offset<ids.length;offset+=9) {
+      const photoIds=ids.slice(offset,offset+9);
+      try {
+        const response=await wx.cloud.callFunction({name:'photoAccess',data:{action:'read',familyId,photoIds,variant:'display',purpose:'view'}});
+        const result=response.result as {photos?:Array<{photoId?:string;status?:string;url?:string}>}|undefined;
+        for (const [index,photo] of (result?.photos || []).entries()) {
+          const id=photo.photoId || (photoIds.length===1 && index===0 ? photoIds[0] : '');
+          if (photoIds.includes(id) && photo.status==='ok' && typeof photo.url==='string') paths[id]=photo.url;
+        }
+      } catch { /* An unavailable batch leaves recoverable photo IDs in the editor. */ }
+    }
+  } catch { /* Local images remain usable when cloud identity is unavailable. */ }
+  return paths;
+}
+
+async function readAiPhoto(id: string): Promise<string> {
     if (!wx.cloud) return '';
     try {
       const familyId = await currentFamilyId();
@@ -146,7 +178,8 @@ export async function readLocalPhoto(id: string): Promise<string> {
       return typeof result?.url === 'string' && result.url.startsWith('https://') ? result.url : '';
     } catch { return ''; }
   }
-  if (!LOCAL_PHOTO_ID.test(id)) return "";
+
+async function readStoredPhoto(id: string): Promise<string> {
   try {
     const path: unknown = wx.getStorageSync("shiguang-local-" + id);
     if (typeof path !== "string" || /(?:^|\/)\.\.(?:\/|$)|%|[\\?#]/.test(path)) throw new Error("LOCAL_PHOTO_UNAVAILABLE");
@@ -160,19 +193,5 @@ export async function readLocalPhoto(id: string): Promise<string> {
     }
     fs.accessSync(path);
     return path;
-  } catch {
-    if (!wx.cloud) return "";
-    try {
-      const response = await wx.cloud.callFunction({ name: "photoAccess", data: {
-        action: "read",
-        familyId: await currentFamilyId(),
-        photoIds: [id],
-        variant: "display",
-        purpose: "view",
-      } });
-      const result = response.result as { photos?: Array<{ status?: string; url?: string }> } | undefined;
-      const photo = result?.photos?.[0];
-      return photo?.status === "ok" && typeof photo.url === "string" ? photo.url : "";
-    } catch { return ""; }
-  }
+  } catch { return ''; }
 }

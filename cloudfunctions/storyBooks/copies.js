@@ -81,10 +81,11 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
   await assertSpaceOwner(repo,ctx);
   const completed=await repo.get('story_copies',copyKeys(ctx,input).copyId);
   let approvedSnapshot;
-  const ownerMemberId=await getOwnerMemberId(repo,ctx.familyId) || 'owner';
+  let ownerMemberId='owner';
   if(!completed){
     const source=await loadCopySource(repo,ctx,input);
     const materials=await storyMaterials(repo,source,'copy');
+    if(materials.memories.length)ownerMemberId=await getOwnerMemberId(repo,ctx.familyId) || 'owner';
     await approveOutgoingText(approveText,ctx,source.source.bookTitle||source.source.title,[...source.selected,...materials.memories.map(m=>({title:m.title,content:[{text:m.text}]}))]);
     approvedSnapshot=digest([source.source.bookTitle||source.source.title,source.selected,materials.digest]);
   }
@@ -107,7 +108,7 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     const materials=await storyMaterials(tx,sourceContext,'copy');
     if(approvedSnapshot!==digest([source.bookTitle||source.title,selected,materials.digest]))conflict();
     let media;
-    if(mediaTicket)media=await readyMedia(tx,ctx,input,sourceContext,copyId,fingerprint,mediaTicket);
+    if(mediaTicket)media=await readyMedia(tx,ctx,input,sourceContext,copyId,fingerprint,mediaTicket,materials);
     if(materials.assets.some(expected=>!media?.assets.some(asset=>asset.sourcePhotoId===expected.key)))throw error('STORY_COPY_MEDIA_PENDING','这些图片尚未完成独立保留，故事没有保存');
 
     const targetId=docId(ctx.familyId,input.target.storyId),existing=await tx.get('stories',targetId);

@@ -4,7 +4,7 @@ import { articleChapter, changeArticleText, moveArticleModule, removeArticleModu
 Component({
   options: { multipleSlots: true },
   properties: { keyboardHeight: {type:Number,value:0}, adjustPosition: {type:Boolean,value:true}, backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
-  data: { editingBlock: '', caretCursor: null as number | null, caretRequest: 0, caretMeasureText: '', caretMeasureStyle: '', textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 1, note: '' },
+  data: { editingBlock: '', caretCursor: null as number | null, caretRequest: 0, caretMeasureText: '', caretMeasureStyle: '', textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
   lifetimes: { detached() { this.data.editingBlock = ''; this.data.caretRequest++; } },
   observers: {
     keyboardHeight(height: number) {
@@ -113,13 +113,12 @@ Component({
     },
     select(event: WechatMiniprogram.TouchEvent) {
       const { id, block } = event.currentTarget.dataset;
-      // Let the native textarea honor the tap's exact caret location. Only a
-      // newly created paragraph after Return uses a programmatic focus request.
+      // The native textarea owns selection, including ordinary Return/newlines.
       this.setData({ selected: id, focused: block || '' });
       if (block === this.data.editingBlock) this.readCaret();
       this.triggerEvent('selectmodule', { id });
     },
-    clear() { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ selected: '', focused: '', focusRequest: '' }); },
+    clear() { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ selected: '', focused: '' }); },
     change(event: WechatMiniprogram.Input) {
       try {
         const before = this.data.current!;
@@ -127,26 +126,18 @@ Component({
         this.data.current = changed.chapter;
         const module = changed.chapter.layout.pages.flatMap(page => page.modules).find(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === changed.focused);
         const normalized = event.detail.value.replace(/\r\n?/g, '\n');
-        const lines = normalized.split('\n');
-        const lastLineStart = normalized.lastIndexOf('\n') + 1;
-        const cursor = Math.max(0, Math.min(lines[lines.length - 1].length,
-          (event.detail.cursor ?? normalized.length) - lastLineStart));
-        this.data.cursor = cursor;
+        const cursor = Math.max(0, Math.min(normalized.length, event.detail.cursor ?? normalized.length));
         this.data.editingBlock = changed.focused;
         this.data.caretCursor = cursor;
         this.data.caretRequest++;
-        const structureChanged = before.content.length !== changed.chapter.content.length || before.layout.pages.length !== changed.chapter.layout.pages.length ||
-          before.layout.pages.some((page, index) => page.modules.map(item => item.id).join('|') !== changed.chapter.layout.pages[index]?.modules.map(item => item.id).join('|'));
-        this.setData({ focused: changed.focused, selected: module?.id || '', note: '',
-          ...(structureChanged ? { focusRequest: changed.focused, cursor } : {}) });
-        if (structureChanged) this.render(); else this.syncGeometry();
+        this.setData({ focused: changed.focused, selected: module?.id || '', note: '' });
+        this.syncGeometry();
         this.publish();
       } catch (error) { this.setData({ note: error instanceof Error ? error.message : '没有写入，请重试' }); }
     },
     finishEditing(event: WechatMiniprogram.TouchEvent) {
       const blockId = event.currentTarget.dataset.block;
       if (blockId === this.data.editingBlock) { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; }
-      if (blockId === this.data.focusRequest) this.setData({ focusRequest: '' });
       this.render();
     },
     publish() { this.triggerEvent('change', { chapter: this.data.current! }); },
@@ -154,7 +145,7 @@ Component({
       const touch = event.touches[0]; if (!touch) return;
       this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++;
       this.data.gesture = { id: event.currentTarget.dataset.id, resize: event.currentTarget.dataset.resize === true || event.currentTarget.dataset.resize === 'true', x: touch.clientX, y: touch.clientY, chapter: this.data.current! };
-      this.setData({ selected: event.currentTarget.dataset.id, focused: '', focusRequest: '' });
+      this.setData({ selected: event.currentTarget.dataset.id, focused: '' });
     },
     move(event: WechatMiniprogram.TouchEvent) {
       const touch = event.touches[0], gesture = this.data.gesture; if (!touch || !gesture) return;

@@ -2960,7 +2960,7 @@ test("inline xiaoyi in a chapter reads selected text and creates a pending inser
   assert.equal(nextQuestion.data.answer, "她在烙饼，我想讲那口旧锅。", "继续追问必须读取当前回答");
   assert.equal(nextQuestion.data.sourceText, "我妈在灶台前忙着", "仍保留选区上下文");
   assert.equal(nextQuestion.data.conversation[0].role, "assistant");
-  assert.equal(page.data.xiaoyiAnswer, "她在烙饼，我想讲那口旧锅。", "追问后仍能整理或使用原话");
+  assert.equal(page.data.xiaoyiAnswer, "", "sent input is cleared; original speech remains in conversation history");
   assert.match(JSON.stringify(page.data.xiaoyiMessages), /那口旧锅/);
   assert.equal((page.data.draft as any).chapters[0].pendingRevision, undefined, "只聊天不会写正文");
   (wx as any).cloud = undefined;

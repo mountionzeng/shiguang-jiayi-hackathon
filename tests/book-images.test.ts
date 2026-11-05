@@ -207,3 +207,17 @@ test('article block identity is valid book content while paths and source-policy
   assert.equal(JSON.stringify(blocks),before,'validation preserves editing and layout identities');
   for(const bad of [{text:'正文',blockId:'bad'}, {text:'正文',sourceIds:[]}, {text:'正文',path:'/private/file'}, {text:'正文',photoId:'photo-one'}, {text:'正文',parentBlockId:'bad'}])assert.throws(()=>validateContent([bad as any]));
 });
+
+test('nine missing local photos use one cloud read; denied items and duplicates keep their own identity', async context => {
+  const previous=(globalThis as any).wx;context.after(()=>{(globalThis as any).wx=previous;});
+  const ids=Array.from({length:9},(_,i)=>`photo-batch-${i}`),calls:any[]=[];
+  (globalThis as any).wx={env:{USER_DATA_PATH:'wxfile://usr'},getStorageSync:()=>undefined,
+    cloud:{callFunction:async(request:any)=>{calls.push(request);
+      if(request.name==='getOpenId')return {result:{openid:'batch-owner'}};
+      return {result:{photos:[...request.data.photoIds].reverse().map((photoId:string)=>({photoId,status:photoId===ids[4]?'denied':'ok',url:`https://example.com/${photoId}`}))}};
+    }}};
+  const result=await readLocalPhotos([...ids,ids[0]]);
+  const reads=calls.filter(c=>c.name==='photoAccess');assert.equal(reads.length,1);assert.deepEqual(reads[0].data.photoIds,ids);
+  assert.equal(result.photoPaths[ids[4]],undefined);assert.equal(result.photoPaths[ids[0]],`https://example.com/${ids[0]}`);
+  assert.equal(Object.keys(result.photoPaths).length,8);
+});

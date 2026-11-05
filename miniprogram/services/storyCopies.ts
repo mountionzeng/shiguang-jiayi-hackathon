@@ -1,3 +1,4 @@
+import { createStoryCaller } from './storyRequest';
 import { Story } from '../domain/biography';
 
 export interface CopyTargetStory {id:string;title:string;bookTitle?:string;version:number;currentRevisionId:string}
@@ -8,13 +9,7 @@ export interface ReceiveStoryCopyInput {
 export interface AppendOwnExperienceInput {storyId:string;revisionId:string;expectedVersion:number;chapterId:string;text:string;requestId:string}
 export interface StoryReturn {returnId:string;status:'pending'|'accepted'|'rejected';sourceStoryId:string;sourceChapterId:string;blocks:Array<{blockId:string;text:string}>;sourceEdits?:Array<{text:string}>;createdAt:string;decidedAt:string;resultRevisionId:string}
 
-async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T>{
-  if(!wx.cloud)throw new Error('当前版本暂不支持接收故事');
-  const response=await wx.cloud.callFunction({name:'storyBooks',data:{...data,action}});
-  const result=response.result as ({error?:string;code?:string;message?:string}&T)|undefined;
-  if(!result || result.error)throw Object.assign(new Error(result?.message || '故事暂时没有保存，请稍后重试'),{code:result?.code});
-  return result;
-}
+const call = createStoryCaller('当前版本暂不支持接收故事', '故事暂时没有保存，请稍后重试');
 
 export const copyRequestId=()=>`receive-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
 export const storyCopies={

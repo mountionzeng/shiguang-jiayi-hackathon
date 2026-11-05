@@ -1,3 +1,4 @@
+import { createStoryCaller } from './storyRequest';
 import { measurePerformance } from './performanceLog';
 import { SendChapter, SendSelection, SendSnapshot } from './bookSend';
 import { MemoryExportSource } from './memoryExport';
@@ -27,13 +28,8 @@ export interface BookExportDescriptor {
   photoIds?: string[];
 }
 export interface BookExportMaterial { descriptor: BookExportDescriptor; coverUrl: string; coverUrls?: string[]; backdropUrls?: Record<string, string>; photoUrls?: string[] }
-async function call<T>(action: string, input: object = {}): Promise<T> {
-  if (!wx.cloud) throw new Error('图片导出需要连接云端后使用');
-  const response = await wx.cloud.callFunction({ name: 'storyBooks', data: { ...input, action } });
-  const result = response.result as { error?: string; message?: string; code?: string } | undefined;
-  if (!result || result.error) throw Object.assign(new Error(result?.message || '暂时无法确认导出权限，请重试'), { code: result?.code });
-  return result as T;
-}
+const call = createStoryCaller('图片导出需要连接云端后使用', '暂时无法确认导出权限，请重试');
+
 export function bookExportSelection(snapshot: SendSnapshot, selection: SendSelection, options: { coverImageIds?: string[]; targetTextImageCount?: number } = {}): BookExportSelection {
   const base = { storyId: snapshot.storyId, revisionId: snapshot.revisionId, expectedVersion: snapshot.version,
     scope: selection.scope, chapterIds: selection.scope === 'chapters' ? [...selection.chapterIds] : [],

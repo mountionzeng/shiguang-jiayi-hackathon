@@ -12,9 +12,9 @@ function candidateFile(sourceFileID,operationId,token,photoId){
   if(!copiedPath.test(fileID))throw identityError();
   return fileID;
 }
-async function sourceMediaPlan(tx,ctx,input,sourceContext,copyId){
+async function sourceMediaPlan(tx,ctx,input,sourceContext,copyId,materials){
   const {storyMaterials}=require('./sharedMaterials');
-  const materials=await storyMaterials(tx,sourceContext,'copy');
+  materials ||= await storyMaterials(tx,sourceContext,'copy');
   const assets=materials.assets.map(asset=>({sourcePhotoId:asset.key,sourceFileID:asset.sourceFileID,
     photoId:'photo-copy-'+digest([copyId,asset.key]),status:'pending'}));
   return {assets,sourceDigest:digest([sourceContext.selected,sourceContext.source.version,sourceContext.grant,materials.digest])};
@@ -24,11 +24,11 @@ function validateMetadata(result,expected){
     !Number.isSafeInteger(result.bytes) || result.bytes<1 || result.bytes>MAX_BYTES)throw identityError();
   return {fileID:result.fileID,sha256:result.sha256,bytes:result.bytes};
 }
-async function readyMedia(tx,ctx,input,sourceContext,copyId,fingerprint,ticket){
+async function readyMedia(tx,ctx,input,sourceContext,copyId,fingerprint,ticket,materials){
   const operation=await tx.get('story_copy_media',copyId);
   if(!operation || operation.id!==copyId || operation.principalId!==ctx.principalId || operation.familyId!==ctx.familyId || operation.fingerprint!==fingerprint ||
     operation.status!=='pending' || operation.leaseToken!==ticket.token || operation.leaseUntilMs<=ticket.nowMs())throw busy();
-  const plan=await sourceMediaPlan(tx,ctx,input,sourceContext,copyId);
+  const plan=await sourceMediaPlan(tx,ctx,input,sourceContext,copyId,materials);
   if(plan.sourceDigest!==operation.sourceDigest || plan.assets.length!==operation.assets.length)throw identityError();
   for(const expected of plan.assets){
     const asset=operation.assets.find(item=>item.photoId===expected.photoId);

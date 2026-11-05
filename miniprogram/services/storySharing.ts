@@ -1,3 +1,4 @@
+import { createStoryCaller } from './storyRequest';
 import { measurePerformance } from './performanceLog';
 export interface Applicant { applicantId:string; displayName:string; verificationCode:string; status:string }
 export interface InvitedMember { name:string; active:boolean; chapterIds:string[]; permissions:{read:boolean;edit?:boolean;copy?:boolean} }
@@ -13,14 +14,8 @@ export interface SharedExcerptInput {storyId:string;revisionId:string;expectedVe
 export const sharingHome = {title:'拾光家忆｜把重要的故事慢慢写下来',path:'/pages/index/index',imageUrl:'/assets/illustrations/story-book-cover.png'};
 export const invitationPath = (token:string) => '/packages/story-sharing/pages/invite/index?token='+encodeURIComponent(token);
 export const sharedReadPath = (familyId:string,storyId:string) => '/packages/story-sharing/pages/read/index?familyId='+encodeURIComponent(familyId)+'&storyId='+encodeURIComponent(storyId);
-export const storyReceivePath = (familyId:string,storyId:string) => '/packages/story-sharing/pages/receive/index?familyId='+encodeURIComponent(familyId)+'&storyId='+encodeURIComponent(storyId);
-async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> {
-  if (!wx.cloud) throw new Error('当前版本暂不支持故事共享');
-  const response=await wx.cloud.callFunction({name:'storyBooks',data:{...data,action}});
-  const result=response.result as {error?:string;message?:string;code?:string}|undefined;
-  if (!result || result.error) throw Object.assign(new Error(result?.message || '故事共享暂不可用，请稍后重试'),{code:result?.code});
-  return result as T;
-}
+const call = createStoryCaller('当前版本暂不支持故事共享', '故事共享暂不可用，请稍后重试');
+
 export const storySharing = {
   capabilities:()=>measurePerformance('invite.capabilities',()=>call<{invitations:boolean;sharedEdit:boolean;copy:boolean;familyId?:string;preparedInvitation?:boolean}>('capabilities')),
   prepare:(selection:import('./bookExport').StoryBookExportSelection,descriptorId:string,expectedAccountScope:string,inviteeName:string)=>

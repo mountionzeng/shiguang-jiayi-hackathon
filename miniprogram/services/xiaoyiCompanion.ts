@@ -72,14 +72,14 @@ const draftContexts = new WeakMap<XiaoyiHost, string>();
 function contextKey(host: XiaoyiHost): string {
   return JSON.stringify([host.xiaoyiContextKey?.() ?? "", host.xiaoyiContextText().trim()]);
 }
-function beginRequest(host: XiaoyiHost) {
+function beginRequest(host: XiaoyiHost, watchInput = true) {
   const token = {};
   const context = contextKey(host);
   const answer = host.data.xiaoyiAnswer;
   const instruction = host.data.xiaoyiWritingInstruction;
   requests.set(host, token);
   const unchanged = () => contextKey(host) === context
-    && host.data.xiaoyiAnswer === answer && host.data.xiaoyiWritingInstruction === instruction;
+    && (!watchInput || (host.data.xiaoyiAnswer === answer && host.data.xiaoyiWritingInstruction === instruction));
   return {
     context,
     current: () => requests.get(host) === token && unchanged(),
@@ -111,12 +111,14 @@ export function xiaoyiMessagesAppend(this: XiaoyiHost, message: Omit<XiaoyiMessa
 export async function askXiaoyiQuestion(this: XiaoyiHost) {
   if (this.data.xiaoyiLoading) return;
   const contextText = this.xiaoyiContextText().trim();
-  const answer = this.data.xiaoyiAnswer.trim();
+  const submittedInput = this.data.xiaoyiAnswer;
+  const answer = submittedInput.trim();
   if (!contextText && !answer) {
     this.setData({ xiaoyiStatus: "先写一句，或者直接告诉小忆你卡在哪里。" });
     return;
   }
-  const request = beginRequest(this);
+  let sent = false;
+  const request = beginRequest(this, false);
   this.setData({ xiaoyiLoading: true, xiaoyiStatus: "小忆正在想一个贴着这段文字的问题…" });
   try {
     const config = this.xiaoyiConfig();
@@ -148,11 +150,14 @@ export async function askXiaoyiQuestion(this: XiaoyiHost) {
     }
     this.xiaoyiConversation = [...conversation, { role: "assistant", text: prompt.text }];
     xiaoyiMessagesAppend.call(this, { kind: "question", text: prompt.text, label });
+    sent = !prompt.fallbackReason;
     this.setData({ xiaoyiStatus: "" });
   } catch {
     if (request.current()) this.setData({ xiaoyiStatus: "小忆刚刚走神了，请再试一次。" });
   } finally {
+    const clearSentInput = sent && request.current() && Boolean(answer) && this.data.xiaoyiAnswer === submittedInput;
     request.finish();
+    if (clearSentInput) this.setData({ xiaoyiAnswer: "" });
   }
 }
 
@@ -170,15 +175,17 @@ export function onXiaoyiWritingInstruction(this: XiaoyiHost, event: { detail: { 
 
 export async function useXiaoyiOriginal(this: XiaoyiHost) {
   if (this.data.xiaoyiLoading) return;
-  const answer = this.data.xiaoyiAnswer.trim();
+  const answer = this.data.xiaoyiAnswer.trim() || [...this.xiaoyiConversation].reverse().find(turn => turn.role === 'user')?.text || '';
   if (!answer) { wx.showToast({ title: "先回答一句吧", icon: "none" }); return; }
-  this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "user", text: answer }];
-  xiaoyiMessagesAppend.call(this, { kind: "answer", text: answer });
+  if (this.data.xiaoyiAnswer.trim()) {
+    this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "user", text: answer }];
+    xiaoyiMessagesAppend.call(this, { kind: "answer", text: answer });
+  }
   await this.xiaoyiLand(answer, "spoken");
 }
 
 export async function organizeXiaoyiAnswer(this: XiaoyiHost, event?: { currentTarget?: { dataset?: { mode?: string } } }) {
-  const answer = this.data.xiaoyiAnswer.trim();
+  const answer = this.data.xiaoyiAnswer.trim() || [...this.xiaoyiConversation].reverse().find(turn => turn.role === 'user')?.text || '';
   if (!answer || this.data.xiaoyiLoading) { if (!answer) wx.showToast({ title: "先在下面写一句素材", icon: "none" }); return; }
   const writingMode = event?.currentTarget?.dataset?.mode === "compose" ? "compose" : "polish";
   const basisText = this.xiaoyiContextText().trim();
@@ -202,8 +209,10 @@ export async function organizeXiaoyiAnswer(this: XiaoyiHost, event?: { currentTa
       this.setData({ xiaoyiStatus: "这次没有生成可用草稿，你的素材还在。可以重试，也可以直接使用原话。" });
       return;
     }
-    this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "user", text: answer }];
-    xiaoyiMessagesAppend.call(this, { kind: "answer", text: answer });
+    if (this.data.xiaoyiAnswer.trim()) {
+      this.xiaoyiConversation = [...this.xiaoyiConversation, { role: "user", text: answer }];
+      xiaoyiMessagesAppend.call(this, { kind: "answer", text: answer });
+    }
     xiaoyiMessagesAppend.call(this, { kind: "draft", text: draft.body, label: writingMode === "compose" ? "小忆成文 · 文字 AI 生成" : "小忆只整理了你的回答" });
     draftContexts.set(this, request.context);
     this.setData({ xiaoyiDraftText: draft.body, xiaoyiStatus: "这段可以继续改，满意后再放进去。" });

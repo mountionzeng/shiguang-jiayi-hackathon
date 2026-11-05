@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer, useXiaoyiDraft, askXiaoyiQuestion, type XiaoyiHost } from '../miniprogram/services/xiaoyiCompanion';
+import { initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, organizeXiaoyiAnswer, useXiaoyiDraft, useXiaoyiOriginal, askXiaoyiQuestion, type XiaoyiHost } from '../miniprogram/services/xiaoyiCompanion';
 import { clearAiConsent } from '../miniprogram/services/aiConsent';
 
 function host() {
@@ -101,4 +101,27 @@ test('direct organization uses the latest answer; failed calls retain input and 
   assert.deepEqual(calls[1].data.transcript, [page.data.xiaoyiAnswer]);
   assert.equal(page.data.xiaoyiDraftText, '我愿意善待这个小生命。');
   assert.deepEqual(landed, [], 'organization must not write into the original document');
+});
+
+test('successful chat consumes only the sent input; newer typing stays untouched', async context => {
+  const previousWx=(globalThis as any).wx,previousApp=(globalThis as any).getApp;
+  context.after(()=>{clearAiConsent();(globalThis as any).wx=previousWx;(globalThis as any).getApp=previousApp;});
+  (globalThis as any).getApp=()=>({globalData:{cloudReady:true,aiReady:true}});
+  for(const nextInput of ['', 'next unsent sentence']){
+    clearAiConsent();let reply:(value:any)=>void=()=>{},started:()=>void=()=>{};
+    const entered=new Promise<void>(r=>{started=r;});
+    (globalThis as any).wx={getStorageSync:()=>({granted:true,version:1}),cloud:{callFunction:()=>{started();return new Promise(r=>{reply=r;});}}};
+    const {page,landed}=host();page.data.xiaoyiAnswer='sent sentence';
+    const pending=askXiaoyiQuestion.call(page);await entered;
+    if(nextInput)onXiaoyiAnswerInput.call(page,{detail:{value:nextInput}});
+    reply({result:{dimension:'event',text:'A follow-up question'}});await pending;
+    assert.equal(page.data.xiaoyiAnswer,nextInput);assert.equal(page.data.xiaoyiLoading,false);
+    assert.ok(page.xiaoyiConversation.some(turn=>turn.role==='user'&&turn.text==='sent sentence'));
+    assert.ok(page.xiaoyiConversation.some(turn=>turn.role==='assistant'&&turn.text==='A follow-up question'));
+    if(!nextInput){
+      const count=page.xiaoyiConversation.length;
+      await useXiaoyiOriginal.call(page);
+      assert.deepEqual(landed,['sent sentence']);assert.equal(page.xiaoyiConversation.length,count);
+    }
+  }
 });

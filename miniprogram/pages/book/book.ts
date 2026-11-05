@@ -1,3 +1,4 @@
+import { loadBookMedia } from '../../services/bookMedia';
 import { WritingSession } from '../../services/writingSession';
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { bookCoverSource } from "../../services/bookCoverSource";
@@ -32,7 +33,7 @@ import {
   contentFromDelta, contentToDelta, isStoryImageId, isStoryImageReference, readLocalPhoto, readLocalPhotos, saveLocalPhoto,
   STORY_ILLUSTRATION_WIDTH, storyImageReferenceId, validateContent,
 } from "../../services/bookImages";
-import { newImageRequestId, StoryImage, storyImageApi } from "../../services/storyImageService";
+import { newImageRequestId, storyImageApi } from "../../services/storyImageService";
 import { shelfStoryLabel, storyShelf } from "../../services/storyShelf";
 import {
   addChapter, applyOrganized, removeMemoryFromChapter, chapterAiLabel, chapterLabel, chaptersOf, draftWithChapters, finalizePendingRevision, moveChapter, pendingRevisionResolved, placeMemoryInChapter, proposeInlineXiaoyiInsert, removeChapter, resolvePendingEdit, unassignedMemoryIds, updateChapter,
@@ -670,30 +671,7 @@ Page({
       if (visibleChapters.length === 1) activeChapterId = visibleChapters[0].id;
     }
     if (view === "chapter" && !visibleChapters.some(chapter => chapter.id === activeChapterId)) view = "contents";
-    const localPhotoIds = chapters.flatMap(chapterPhotoIds).filter(id => !isStoryImageReference(id));
-    const storyImageReferences = new Set(chapters.flatMap(chapter => chapter.content)
-      .flatMap(item => item.photoId && isStoryImageReference(item.photoId) ? [item.photoId] : []));
-    const backdropImageIds = new Set(chapters.flatMap(chapter => chapter.backdropImageId ? [chapter.backdropImageId] : []));
-    const cloudImages = storyImageReferences.size || backdropImageIds.size || story?.coverImageId
-      ? measurePerformance('book.images', () => storyImageApi.listStoryImages(bookId)).then(list => list.images).catch(() => [] as StoryImage[])
-      : Promise.resolve([] as StoryImage[]);
-    const images = Promise.all([
-      measurePerformance('book.photos', () => readLocalPhotos(localPhotoIds)),
-      cloudImages,
-    ]).then(([{ photoPaths, imageIds }, cloudImages]) => {
-      // Unavailable URLs retain their opaque recoverable markers in the editor.
-      cloudImages.forEach(image => {
-        const referenceId = storyImageReferenceId(image.imageId);
-        if (storyImageReferences.has(referenceId) && image.url) {
-          photoPaths[referenceId] = image.url;
-          imageIds[image.url] = referenceId;
-        }
-      });
-      const backdropUrls = Object.fromEntries(cloudImages
-        .filter(image => backdropImageIds.has(image.imageId) && image.url)
-        .map(image => [image.imageId, image.url]));
-      return { photoPaths, imageIds, backdropUrls };
-    });
+    const { images, cloudImages } = loadBookMedia(bookId, chapters, story?.coverImageId);
     // Only an editor opening with inline photos needs their URL-to-ID mappings.
     // Contents and plain text can render while decoration/unopened photos load.
     const opening = chapters.find(chapter => chapter.id === activeChapterId);
@@ -1397,10 +1375,6 @@ Page({
     });
   },
   closeMore() { this.setData({ moreOpen: false, moreSection: "" }); },
-  showMoreMain() { this.setData({ moreSection: "" }); },
-  showChapterTools() {
-    if (!this.data.protectedCopy && this.data.view === "chapter" && this.canLeaveEditor()) this.setData({ moreSection: "chapter" });
-  },
   deleteCurrentStory() {
     const story = this.story;
     if (!story || !this.data.storyId || this.data.editing || this.data.saving || this.data.generating) return;
@@ -2550,7 +2524,7 @@ Page({
       const chapter = this.activeChapterForDelivery();
       if (!chapter) return;
       wx.showLoading({ title: "准备章节…", mask: true });
-      const result = await sendChapterDelivery(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined, recipient.contactId);
+      await sendChapterDelivery(chapter, this.data.protagonistName || "我", this.story?.title || "", this.data.storyId || undefined, recipient.contactId);
       wx.hideLoading();
       this.setData({ articleStatus: `已发送给${recipient.displayName}`, saveNotice: `已投递给${recipient.displayName}` });
     } catch (error) {

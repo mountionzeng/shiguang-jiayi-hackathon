@@ -39,7 +39,7 @@ import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
 import {
   askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
-  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
+  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, xiaoyiMessagesAppend,
 } from "../../services/xiaoyiCompanion";
 import {
   appendContributionRemoteFirst,

@@ -100,14 +100,12 @@ function resolveFromMemory(memory, ctx, input) {
 async function getMemory(repo, familyId, memoryId) {
   const canonicalId = `${familyId}_${sanitize(memoryId)}`;
   const candidateIds = [...new Set([canonicalId, memoryId, `src_${familyId}_${sanitize(memoryId)}`])];
-  const found = [];
   for (const docId of candidateIds) {
     const row = await repo.get('memories', docId);
-    if (row) found.push({ ...row, _id: row._id || docId });
+    if (!row) continue;
+    const memory = { ...row, _id: row._id || docId };
+    if (memory.familyId === familyId && memoryIdOf(memory, familyId) === memoryId) return memory;
   }
-  const matches = found.filter(memory => memory.familyId === familyId && memoryIdOf(memory, familyId) === memoryId);
-  matches.sort((a, b) => Number(b._id === canonicalId) - Number(a._id === canonicalId));
-  return matches[0];
 }
 
 async function getOwnerMemberId(repo, familyId) {
