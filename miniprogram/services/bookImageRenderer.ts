@@ -47,7 +47,7 @@ async function readImage(src:string,label:string,assertActive:()=>void): Promise
   }
 }
 export async function renderBookImages(material: BookExportMaterial, mode: ImageLayoutMode, fontSize: ImageFontSize,
-  page: WechatMiniprogram.Page.TrivialInstance, isActive: () => boolean, progress: (done: number, total: number) => void): Promise<string[]> {
+  page: WechatMiniprogram.Page.TrivialInstance, isActive: () => boolean, progress: (done: number, total: number) => void, coversOnly = false): Promise<string[]> {
   const assertActive = () => { if (!isActive()) throw new Error('已停止本次图片生成'); };
   const canvas = await timed<WechatMiniprogram.Canvas>((resolve, reject) => {
     page.createSelectorQuery().select('#book-send-canvas').fields({ node: true, size: true }).exec(results => {
@@ -59,7 +59,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
   const ctx = canvas.getContext('2d');
   const measure = (text: string, size: number) => { ctx.font = size + 'px sans-serif'; return ctx.measureText(text).width; };
   const descriptor = material.descriptor;
-  const modulePages = mode === 'pages' && !descriptor.targetTextImageCount && descriptor.chapters.every(chapter => chapter.layout)
+  const modulePages = !coversOnly && mode === 'pages' && !descriptor.targetTextImageCount && descriptor.chapters.every(chapter => chapter.layout)
     ? descriptor.chapters.flatMap(chapter => chapter.layout!.pages.map(page => ({ chapterId: chapter.id, modules: page.modules })))
     : undefined;
   // Reserve the existing header/footer bands while fitting the 900×1200 layout
@@ -71,7 +71,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
     const lines = wrapImageText(module.text, size, measure, module.rect.width * moduleScale);
     return lines.length * Math.ceil(size * 1.25) <= module.rect.height * moduleScale;
   }));
-  const pages = fitsModulePages ? modulePages! : layoutForTarget(descriptor.title, descriptor.chapters, mode, fontSize, descriptor.targetTextImageCount, measure);
+  const pages = coversOnly ? [] : fitsModulePages ? modulePages! : layoutForTarget(descriptor.title, descriptor.chapters, mode, fontSize, descriptor.targetTextImageCount, measure);
   const titleLines = wrapImageText(descriptor.title, 42, measure);
   if (titleLines.length > 10) throw new Error('书名过长，无法完整排版，请缩短书名后重试');
   const headerLines = wrapImageText(descriptor.title, 24, measure);
@@ -96,7 +96,7 @@ export async function renderBookImages(material: BookExportMaterial, mode: Image
       covers.push({ info: cover, image: coverImage });
     }
     const backdropImages = new Map<string, { info: WechatMiniprogram.GetImageInfoSuccessCallbackResult; image: any }>();
-    for (const [chapterId, url] of Object.entries(material.backdropUrls || {})) {
+    for (const [chapterId, url] of Object.entries(coversOnly ? {} : material.backdropUrls || {})) {
       if (!url) continue;
       const info = await readImage(url,'读取章节底图',assertActive);
       const image = canvas.createImage();

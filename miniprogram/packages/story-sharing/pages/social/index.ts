@@ -429,28 +429,6 @@ Page({
     this.resetImages();
     this.setData({ selectedCoverImageIds: ids, notice: selected.length > 6 ? '本次最多选择 6 张封面' : '' }); this.autoGenerate();
   },
-  chooseTextImageCount(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
-    if (this.lockedForChoice()) return;
-    this.stopGeneration();
-    const count = Number(event.detail.value);
-    if (!Number.isSafeInteger(count) || count < 0 || count > 12) return;
-    this.resetImages();
-    this.setData({ targetTextImageCount: count, notice: '' }); this.autoGenerate();
-  },
-  chooseLayout(event: WechatMiniprogram.TouchEvent) {
-    if (this.lockedForChoice()) return;
-    this.stopGeneration();
-    const layout = event.currentTarget.dataset.layout as ImageLayoutMode;
-    if (layout !== 'pages' && layout !== 'long') return;
-    this.resetImages(); this.setData({ layout, notice: '' }); this.autoGenerate();
-  },
-  chooseFont(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
-    if (this.lockedForChoice()) return;
-    this.stopGeneration();
-    const fontSize = [28, 32, 36][Number(event.detail.value)] as ImageFontSize;
-    if (!fontSize) return;
-    this.resetImages(); this.setData({ fontSize, notice: '' }); this.autoGenerate();
-  },
   async verifySnapshot(snapshot: SendSnapshot) {
     try {
       if (!this.expected) throw new Error('请重新进入发送');
@@ -500,7 +478,7 @@ Page({
         : memoryBookExportSelection(source as MemoryExportSource, { targetTextImageCount: this.data.targetTextImageCount, includePhotos: this.data.includeMemoryPhotos });
       this.setData({ renderProgress: '正在准备所选内容…' });
       const preview = await bookExportApi.preview(selection); if (!active()) return;
-      this.setData({ renderProgress: '正在读取封面和底图…' });
+      this.setData({ renderProgress: '正在读取分享图片…' });
       const material = await bookExportApi.material(selection, preview.descriptor.id); if (!active()) return;
       const chosen = this.selected();
       if ((snapshot && (material.descriptor.storyId !== snapshot.storyId || material.descriptor.revisionId !== snapshot.revisionId ||
@@ -511,9 +489,9 @@ Page({
         material.descriptor.chapters.some((chapter, i) => chapter.id !== chosen[i].id || chapter.text !== chosen[i].text)) {
         throw new Error('导出内容与所选版本不一致，请重新进入发送');
       }
-      this.setData({ renderProgress: '正在排版图片…' });
+      this.setData({ renderProgress: '正在准备分享图片…' });
       const task = measurePerformance('book.export-render', () => renderBookImages(material, this.data.layout, this.data.fontSize, this, active,
-        (done, total) => { if (active()) this.setData({ renderProgress: '已生成 ' + done + ' / ' + total + ' 张' }); }));
+        (done, total) => { if (active()) this.setData({ renderProgress: '已生成 ' + done + ' / ' + total + ' 张' }); }, true));
       this.renderTask = task;
       try { paths = await task; } finally { if (this.renderTask === task) this.renderTask = undefined; }
       if (!active()) { removeImageFiles(paths); return; }
