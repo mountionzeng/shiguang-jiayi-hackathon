@@ -22,7 +22,7 @@ async function harness(run, rows = {}) {
     if (name === 'wx-server-sdk') return {
       init() {}, getWXContext: () => context,
       callFunction:async()=>({result:{ok:true}}),
-      database: () => ({ collection: table => ({ doc: () => ({ get: async () => ({ data: rows[table] ?? (table === 'user_accounts' ? { primaryFamilyId: 'family_test' } : { _openid: context.OPENID, familyId: 'family_test', moderation: { suggest: 'pass' } }) }) }) }) }),
+      database: () => ({ collection: table => ({ doc: () => ({ set:async()=>{},remove:async()=>{},get: async () => ({ data: rows[table] ?? (table === 'user_accounts' ? { primaryFamilyId: 'family_test' } : { _openid: context.OPENID, familyId: 'family_test', moderation: { suggest: 'pass' } }) }) }) }) }),
       downloadFile: async () => ({ fileContent: bytes }),
       uploadFile: async () => ({ fileID: 'cloud://test/inbox/image.png' }),
       getTempFileURL: async () => ({ fileList: [{ fileID: 'cloud://test/inbox/image.png', tempFileURL: 'https://test-storage.invalid/signed-image' }] }),

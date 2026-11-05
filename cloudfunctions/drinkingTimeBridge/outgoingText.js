@@ -14,14 +14,14 @@ async function checkOutgoingPackage(action,pkg,context,approve){
     for(const page of chapter.layout?.pages||[])parts.push(page.label||'');
   }
   if(typeof approve!=='function')throw Object.assign(new Error('分享检查暂时不可用，请稍后重试'),{code:'MODERATION_UNAVAILABLE'});
-  if(await approve(parts.join('\n'),context.OPENID,'分享故事')!==true)throw Object.assign(new Error('内容未通过分享检查'),{code:'CONTENT_REJECTED'});
+  if(await approve(parts.join('\n'),context.OPENID,'分享故事',context)!==true)throw Object.assign(new Error('内容未通过分享检查'),{code:'CONTENT_REJECTED'});
 }
-function createOutgoingModerator(callFunction){
-  return async text=>{
+function createOutgoingModerator(callFunction,withIdentity=async(_text,_context,run)=>run(undefined)){
+  return async (text,openid,_title,context={OPENID:openid})=>{
     const unavailable=()=>Object.assign(new Error('分享检查暂时不可用，请稍后重试'),{code:'MODERATION_UNAVAILABLE'});
     if(typeof callFunction!=='function')throw unavailable();
     let response;
-    try{response=await callFunction({name:'storyBooks',data:{action:'checkOutgoingText',text}});}
+    try{response=await withIdentity(text,context,proof=>callFunction({name:'storyBooks',data:{action:'checkOutgoingText',text,...(proof?{proof}:{})}}));}
     catch{throw unavailable();}
     const result=response?.result;
     if(result?.ok===true&&!result.error)return true;
@@ -30,4 +30,17 @@ function createOutgoingModerator(callFunction){
     throw unavailable();
   };
 }
-module.exports={checkOutgoingPackage,createOutgoingModerator};
+// A short-lived server-only nonce binds this one check to the verified caller and exact text.
+// The existing operation collection denies all client reads/writes; no shared secrets or user steps.
+function withModerationIdentity(db){
+  const crypto=require('node:crypto');
+  return async(text,context,run)=>{
+    if(!/^wx[\w-]{1,80}$/.test(context.APPID||'')||! /^[\w-]{1,128}$/.test(context.OPENID||''))throw new Error('AUTH_REQUIRED');
+    const proof=crypto.randomBytes(32).toString('hex');
+    const doc=db.collection('story_collaboration_operations').doc('moderation_'+proof);
+    await doc.set({data:{kind:'bridge-moderation',openid:context.OPENID,appId:context.APPID,
+      digest:crypto.createHash('sha256').update(text).digest('hex'),expiresAt:Date.now()+120000}});
+    try{return await run(proof);}finally{await doc.remove();}
+  };
+}
+module.exports={checkOutgoingPackage,createOutgoingModerator,withModerationIdentity};

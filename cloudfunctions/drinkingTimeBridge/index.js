@@ -1,4 +1,4 @@
-const {checkOutgoingPackage,createOutgoingModerator}=require('./outgoingText');
+const {checkOutgoingPackage,createOutgoingModerator,withModerationIdentity}=require('./outgoingText');
 const { recordDeliveryActivity } = require('./activity');
 const cloud = require("wx-server-sdk");
 const { loginDisplayName } = require("./loginProfile");
@@ -11,7 +11,7 @@ const { prepareDesktopBody, prepareWebImportIdentity } = require("./egress");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db=cloud.database();
-const moderate=(...args)=>createOutgoingModerator(cloud.callFunction?.bind(cloud))(...args);
+const moderate=(...args)=>createOutgoingModerator(cloud.callFunction?.bind(cloud),withModerationIdentity(db))(...args);
 function reader(target){
   return {async get(table,id){
     try{return (await target.collection(table).doc(id).get()).data;}

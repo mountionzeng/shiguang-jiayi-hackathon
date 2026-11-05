@@ -17,7 +17,7 @@ test('reading an already received package does not start a new check',async()=>{
 });
 test('delivery dispatch refuses review before any remote send',async()=>{
  const fs=require('node:fs'),vm=require('node:vm');let posts=0;
- const cloud={init(){},DYNAMIC_CURRENT_ENV:'test',database:()=>({}),getWXContext:()=>({APPID:'app',OPENID:'verified'}),callFunction:async()=>({result:{error:"STORY_BOOK_ERROR",code:"MODERATION_REVIEW"}}),openapi:{}};
+ const cloud={init(){},DYNAMIC_CURRENT_ENV:'test',database:()=>({collection:()=>({doc:()=>({set:async()=>{},remove:async()=>{}})})}),getWXContext:()=>({APPID:'wxapp',OPENID:'verified'}),callFunction:async()=>({result:{error:"STORY_BOOK_ERROR",code:"MODERATION_REVIEW"}}),openapi:{}};
  const module={exports:{}};
  vm.runInNewContext(fs.readFileSync(require.resolve('../cloudfunctions/drinkingTimeBridge/index'),'utf8'),{module,exports:module.exports,Buffer,URL,console,process:{env:{CHAPTER_PACKAGE_ENABLED:'true',CHAPTER_DELIVERY_ENABLED:'true',DRINKING_TIME_BRIDGE_BASE_URL:'https://example.com',DRINKING_TIME_BRIDGE_SECRET:'x'.repeat(32)}},require(name){
   if(name==='wx-server-sdk')return cloud;
@@ -45,4 +45,24 @@ test('the reused moderation endpoint requires verified identity and owns no clie
  await assert.rejects(service({},input),{code:'AUTH_REQUIRED'});
  assert.deepEqual(await service({APPID:'wx-original',OPENID:'owner'},input),{ok:true});
  assert.deepEqual(checked,{text:'最新全文',openid:'owner'});
+});
+
+test('server moderation proof binds the exact text and identity, is single-use and is cleaned on failure',async()=>{
+ const {fixture}=require('./helpers/story-access-fixture');
+ const {moderationContext}=require('../cloudfunctions/storyBooks/moderationIdentity');
+ const {withModerationIdentity}=require('../cloudfunctions/drinkingTimeBridge/outgoingText');
+ const f=fixture();const ctx={APPID:'wx-original',OPENID:'owner'};
+ const db={collection:table=>({doc:id=>({set:({data})=>f.repo.set(table,id,data),remove:()=>f.repo.remove(table,id)})})};
+ await withModerationIdentity(db)('新稿',ctx,async proof=>{
+  const event={action:'checkOutgoingText',proof,text:'新稿',openid:'forged'};
+  await assert.rejects(moderationContext(f.repo,{}, {...event,text:'换稿'}),{code:'AUTH_REQUIRED'});
+  await assert.rejects(moderationContext(f.repo,{},event,Date.now()+121000),{code:'AUTH_REQUIRED'});
+  assert.deepEqual(await moderationContext(f.repo,{},event),ctx);
+  await assert.rejects(moderationContext(f.repo,{},event),{code:'AUTH_REQUIRED'});
+  assert.deepEqual(await moderationContext(f.repo,{}, {...event,action:'articleSave'}),{});
+ });
+ assert.equal(f.tables.size,0);
+ await assert.rejects(withModerationIdentity(db)('新稿',ctx,async()=>{throw new Error('network');}),/network/);
+ assert.equal(f.tables.size,0);
+ await assert.rejects(moderationContext(f.repo,{}, {action:'checkOutgoingText',text:'稿',openid:'owner'}),{code:'AUTH_REQUIRED'});
 });

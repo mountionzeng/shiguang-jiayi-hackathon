@@ -43,9 +43,10 @@ const dispatch=createStoryService(repo,{
   sharedReadFamilyIds:String(process.env.STORY_ACCESS_CANARY_FAMILY_IDS || '').split(',').map(value=>value.trim()).filter(Boolean),
 });
 const {errorCode}=require('./errors');
+const {moderationContext}=require('./moderationIdentity');
 exports.main=async event=>{
   try{
-    return await dispatch(cloud.getWXContext(),event);
+    return await dispatch(await moderationContext(repo,cloud.getWXContext(),event),event);
   }catch(error){return {error:'STORY_BOOK_ERROR',code:errorCode(error),message:error.message || '故事操作失败，请重试'};}
 };
 exports.errorCode=errorCode;
