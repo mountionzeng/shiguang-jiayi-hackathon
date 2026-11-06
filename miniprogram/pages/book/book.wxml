@@ -143,7 +143,7 @@
         </view>
       </button>
       <view class="article-media-actions">
-        <view class="article-media-buttons {{companionToolsOpen && !keyboardHeight ? 'companion-tools-visible' : ''}}" aria-hidden="{{!companionToolsOpen || !!keyboardHeight}}">
+        <view class="article-media-buttons {{companionToolsOpen ? 'companion-tools-visible' : ''}}" aria-hidden="{{!companionToolsOpen}}">
           <button class="article-media-button typewriter" bindtap="openArticleMediaPanel" data-kind="image" disabled="{{mediaBusy}}">转图片</button>
           <button class="article-media-button typewriter" bindtap="openArticleMediaPanel" data-kind="music" disabled="{{mediaBusy}}">转音乐</button>
           <button class="article-media-button typewriter" bindtap="openArticleMediaPanel" data-kind="narration" disabled="{{mediaBusy}}">转有声书</button>
