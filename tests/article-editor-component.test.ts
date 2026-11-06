@@ -195,3 +195,40 @@ test('keyboard Done cancels even a pending Return focus before it can reopen the
     assert.deepEqual(context.data.current.content.map((b:any)=>b.text),['开头，','中间，最后一行']);
   } finally {(globalThis as any).wx=previous;}
 });
+
+
+test('two-block selection exposes merge, survives scrolling, publishes once and never requests focus',async()=>{
+ const {context,events}=await caretEditor();
+ context.data.current=articleChapter({id:'chapter-merge-ui',title:'',memoryIds:[],content:[{text:'甲'},{text:'乙'}]});context.render();
+ const [a,b]=context.data.pages[0].modules;
+ const previous=(globalThis as any).wx;(globalThis as any).wx={hideKeyboard(){}};
+ try {
+  context.beginMerge({currentTarget:{dataset:{id:a.id,block:a.blockId}}});
+  assert.deepEqual(context.data.mergeIds,[a.blockId]);assert.equal(context.data.mergeMenu,'');
+  context.clear({preserveMerge:true});assert.deepEqual(context.data.mergeIds,[a.blockId]);
+  context.select({currentTarget:{dataset:{id:b.id,block:b.blockId}}});
+  assert.equal(context.data.mergeMenu,b.id);assert.equal(context.data.focusRequest,'');
+  context.mergeText();
+  assert.deepEqual(context.data.current.content.map((b:any)=>b.text),['甲\n乙']);
+  assert.deepEqual(context.data.mergeIds,[]);assert.equal(context.data.mergeMenu,'');
+  assert.equal(context.data.focusRequest,'');assert.equal(context.data.editingBlock,'');
+  assert.equal(events.filter(e=>e.name==='change').length,1);
+ } finally {(globalThis as any).wx=previous;}
+});
+test('deselecting, background tap and chapter switch cancel merge without modifying text',async()=>{
+ const {context,definition,events}=await caretEditor();
+ const chapter=articleChapter({id:'chapter-merge-ui',title:'',memoryIds:[],content:[{text:'甲'},{text:'乙'}]});
+ context.data.current=chapter;context.render();const [a,b]=context.data.pages[0].modules;
+ const previous=(globalThis as any).wx;(globalThis as any).wx={hideKeyboard(){}};
+ try {
+  context.beginMerge({currentTarget:{dataset:{id:a.id,block:a.blockId}}});
+  context.select({currentTarget:{dataset:{id:b.id,block:b.blockId}}});
+  context.select({currentTarget:{dataset:{id:b.id,block:b.blockId}}});
+  assert.equal(context.data.mergeMenu,'');assert.deepEqual(context.data.mergeIds,[a.blockId]);
+  context.clear();assert.deepEqual(context.data.mergeIds,[]);
+  context.beginMerge({currentTarget:{dataset:{id:a.id,block:a.blockId}}});
+  definition.observers['chapter, paths, width'].call(context,{...chapter,id:'chapter-new'}, {},360);
+  assert.deepEqual(context.data.mergeIds,[]);assert.equal(events.filter(e=>e.name==='change').length,0);
+  assert.deepEqual(chapter.content.map(b=>b.text),['甲','乙']);
+ } finally {(globalThis as any).wx=previous;}
+});

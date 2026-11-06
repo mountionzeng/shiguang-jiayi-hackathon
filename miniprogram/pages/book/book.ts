@@ -530,7 +530,7 @@ Page({
     const touch=event.touches[0], start=this.articleTouch;
     if (!touch || !start || start.dismissed || Math.hypot(touch.clientX-start.x,touch.clientY-start.y)<8) return;
     start.dismissed=true; this.articleCaretEpoch++;
-    this.selectComponent('#article-editor')?.clear();
+    this.selectComponent('#article-editor')?.clear({preserveMerge:true});
     if (this.data.keyboardHeight) wx.hideKeyboard();
   },
   onArticleScroll(event: WechatMiniprogram.ScrollViewScroll) {

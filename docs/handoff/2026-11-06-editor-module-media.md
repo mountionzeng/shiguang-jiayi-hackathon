@@ -140,3 +140,12 @@
 - Full check 1856 passed: /tmp/1106c-ui-check.log. Desktop 375x667: opened existing chapter without editing text, focused first text module, observed upright letters and three entries; independently opened image/music/narration panels with selected text and dismissed each. No paid generation or new test content. Native phone keyboard not observable in desktop; actual phone visibility remains to confirm.
 - Scope baseline is uploaded 0.1.1106b cc33fb289a5b53d5a1bdf54c529575037c50ea99. Assets/components/home/backend/build config unchanged. No cloud deployment, database writes for testing, permission or runtime configuration changes. Screenshot's chapter-removal notice is outside this UI request and was not changed.
 - 0.1.1106c official upload succeeded from ef89733b14c432bdcd58a4adb67bc9f7cbe55b3e; main 2,097,122 bytes, total 2,241,869. Logs, source/config hashes and scope: /tmp/shiguang-1106c-trial/. Source/config unchanged across upload. Main has only 30 bytes remaining: future size work requires its own explicit scope; no extra optimization was bundled here. Device UI remains pending user observation.
+
+## 文字模块合并（开发中）
+
+- 用户确认：合并两个完整文字模块。基线为体验版0.1.1106c，ef89733b14c432bdcd58a4adb67bc9f7cbe55b3e。
+- 允许范围：article-editor临时双选/合并菜单、articleModules合并规则、articleService来源标识传输、book触屏滚动保留双选；storyBooks/article.js仅新增合并来源字段校验与服务器来源并集推导。其余页面样式、图片、字体、打包配置、云函数和环境配置不改。
+- 合并保留阅读顺序、原段落及两段间换行；保留未选模块、图片、记忆关联，音频锚点映射到保留模块。超长或失效选择拒绝且不改原文。长按首段、点第二段才出现合并；滚动保留双选，点空白取消，合并不主动弹键盘。
+- mergeSourceBlockIds只传模块标识，服务器从当前章已确认内容推导权限来源；无对应旧模块的标识代表尚未保存或已合并退役的节点，不授予来源权限。保留模块自身的服务器来源永不被客户端删除。新字段仅供保存请求使用，不写入权威正文。旧请求序列化不变。
+- 1865项完整检查通过：/tmp/merge-full-check.log。新增9项覆盖来源保护、重试/下一次保存/再拆分、媒体顺序、交互和失效输入。
+- /tmp/1106-merge-before/storyBooks.zip为本次真实下载的线上源码：41个业务文件与修改前HEAD完全一致，无额外业务文件。本轮尚未上传客户端，包体积优化无额外授权。电脑实际验收与部署结果待追加。

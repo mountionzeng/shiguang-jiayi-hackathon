@@ -1,10 +1,10 @@
 import { articleEditorPages } from '../../services/articleEditorLayout';
 import type { ManuscriptChapter } from '../../domain/biography';
-import { articleChapter, changeArticleText, moveArticleModule, removeArticleModule, type ArticleChapter } from '../../services/articleModules';
+import { articleChapter, changeArticleText, moveArticleModule, removeArticleModule, mergeArticleTextModules, type ArticleChapter } from '../../services/articleModules';
 Component({
   options: { multipleSlots: true },
   properties: { keyboardHeight: {type:Number,value:0}, adjustPosition: {type:Boolean,value:true}, backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
-  data: { focusRequest: '', selectionCursor: -1, editingBlock: '', caretCursor: null as number | null, caretRequest: 0, caretMeasureText: '', caretMeasureStyle: '', textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
+  data: { mergeIds: [] as string[], mergeMenu: '', focusRequest: '', selectionCursor: -1, editingBlock: '', caretCursor: null as number | null, caretRequest: 0, caretMeasureText: '', caretMeasureStyle: '', textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
   lifetimes: { detached() { this.data.editingBlock = ''; this.data.caretRequest++; } },
   observers: {
     keyboardHeight(height: number) {
@@ -20,7 +20,7 @@ Component({
         if (current?.id === chapter.id && JSON.stringify(current) === JSON.stringify(chapter) && this.data.scale === scale) {
           this.syncGeometry(); return;
         }
-        if (current?.id !== chapter.id) { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; }
+        if (current?.id !== chapter.id) this.clear();
         this.data.textHeights = {};
         this.data.current = articleChapter(chapter);
         this.setData({ scale }); this.render();
@@ -72,6 +72,7 @@ Component({
       return true;
     },
     beginEditing(event: WechatMiniprogram.TextareaFocus) {
+      if (this.data.mergeIds?.length) {this.dismissKeyboard(); wx.hideKeyboard(); return;}
       if (this.data.editingBlock !== event.currentTarget.dataset.block) this.data.caretCursor = null;
       const { block, id } = event.currentTarget.dataset;
       this.data.editingBlock = block;
@@ -120,12 +121,36 @@ Component({
     playAudio(event: WechatMiniprogram.TouchEvent) { const id=event.currentTarget.dataset.id;this.setData({selected:id});this.triggerEvent('selectmodule',{id});this.triggerEvent('playaudio',{id}); },
     select(event: WechatMiniprogram.TouchEvent) {
       const { id, block } = event.currentTarget.dataset;
+      if (this.data.mergeIds?.length) {
+        if (block) {
+          const ids = this.data.mergeIds.includes(block) ? this.data.mergeIds.filter(value => value !== block)
+            : [this.data.mergeIds[0], block];
+          this.setData({mergeIds:ids,mergeMenu:ids.length === 2 ? id : ''});
+          return;
+        }
+        this.clear();
+      }
       // Tapping keeps the native selection; only splitting requests a new focus.
       this.setData({ selected: id, focused: block || '' });
       if (block === this.data.editingBlock) this.readCaret();
       this.triggerEvent('selectmodule', { id });
     },
-    clear() { this.triggerEvent('selectmodule',{id:''}); this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ selected: '', focused: '', focusRequest: '', selectionCursor: -1 }); },
+    clear(options?: {preserveMerge?: boolean}) { if (options?.preserveMerge && this.data.mergeIds?.length) {this.dismissKeyboard();return;} this.triggerEvent('selectmodule',{id:''}); this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ mergeIds: [], mergeMenu: '', selected: '', focused: '', focusRequest: '', selectionCursor: -1 }); },
+    beginMerge(event: WechatMiniprogram.TouchEvent) {
+      const {block} = event.currentTarget.dataset;
+      if (!block) {this.select(event);return;}
+      this.dismissKeyboard();
+      this.setData({mergeIds:[block],mergeMenu:'',selected:'',note:''});
+      this.triggerEvent('selectmodule',{id:''});
+      wx.hideKeyboard();
+    },
+    mergeText() {
+      try {
+        const next = mergeArticleTextModules(this.data.current!, this.data.mergeIds);
+        this.clear(); this.data.current = next; this.data.textHeights = {};
+        this.render(); this.publish();
+      } catch (error) {this.setData({note:error instanceof Error ? error.message : '没有合并，请重试'});}
+    },
     change(event: WechatMiniprogram.Input) {
       try {
         const before = this.data.current!;

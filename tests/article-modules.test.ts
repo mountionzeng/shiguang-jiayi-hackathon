@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto,insertArticlePhotoAfter} from '../miniprogram/services/articleModules';
+import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto,insertArticlePhotoAfter,mergeArticleTextModules} from '../miniprogram/services/articleModules';
 import { articleEditorPages } from '../miniprogram/services/articleEditorLayout';
 import {groupAccountActivity} from '../miniprogram/services/accountActivity';
 const base=()=>articleChapter({id:'chapter-test',title:'纸船',memoryIds:[],content:[{text:'第一句'}]});
@@ -144,4 +144,43 @@ test('audio modules retain order, do not change original text, and survive reope
  const removed=removeArticleModule(reopened,audio.id);
  assert.equal(removed.audioModules?.length,0);assert.deepEqual(removed.content,before.content);
  assert.equal(insertArticleAudioAfter(next,source,'family_owner_audio-test123','music'),next);
+});
+
+
+test('merge follows reading order, retains paragraphs, images, audio and source ancestry',()=>{
+ const before=articleChapter({id:'chapter-merge',title:'合并',memoryIds:['memory-a','memory-b'],content:[
+  {text:'前段\n',sourceIds:['source-a']},{photoId:'photo-between'},{text:'后段',sourceIds:['source-b']},{text:'末尾'}]});
+ before.content[0].text='前段\n';
+ const [a,photo,b,last]=before.content;
+ before.audioModules=[{id:'audio-one',afterBlockId:b.blockId,operationId:'operation-one',kind:'narration'}];
+ const snapshot=structuredClone(before);
+ const merged=mergeArticleTextModules(before,[b.blockId,a.blockId]);
+ assert.deepEqual(merged.content.map(b=>b.text??b.photoId),['前段\n\n后段','photo-between','末尾']);
+ assert.equal(merged.content[0].blockId,a.blockId);
+ assert.deepEqual(merged.content[0].sourceIds,['source-a','source-b']);
+ assert.deepEqual(merged.content[0].mergeSourceBlockIds,[a.blockId,b.blockId]);
+ assert.deepEqual(merged.memoryIds,before.memoryIds);
+ assert.deepEqual(merged.packageAssets,before.packageAssets);
+ assert.deepEqual(merged.audioModules,[{...before.audioModules[0],afterBlockId:a.blockId}]);
+ assert.deepEqual(articleChapter(merged).content,merged.content);
+ assert.deepEqual(merged.layout.pages.flatMap(p=>p.modules).map(m=>m.kind==='text'&&'blockId'in m.bind?m.bind.blockId:m.kind),[a.blockId,'image',last.blockId]);
+ assert.deepEqual(before,snapshot);
+});
+test('merge retains unsaved split and repeated merge ancestry, then Return still splits normally',()=>{
+ const before=articleChapter({id:'chapter-merge',title:'',memoryIds:[],content:[{text:'甲乙'},{text:'丙'}]});
+ const a=before.content[0].blockId,c=before.content[1].blockId;
+ const split=changeArticleText(before,a,'甲\n乙',2).chapter,b=split.content[1].blockId;
+ const once=mergeArticleTextModules(split,[b,c]);
+ const twice=mergeArticleTextModules(once,[a,b]);
+ assert.equal(twice.content[0].text,'甲\n乙\n丙');
+ assert.ok(twice.content[0].mergeSourceBlockIds?.includes(a));
+ assert.ok(twice.content[0].mergeSourceBlockIds?.includes(c));
+ const again=changeArticleText(twice,a,'甲\n\n乙\n丙',2);
+ assert.deepEqual(again.chapter.content.map(b=>b.text),['甲','\n乙\n丙']);
+});
+test('invalid or oversized merges leave the original untouched',()=>{
+ const before=articleChapter({id:'chapter-merge',title:'',memoryIds:[],content:[{text:'甲'.repeat(15000)},{text:'乙'.repeat(6000)}]});
+ const [a,b]=before.content.map(b=>b.blockId),snapshot=structuredClone(before);
+ for(const ids of [[a],[a,a],[a,'missing'],[a,b]])assert.throws(()=>mergeArticleTextModules(before,ids));
+ assert.deepEqual(before,snapshot);
 });

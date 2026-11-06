@@ -15,6 +15,7 @@ export async function saveArticle(request: ArticleSaveRequest): Promise<{ revisi
     ...(chapter.audioModules ? {audioModules:chapter.audioModules} : {}),
     id: chapter.id, title: chapter.title, ...(sourceMemoryIds ? {memoryIds:[...new Set(sourceMemoryIds)]} : {}), content: chapter.content.map(block => ({ blockId: block.blockId,
       ...(block.parentBlockId ? { parentBlockId: block.parentBlockId } : {}),
+      ...(block.mergeSourceBlockIds ? { mergeSourceBlockIds: block.mergeSourceBlockIds } : {}),
       ...(typeof block.text === 'string' ? { text: block.text } : { photoId: block.photoId }),
     })), layout: chapter.layout, packageAssets: chapter.packageAssets || {},
   } } });

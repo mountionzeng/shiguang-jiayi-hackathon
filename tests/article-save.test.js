@@ -212,3 +212,50 @@ test('article save accepts an empty audio list from draft merge and keeps text a
  assert.deepEqual(saved.content,f.chapter.content);
  assert.deepEqual(saved.audioModules,[]);
 });
+
+
+async function mergeFixture(){
+ const f=await setup(),row=f.tables.get('biography_drafts:family_owner_'+f.input.revisionId);
+ const chapter=row.revision.draft.chapters[0],sourceA=chapter.content[0].sourceIds[0],sourceB='source-'+ 'b'.repeat(64);
+ f.tables.set('story_source_policies:'+sourceB,{...structuredClone(f.tables.get('story_source_policies:'+sourceA)),id:sourceB});
+ chapter.content.push({blockId:bid('b'),text:'第二段',sourceIds:[sourceB]});chapter.layout=layout([bid('a'),bid('b')]);
+ Object.assign(row.revision.draft,require('../cloudfunctions/storyBooks/core').flatten(row.revision.draft.chapters));
+ f.input.chapter.content=[{blockId:bid('a'),text:'原文\n第二段',mergeSourceBlockIds:[bid('a'),bid('b')]}];
+ f.input.chapter.layout=layout([bid('a')]);
+ return {...f,sourceA,sourceB};
+}
+test('merged article preserves both trusted sources across retries, later saves and splits',async()=>{
+ const f=await mergeFixture(),result=await saveArticle(f.repo,f.ctx,f.input,options);
+ const read=r=>f.tables.get('biography_drafts:family_owner_'+r.revisionId).revision.draft.chapters[0];
+ const expected=[f.sourceA,f.sourceB];
+ assert.deepEqual(read(result).content[0].sourceIds,expected);
+ assert.equal(read(result).content[0].text,'原文\n第二段');
+ assert.ok(!('mergeSourceBlockIds' in read(result).content[0]),'transient ancestry is not persisted into authoritative blocks');
+ assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,options),result);
+ const next={...f.input,requestId:'request-merge-next',revisionId:result.revisionId,expectedVersion:result.version};
+ const again=await saveArticle(f.repo,f.ctx,next,options);
+ assert.deepEqual(read(again).content[0].sourceIds,expected,'retired ancestry cannot strip the retained block');
+ const split=structuredClone(next);Object.assign(split,{requestId:'request-merge-split',revisionId:again.revisionId,expectedVersion:again.version});
+ split.chapter.content.push({blockId:bid('c'),parentBlockId:bid('a'),text:'拆开'});split.chapter.layout=layout([bid('a'),bid('c')]);
+ const last=await saveArticle(f.repo,f.ctx,split,options);
+ assert.deepEqual(read(last).content[1].sourceIds,expected);
+});
+test('merging an unsaved split keeps the root and independently typed text is allowed',async()=>{
+ const f=await mergeFixture();
+ f.input.chapter.content=[{blockId:bid('c'),parentBlockId:bid('a'),mergeSourceBlockIds:[bid('c'),bid('a'),bid('b'),bid('d')],text:'刚拆出的文字与第二段及新文字'}];
+ f.input.chapter.layout=layout([bid('c')]);
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ const block=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft.chapters[0].content[0];
+ assert.deepEqual(block.sourceIds,[f.sourceA,f.sourceB]);
+});
+test('merge cannot drop either source policy or accept malformed ancestry',async()=>{
+ const f=await mergeFixture();
+ f.tables.get('story_source_policies:'+f.sourceB).permissions.view=false;
+ const before=structuredClone(f.tables);
+ await assert.rejects(saveArticle(f.repo,f.ctx,f.input,options));
+ assert.deepEqual(f.tables,before);
+ for(const refs of [null,'bad',['bad'],[bid('a'),bid('a')],Array(513).fill(bid('a'))]){
+  const input=structuredClone(f.input);input.chapter.content[0].mergeSourceBlockIds=refs;
+  await assert.rejects(saveArticle(f.repo,f.ctx,input,options));
+ }
+});

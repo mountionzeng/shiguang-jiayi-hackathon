@@ -20,9 +20,12 @@ function normalize(input){
   validateAudioModules(c);
   const ids=new Set();
   for(const b of c.content){
-    if(!exact(b,['blockId','parentBlockId','text','photoId'])||!blockPattern.test(b.blockId||'')||ids.has(b.blockId)||
+    if(!exact(b,['blockId','parentBlockId','mergeSourceBlockIds','text','photoId'])||!blockPattern.test(b.blockId||'')||ids.has(b.blockId)||
       (b.parentBlockId!==undefined&&!blockPattern.test(b.parentBlockId))||
       !(typeof b.text==='string'&&b.photoId===undefined&&b.text.length<=20000||typeof b.photoId==='string'&&/^photo-[a-z0-9-]{1,120}$/.test(b.photoId)&&b.text===undefined))fail('文章模块不正确');
+    if(b.mergeSourceBlockIds!==undefined && (typeof b.text!=='string'||!Array.isArray(b.mergeSourceBlockIds)||
+      b.mergeSourceBlockIds.length>512||new Set(b.mergeSourceBlockIds).size!==b.mergeSourceBlockIds.length||
+      b.mergeSourceBlockIds.some(id=>typeof id!=='string'||!blockPattern.test(id))))fail('合并来源不正确');
     ids.add(b.blockId);
   }
   if(!exact(c.packageAssets||{},Object.keys(c.packageAssets||{}))||Object.keys(c.packageAssets||{}).length>12)fail('图片数量超限');
@@ -94,9 +97,19 @@ async function saveArticle(repo,ctx,raw,{approveImage,approveBackdrop,now=()=>ne
     const submitted=new Map(input.chapter.content.map(b=>[b.blockId,b]));
     const inherited=(id,seen=new Set())=>{
       if(seen.has(id))fail('段落来源存在循环');seen.add(id);
-      const old=existing.get(id);if(old)return old.sourceIds||[];
-      const item=submitted.get(id);if(!item)fail('新增段落的来源不存在');
-      return item.parentBlockId?inherited(item.parentBlockId,seen):[];
+      const old=existing.get(id),item=submitted.get(id);
+      if(!old&&!item)fail('新增段落的来源不存在');
+      const roots=old ? old.sourceIds||[] : item.parentBlockId ? inherited(item.parentBlockId,new Set(seen)) : [];
+      // Resolve only server-known blocks in this chapter, never client sourceIds.
+      // Missing merge IDs can be unsaved splits or ancestors retired by an earlier
+      // acknowledged merge. The retained block always keeps its trusted roots.
+      const merged=(item?.mergeSourceBlockIds||[]).flatMap(sourceId=>{
+        if(otherIds.has(sourceId))fail('不能合并其他章节的模块');
+        const source=existing.get(sourceId);
+        if(source&&typeof source.text!=='string')fail('只能合并文字模块');
+        return source?.sourceIds||[];
+      });
+      return [...new Set([...roots,...merged])];
     };
     const content=[];
     for(const item of input.chapter.content){

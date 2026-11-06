@@ -1,6 +1,6 @@
 import type { ManuscriptChapter, ManuscriptContent } from '../domain/biography';
 import { chapterPackageBlockId, chapterPackageAssetId, type PackageLayout, type PackageLayoutModule, type Rect } from '../domain/chapterPackage';
-export type ArticleBlock = ManuscriptContent & { blockId: string; parentBlockId?: string };
+export type ArticleBlock = ManuscriptContent & { blockId: string; parentBlockId?: string; mergeSourceBlockIds?: string[] };
 export type ArticleChapter = Omit<ManuscriptChapter, 'content' | 'layout'> & { content: ArticleBlock[]; layout: PackageLayout };
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const freshId = () => chapterPackageBlockId(['article', Date.now(), Math.random()]);
@@ -88,6 +88,30 @@ export function changeArticleText(input: ArticleChapter, blockId: string, value:
   next.content[index] = { ...original, text: normalized };
   fitArticleText(next, blockId);
   return { chapter: next, focused: blockId, split: false };
+}
+/** Combine text at its first reading position; retain media and server-resolved ancestry. */
+export function mergeArticleTextModules(input: ArticleChapter, blockIds: string[]): ArticleChapter {
+  if (blockIds.length !== 2 || new Set(blockIds).size !== 2) throw new Error('请选择两个文字模块');
+  const modules = input.layout.pages.flatMap(page => [...page.modules].sort((a,b) => a.rect.y-b.rect.y || a.rect.x-b.rect.x));
+  const targets = modules.filter(m => m.kind === 'text' && 'blockId' in m.bind && blockIds.includes(m.bind.blockId));
+  const blocks = targets.map(m => input.content.find(b => m.kind === 'text' && 'blockId' in m.bind && b.blockId === m.bind.blockId));
+  if (blocks.length !== 2 || blocks.some(b => typeof b?.text !== 'string')) throw new Error('所选文字已改变，请重新选择');
+  const [first, second] = blocks as ArticleBlock[];
+  const text = first.text! + '\n' + second.text!;
+  if (text.length > 20000) throw new Error('合并后超过两万字，请保留为两个模块');
+  const origins = [...new Set(blocks.flatMap(b => [b!.blockId, ...(b!.parentBlockId ? [b!.parentBlockId] : []), ...(b!.mergeSourceBlockIds || [])]))];
+  if (origins.length > 512) throw new Error('请保存并重新打开后再合并');
+  const next = clone(input);
+  next.content = next.content.filter(b => b.blockId !== second.blockId).map(b => b.blockId === first.blockId && typeof b.text === 'string' ? {
+    ...b, text, mergeSourceBlockIds: origins,
+    ...(first.sourceIds || second.sourceIds ? {sourceIds:[...new Set([...(first.sourceIds || []), ...(second.sourceIds || [])])]} : {}),
+  } : b);
+  for (const page of next.layout.pages) page.modules = page.modules.filter(m => m.id !== targets[1].id);
+  if (next.audioModules) next.audioModules = next.audioModules.map(m => m.afterBlockId === second.blockId ? {...m,afterBlockId:first.blockId} : m);
+  next.layout.pages = next.layout.pages.filter(p => p.modules.length);
+  fitArticleText(next, first.blockId);
+  next.layout.pages.forEach((p,i) => {p.label=String(i+1);});
+  return next;
 }
 export function moveArticleModule(input: ArticleChapter, id: string, dx: number, dy: number, resize = false): ArticleChapter {
   const next = clone(input);

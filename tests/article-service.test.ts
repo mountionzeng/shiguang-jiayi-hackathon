@@ -27,3 +27,14 @@ test('article save sends stable source IDs alongside text and refuses unconfirme
  wx.cloud.callFunction=(async()=>({result:{error:'INVALID_INPUT',message:'云端暂不支持此保存格式'}})) as any;
  await assert.rejects(saveArticle(request),/云端暂不支持/);
 });
+
+
+test('merge saves block ancestry but never sends client source permissions',async context=>{
+ const previous=(globalThis as any).wx;context.after(()=>{(globalThis as any).wx=previous;});let sent:any;
+ (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{sent=data;return {result:{revisionId:'revision-next',version:2}};}}};
+ const chapter=articleChapter({id:'chapter-merge',title:'',memoryIds:[],content:[{text:'合并正文',sourceIds:['private-source']}]});
+ chapter.content[0].mergeSourceBlockIds=[chapter.content[0].blockId];
+ await saveArticle({chapter,requestId:'request-merge-test',storyId:'story-test',revisionId:'revision-old',expectedVersion:1});
+ assert.deepEqual(sent.chapter.content[0].mergeSourceBlockIds,chapter.content[0].mergeSourceBlockIds);
+ assert.ok(!('sourceIds' in sent.chapter.content[0]));
+});
