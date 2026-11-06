@@ -24,7 +24,7 @@ async function main(event = {}) {
   // Ledger reads never accept a caller-chosen account, subject or amount.
   if (event.action === "computeStatement") {
     return require("./computeBilling").loadComputeStatement(context, {
-      limit: event.limit, historyOffset: event.historyOffset, attentionOffset: event.attentionOffset,
+      limit: event.limit, cursor: event.cursor,
     });
   }
 

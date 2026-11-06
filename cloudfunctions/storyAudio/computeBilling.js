@@ -11,7 +11,7 @@ const MINOR_PER_YUAN = 1_000_000;
 const DEEPSEEK_MODEL = "deepseek/deepseek-flash";
 const DEEPSEEK_BASE = "https://tokenhub.tencentmaas.com/v1";
 const PRICE_VERSION = "tokenhub-console-2026-09-23-estimate-v1";
-const STATEMENT_STATUSES = new Set(["posted", "reserved", "processing", "reconciliation", "released", "exception"]);
+const STATEMENT_STATUSES = new Set(["reserved", "processing", "reconciliation", "settled", "released", "exception"]);
 
 const KNOWN_MODELS = [
   { model: DEEPSEEK_MODEL, provider: "tokenhub", billing: "token", operationTypes: ["chatInterview", "organizeMemory", "generateBiography", "personalMemory"] },
@@ -429,54 +429,36 @@ async function billCall({ model, url, body, call }) {
   return value;
 }
 
-function isMinor(value) {
-  return typeof value === "number" && Number.isSafeInteger(value);
-}
+const STATEMENT_KINDS = new Set(["reserve", "settle", "release"]);
+const STATEMENT_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 function statementItem(value) {
   if (!value || typeof value !== "object") return null;
-  if (typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt))) return null;
-  if (typeof value.label !== "string" || value.label.length < 1 || value.label.length > 80) return null;
-  if (/secret|api[_-]?key|bearer|sk-|token/i.test(value.label)) return null;
-  if (![value.amountMinor, value.reservedMinor, value.releasedMinor].every(isMinor)) return null;
-  if (!STATEMENT_STATUSES.has(value.status) || typeof value.estimated !== "boolean") return null;
+  if (typeof value.occurredAt !== "string" || !STATEMENT_TIME.test(value.occurredAt) || Number.isNaN(Date.parse(value.occurredAt))) return null;
+  if (!STATEMENT_KINDS.has(value.kind)) return null;
+  if (typeof value.type !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(value.type)) return null;
+  if (!STATEMENT_STATUSES.has(value.status)) return null;
+  if (!Number.isSafeInteger(value.amountMicros)) return null;
+  if (value.kind === "settle" ? value.amountMicros > 0 : value.amountMicros < 0) return null;
   return {
-    createdAt: value.createdAt, label: value.label, amountMinor: value.amountMinor,
-    reservedMinor: value.reservedMinor, releasedMinor: value.releasedMinor,
-    status: value.status, estimated: value.estimated,
+    occurredAt: value.occurredAt, kind: value.kind, type: value.type,
+    status: value.status, amountMicros: value.amountMicros,
   };
 }
 function parseStatement(value) {
   if (!value || value.available === false) {
     return { version: 1, available: false, reason: value && value.reason || "statement_unavailable" };
   }
-  if (value.version !== 1 || value.currency !== "CNY" || !value.balance || typeof value.balance !== "object") return null;
-  const lists = ["attentionItems", "historyItems"];
-  for (const key of lists) {
-    if (!Array.isArray(value[key]) || value[key].length > 100) return null;
-  }
-  const attentionItems = value.attentionItems.map(statementItem);
-  const historyItems = value.historyItems.map(statementItem);
-  if (attentionItems.some(item => !item) || historyItems.some(item => !item)) return null;
-  if (typeof value.attentionHasMore !== "boolean" || typeof value.historyHasMore !== "boolean") return null;
-  if (typeof value.coverageNote !== "string" || value.coverageNote.length > 1000) return null;
-  if (/secret|api[_-]?key|bearer|sk-/i.test(value.coverageNote)) return null;
-  const balance = value.balance;
-  if (!["postedMinor", "reservedMinor", "availableMinor", "lifetimeSpentMinor"].every(key => isMinor(balance[key]))) return null;
-  return {
-    version: 1, available: true, currency: "CNY",
-    balance: {
-      postedMinor: balance.postedMinor, reservedMinor: balance.reservedMinor,
-      availableMinor: balance.availableMinor, lifetimeSpentMinor: balance.lifetimeSpentMinor,
-    },
-    attentionItems, attentionHasMore: value.attentionHasMore,
-    historyItems, historyHasMore: value.historyHasMore,
-    coverageNote: value.coverageNote,
-  };
+  if (value.version !== 1 || value.unit !== "compute" || !Array.isArray(value.items) || value.items.length > 50) return null;
+  const items = value.items.map(statementItem);
+  if (items.some(item => !item)) return null;
+  const nextCursor = value.nextCursor === null ? null
+    : (typeof value.nextCursor === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(value.nextCursor) ? value.nextCursor : undefined);
+  if (nextCursor === undefined) return null;
+  return { version: 1, available: true, unit: "compute", items, nextCursor };
 }
 async function loadComputeStatement(context, query, env = process.env, get = getComputeStatement) {
-  const raw = await get(context, {
-    limit: query && query.limit, historyOffset: query && query.historyOffset, attentionOffset: query && query.attentionOffset,
-  }, env);
+  const source = query && typeof query === "object" ? query : {};
+  const raw = await get(context, { limit: source.limit, cursor: source.cursor }, env);
   const parsed = parseStatement(raw);
   if (!parsed) return { version: 1, available: false, reason: "statement_unavailable" };
   return parsed;

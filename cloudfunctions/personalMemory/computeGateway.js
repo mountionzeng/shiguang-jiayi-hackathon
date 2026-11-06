@@ -14,7 +14,7 @@ function subjectFor(context) {
   return "shiguang:" + crypto.createHash("sha256").update(context.APPID + ":" + context.OPENID).digest("hex");
 }
 function postCompute(context, action, fields = {}, env = process.env) {
-  if (!["balance", "reserve", "settle"].includes(action)) throw new Error("INVALID_COMPUTE_ACTION");
+  if (!["balance", "reserve", "settle", "statement"].includes(action)) throw new Error("INVALID_COMPUTE_ACTION");
   const secret = env.DRINKING_TIME_BRIDGE_SECRET || "";
   const base = env.DRINKING_TIME_BRIDGE_BASE_URL || "";
   if (secret.length < 32 || !base.startsWith("https://")) throw new Error("COMPUTE_NOT_CONFIGURED");
@@ -68,68 +68,32 @@ function statementEnabled(env = process.env) {
 }
 
 /**
- * Read-only ledger. DT does not expose this route yet; the call stays behind
- * SHIGUANG_COMPUTE_STATEMENT_ENABLED and any failure becomes "not available".
- * Identity is the signed subject. Caller userId, subject and amounts are ignored.
+ * Read-only ledger. POST /compute/statement, signed exactly like balance.
+ * Stays behind SHIGUANG_COMPUTE_STATEMENT_ENABLED. Caller userId, subject and
+ * amounts are ignored; subject is derived from the cloud context.
  */
-function getComputeStatement(context, query, env = process.env) {
-  if (!statementEnabled(env)) return Promise.resolve({ version: 1, available: false, reason: "statement_not_enabled" });
+async function getComputeStatement(context, query, env = process.env) {
+  if (!statementEnabled(env)) return { version: 1, available: false, reason: "statement_not_enabled" };
   const secret = env.DRINKING_TIME_BRIDGE_SECRET || "";
   const base = env.DRINKING_TIME_BRIDGE_BASE_URL || "";
   if (secret.length < 32 || !base.startsWith("https://")) {
-    return Promise.resolve({ version: 1, available: false, reason: "statement_not_configured" });
+    return { version: 1, available: false, reason: "statement_not_configured" };
   }
-  const path = "/compute/statement";
-  let url;
-  try { url = new URL(base.replace(/\/+$/, "") + path); }
-  catch { return Promise.resolve({ version: 1, available: false, reason: "statement_not_configured" }); }
-  if (url.username || url.password || url.search || url.hash) {
-    return Promise.resolve({ version: 1, available: false, reason: "statement_not_configured" });
+  try {
+    return await postCompute(context, "statement", statementRequestFields(query), env);
+  } catch (error) {
+    if (error && error.message === "COMPUTE_NOT_CONFIGURED") {
+      return { version: 1, available: false, reason: "statement_not_configured" };
+    }
+    return { version: 1, available: false, reason: "statement_unavailable" };
   }
-  const body = { ...boundedStatementQuery(query), subject: subjectFor(context) };
-  const timestamp = String(Date.now());
-  const nonce = crypto.randomBytes(18).toString("base64url");
-  const signature = crypto.createHmac("sha256", secret)
-    .update("GET\n" + path + "\n" + timestamp + "\n" + nonce + "\n" + canonicalJson(body)).digest("hex");
-  const payload = JSON.stringify(body);
-  return new Promise(resolve => {
-    let settled = false;
-    const finish = result => { if (!settled) { settled = true; resolve(result); } };
-    const request = https.request(url, { method: "GET", timeout: 4000, headers: {
-      "content-type": "application/json", "content-length": Buffer.byteLength(payload),
-      "x-shiguang-timestamp": timestamp, "x-shiguang-nonce": nonce, "x-shiguang-signature": signature,
-    } }, response => {
-      const chunks = []; let bytes = 0;
-      response.on("data", chunk => {
-        bytes += chunk.length;
-        if (bytes > 65536) response.destroy();
-        else chunks.push(chunk);
-      });
-      response.on("error", () => finish({ version: 1, available: false, reason: "statement_unavailable" }));
-      response.on("aborted", () => finish({ version: 1, available: false, reason: "statement_unavailable" }));
-      response.on("end", () => {
-        if (response.statusCode === 404) return finish({ version: 1, available: false, reason: "statement_unavailable" });
-        try {
-          if (response.statusCode !== 200 || !/^application\/json\b/.test(response.headers["content-type"] || ""))
-            return finish({ version: 1, available: false, reason: "statement_unavailable" });
-          finish(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-        } catch { finish({ version: 1, available: false, reason: "statement_unavailable" }); }
-      });
-    });
-    request.on("timeout", () => request.destroy());
-    request.on("error", () => finish({ version: 1, available: false, reason: "statement_unavailable" }));
-    const deadline = setTimeout(() => { request.destroy(); finish({ version: 1, available: false, reason: "statement_unavailable" }); }, 4500);
-    request.on("close", () => clearTimeout(deadline));
-    request.end(payload);
-  });
 }
 
-function boundedStatementQuery(query) {
+function statementRequestFields(query) {
   const source = query && typeof query === "object" ? query : {};
-  const limit = integerIn(source.limit, 1, 20) || 20;
-  const historyOffset = integerIn(source.historyOffset, 0, 500) || 0;
-  const attentionOffset = integerIn(source.attentionOffset, 0, 500) || 0;
-  return { attentionLimit: limit, attentionOffset, historyLimit: limit, historyOffset };
+  const fields = { limit: integerIn(source.limit, 1, 50) || 20 };
+  if (typeof source.cursor === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(source.cursor)) fields.cursor = source.cursor;
+  return fields;
 }
 
 function integerIn(value, minimum, maximum) {
@@ -137,5 +101,5 @@ function integerIn(value, minimum, maximum) {
 }
 
 module.exports = {
-  canonicalJson, subjectFor, postCompute, loadComputeBalance, getComputeStatement, statementEnabled,
+  canonicalJson, subjectFor, postCompute, loadComputeBalance, getComputeStatement, statementEnabled, statementRequestFields,
 };

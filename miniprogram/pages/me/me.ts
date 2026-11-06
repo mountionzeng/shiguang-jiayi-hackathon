@@ -50,7 +50,7 @@ Page({
     textComputeHint: "正在读取文字用量…",
     ledgerRows: [] as LedgerRow[],
     ledgerHint: "正在读取算力流水…",
-    ledgerOffset: 0,
+    ledgerCursor: "",
     ledgerHasMore: false,
     joinedRooms: [] as JoinedFamilyRoom[],
     cloudPhotoCount: 0,
@@ -64,11 +64,11 @@ Page({
   onShow() {
     this._computeVisible = true;
     this._computeEpoch += 1;
-    this.setData({ computeBalance: "正在读取…", textComputeRows: [], textComputeHint: "正在读取文字用量…", ledgerRows: [], ledgerHint: "正在读取算力流水…", ledgerOffset: 0, ledgerHasMore: false });
+    this.setData({ computeBalance: "正在读取…", textComputeRows: [], textComputeHint: "正在读取文字用量…", ledgerRows: [], ledgerHint: "正在读取算力流水…", ledgerCursor: "", ledgerHasMore: false });
     clearInterval(this._computeTimer);
     void this.refreshCompute();
     void this.refreshTextCompute();
-    void this.refreshLedger(0);
+    void this.refreshLedger("");
     void webLoginEntryEnabled().then(enabled => this.setData({ webLoginEnabled: enabled }));
     this._computeTimer = setInterval(() => { void this.refreshCompute(); void this.refreshTextCompute(); }, 5000);
     void this.refresh().catch((error) => { logLoadError("me", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
@@ -96,18 +96,18 @@ Page({
       if (this._computeVisible && epoch === this._computeEpoch) this.setData({ textComputeRows: [], textComputeHint: "文字用量暂未读到，请稍后重试" });
     } finally { this._textComputeReading = false; }
   },
-  loadMoreLedger() { void this.refreshLedger(this.data.ledgerOffset + 20, true); },
-  async refreshLedger(offset = 0, append = false) {
+  loadMoreLedger() { if (this.data.ledgerCursor) void this.refreshLedger(this.data.ledgerCursor, true); },
+  async refreshLedger(cursor = "", append = false) {
     if (this._ledgerReading) return;
     this._ledgerReading = true;
     const epoch = this._computeEpoch;
     try {
-      const view = await loadComputeStatement(offset);
+      const view = await loadComputeStatement(cursor || null);
       if (this._computeVisible && epoch === this._computeEpoch) this.setData({
         ledgerRows: append ? [...this.data.ledgerRows, ...view.rows] : view.rows,
         ledgerHint: view.hint,
         ledgerHasMore: view.available && view.hasMore,
-        ledgerOffset: offset,
+        ledgerCursor: view.nextCursor || "",
       });
     } catch {
       if (this._computeVisible && epoch === this._computeEpoch && !append) this.setData({ ledgerRows: [], ledgerHint: "算力流水暂未读到，请稍后重试", ledgerHasMore: false });

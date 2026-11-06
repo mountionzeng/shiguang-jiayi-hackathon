@@ -208,27 +208,28 @@ test("a successful model call whose settlement times out can be settled again wi
   assert.equal(wallet.posts.filter(item => item.action === "settle" && item.fields.outcome.kind === "succeeded").length, 2);
 });
 
-test("statement parsing is user-scoped, bounded and drops secret-shaped rows", async () => {
+test("statement is a signed POST with limit and an optional opaque cursor", async () => {
   assert.deepEqual(await gateway.getComputeStatement(CONTEXT, { userId: 9, subject: "forged", limit: 1000 }), {
     version: 1, available: false, reason: "statement_not_enabled",
   });
+  assert.deepEqual(gateway.statementRequestFields({ limit: 1000, userId: 4, subject: "forged", historyOffset: 40 }), { limit: 20 });
+  assert.deepEqual(gateway.statementRequestFields({ limit: 50, cursor: "opaque_Cursor-1" }), { limit: 50, cursor: "opaque_Cursor-1" });
+  assert.deepEqual(gateway.statementRequestFields({ cursor: "bad cursor" }), { limit: 20 });
   const queries = [];
-  const view = await billing.loadComputeStatement(CONTEXT, { limit: 20, historyOffset: 40, userId: 5, subject: "forged" }, process.env, (context, query) => {
+  const view = await billing.loadComputeStatement(CONTEXT, { limit: 30, cursor: "page-two", userId: 5, subject: "forged" }, process.env, (context, query) => {
     queries.push({ context, query });
     return { version: 1, available: false, reason: "statement_unavailable" };
   });
   assert.equal(queries[0].context, CONTEXT);
-  assert.deepEqual(queries[0].query, { limit: 20, historyOffset: 40, attentionOffset: undefined });
+  assert.deepEqual(queries[0].query, { limit: 30, cursor: "page-two" });
   assert.equal(view.available, false);
-  const row = { createdAt: "2026-11-06T02:00:00.000Z", label: "文字生成", amountMinor: -250000, reservedMinor: 0, releasedMinor: 0, status: "posted", estimated: true };
-  const parsed = billing.parseStatement({
-    version: 1, currency: "CNY", available: true,
-    balance: { postedMinor: 10, reservedMinor: 0, availableMinor: 10, lifetimeSpentMinor: 1 },
-    attentionItems: [], attentionHasMore: false, historyItems: [row], historyHasMore: true,
-    coverageNote: "只显示本账号账本",
-  });
-  assert.equal(parsed.historyItems.length, 1);
-  assert.equal(parsed.historyHasMore, true);
-  assert.equal(billing.parseStatement({ ...parsed, historyItems: [{ ...row, label: "sk-secret" }] }), null);
-  assert.equal(billing.parseStatement({ version: 1, currency: "CNY", attentionItems: new Array(101).fill(row), historyItems: [], attentionHasMore: false, historyHasMore: false, coverageNote: "x", balance: parsed.balance }), null);
+  const row = { occurredAt: "2026-11-06T02:00:00.000Z", kind: "settle", type: "shiguang.chatInterview", status: "settled", amountMicros: -500000 };
+  const parsed = billing.parseStatement({ version: 1, unit: "compute", items: [row], nextCursor: "next_page" });
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.nextCursor, "next_page");
+  assert.equal(parsed.items[0].amountMicros, -500000);
+  assert.equal(billing.parseStatement({ version: 1, unit: "compute", items: [{ ...row, amountMicros: 1 }], nextCursor: null }), null);
+  assert.equal(billing.parseStatement({ version: 1, unit: "compute", items: [{ ...row, type: "prompt text" }], nextCursor: null }), null);
+  assert.equal(billing.parseStatement({ version: 1, unit: "CNY", items: [row], nextCursor: null }), null);
+  assert.equal(billing.parseStatement({ version: 1, unit: "compute", items: new Array(51).fill(row), nextCursor: null }), null);
 });
