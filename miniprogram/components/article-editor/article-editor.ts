@@ -73,7 +73,13 @@ Component({
     },
     beginEditing(event: WechatMiniprogram.TextareaFocus) {
       if (this.data.editingBlock !== event.currentTarget.dataset.block) this.data.caretCursor = null;
-      this.data.editingBlock = event.currentTarget.dataset.block;
+      const { block, id } = event.currentTarget.dataset;
+      this.data.editingBlock = block;
+      this.data.caretRequest++;
+      // A Return focus request belongs only to its target. Native taps own later focus.
+      this.setData({ selected: id, focused: block,
+        ...(this.data.focusRequest && this.data.focusRequest !== block ? {focusRequest: '', selectionCursor: -1} : {}) });
+      this.triggerEvent('selectmodule', {id});
       this.readCaret();
     },
     readCaret() {
@@ -111,6 +117,7 @@ Component({
         });
       });
     },
+    playAudio(event: WechatMiniprogram.TouchEvent) { const id=event.currentTarget.dataset.id;this.setData({selected:id});this.triggerEvent('selectmodule',{id});this.triggerEvent('playaudio',{id}); },
     select(event: WechatMiniprogram.TouchEvent) {
       const { id, block } = event.currentTarget.dataset;
       // Tapping keeps the native selection; only splitting requests a new focus.
@@ -118,7 +125,7 @@ Component({
       if (block === this.data.editingBlock) this.readCaret();
       this.triggerEvent('selectmodule', { id });
     },
-    clear() { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ selected: '', focused: '', focusRequest: '', selectionCursor: -1 }); },
+    clear() { this.triggerEvent('selectmodule',{id:''}); this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; this.setData({ selected: '', focused: '', focusRequest: '', selectionCursor: -1 }); },
     change(event: WechatMiniprogram.Input) {
       try {
         const before = this.data.current!;
@@ -144,12 +151,32 @@ Component({
           this.syncGeometry();
         }
         this.publish();
+        this.triggerEvent('selectmodule',{id:module?.id || ''});
       } catch (error) { this.setData({ note: error instanceof Error ? error.message : '没有写入，请重试' }); }
+    },
+    dismissKeyboard() {
+      this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++;
+      this.setData({ focusRequest: '', selectionCursor: -1, focused: '' });
+    },
+    confirmEditing() {
+      // Done may precede blur, including while Return is waiting for nextTick.
+      // Cancel our focus intent immediately; the native Done action closes the IME.
+      this.dismissKeyboard();
     },
     finishEditing(event: WechatMiniprogram.TouchEvent) {
       const blockId = event.currentTarget.dataset.block;
-      if (blockId === this.data.editingBlock) { this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++; }
-      this.render();
+      if (blockId === this.data.editingBlock) this.dismissKeyboard();
+      // A late blur from the previous block must not rewrite the newly focused input.
+      const text = this.data.current?.content.find(item => item.blockId === blockId)?.text;
+      if (text === undefined) return;
+      const patch: Record<string, string> = {};
+      this.data.pages.forEach((page: any, pageIndex: number) => {
+        page.modules.forEach((module: any, moduleIndex: number) => {
+          if (module.blockId === blockId && module.text !== text)
+            patch[`pages[${pageIndex}].modules[${moduleIndex}].text`] = text;
+        });
+      });
+      if (Object.keys(patch).length) this.setData(patch);
     },
     publish() { this.triggerEvent('change', { chapter: this.data.current! }); },
     start(event: WechatMiniprogram.TouchEvent) {

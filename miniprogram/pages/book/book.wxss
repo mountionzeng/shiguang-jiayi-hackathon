@@ -182,15 +182,15 @@ page { height: 100%; overflow: hidden; }
 .article-share-note { margin:20rpx 0; font-size:28rpx; line-height:1.6; color:#627269; }
 .article-share-sheet button { margin-top:16rpx; font-size:32rpx; color:#315c4c; }
 
-/* A viewport dock sits outside the scrolling manuscript and reserves its own
- * space, including above the keyboard, so it cannot cover the final line. */
-.article-companion-dock { flex:none;height:168rpx;padding:0 24rpx env(safe-area-inset-bottom); }
-.article-companion-dock .article-bird { transform:scale(.75);transform-origin:top left; }
-.keyboard-open .article-companion-dock { height:112rpx;padding-bottom:0; }
-.keyboard-open .article-companion-dock .article-bird { transform:scale(.5); }
-.article-scroll { padding:12rpx 24rpx 24rpx; }
+/* Controls float over the manuscript; the soft fade has no card edge. */
+.article-companion-dock { position:absolute;left:0;right:0;bottom:0;z-index:20;display:flex;align-items:center;height:224rpx;padding:0 24rpx env(safe-area-inset-bottom);background:transparent;pointer-events:none; }
+.article-companion-dock::before { content:"";position:absolute;inset:-56rpx 0 0;pointer-events:none;background:linear-gradient(to top,rgba(240,239,228,.88),rgba(240,239,228,.48) 55%,rgba(240,239,228,0));-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);-webkit-mask-image:linear-gradient(to top,#000 35%,transparent);mask-image:linear-gradient(to top,#000 35%,transparent); }
+.article-companion-dock > .article-bird { position:relative;pointer-events:auto; }
+.article-companion-dock > .article-media-actions { position:relative;pointer-events:none; }
+.article-scroll { padding:12rpx 24rpx 0; }
+.article-dock-clearance { height:calc(248rpx + env(safe-area-inset-bottom));pointer-events:none; }
 .article-bird.article-bird { position:relative;flex:none;width:224rpx;height:224rpx;min-height:224rpx;margin:0;padding:0;background:transparent;border-radius:50%;color:#527c6c; }
-.article-bird image { position:absolute;left:32rpx;top:32rpx;width:160rpx;height:160rpx; }
+.article-bird image { position:absolute;left:8rpx;top:0;width:208rpx;height:208rpx; }
 .article-bird-label { position:absolute;inset:0; }
 .article-bird-letter { position:absolute;left:50%;top:50%;width:26rpx;height:28rpx;font-size:24rpx;font-weight:600;line-height:28rpx;text-align:center; }
 .article-bird-letter-1 { transform:translate(-50%,-50%) translate(-77rpx,60rpx) rotate(52deg); }
@@ -224,3 +224,36 @@ page { height: 100%; overflow: hidden; }
 .keyboard-open.companion-open .xiaoyi-answer { min-height:64rpx; }
 .keyboard-open.companion-open .xiaoyi-composer { margin-top:8rpx; }
 .keyboard-open.companion-open .xiaoyi-actions { margin-top:6rpx; }
+
+.article-media-actions { flex:1;min-width:0; }
+.article-media-buttons { display:flex;align-items:center;justify-content:space-around;gap:8rpx;flex-wrap:nowrap; }
+.article-media-buttons .article-media-button { flex:none;min-width:0;width:132rpx;height:132rpx;min-height:132rpx;margin:0;padding:0;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-size:24rpx;line-height:1.5;background:transparent;box-shadow:none;border:0;border-radius:0;color:#416f60; }
+.article-media-buttons .article-media-button::after { border:0; }
+.article-media-status { display:block;font-size:23rpx;color:#68776c;padding:10rpx; }
+
+/* Floating module preview leaves the manuscript and bird dock dimensions intact. */
+.article-media-mask { position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end;padding:24rpx 24rpx calc(224rpx + env(safe-area-inset-bottom));box-sizing:border-box;background:rgba(36,49,40,.12); }
+.article-media-panel { width:100%;max-height:70vh;box-sizing:border-box;padding:24rpx;background:#faf8f1;border-radius:24rpx;box-shadow:0 8rpx 32rpx rgba(36,49,40,.14); }
+.article-media-heading { font-size:30rpx;color:#315c4c; }
+.article-media-description { display:block;margin-top:8rpx;font-size:24rpx;color:#68776c; }
+.article-media-preview { max-height:180rpx;margin:16rpx 0;font-size:27rpx;line-height:1.6;white-space:pre-wrap; }
+.article-media-generate { width:auto;margin:0 0 0 auto;padding:12rpx 30rpx;font-size:26rpx;line-height:1.5;background:#527c6c;color:#fff;border-radius:28rpx; }
+.article-media-generate::after { border:0; }
+
+/* Reading shows only the bird; editing reveals its existing tools in place. */
+.article-media-buttons { opacity:0;visibility:hidden;pointer-events:none;transform:translateY(8rpx);transition:opacity 200ms ease,transform 200ms ease,visibility 200ms; }
+.article-media-buttons.companion-tools-visible { opacity:1;visibility:visible;transform:translateY(0); }
+.article-media-buttons.companion-tools-visible { pointer-events:auto; }
+@media (prefers-reduced-motion:reduce) { .article-media-buttons { transition:none;transform:none; } }
+
+/* One hint per text-editing session: half an orbit, then each letter fades away. */
+.article-bird-label { pointer-events:none;transform-origin:50% 50%;animation:bird-hint-orbit 900ms ease-in-out both; }
+.article-bird-label .article-bird-letter { animation:bird-hint-letter-out 180ms ease-out forwards; }
+.article-bird-label .article-bird-letter-1 { animation-delay:900ms; }
+.article-bird-label .article-bird-letter-2 { animation-delay:1050ms; }
+.article-bird-label .article-bird-letter-3 { animation-delay:1200ms; }
+.article-bird-label .article-bird-letter-4 { animation-delay:1350ms; }
+.article-bird-label .article-bird-letter-5 { animation-delay:1500ms; }
+@keyframes bird-hint-orbit { 0% { opacity:0;transform:rotate(0deg); } 15% { opacity:1; } 100% { opacity:1;transform:rotate(180deg); } }
+@keyframes bird-hint-letter-out { from { opacity:1; } to { opacity:0; } }
+@media (prefers-reduced-motion:reduce) { .article-bird-label { animation:none; } }

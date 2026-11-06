@@ -34,3 +34,13 @@ test('native wrap measurements size modules, shrink after deletion and expire wh
   assert.notEqual(narrower.height, 358);
   assert.match(narrower.fontStyle, /font-size:12px/);
 });
+
+
+test('short text does not leave its old print-height as a blank gap before the image',()=>{
+ const chapter=articleChapter({id:'gap',title:'',memoryIds:[],content:[{text:'短句'},{photoId:'photo-next'}]});
+ const [text,image]=chapter.layout.pages[0].modules;
+ text.rect.height=800;image.rect.y=text.rect.y+824;
+ const page=articleEditorPages(chapter,.4,{})[0];
+ const [a,b]=page.modules;
+ assert.ok(b.top-a.top-a.height<=24*.4+1,'following image stays beside the actual text height');
+});

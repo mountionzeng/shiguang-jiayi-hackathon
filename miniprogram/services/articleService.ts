@@ -12,6 +12,7 @@ export async function saveArticle(request: ArticleSaveRequest): Promise<{ revisi
   const { chapter } = request;
   const response = await wx.cloud.callFunction({ name: 'storyBooks', data: { ...data, action: 'articleSave', chapter: {
     ...(chapter.backdropImageId !== undefined ? {backdropImageId:chapter.backdropImageId} : {}),
+    ...(chapter.audioModules ? {audioModules:chapter.audioModules} : {}),
     id: chapter.id, title: chapter.title, ...(sourceMemoryIds ? {memoryIds:[...new Set(sourceMemoryIds)]} : {}), content: chapter.content.map(block => ({ blockId: block.blockId,
       ...(block.parentBlockId ? { parentBlockId: block.parentBlockId } : {}),
       ...(typeof block.text === 'string' ? { text: block.text } : { photoId: block.photoId }),

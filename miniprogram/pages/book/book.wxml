@@ -103,7 +103,7 @@
       </block>
     </view>
   </scroll-view>
-  <scroll-view wx:if="{{article && !panel && view === 'chapter' && !openingChapter}}" class="article-scroll" scroll-y scroll-top="{{articleScrollTop}}" bindscroll="onArticleScroll">
+  <scroll-view wx:if="{{article && !panel && view === 'chapter' && !openingChapter}}" class="article-scroll" scroll-y scroll-top="{{articleScrollTop}}" bindscroll="onArticleScroll" bindtouchstart="onArticleTouchStart" bindtouchmove="onArticleTouchMove">
     <input adjust-position="{{false}}" bindfocus="onArticleTitleFocus" bindkeyboardheightchange="onKeyboardHeight" class="article-title serif" value="{{article.title}}" bindinput="onArticleTitle" bindblur="onArticleTitleBlur" bindconfirm="onArticleTitleBlur" maxlength="40" placeholder="给这一章起个名字" />
     <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
     <view wx:if="{{!protectedCopy}}" class="article-memory-actions">
@@ -126,14 +126,15 @@
         <button class="xiaoyi-action xiaoyi-action-primary" bindtap="composeArticleMemories" disabled="{{articleMemoryLoading || xiaoyiLoading || !articleMemoryRows.length}}">用选中的记忆写一段</button>
       </view>
     </view>
-    <article-editor id="article-editor" adjust-position="{{false}}" keyboard-height="{{keyboardHeight}}" backdrop="{{backdropUrl}}" chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindcaret="onArticleCaret" bindselectmodule="onArticleModuleSelected" bindaddimage="addArticleImage">
+    <article-editor id="article-editor" adjust-position="{{false}}" keyboard-height="{{keyboardHeight}}" backdrop="{{backdropUrl}}" chapter="{{article}}" width="{{articleWidth}}" paths="{{articlePaths}}" bindchange="onArticleChange" bindcaret="onArticleCaret" bindplayaudio="playArticleAudio" bindselectmodule="onArticleModuleSelected" bindaddimage="addArticleImage">
 
     </article-editor>
+    <view wx:if="{{!xiaoyiOpen}}" class="article-dock-clearance" aria-hidden="true"></view>
   </scroll-view>
   <view wx:if="{{article && !panel && view === 'chapter' && !openingChapter && !xiaoyiOpen}}" class="article-companion-dock">
       <button class="article-bird" hover-class="none" bindtap="openXiaoyi" aria-label="小忆帮我写，和小忆聊这篇文章">
         <image src="/assets/illustrations/xiaoyi-avatar.png" mode="aspectFit" aria-hidden="true" />
-        <view class="article-bird-label" aria-hidden="true">
+        <view wx:if="{{birdHintActive}}" class="article-bird-label" aria-hidden="true">
           <text class="article-bird-letter article-bird-letter-1">小</text>
           <text class="article-bird-letter article-bird-letter-2">忆</text>
           <text class="article-bird-letter article-bird-letter-3">帮</text>
@@ -141,6 +142,22 @@
           <text class="article-bird-letter article-bird-letter-5">写</text>
         </view>
       </button>
+      <view class="article-media-actions">
+        <view class="article-media-buttons {{companionToolsOpen && !keyboardHeight ? 'companion-tools-visible' : ''}}" aria-hidden="{{!companionToolsOpen || !!keyboardHeight}}">
+          <button class="article-media-button typewriter" bindtap="openArticleMediaPanel" data-kind="image" disabled="{{mediaBusy}}">转图片</button>
+          <button class="article-media-button typewriter" bindtap="openArticleMediaPanel" data-kind="music" disabled="{{mediaBusy}}">转音乐</button>
+          <button class="article-media-button typewriter" bindtap="openArticleMediaPanel" data-kind="narration" disabled="{{mediaBusy}}">转有声书</button>
+        </view>
+        <text wx:if="{{mediaStatus}}" class="article-media-status">{{mediaStatus}}</text>
+      </view>
+  </view>
+  <view wx:if="{{mediaPanelKind && article && view === 'chapter' && !panel && !xiaoyiOpen}}" class="article-media-mask" bindtap="closeArticleMediaPanel">
+    <view class="article-media-panel" catchtap="keepArticleMediaPanelOpen">
+      <view class="article-media-heading">{{mediaPanelKind === 'image' ? '转图片' : mediaPanelKind === 'music' ? '转音乐' : '转有声书'}}</view>
+      <text class="article-media-description">{{mediaPanelKind === 'image' ? '根据这段文字生成配图' : mediaPanelKind === 'music' ? '根据这段文字的情绪和场景生成纯音乐' : '按照原文朗读这段文字'}}</text>
+      <scroll-view scroll-y class="article-media-preview"><text selectable>{{mediaPanelText}}</text></scroll-view>
+      <button class="article-media-generate" bindtap="generateArticleMedia" data-kind="{{mediaPanelKind}}" disabled="{{mediaBusy}}">生成</button>
+    </view>
   </view>
   <view wx:if="{{articleShareUrl}}" class="article-share-mask" bindtap="closeArticleShare">
     <view class="article-share-sheet" catchtap="keepArticleShareOpen">

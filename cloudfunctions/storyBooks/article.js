@@ -1,3 +1,4 @@
+const {validateAudioModules,approveAudioModules}=require('./articleAudio');
 const {revisionAttribution,summarizeChanges}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
@@ -13,9 +14,10 @@ function normalize(input){
   if(!input||!/^request-[a-z0-9-]{8,100}$/.test(input.requestId||'')||!core.STORY_ID.test(input.storyId||'')||
     !/^revision-[a-zA-Z0-9-]{1,120}$/.test(input.revisionId||'')||!Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<1)fail('保存信息不完整');
   const c=input.chapter;
-  if(!exact(c,['id','title','content','layout','packageAssets','backdropImageId','memoryIds'])||!/^chapter-[a-z0-9-]{1,60}$/.test(c.id||'')||typeof c.title!=='string'||c.title.length>40||!Array.isArray(c.content)||c.content.length>512)fail('文章格式不正确');
+  if(!exact(c,['id','title','content','layout','packageAssets','backdropImageId','memoryIds','audioModules'])||!/^chapter-[a-z0-9-]{1,60}$/.test(c.id||'')||typeof c.title!=='string'||c.title.length>40||!Array.isArray(c.content)||c.content.length>512)fail('文章格式不正确');
   if(c.memoryIds!==undefined&&(!Array.isArray(c.memoryIds)||c.memoryIds.length>500||c.memoryIds.some(id=>typeof id!=='string'||!/^[0-9A-Za-z_-]{1,120}$/.test(id))))fail('记忆来源格式不正确');
   if(c.backdropImageId!==undefined && (typeof c.backdropImageId!=='string' || (c.backdropImageId && !/^family_[0-9A-Za-z_-]+_img_req-[a-z0-9-]{8,60}$/.test(c.backdropImageId))))fail('底图引用不正确');
+  validateAudioModules(c);
   const ids=new Set();
   for(const b of c.content){
     if(!exact(b,['blockId','parentBlockId','text','photoId'])||!blockPattern.test(b.blockId||'')||ids.has(b.blockId)||
@@ -43,6 +45,10 @@ function moduleChanges(before,after){
   for(const block of after.content){const old=previous.get(block.blockId);previous.delete(block.blockId);
     if(!old||old.text!==block.text||old.photoId!==block.photoId)changes.push({kind:block.photoId?'image':'text',action:old?'changed':'added',blockId:block.blockId,before:old?.text||old?.photoId||'',after:block.text||block.photoId||''});}
   for(const [blockId,old] of previous)changes.push({kind:old.photoId?'image':'text',action:'removed',blockId,before:old.text||old.photoId||'',after:''});
+  const oldAudio=new Map((before.audioModules || []).map(m=>[m.id,m]));
+  for(const audio of after.audioModules || []){const old=oldAudio.get(audio.id);oldAudio.delete(audio.id);
+    if(!old || core.stable(old)!==core.stable(audio))changes.push({kind:'audio',action:old?'changed':'added',blockId:audio.id,before:old?(old.kind==='music'?'纯音乐':'有声书'):'',after:audio.kind==='music'?'纯音乐':'有声书'});}
+  for(const old of oldAudio.values())changes.push({kind:'audio',action:'removed',blockId:old.id,before:old.kind==='music'?'纯音乐':'有声书',after:''});
   if((before.backdropImageId||'')!==(after.backdropImageId||''))changes.push({kind:'image',action:'changed',before:before.backdropImageId||'',after:after.backdropImageId||''});
   if(before.title!==after.title)changes.push({kind:'title',action:'changed',before:before.title,after:after.title});
   if(core.stable(before.layout||null)!==core.stable(after.layout||null))changes.push({kind:'layout',action:'changed',before:'',after:''});
@@ -102,12 +108,13 @@ async function saveArticle(repo,ctx,raw,{approveImage,approveBackdrop,now=()=>ne
       if(item.photoId&&old?.photoId!==item.photoId&&!await approveImage(ctx,item.photoId))fail('图片未通过检查','CONTENT_REJECTED');
       content.push({...(old||{}),blockId:item.blockId,...(draft.provenanceVersion===1?{sourceIds}:{}),...(typeof item.text==='string'?{text:item.text}:{photoId:item.photoId})});
     }
+    await approveAudioModules(tx,ctx,story.id,before,input.chapter);
     const assets=input.chapter.packageAssets||{};
     for(const [id,asset] of Object.entries(assets))if(before.packageAssets?.[id]?.photoId!==asset.photoId&&!await approveImage(ctx,asset.photoId))fail('图片未通过检查','CONTENT_REJECTED');
     for(const id of [input.chapter.layout.settings.bodyTextureAssetId,...input.chapter.layout.pages.flatMap(p=>p.modules.filter(m=>m.kind==='image').map(m=>m.assetId))].filter(Boolean))if(!assets[id])fail('排版引用了不存在的图片');
     if(input.chapter.backdropImageId && input.chapter.backdropImageId!==before.backdropImageId &&
       (typeof approveBackdrop!=='function' || !await approveBackdrop(ctx,input.chapter.backdropImageId)))fail('底图未通过检查','CONTENT_REJECTED');
-    const after={...before,memoryIds,...(input.chapter.backdropImageId!==undefined?{backdropImageId:input.chapter.backdropImageId}:{}),title:input.chapter.title,content,layout:input.chapter.layout,packageAssets:assets};
+    const after={...before,...(input.chapter.audioModules!==undefined?{audioModules:input.chapter.audioModules}:{}),memoryIds,...(input.chapter.backdropImageId!==undefined?{backdropImageId:input.chapter.backdropImageId}:{}),title:input.chapter.title,content,layout:input.chapter.layout,packageAssets:assets};
     if(!after.backdropImageId)delete after.backdropImageId;
     const changes=moduleChanges({...before,content:before.content.map((b,i)=>({...b,blockId:b.blockId||'block-'+hash(['article-existing',before.id,i])}))},after);
     draft.chapters=draft.chapters.map(c=>c.id===after.id?after:c);Object.assign(draft,core.flatten(draft.chapters));core.validateDraft(draft,story);

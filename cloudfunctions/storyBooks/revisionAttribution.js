@@ -1,10 +1,10 @@
 const {ownNamesByAccount}=require('./displayNames');
 const {stable}=require('./core');
 function summarizeChanges(changes=[]){
-  const labels={text:'文字',image:'图片',title:'标题',layout:'排版'},actions={added:'新增',changed:'修改',removed:'删除'};
+  const labels={text:'文字',image:'图片',title:'标题',layout:'排版',audio:'声音'},actions={added:'新增',changed:'修改',removed:'删除'};
   const counts=new Map();
   for(const change of changes){if(!labels[change.kind]||!actions[change.action])continue;const key=change.action+':'+change.kind;counts.set(key,(counts.get(key)||0)+1);}
-  return [...counts].map(([key,count])=>{const [action,kind]=key.split(':');return `${actions[action]} ${count} ${kind==='text'?'段':kind==='image'?'张':'处'}${labels[kind]}`;}).join('，')||'保存文章';
+  return [...counts].map(([key,count])=>{const [action,kind]=key.split(':');return `${actions[action]} ${count} ${kind==='text'||kind==='audio'?'段':kind==='image'?'张':'处'}${labels[kind]}`;}).join('，')||'保存文章';
 }
 function draftSummary(before,after){
   if(!before)return '新建文章';
@@ -12,6 +12,7 @@ function draftSummary(before,after){
   for(const chapter of after?.chapters||[]){const old=prior.get(chapter.id);prior.delete(chapter.id);
     if(!old){changes.push('新增章节');continue;}
     if(stable(old.content||[])!==stable(chapter.content||[]))changes.push('修改文字或图片');
+    if(stable(old.audioModules||[])!==stable(chapter.audioModules||[]))changes.push('修改声音模块');
     if(old.title!==chapter.title)changes.push('修改章节标题');
     if(stable(old.layout||null)!==stable(chapter.layout||null))changes.push('调整排版');
     if(old.backdropImageId!==chapter.backdropImageId)changes.push('更换底图');

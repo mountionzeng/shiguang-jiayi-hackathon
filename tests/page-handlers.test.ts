@@ -4665,3 +4665,39 @@ test('deleting a received copy keeps sources and hands confirmed state to the sh
   assert.ok(takeStagedRoomStateForStories()?.stories?.find(s=>s.id===story.id)?.deletedAt);
   assert.deepEqual(storage.relaunches,['/pages/stories/stories']);
 });
+
+
+test("article caret clears the floating bird without scrolling text that is already visible", async () => {
+  const page = instantiate(await pageDefinition("book"));
+  page.unloaded = false;
+  page.setData({keyboardHeight:300, view:"chapter", panel:"", article:{id:"chapter-caret"}, articleScrollTop:100});
+  let dock: {top:number} | null = {top:340};
+  const query = {
+    select() { return this; }, fields() { return this; }, boundingClientRect() { return this; },
+    exec(callback: (values: unknown[]) => void) { callback([{top:60,bottom:460,scrollTop:100},dock]); },
+  };
+  page.createSelectorQuery = () => query;
+  callPage(page,"onArticleCaret",{detail:{chapterId:"chapter-caret",top:345,bottom:375}});
+  assert.equal(page.data.articleScrollTop,151,"move the edited line above the overlay, with a readable gap");
+  page.setData({articleScrollTop:100});
+  callPage(page,"onArticleCaret",{detail:{chapterId:"chapter-caret",top:220,bottom:250}});
+  assert.equal(page.data.articleScrollTop,100,"keep the reading position when the caret is visible");
+  dock = null;
+  callPage(page,"onArticleCaret",{detail:{chapterId:"chapter-caret",top:345,bottom:375}});
+  assert.equal(page.data.articleScrollTop,100,"no hidden overlay clearance in the writing conversation");
+});
+
+test('switching text modules cancels the previous module pending scroll position', async () => {
+  const page = instantiate(await pageDefinition('book'));
+  page.unloaded = false;
+  page.articlePending = null;
+  page.xiaoyiContextKey = () => 'focus-test';
+  page.setData({keyboardHeight:300, view:'chapter', panel:'', articleScrollTop:100,
+    mediaSelectedBlock:'lower', article:{id:'focus-test',layout:{pages:[{modules:[{id:'upper-module',kind:'text',bind:{blockId:'upper'}}]}]}}});
+  let complete: (values:unknown[])=>void = () => {};
+  page.createSelectorQuery = () => ({select(){return this;},fields(){return this;},boundingClientRect(){return this;},exec(callback:any){complete=callback;}});
+  callPage(page,'onArticleCaret',{detail:{chapterId:'focus-test',top:800,bottom:830}});
+  await callPage(page,'onArticleModuleSelected',{detail:{id:'upper-module'}});
+  complete([{top:60,bottom:460,scrollTop:100},{top:340}]);
+  assert.equal(page.data.articleScrollTop,100,'a delayed lower-module measurement must not pull the upper module off screen');
+});

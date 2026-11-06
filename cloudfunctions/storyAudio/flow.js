@@ -29,7 +29,7 @@ function createStoryAudioHandlers({repo,capabilityConfig={},processOperation,now
     if(!story||story.deletedAt)throw new core.StoryAudioError('STORY_NOT_FOUND','这本故事书已不可用');
     if(story.currentRevisionId!==input.revisionId)throw new core.StoryAudioError('REVISION_CHANGED','书稿版本已经变化，请重新制作');
     const revision=await repo.getRevision(ctx.familyId,input.revisionId);
-    const snapshot=core.chapterSnapshot({familyId:ctx.familyId,story,revision,chapterId:input.chapterId});
+    const snapshot=core.sourceSnapshot({familyId:ctx.familyId,story,revision,chapterId:input.chapterId,blockId:input.blockId});
     const stamp=now();
     const operation={id:operationId,kind:'narration',generation:1,familyId:ctx.familyId,requesterOpenid:ctx.openid,...input,voice:resolvedVoice,fingerprint,snapshot,status:'queued',pricingVersion:available.pricingVersion,createdAt:stamp,updatedAt:stamp};
     const created=await repo.createOperation(operationId,operation);
@@ -46,7 +46,7 @@ function createStoryAudioHandlers({repo,capabilityConfig={},processOperation,now
     const id=ctx.familyId+'_'+String(event?.requestId||'');
     let operation=await repo.getOperation(id);
     if(!operation||operation.requesterOpenid!==ctx.openid)throw new core.StoryAudioError('OPERATION_NOT_FOUND','找不到这次声音制作');
-    if(typeof processOperation==='function'&&['queued','processing'].includes(operation.status)){
+    if(typeof processOperation==='function'&&['queued','processing','storing','submitted'].includes(operation.status)){
       try{operation=await processOperation(operation)||await repo.getOperation(id)||operation;}
       catch(error){log.error('story audio processing deferred',{code:error?.code||'STORY_AUDIO_PROCESSING_ERROR'});operation=await repo.getOperation(id)||operation;}
     }

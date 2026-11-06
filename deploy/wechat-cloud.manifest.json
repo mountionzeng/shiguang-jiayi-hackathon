@@ -101,8 +101,10 @@
       "deploymentClass": "configured",
       "defaultDeploy": false,
       "activationRequirements": ["Configure provider credentials and capability flags", "Confirm product entitlement, IAM access, quota, and billing mode", "Run one controlled request with a stable request ID", "Install the configured timer trigger"],
-      "timeoutSeconds": 20,
+      "timeoutSeconds": 180,
       "environmentVariables": [
+        "STORY_MUSIC_ENABLED",
+        "STORY_MUSIC_302_KEY",
         "STORY_AUDIO_PRICING_VERSION",
         "STORY_AUDIO_TTS_ENABLED",
         "STORY_AUDIO_VOICE_CLONE_ENABLED",

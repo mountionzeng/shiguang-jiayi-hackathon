@@ -203,3 +203,12 @@ test('private photo saves still reject foreign, missing, deleted and source-boun
  }
  assert.equal(await approveArticleImage({get:async()=>null},ctx,id,'story-test','chapter-test'),false);
 });
+
+test('article save accepts an empty audio list from draft merge and keeps text and receipt stable',async()=>{
+ const f=await setup();f.input.chapter.audioModules=[];
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,options),result);
+ const saved=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft.chapters[0];
+ assert.deepEqual(saved.content,f.chapter.content);
+ assert.deepEqual(saved.audioModules,[]);
+});

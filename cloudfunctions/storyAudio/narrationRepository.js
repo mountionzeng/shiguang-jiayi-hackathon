@@ -1,4 +1,4 @@
-const {StoryAudioError,assertUnrestrictedStory,chapterSnapshot,stable}=require('./core');
+const {StoryAudioError,assertUnrestrictedStory,sourceSnapshot,stable}=require('./core');
 const RUNNABLE_NARRATION_STATUSES=['queued','processing'];
 const withoutId=value=>{const {_id,...data}=value;return data;};
 const isMissing=error=>/not found|does not exist/i.test(String(error?.message||error?.errMsg||error));
@@ -28,11 +28,12 @@ function createNarrationWorkerRepository({db,command}) {
         const record=await read('biography_drafts',familyId+'_'+revisionId);
         if(!story||story.familyId!==familyId||story.id!==storyId||story.deletedAt||
           record?.familyId!==familyId||record.revision?.id!==revisionId||record.revision?.storyId!==storyId)denied();
-        assertUnrestrictedStory(story,record.revision.draft);
+        if(!operation.blockId)assertUnrestrictedStory(story,record.revision.draft);
         const current=story.currentRevisionId===revisionId?record:await read('biography_drafts',familyId+'_'+story.currentRevisionId);
         if(current?.familyId!==familyId||current.revision?.id!==story.currentRevisionId||current.revision?.storyId!==storyId)denied();
-        assertUnrestrictedStory(story,current.revision.draft);
-        const snapshot=chapterSnapshot({familyId,story,revision:record.revision,chapterId});
+        if(operation.blockId)sourceSnapshot({...operation,story,revision:current.revision});
+        else assertUnrestrictedStory(story,current.revision.draft);
+        const snapshot=sourceSnapshot({familyId,story,revision:record.revision,chapterId,blockId:operation.blockId});
         if(stable(snapshot)!==stable(operation.snapshot))denied();
       });
     },

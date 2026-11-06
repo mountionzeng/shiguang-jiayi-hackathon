@@ -95,6 +95,17 @@ function validateChapterLayout(chapter) {
     }
   }
 }
+function validateAudioModules(chapter) {
+  if(chapter.audioModules===undefined)return;
+  if(!Array.isArray(chapter.audioModules)||chapter.audioModules.length>20)fail('声音模块无效');
+  const ids=new Set();
+  for(const m of chapter.audioModules){
+    if(!m||Object.keys(m).some(k=>!['id','afterBlockId','operationId','kind'].includes(k))||
+      !/^audio-[a-z0-9-]{1,94}$/.test(m.id)||ids.has(m.id)||!/^block-[a-f0-9]{64}$/.test(m.afterBlockId)||
+      !/^family_[A-Za-z0-9_-]+_audio-[a-z0-9-]{1,94}$/.test(m.operationId)||m.operationId.length>270||!['music','narration'].includes(m.kind))fail('声音模块无效');
+    ids.add(m.id);
+  }
+}
 function validateDraft(draft, story) {
   if (!draft || typeof draft !== 'object') fail('书稿无效');
   title(draft.title);
@@ -110,6 +121,7 @@ function validateDraft(draft, story) {
       else if (typeof item.photoId === 'string' && /^photo-[a-z0-9-]{1,120}$/.test(item.photoId) && item.text === undefined) pictures++;
       else fail('图片或正文引用无效');
     }
+    validateAudioModules(c);
     validateChapterLayout(c);
     if (c.backdropImageId && !/^family_[0-9A-Za-z_-]{1,120}_img_req-[0-9a-z-]{8,60}$/.test(c.backdropImageId)) fail('底图编号无效');
   }
@@ -147,6 +159,7 @@ function apply(state, command, now = new Date().toISOString()) {
       const revision = copy(command.revision);
       if (revision.storyId !== story.id || !/^revision-[a-zA-Z0-9-]{1,120}$/.test(revision.id) ||
         (next.manuscriptRevisions || []).some(r => r.id === revision.id)) fail('书稿编号无效');
+      if((revision.draft.chapters || []).some(c=>c.audioModules?.length))fail('新声音请通过文章生成入口保存');
       validateDraft(revision.draft,story);
       Object.assign(revision.draft,flatten(revision.draft.chapters));
       revision.savedAt=now;revision.sourceFingerprint=fingerprint(next,story.id);
@@ -200,6 +213,14 @@ function apply(state, command, now = new Date().toISOString()) {
         revision.draft = {title:story.bookTitle || story.title,chapters,...flatten(chapters),sourceCount:story.memoryIds.length,generatedAt:now,generationMode:'local-demo'};
         revision.sourceRevisionId = pending.sourceRevisionId;
         pending.resolvedStoryId = story.id;
+      }
+      const oldDraft=current(next,story.id)?.draft;
+      const knownAudio=new Set(history(next,story.id).flatMap(r=>(r.draft?.chapters || []).flatMap(c=>(c.audioModules || []).map(m=>m.operationId+':'+m.kind))));
+      for(const chapter of revision.draft.chapters || []){
+        const previousChapter=oldDraft?.chapters?.find(c=>c.id===chapter.id);
+        // Older title editors do not know the audio field. Omission cannot erase it.
+        if(chapter.audioModules===undefined && previousChapter?.audioModules)chapter.audioModules=copy(previousChapter.audioModules);
+        if((chapter.audioModules || []).some(m=>!knownAudio.has(m.operationId+':'+m.kind)))fail('新声音请通过文章生成入口保存');
       }
       validateDraft(revision.draft,story);
       Object.assign(revision.draft, flatten(revision.draft.chapters));
@@ -290,4 +311,4 @@ function migrate(state, familyId = '', now = new Date().toISOString()) {
   next.storyMigration = {version:1,status:'active',pending};
   return next;
 }
-module.exports = {STORY_ID,stable,hash,activeStory,history,current,flatten,matchesChapterText,validateChapterLayout,validateDraft,fingerprint,isEmptyStoryCreate,apply,migrate};
+module.exports = {STORY_ID,stable,hash,activeStory,history,current,flatten,matchesChapterText,validateChapterLayout,validateAudioModules,validateDraft,fingerprint,isEmptyStoryCreate,apply,migrate};

@@ -1,10 +1,11 @@
+import {createArticleMediaTask,pendingArticleMedia,storeArticleMedia,finishArticleMedia,runArticleMedia,mediaDefinitelyNotSubmitted,type ArticleMediaKind,type ArticleMediaTask} from '../../services/articleMediaGeneration';
 import { loadBookMedia } from '../../services/bookMedia';
 import { WritingSession } from '../../services/writingSession';
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { bookCoverSource } from "../../services/bookCoverSource";
 import { articleChatMaterial } from '../../services/articleChatMaterial';
 import { organizeInlineAnswer } from '../../services/memoryOrganizerService';
-import { articleChapter, addArticlePhoto, appendArticleText, type ArticleChapter } from '../../services/articleModules';
+import { articleChapter, addArticlePhoto, appendArticleText, insertArticlePhotoAfter, insertArticleAudioAfter, type ArticleChapter } from '../../services/articleModules';
 import { saveArticle, isArticleRejected, type ArticleSaveRequest } from '../../services/articleService';
 import { mergeArticleChanges, mergeBookChanges, sameArticleContent, sameDraftValue, DraftMergeConflict } from '../../services/draftMerge';
 import { loadDraftRecovery, syncStoredArticle, syncRetainedDraft } from '../../services/draftRecovery';
@@ -94,6 +95,8 @@ Page({
     retainedDrafts: [] as ChapterDraft[],
     articleSessionId: "",
     articleChatPhotos: [] as Array<{id:string;path:string}>,
+    mediaSelectedBlock: '', companionToolsOpen: false, birdHintActive: false, mediaBusy: false, mediaStatus: '',
+    mediaPanelKind: '' as ArticleMediaKind | '', mediaPanelText: '',
     article: null as ArticleChapter | null, articleScrollTop: 0, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
     openingChapter: null as { title: string; text: string } | null,
     photoMenu: "", photoAction: "", preparingPhoto: false, bookIntroduction: "", editIntroduction: "",
@@ -517,6 +520,19 @@ Page({
     const viewportHeight = Math.max(180, this.fullWindowHeight - this.data.keyboardHeight);
     if (viewportHeight !== this.data.viewportHeight) this.setData({ viewportHeight });
   },
+  articleTouch: null as {x:number;y:number;dismissed:boolean} | null,
+  onArticleTouchStart(event: WechatMiniprogram.TouchEvent) {
+    this.closeArticleMediaPanel();
+    const touch=event.touches[0];
+    this.articleTouch=touch ? {x:touch.clientX,y:touch.clientY,dismissed:false} : null;
+  },
+  onArticleTouchMove(event: WechatMiniprogram.TouchEvent) {
+    const touch=event.touches[0], start=this.articleTouch;
+    if (!touch || !start || start.dismissed || Math.hypot(touch.clientX-start.x,touch.clientY-start.y)<8) return;
+    start.dismissed=true; this.articleCaretEpoch++;
+    this.selectComponent('#article-editor')?.clear();
+    if (this.data.keyboardHeight) wx.hideKeyboard();
+  },
   onArticleScroll(event: WechatMiniprogram.ScrollViewScroll) {
     this.articleCaretEpoch++;
     this.data.articleScrollTop = event.detail.scrollTop;
@@ -526,17 +542,22 @@ Page({
     const caret = event.detail;
     if (this.unloaded || !this.data.keyboardHeight || this.data.panel || this.data.view !== 'chapter' || caret.chapterId !== this.data.article?.id) return;
     const epoch = ++this.articleCaretEpoch;
-    this.createSelectorQuery().select('.article-scroll').fields({ rect: true, scrollOffset: true }).exec(results => {
+    this.createSelectorQuery().select('.article-scroll').fields({ rect: true, scrollOffset: true })
+      .select('.article-companion-dock').boundingClientRect().exec(results => {
       if (this.unloaded || epoch !== this.articleCaretEpoch || !this.data.keyboardHeight || this.data.panel || this.data.view !== 'chapter' || caret.chapterId !== this.data.article?.id) return;
       const viewport = results[0] as { top: number; bottom: number; scrollTop: number } | null;
       if (!viewport || ![viewport.top, viewport.bottom, viewport.scrollTop, caret.top, caret.bottom].every(Number.isFinite)) return;
+      const dock = results[1] as {top:number} | null;
+      const visibleBottom = dock && Number.isFinite(dock.top) ? Math.min(viewport.bottom, dock.top) : viewport.bottom;
       const gap = 16;
-      const delta = caret.bottom > viewport.bottom - gap ? caret.bottom - (viewport.bottom - gap)
+      const delta = caret.bottom > visibleBottom - gap ? caret.bottom - (visibleBottom - gap)
         : caret.top < viewport.top + gap ? caret.top - (viewport.top + gap) : 0;
       if (Math.abs(delta) > 1) this.setData({ articleScrollTop: Math.max(0, viewport.scrollTop + delta) });
     });
   },
   onHide() {
+    this.closeArticleMediaPanel();
+    this.mediaHidden=true; this.mediaPlayer?.stop();
     this.articleCaretEpoch++;
     this.saveArticleChat();
     if (this.articlePending) void this.flushArticle();
@@ -553,6 +574,7 @@ Page({
     }
   },
   onUnload() {
+    this.mediaHidden=true; this.mediaPlayer?.destroy();
     this.articleCaretEpoch++;
     this.saveArticleChat();
     if (this.articleTimer) clearTimeout(this.articleTimer);
@@ -567,6 +589,7 @@ Page({
     this.editorContext = undefined;
   },
   onShow() {
+    this.mediaHidden=false; void this.resumeArticleMedia();
     // A staged snapshot belongs to this navigation attempt only. Consume it
     // even if another return path (for example image selection) does not
     // refresh the manuscript right now.
@@ -919,6 +942,7 @@ Page({
     if (article && this.articlePending) article = this.articlePending;
     return {
       ...(article?.id !== this.data.article?.id ? { articleScrollTop: 0 } : {}),
+      ...(article?.id !== this.data.article?.id ? {mediaSelectedBlock:'',companionToolsOpen:false,birdHintActive:false,mediaStatus:'',mediaPanelKind:'' as const,mediaPanelText:''} : {}),
       article, articleWidth: Math.max(180, (this.windowWidth || 375) - 32), articlePaths: {...this.photoPaths},
       articleDirty: Boolean(this.articlePending), articleStatus:this.articleConflict?'已恢复本机修改，正在核对最新版本…':this.articlePending?'已恢复本机修改，正在自动保存…':'',
       currentLayoutPages: this.story?.sourcePolicyRequired && active?.layout
@@ -1218,6 +1242,7 @@ Page({
     this.loadActiveChapter();
     this.setData({ openingChapter: null, view: "chapter", panel: "", moreOpen: false, editChapterTitle: this.chapterTitleBuffer, ...this.chapterData(), chapterChanges: [], changesOpen: false });
     this.seedEditor();
+    void this.resumeArticleMedia();
     void this.loadChapterChanges();
   },
   startChapterSwipe(event: WechatMiniprogram.TouchEvent) {
@@ -1595,6 +1620,91 @@ Page({
       if (!this.unloaded && key === this.articleChatKey()) this.setData({articleMemoryNotice:error instanceof Error ? error.message : '暂时没能加入，请重试。'});
     } finally {if (!this.unloaded && key === this.articleChatKey()) this.setData({articleMemoryLoading:false});}
   },
+  mediaHidden: false,
+  mediaRunning: false,
+  mediaPlayer: undefined as WechatMiniprogram.InnerAudioContext | undefined,
+  mediaPlayingId: '',
+  mediaTaskKey() { return this.articleKey()+':media'; },
+  openArticleMediaPanel(event:WechatMiniprogram.TouchEvent) {
+    const kind=event.currentTarget.dataset.kind as ArticleMediaKind;
+    if(!['image','music','narration'].includes(kind)||this.data.mediaBusy)return;
+    const chapter=this.articlePending || this.data.article;
+    const text=chapter?.content.find(block=>block.blockId===this.data.mediaSelectedBlock)?.text;
+    if(!text?.trim()) { wx.showToast({title:'请先选中一段文字',icon:'none'}); return; }
+    this.selectComponent('#article-editor')?.dismissKeyboard();
+    if(this.data.keyboardHeight)wx.hideKeyboard();
+    this.setData({mediaPanelKind:kind,mediaPanelText:text});
+  },
+  closeArticleMediaPanel() {
+    if(this.data.mediaPanelKind)this.setData({mediaPanelKind:'',mediaPanelText:''});
+  },
+  keepArticleMediaPanelOpen() {},
+  async generateArticleMedia(event:WechatMiniprogram.TouchEvent) {
+    const kind=event.currentTarget.dataset.kind as ArticleMediaKind;
+    if(!['image','music','narration'].includes(kind)||this.data.mediaBusy||this.mediaRunning)return;
+    const chapter=this.articlePending || this.data.article,blockId=this.data.mediaSelectedBlock;
+    const text=chapter?.content.find(b=>b.blockId===blockId)?.text;
+    if(!chapter||!text?.trim()||!this.story)return;
+    this.closeArticleMediaPanel();
+    this.setData({mediaBusy:true,mediaStatus:'正在保存文字…'});
+    try {
+      const storyId=this.story.id,chapterId=chapter.id;
+      if(!await this.flushArticle())throw new Error('文字尚未保存，暂未开始生成');
+      if(this.unloaded||this.data.article?.id!==chapterId||this.story.id!==storyId)return;
+      const key=this.mediaTaskKey();
+      const pending=pendingArticleMedia(key).find(t=>t.blockId===blockId&&t.kind===kind);
+      const savedText=(this.articlePending || this.data.article)?.content.find(b=>b.blockId===blockId)?.text;
+      if(!savedText?.trim())throw new Error('原文字模块已删除或没有文字');
+      const task=pending || createArticleMediaTask({kind,storyId,chapterId,blockId,text:savedText,revisionId:this.revisionId});
+      storeArticleMedia(key,task);
+      await this.processArticleMedia(task,key);
+    } catch(error) {if(!this.unloaded)this.setData({mediaStatus:error instanceof Error?error.message:'暂时没有生成，请重试'});}
+    finally {if(!this.unloaded)this.setData({mediaBusy:false});}
+  },
+  async processArticleMedia(task:ArticleMediaTask,key:string) {
+    if(this.mediaRunning)return;
+    this.mediaRunning=true;
+    const active=()=>!this.unloaded&&!this.mediaHidden&&this.data.view==='chapter'&&this.data.article?.id===task.chapterId&&this.data.storyId===task.storyId;
+    this.setData({mediaBusy:true,mediaStatus:task.kind==='image'?'正在生成图片…':task.kind==='music'?'正在生成纯音乐…':'正在朗读这段文字…'});
+    try {
+      const result=await runArticleMedia(task,()=>storeArticleMedia(key,task),active);
+      if(!result||!active())return;
+      const latest=this.articlePending || this.data.article!;
+      const chapter=result.kind==='image'?insertArticlePhotoAfter(latest,task.blockId,result.photoId):insertArticleAudioAfter(latest,task.blockId,result.operationId,result.kind);
+      if(result.kind==='image')this.photoPaths[result.photoId]=result.url;
+      this.setData({article:chapter,articlePaths:{...this.photoPaths}});
+      this.onArticleChange({detail:{chapter}});
+      if(await this.flushArticle()) {finishArticleMedia(key,task.requestId);this.setData({mediaStatus:''});}
+      else this.setData({mediaStatus:'生成结果已保留，正在等待保存'});
+    } catch(error) {
+      if(mediaDefinitelyNotSubmitted(error))finishArticleMedia(key,task.requestId);
+      throw error;
+    } finally {this.mediaRunning=false;if(!this.unloaded)this.setData({mediaBusy:false});}
+  },
+  async resumeArticleMedia() {
+    if(this.mediaRunning||this.data.mediaBusy||!this.data.article||this.data.view!=='chapter'||this.mediaHidden)return;
+    const key=this.mediaTaskKey();
+    for(const task of pendingArticleMedia(key)) {
+      if(this.mediaHidden||this.unloaded||key!==this.mediaTaskKey())break;
+      try {await this.processArticleMedia(task,key);}
+      catch(error){if(!this.unloaded)this.setData({mediaStatus:error instanceof Error?error.message:'暂时无法读取生成结果'});break;}
+    }
+  },
+  async playArticleAudio(event:{detail:{id:string}}) {
+    const id=event.detail.id,chapterId=this.data.article?.id,storyId=this.data.storyId;
+    if(!chapterId||!storyId)return;
+    if(this.mediaPlayingId===id&&this.mediaPlayer&&!this.mediaPlayer.paused){this.mediaPlayer.pause();return;}
+    try {
+      if(!await this.flushArticle())throw new Error('声音模块尚未保存，请稍后重试');
+      const response=await wx.cloud.callFunction({name:'storyBooks',data:{action:'audioPlayback',storyId,chapterId,moduleId:id}});
+      const result=response.result as {url?:string;error?:unknown;message?:string};
+      if(!result?.url||result.error)throw new Error(result?.message || '暂时无法播放');
+      if(this.unloaded||this.mediaHidden||this.data.article?.id!==chapterId)return;
+      this.mediaPlayer?.destroy();this.mediaPlayer=wx.createInnerAudioContext();this.mediaPlayingId=id;
+      this.mediaPlayer.onError(()=>{if(!this.unloaded)this.setData({mediaStatus:'播放没有成功，请再点一次'});});
+      this.mediaPlayer.src=result.url;this.mediaPlayer.play();
+    } catch(error){if(!this.unloaded)this.setData({mediaStatus:error instanceof Error?error.message:'暂时无法播放'});}
+  },
   articleChatLoadedKey: '',
   articleChatSelection: '',
   articleChatModuleId: '',
@@ -1602,6 +1712,12 @@ Page({
     const chapter = this.articlePending || this.data.article;
     if (!chapter || this.unloaded) return;
     const module = chapter.layout.pages.flatMap(page => page.modules).find(item => item.id === event.detail.id);
+    this.closeArticleMediaPanel();
+    const textBlock = module?.kind === 'text' && 'blockId' in module.bind ? module.bind.blockId : '';
+    if (textBlock !== this.data.mediaSelectedBlock) this.articleCaretEpoch++;
+    // Keep the one-shot animation mounted while typing, including Return splits.
+    this.setData({companionToolsOpen:!!module, mediaSelectedBlock:textBlock,
+      birdHintActive:!!textBlock});
     if (!module) return;
     const key = this.xiaoyiContextKey() + ':' + module.id;
     this.articleChatSelection = key;

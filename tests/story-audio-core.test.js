@@ -112,3 +112,14 @@ test('official TTS opens automatically only inside a credentialed Tencent runtim
   assert.equal(JSON.stringify(config).includes('temporary-'),false);
   assert.equal(runtimeCapabilityConfig({TENCENTCLOUD_SECRETID:'temporary-id',TENCENTCLOUD_SECRETKEY:'temporary-key',STORY_AUDIO_TTS_ENABLED:'false'}).submissionEnabled,false);
 });
+
+
+test('selected block narration reads only that exact saved text and rejects restricted sources',()=>{
+ const blockId='block-'+'a'.repeat(64);
+ const revision={id:'revision-test',storyId:'story-test',draft:{title:'Book',provenanceVersion:1,chapters:[{id:'chapter-test',title:'Title',content:[{blockId,text:'Exact original.\nSecond line.',sourceIds:[]},{blockId:'block-'+'b'.repeat(64),text:'Do not read me'}]}]}};
+ const input={familyId:'family-test',story:{id:'story-test'},revision,chapterId:'chapter-test',blockId};
+ assert.equal(core.sourceSnapshot(input).text,'Exact original.\nSecond line.');
+ assert.equal(core.sourceSnapshot(input).blocks.length,1);
+ revision.draft.chapters[0].content[0].sourceIds=['source-locked'];
+ assert.throws(()=>core.sourceSnapshot(input),{code:'STORY_PROTOCOL_REQUIRED'});
+});

@@ -23,7 +23,7 @@ function field<T>(base: T, local: T, remote: T, label: string): T {
 }
 function body(chapter: ArticleChapter) {
   return {content:chapter.content.map(b => ({blockId:b.blockId,
-    ...(typeof b.text === 'string' ? {text:b.text} : {photoId:b.photoId})})), layout:chapter.layout, packageAssets:chapter.packageAssets || {}};
+    ...(typeof b.text === 'string' ? {text:b.text} : {photoId:b.photoId})})), layout:chapter.layout, audioModules:chapter.audioModules || [], packageAssets:chapter.packageAssets || {}};
 }
 function normalized(chapter: ManuscriptChapter): ArticleChapter {
   const result=articleChapter(chapter);

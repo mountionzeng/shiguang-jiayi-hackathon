@@ -59,6 +59,7 @@ export function changeArticleText(input: ArticleChapter, blockId: string, value:
       { ...original, blockId: id, parentBlockId: original.parentBlockId || blockId, text: suffix });
     const page = next.layout.pages.find(p => p.modules.some(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === blockId));
     if (!page) throw new Error('找不到这段文字的排版');
+    page.modules.sort((a,b) => a.rect.y-b.rect.y || a.rect.x-b.rect.x);
     const position = page.modules.findIndex(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === blockId);
     const source = page.modules[position];
     if (source.kind !== 'text') throw new Error('这不是文字模块');
@@ -103,7 +104,10 @@ export function moveArticleModule(input: ArticleChapter, id: string, dx: number,
 }
 export function removeArticleModule(input: ArticleChapter, id: string): ArticleChapter {
   const next = clone(input), module = next.layout.pages.flatMap(page => page.modules).find(item => item.id === id);
-  if (!module) return next;
+  if (!module) {
+    next.audioModules = (next.audioModules || []).filter(m=>m.id!==id);
+    return next;
+  }
   next.layout.pages.forEach(page => { page.modules = page.modules.filter(item => item.id !== id); });
   if (module.kind === 'text' && 'blockId' in module.bind) {
     const blockId = module.bind.blockId;
@@ -126,6 +130,44 @@ export function addArticlePhoto(input: ArticleChapter, photoId: string, aiGenera
   return next;
 }
 
+/** Insert a finished image against its original stable block, using the latest draft. */
+export function insertArticlePhotoAfter(input: ArticleChapter, blockId: string, photoId: string): ArticleChapter {
+  if (input.content.some(block => block.photoId === photoId)) return input;
+  const index = input.content.findIndex(block => block.blockId === blockId);
+  if (index < 0) throw new Error('原文字模块已删除，生成的图片保留在本章图片中');
+  const next = addArticlePhoto(input, photoId, true);
+  const block = next.content.pop()!;
+  next.content.splice(index + 1, 0, block);
+  const image = next.layout.pages.flatMap(page => page.modules).find(m => m.kind === 'image' && m.assetId === chapterPackageAssetId(photoId))!;
+  for (const page of next.layout.pages) page.modules = page.modules.filter(m => m !== image);
+  const modules = next.layout.pages.flatMap(page => [...page.modules].sort((a,b) => a.rect.y-b.rect.y || a.rect.x-b.rect.x));
+  const position = modules.findIndex(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === blockId);
+  if (position < 0) throw new Error('找不到原文字模块，图片已保留');
+  modules.splice(position + 1, 0, image);
+  // Flow chapters can repaginate safely. Deliberately positioned modules retain their geometry.
+  if (modules.some(m => m.positioned || m.rect.x !== 48 || m.rect.width !== 804)) {
+    const page = next.layout.pages.find(p => p.modules.some(m => m === modules[position]))!;
+    const source = modules[position];
+    image.rect = {...image.rect, x:source.rect.x, width:source.rect.width, y:source.rect.y+source.rect.height+24};
+    for (const item of page.modules) if (item.rect.y >= image.rect.y) item.rect.y += image.rect.height+24;
+    page.modules.push(image); page.modules.sort((a,b)=>a.rect.y-b.rect.y || a.rect.x-b.rect.x);
+    for (let i=0;i<next.layout.pages.length;i++) {
+      const current=next.layout.pages[i], overflow=current.modules.findIndex(m=>m.rect.y+m.rect.height>1200);
+      if(overflow<0)continue;
+      if(next.layout.pages.length>=9)throw new Error('最多九页，图片已保留在本章图片中');
+      const tail=current.modules.splice(overflow), top=Math.min(...tail.map(m=>m.rect.y));
+      for(const item of tail)item.rect.y=48+item.rect.y-top;
+      next.layout.pages.splice(i+1,0,{label:'',modules:tail});
+    }
+  } else {
+    next.layout.pages=[{label:'1',modules:[]}];
+    for(const module of modules)place(next,module);
+  }
+  next.layout.pages=next.layout.pages.filter(p=>p.modules.length);
+  next.layout.pages.forEach((p,i)=>{p.label=String(i+1);});
+  return next;
+}
+
 /** Grow ordinary text modules with their content; keep deliberately positioned layouts. */
 function fitArticleText(chapter: ArticleChapter, blockId: string) {
   const module = chapter.layout.pages.flatMap(page => page.modules).find(m => m.kind === 'text' && 'blockId' in m.bind && m.bind.blockId === blockId);
@@ -139,7 +181,7 @@ function fitArticleText(chapter: ArticleChapter, blockId: string) {
   const maxHeight = 1000;
   module.rect.height = Math.min(maxHeight, Math.max(110, Math.ceil(rows * module.fontSize * 1.6 + 16)));
   module.contentHeight = module.rect.height;
-  const modules = chapter.layout.pages.flatMap(page => page.modules);
+  const modules = chapter.layout.pages.flatMap(page => [...page.modules].sort((a,b) => a.rect.y-b.rect.y || a.rect.x-b.rect.x));
   chapter.layout.pages = [{label:'1',modules:[]}];
   for (const item of modules) place(chapter,item);
 }
@@ -151,4 +193,11 @@ export function appendArticleText(input: ArticleChapter, text: string): ArticleC
     place(next,textModule(id,{x:48,y:48,width:804,height}));
   }
   return next;
+}
+
+export function insertArticleAudioAfter(input: ArticleChapter, blockId: string, operationId: string, kind: 'music'|'narration'): ArticleChapter {
+  if(input.audioModules?.some(m=>m.operationId===operationId))return input;
+  if(!input.content.some(b=>b.blockId===blockId))throw new Error('原文字模块已删除，生成结果已保留');
+  if((input.audioModules?.length || 0)>=20)throw new Error('这一章最多二十个声音模块');
+  return {...input,audioModules:[...(input.audioModules || []),{id:operationId.slice(operationId.lastIndexOf('_audio-')+1),afterBlockId:blockId,operationId,kind}]};
 }

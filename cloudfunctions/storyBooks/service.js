@@ -156,6 +156,7 @@ function createStoryService(repo, options = {}) {
       if (!accessEnabled) throw accessError('STORY_ACCESS_DISABLED');
       return accountActivity(repo,ctx);
     }
+    if (action === 'audioPlayback') return require('./articleAudio').readArticleAudio(repo,ctx,event,options.signMedia);
     if (action === 'articleSave') {
       // Saving one's own article is core writing, independent of sharing rollout.
       // saveArticle still checks space ownership, sources, images and versions.

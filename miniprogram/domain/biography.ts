@@ -177,7 +177,15 @@ export interface BiographyDraft {
 export interface ManuscriptBlockProvenance { blockId?: string; sourceIds?: string[] }
 export type ManuscriptContent = ({ text: string; photoId?: never } | { photoId: string; text?: never }) & ManuscriptBlockProvenance;
 
+export interface ArticleAudioModule {
+  id: string;
+  afterBlockId: string;
+  operationId: string;
+  kind: 'music' | 'narration';
+}
 export interface ManuscriptChapter {
+  /** Audio belongs to the immutable chapter version; URLs are resolved when played. */
+  audioModules?: ArticleAudioModule[];
   /** Stable across versions so a rearranged version still refers to the same chapter. */
   id: string;
   /** Chapter name only; "第X章" follows the chapter order and is never stored. */

@@ -33,16 +33,18 @@ export function articleEditorPages(chapter: ArticleChapter, scale: number, paths
     // native values or changes module IDs just to accommodate wrapping.
     const placed: typeof modules = [];
     for (const module of [...modules].sort((a, b) => a.rect.y - b.rect.y)) {
+      const following: number[] = [];
       for (const before of placed) {
         const overlapsX = module.rect.x < before.rect.x + before.rect.width && before.rect.x < module.rect.x + module.rect.width;
         if (!overlapsX || before.rect.y >= module.rect.y) continue;
         const gap = Math.max(24, module.rect.y - before.rect.y - before.rect.height) * scale;
-        module.top = Math.max(module.top, before.top + before.height + gap);
+        following.push(before.top + before.height + gap);
       }
+      if (following.length) module.top = module.positioned ? Math.max(module.top, ...following) : Math.max(...following);
       module.style = `left:${module.rect.x * scale}px;top:${module.top}px;width:${module.width}px;height:${module.height}px;`;
       placed.push(module);
     }
-    return { id: index, height: Math.max(220 * scale, ...modules.map(module => module.top + module.height + 36 * scale)), modules };
+    return { id: index, height: Math.max(0, ...modules.map(module => module.top + module.height + 36 * scale)), modules };
   });
   // Print pagination must not move a textarea between parent views while typing.
   // Keep every module under one stable editor page; only its geometry changes.
@@ -54,6 +56,20 @@ export function articleEditorPages(chapter: ArticleChapter, scale: number, paths
     offset += page.height;
     return shifted;
   });
-  return [{ id: chapter.id, height: offset, modules }];
+  const audioHeight = 130 * scale;
+  const audioRows = (chapter.audioModules || []).map((audio,index) => {
+    const anchor=modules.find(m=>m.blockId===audio.afterBlockId);
+    const siblings=(chapter.audioModules || []).slice(0,index).filter(m=>m.afterBlockId===audio.afterBlockId).length;
+    return {id:audio.id,kind:'audio' as const,audioKind:audio.kind,blockId:'',text:'',path:'',measurementKey:'',fontStyle:'',
+      rect:{x:48,y:0,width:804,height:130},width:804*scale,height:audioHeight,
+      anchorTop:anchor?anchor.top+anchor.height:offset,top:0,style:'',siblings};
+  }).sort((a,b)=>a.anchorTop-b.anchorTop||a.siblings-b.siblings);
+  audioRows.forEach((row,index)=>{row.top=row.anchorTop+24*scale+index*(audioHeight+24*scale);
+    row.style=`left:${48*scale}px;top:${row.top}px;width:${row.width}px;height:${row.height}px;`;});
+  const shifted=modules.map(module=>{
+    const extra=audioRows.filter(row=>row.anchorTop<=module.top).length*(audioHeight+24*scale);
+    return {...module,top:module.top+extra,style:`left:${module.rect.x*scale}px;top:${module.top+extra}px;width:${module.width}px;height:${module.height}px;`};
+  });
+  return [{ id: chapter.id, height: offset+audioRows.length*(audioHeight+24*scale), modules: [...shifted,...audioRows] }];
 
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto} from '../miniprogram/services/articleModules';
+import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto,insertArticlePhotoAfter} from '../miniprogram/services/articleModules';
 import { articleEditorPages } from '../miniprogram/services/articleEditorLayout';
 import {groupAccountActivity} from '../miniprogram/services/accountActivity';
 const base=()=>articleChapter({id:'chapter-test',title:'纸船',memoryIds:[],content:[{text:'第一句'}]});
@@ -104,4 +104,44 @@ test('splitting near the bottom of positioned print layout stays inside the canv
  assert.equal(after.layout.pages.length,2);
  for(const page of after.layout.pages)for(const m of page.modules)assert.ok(m.rect.y+m.rect.height<=1200);
  assert.equal(after.content[1].text,'一句');
+});
+
+
+test('Return preserves visual image order even when storage order differs',()=>{
+ const before=articleChapter({id:'chapter-order',title:'',memoryIds:[],content:[{text:'前后'},{photoId:'photo-middle'},{text:'结尾'}]});
+ const [first,image,last]=before.layout.pages[0].modules;
+ before.layout.pages[0].modules=[first,last,image];
+ const after=changeArticleText(before,before.content[0].blockId,'前\n后',2).chapter;
+ const modules=after.layout.pages.flatMap(p=>p.modules);
+ assert.deepEqual(modules.map(m=>m.kind==='image'?'image':('blockId' in m.bind ? m.bind.blockId : 'title')),[before.content[0].blockId,after.content[1].blockId,'image',before.content[2].blockId]);
+ assert.equal(before.layout.pages[0].modules[2].id,image.id);
+});
+
+test('generated picture inserts below its source in the latest draft without moving surrounding images to the end',()=>{
+ const before=articleChapter({id:'chapter-generated',title:'',memoryIds:[],content:[{text:'source'},{photoId:'photo-existing'},{text:'last'}]});
+ const edited=changeArticleText(before,before.content[0].blockId,'source edited').chapter;
+ const next=insertArticlePhotoAfter(edited,before.content[0].blockId,'photo-generated');
+ assert.deepEqual(next.content.map(b=>b.text || b.photoId),['source edited','photo-generated','photo-existing','last']);
+ assert.deepEqual(next.layout.pages.flatMap(p=>p.modules).map(m=>m.kind),['text','image','image','text']);
+ assert.equal(insertArticlePhotoAfter(next,before.content[0].blockId,'photo-generated'),next);
+ assert.throws(()=>insertArticlePhotoAfter(before,'missing','photo-new'),/已删除/);
+ assert.equal(before.content.length,3);
+});
+
+test('audio modules retain order, do not change original text, and survive reopening',async()=>{
+ const {insertArticleAudioAfter}=await import('../miniprogram/services/articleModules');
+ const before=articleChapter({id:'chapter-audio',title:'',memoryIds:[],content:[{text:'first'},{photoId:'photo-next'},{text:'last'}]});
+ const source=before.content[0].blockId;
+ const next=insertArticleAudioAfter(before,source,'family_owner_audio-test123','music');
+ assert.deepEqual(next.content,before.content);
+ const reopened=articleChapter(JSON.parse(JSON.stringify(next)));
+ assert.deepEqual(reopened.audioModules,next.audioModules);
+ const page=articleEditorPages(reopened,.4,{})[0];
+ const first=page.modules.find(m=>m.blockId===source)!;
+ const audio=page.modules.find(m=>m.kind==='audio')!;
+ const image=page.modules.find(m=>m.kind==='image')!;
+ assert.ok(audio.top>=first.top+first.height);assert.ok(image.top>=audio.top+audio.height);
+ const removed=removeArticleModule(reopened,audio.id);
+ assert.equal(removed.audioModules?.length,0);assert.deepEqual(removed.content,before.content);
+ assert.equal(insertArticleAudioAfter(next,source,'family_owner_audio-test123','music'),next);
 });

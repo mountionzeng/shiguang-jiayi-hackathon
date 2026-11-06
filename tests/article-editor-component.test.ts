@@ -136,3 +136,62 @@ test('outdated caret geometry and delayed focus ranges cannot override newer typ
   queries[queries.length - 1].callback([{top:500,height:60},{height:60}]);
   assert.equal(events.filter(item=>item.name==='caret').length,0);
 });
+
+
+test('dismissing the keyboard cancels delayed caret work without losing module selection',async()=>{
+ const {context,chapter,queries,events}=await caretEditor();
+ context.data.editingBlock=chapter.content[0].blockId;
+ context.data.focusRequest=chapter.content[0].blockId;
+ context.data.selected='selected-module';context.data.caretCursor=2;
+ context.revealCaret();
+ context.dismissKeyboard();
+ assert.equal(context.data.focusRequest,'');assert.equal(context.data.editingBlock,'');
+ assert.equal(context.data.selected,'selected-module');
+ for(const query of queries)query.callback([{top:100,height:200},{height:100}]);
+ assert.equal(events.length,0);
+});
+
+for (const blurFirst of [true, false]) {
+  test(`switching from the lower text to the upper text keeps native focus (blur first: ${blurFirst})`, async () => {
+    const {context} = await caretEditor();
+    const chapter = articleChapter({id:'switch-focus',title:'',memoryIds:[],content:[{text:'上方文字'},{text:'下方文字'}]});
+    context.data.current = chapter; context.render();
+    const [upper, lower] = chapter.content;
+    context.data.editingBlock = lower.blockId;
+    context.data.focusRequest = lower.blockId;
+    context.data.caretCursor = 4;
+    const patches:any[] = [];
+    context.setData = function(patch:any, callback?:()=>void) {patches.push(patch);Object.assign(this.data,patch);callback?.();};
+    const previous = (globalThis as any).wx;
+    (globalThis as any).wx = {getSelectedTextRange:({success}:any)=>success({start:1,end:1})};
+    try {
+      const blur = () => context.finishEditing({currentTarget:{dataset:{block:lower.blockId}}});
+      if (blurFirst) blur();
+      context.beginEditing({currentTarget:{dataset:{block:upper.blockId,id:context.data.pages[0].modules[0].id}}});
+      if (!blurFirst) blur();
+      assert.ok(!patches.some(patch=>'pages' in patch), 'blur must not rewrite every native textarea');
+      assert.notEqual(context.data.focusRequest, lower.blockId, 'the old Return focus request must not remain active');
+      assert.equal(context.data.editingBlock, upper.blockId);
+      assert.equal(context.data.caretCursor, 1);
+      assert.equal(context.data.focused, upper.blockId);
+    } finally {(globalThis as any).wx = previous;}
+  });
+}
+
+test('keyboard Done cancels even a pending Return focus before it can reopen the keyboard', async () => {
+  const {context,chapter} = await caretEditor();
+  let pendingFocus = () => {};
+  const previous = (globalThis as any).wx;
+  (globalThis as any).wx = {nextTick:(callback:()=>void)=>{pendingFocus=callback;}};
+  try {
+    const block = chapter.content[0].blockId;
+    context.change({currentTarget:{dataset:{block}},detail:{value:'开头，\n中间，最后一行',cursor:4}});
+    const selected = context.data.selected;
+    context.confirmEditing();
+    pendingFocus();
+    assert.equal(context.data.focusRequest,'');
+    assert.equal(context.data.editingBlock,'');
+    assert.equal(context.data.selected,selected,'Done closes input, without losing the module');
+    assert.deepEqual(context.data.current.content.map((b:any)=>b.text),['开头，','中间，最后一行']);
+  } finally {(globalThis as any).wx=previous;}
+});

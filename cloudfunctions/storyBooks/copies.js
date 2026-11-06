@@ -156,7 +156,9 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
       if(chapter.backdropImageId)content.unshift({photoId:copiedPhoto('backdrop:'+chapter.id),blockId:'block-'+digest([copyId,chapter.id,'backdrop']),sourceIds:[sourceId]});
       const inheritedCover=chapter.packageCoverAssetId?chapter.packageAssets?.[chapter.packageCoverAssetId]?.photoId:'';
       const cover=materials.coverKey || inheritedCover;
-      base.chapters.push({id:destinationChapterId,title:chapter.title,memoryIds:(chapter.memoryIds || []).map(id=>memoryMap.get(id)).filter(Boolean),
+      const blockMap=new Map(chapter.content.map((b,i)=>[b.blockId,'block-'+digest([copyId,chapter.id,i])]));
+      const audioModules=(chapter.audioModules || []).map(m=>({...m,afterBlockId:blockMap.get(m.afterBlockId)||m.afterBlockId}));
+      base.chapters.push({id:destinationChapterId,title:chapter.title,...(audioModules.length?{audioModules}:{}),memoryIds:(chapter.memoryIds || []).map(id=>memoryMap.get(id)).filter(Boolean),
         ...(cover?{packageCoverAssetId:'cover',packageAssets:{cover:{photoId:copiedPhoto(cover),aiGenerated:!!materials.coverKey}}}:{}),content});
     }
     const pendingPolicies=new Map(receipts),policyReader={get:(table,id)=>table==='story_source_policies' && pendingPolicies.has(id)?pendingPolicies.get(id):tx.get(table,id)};

@@ -293,7 +293,7 @@ test('unsynced chapter title appears in the directory with local-only status and
 test('article caret scrolls only enough to show the active line and ignores an old chapter', async () => {
   const {p} = await setup(); await open(p,'a');
   p.data.keyboardHeight=300;
-  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},exec(callback:any){callback([{top:60,bottom:460,scrollTop:800}]);}});
+  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},boundingClientRect(){return this;},exec(callback:any){callback([{top:60,bottom:460,scrollTop:800}]);}});
   p.onArticleCaret({detail:{chapterId:'a',top:438,bottom:470}});
   assert.equal(p.data.articleScrollTop,826);
   p.onArticleCaret({detail:{chapterId:'a',top:80,bottom:112}});
@@ -307,7 +307,7 @@ test('article caret scrolls only enough to show the active line and ignores an o
 test('late caret measurements cannot move the article after keyboard dismissal or newer input', async () => {
   const {p} = await setup(); await open(p,'a'); p.data.keyboardHeight=300;
   const callbacks:any[]=[];
-  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},exec(callback:any){callbacks.push(callback);}});
+  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},boundingClientRect(){return this;},exec(callback:any){callbacks.push(callback);}});
   p.onArticleCaret({detail:{chapterId:'a',top:500,bottom:530}});
   p.onArticleCaret({detail:{chapterId:'a',top:430,bottom:460}});
   callbacks[1]([{top:60,bottom:460,scrollTop:800}]);
@@ -325,7 +325,7 @@ test('late caret measurements cannot move the article after keyboard dismissal o
 test('manual scrolling and leaving the page cancel pending automatic caret scrolling', async () => {
   const {p} = await setup(); await open(p,'a'); p.data.keyboardHeight=300;
   const callbacks:any[]=[];
-  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},exec(callback:any){callbacks.push(callback);}});
+  p.createSelectorQuery=()=>({select(){return this;},fields(){return this;},boundingClientRect(){return this;},exec(callback:any){callbacks.push(callback);}});
   for (const leave of [() => p.onArticleScroll({detail:{scrollTop:200}}), () => p.onHide(), () => p.onUnload()]) {
     p.onArticleCaret({detail:{chapterId:'a',top:500,bottom:530}});
     leave();
