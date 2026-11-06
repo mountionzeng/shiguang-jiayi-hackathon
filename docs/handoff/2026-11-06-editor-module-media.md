@@ -102,3 +102,14 @@
 - 保存失败已核实：当前本机待保存章节audioModules=[]；线上article.normalize严格白名单没有audioModules。通过官方CLI真实下载的40个业务文件与HEAD ef3338d逐字节一致，目录/tmp/1106-storyBooks-before/storyBooks.zip（实际为文件夹）。无需改用户稿或清缓存，更新既有storyBooks协议可接受原请求重试。
 - CLI下载参数需传以.zip结尾的路径，工具随后创建同名目录并解包；不带.zip报code17。下载成功后必须检查实际文件。
 - 本次只准备更新已获授权的storyBooks，不更新storyAudio、不提交媒体付费生成。音乐/有声书真实生成仍未验收。
+
+## 15:02 Scoped keyboard acceptance and trial update
+
+- User explicitly allowed text/keyboard-only acceptance, then requested replacing the current trial version. Prepare 0.1.1106a as an internal trial; no review submission or public release. Media generation and fresh-account full acceptance remain pending.
+- c66463b preserves the native Return key type and adds bindconfirm only. Confirm cancels queued refocus. Phone IME behavior still requires phone verification.
+- storyBooks deployed from 20c6def with standard deployment script at 2026-11-06T06:40:32.250Z. Downloaded 41 business files match c66463b exactly: /tmp/1106-storyBooks-verified.json; deployment log: /tmp/1106-storyBooks-deploy.log. Prior local draft reopened without format error.
+- Full npm run check on c66463b passed all 1856 tests: /tmp/1106-keyboard-final-check.log. This handoff-only commit changes no executable source.
+- Desktop 375x667: created independent temporary story, renamed chapter, typed two phrases, split in the middle with Return, appended to lower block then switched to upper and appended. Cloud-save success observed. Leaving and reopening preserved the title and both distinct blocks.
+- Temporary story removed through normal recoverable Delete Book confirmation. Shelf returned to five stories with no temporary story. No user text or permanent history deleted. User's own book reached 13 chapters during testing; those concurrent changes were preserved.
+- Phone Done/IME behavior is pending; desktop editing and automated focus tests do not claim real-device completion.
+- Site-safety policy blocks mp.weixin.qq.com. Cannot set the trial-version selection through browser; no workaround attempted. Upload success still requires the user to select this version in the WeChat backend.
