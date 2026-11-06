@@ -20,7 +20,11 @@ Component({
         if (current?.id === chapter.id && JSON.stringify(current) === JSON.stringify(chapter) && this.data.scale === scale) {
           this.syncGeometry(); return;
         }
-        if (current?.id !== chapter.id) this.clear();
+        if (current?.id !== chapter.id) {
+          this.data.editingBlock = ''; this.data.caretCursor = null; this.data.caretRequest++;
+          // Do not emit back into the parent while its chapter update is running.
+          this.setData({mergeIds:[],mergeMenu:'',selected:'',focused:'',focusRequest:'',selectionCursor:-1});
+        }
         this.data.textHeights = {};
         this.data.current = articleChapter(chapter);
         this.setData({ scale }); this.render();
