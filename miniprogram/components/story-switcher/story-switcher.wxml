@@ -14,7 +14,7 @@
   >
     <image
       class="tab-art tab-art-personal"
-      src="/assets/illustrations/story-tab-personal.webp"
+      src="/assets/illustrations/story-tab-personal.png"
       mode="aspectFit"
       aria-hidden="true"
     ></image>
@@ -34,7 +34,7 @@
   >
     <image
       class="tab-art tab-art-chat"
-      src="/assets/illustrations/story-tab-chat.webp"
+      src="/assets/illustrations/story-tab-chat.png"
       mode="aspectFit"
       aria-hidden="true"
     ></image>
@@ -54,7 +54,7 @@
   >
     <image
       class="tab-art tab-art-family"
-      src="/assets/illustrations/story-tab-family.webp"
+      src="/assets/illustrations/story-tab-family.png"
       mode="aspectFit"
       aria-hidden="true"
     ></image>

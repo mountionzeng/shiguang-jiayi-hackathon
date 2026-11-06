@@ -116,3 +116,12 @@
 - Initial upload rejected: main package 2065KB exceeds 2048KB. Enable official minifyWXSS packaging option only (existing JS/WXML minification stays enabled); no UI or image changes. Retry requires successful packaging and check.
 - minifyWXSS did not reduce the reported package size, so reverted that ineffective option. Existing story-tab personal/chat/family WebP assets decode to exactly the same RGBA bytes and dimensions as their PNG counterparts (verified with Pillow). Reuse those existing lossless assets and exclude their PNG duplicates from upload, saving 81567 bytes without resizing/redrawing. No image generated or edited.
 - Upload succeeded: 0.1.1106a from a68bc0242fbcbff913f665dbddb5c163a500fea1, official CLI reports upload success. Main 1,889,164 bytes; total 2,033,911 bytes. Final check 1856 passed (/tmp/1106a-lossless-check.log). Upload log/info and scoped acceptance are in /tmp/shiguang-1106a-trial/. Backend trial selection remains pending user action due to site-safety restriction. No preview QR substituted for the trial entry.
+
+## 15:18 用户反馈与范围纠正
+
+- 用户截图确认0.1.1106a已经自动成为体验版，此前要求用户手动设置的判断不正确。
+- 手机首页底部三个图案缺失，文字和树枝仍可见；本地模拟器能显示。新增的资源格式/packOptions替换属于文字键盘任务范围外变更，现恢复到c66463b的PNG引用和原打包配置；图片本身、尺寸、布局、点击行为均不改。手机失败的精确构建/加载原因尚未证实，不能仅凭像素相同宣称格式可替换。
+- 用户要求调整工作流程：只修改明确要求的部分，上传时核对其余部分与之前交付版本一致。已写入AGENTS.md及STABILITY.md，不以追加固定验收清单代替差异范围控制。范围外变动若确实必要，须先说明具体方案并取得同意。
+
+- 后端范围规则按用户再次强调补充：实际线上基线、指定函数部署、接口/数据/权限/环境配置差异、部署后回读。此次回归修复没有云部署/数据迁移/权限修改；cloudfunctions相对0.1.1106a源码无差异，但本轮未重新读取线上所有配置，不宣称排除了第三方线上漂移。
+- 恢复原PNG后1856项检查通过；清理的是开发工具compile缓存，未清用户storage。375x667桌面三个导航图案显示，人生之书打开书架，记下此刻弹出随手记/回忆录并收起，记忆之家正常打开；没有写入测试内容。
