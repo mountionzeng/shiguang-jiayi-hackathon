@@ -113,3 +113,4 @@
 - Temporary story removed through normal recoverable Delete Book confirmation. Shelf returned to five stories with no temporary story. No user text or permanent history deleted. User's own book reached 13 chapters during testing; those concurrent changes were preserved.
 - Phone Done/IME behavior is pending; desktop editing and automated focus tests do not claim real-device completion.
 - Site-safety policy blocks mp.weixin.qq.com. Cannot set the trial-version selection through browser; no workaround attempted. Upload success still requires the user to select this version in the WeChat backend.
+- Initial upload rejected: main package 2065KB exceeds 2048KB. Enable official minifyWXSS packaging option only (existing JS/WXML minification stays enabled); no UI or image changes. Retry requires successful packaging and check.
