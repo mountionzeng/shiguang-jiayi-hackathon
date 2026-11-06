@@ -14,8 +14,7 @@
     "minified": true,
     "postcss": true,
     "urlCheck": true,
-    "minifyWXML": true,
-    "minifyWXSS": true
+    "minifyWXML": true
   },
   "simulatorType": "wechat",
   "condition": {},
@@ -27,15 +26,15 @@
       },
       {
         "type": "file",
-        "value": "assets/illustrations/story-tab-personal.webp"
+        "value": "assets/illustrations/story-tab-personal.png"
       },
       {
         "type": "file",
-        "value": "assets/illustrations/story-tab-family.webp"
+        "value": "assets/illustrations/story-tab-family.png"
       },
       {
         "type": "file",
-        "value": "assets/illustrations/story-tab-chat.webp"
+        "value": "assets/illustrations/story-tab-chat.png"
       },
       {
         "type": "file",

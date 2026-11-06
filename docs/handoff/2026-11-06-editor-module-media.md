@@ -114,3 +114,4 @@
 - Phone Done/IME behavior is pending; desktop editing and automated focus tests do not claim real-device completion.
 - Site-safety policy blocks mp.weixin.qq.com. Cannot set the trial-version selection through browser; no workaround attempted. Upload success still requires the user to select this version in the WeChat backend.
 - Initial upload rejected: main package 2065KB exceeds 2048KB. Enable official minifyWXSS packaging option only (existing JS/WXML minification stays enabled); no UI or image changes. Retry requires successful packaging and check.
+- minifyWXSS did not reduce the reported package size, so reverted that ineffective option. Existing story-tab personal/chat/family WebP assets decode to exactly the same RGBA bytes and dimensions as their PNG counterparts (verified with Pillow). Reuse those existing lossless assets and exclude their PNG duplicates from upload, saving 81567 bytes without resizing/redrawing. No image generated or edited.
