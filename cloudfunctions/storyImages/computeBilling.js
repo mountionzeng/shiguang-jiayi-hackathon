@@ -11,6 +11,36 @@ const MINOR_PER_YUAN = 1_000_000;
 const DEEPSEEK_MODEL = "deepseek/deepseek-flash";
 const DEEPSEEK_BASE = "https://tokenhub.tencentmaas.com/v1";
 const PRICE_VERSION = "tokenhub-console-2026-09-23-estimate-v1";
+const MEDIA_PRICE_SOURCE = "user-confirmed 2026-11-06, rule = cost x2";
+// 1 compute unit = 1_000_000 compute micros = CNY 0.50, because the ledger
+// stores yuan micros and displays minor * COMPUTE_UNITS_PER_YUAN.
+// user-confirmed 2026-11-06, rule = cost x2. CNY 0.20 per image. Offline 2026-11-12.
+const HY_IMAGE_V3_PER_IMAGE_UNITS = 0.4;
+const HY_IMAGE_V3_PER_IMAGE_ENV = "COMPUTE_PRICE_HY_IMAGE_V3_PER_IMAGE_UNITS";
+// user-confirmed 2026-11-06, rule = cost x2. CNY 0.15 per image. Not the live model.
+const HY_IMAGE_V3_5_PREVIEW_PER_IMAGE_UNITS = 0.3;
+const HY_IMAGE_V3_5_PREVIEW_PER_IMAGE_ENV = "COMPUTE_PRICE_HY_IMAGE_V3_5_PREVIEW_PER_IMAGE_UNITS";
+// user-confirmed 2026-11-06, rule = cost x2.
+// Input CNY 7.5 / 1M tokens → 15 compute units / 1M. Output CNY 17.5 / 1M → 35.
+// Reserve cap is 0.10 compute units per call. "1 unit = CNY 1" is not applied.
+const HY_VISION_INPUT_PER_1M_UNITS = 15;
+const HY_VISION_OUTPUT_PER_1M_UNITS = 35;
+const HY_VISION_RESERVE_UNITS = 0.1;
+const HY_VISION_INPUT_ENV = "COMPUTE_PRICE_HY_VISION_2_0_INSTRUCT_INPUT_PER_1M_UNITS";
+const HY_VISION_OUTPUT_ENV = "COMPUTE_PRICE_HY_VISION_2_0_INSTRUCT_OUTPUT_PER_1M_UNITS";
+const HY_VISION_RESERVE_ENV = "COMPUTE_PRICE_HY_VISION_2_0_INSTRUCT_RESERVE_UNITS";
+// user-confirmed 2026-11-06, rule = cost x2. 2.0 compute units per song.
+const MUSIC_2_5_PER_SONG_UNITS = 2;
+const MUSIC_2_5_PER_SONG_ENV = "COMPUTE_PRICE_MUSIC_2_5_PER_SONG_UNITS";
+// user-confirmed 2026-11-06, rule = cost x2. CNY 0.80/hour × 2 = 0.027 compute units per minute.
+const SEEDASR_PER_MINUTE_UNITS = 0.027;
+const SEEDASR_PER_MINUTE_ENV = "COMPUTE_PRICE_VOLC_SEEDASR_PER_MINUTE_UNITS";
+// captureAudio.ts starts the recorder with duration:600000. That is the only duration cap in code.
+const SEEDASR_UNKNOWN_RESERVE_MINUTES = 10;
+const SEEDASR_UNKNOWN_RESERVE_MINUTES_ENV = "COMPUTE_PRICE_VOLC_SEEDASR_UNKNOWN_RESERVE_MINUTES";
+// user-confirmed 2026-11-06, rule = cost x2. CNY 0.3 / 10k chars × 2 = 0.006 compute units per 100 chars.
+const TTS_PREMIUM_PER_100_CHARS_UNITS = 0.006;
+const TTS_PREMIUM_PER_100_CHARS_ENV = "COMPUTE_PRICE_TENCENT_TTS_PREMIUM_PER_100_CHARS_UNITS";
 const STATEMENT_STATUSES = new Set(["reserved", "processing", "reconciliation", "settled", "released", "exception"]);
 
 const KNOWN_MODELS = [
@@ -171,10 +201,91 @@ function messageShape(body) {
 function isChatUrl(url) {
   return /\/chat\/completions(?:\?|$)/.test(String(url || ""));
 }
-function quoteCall({ url, body, model, env, now = Date.now() }) {
+function readPositiveOverride(env, key, fallback) {
+  if (!env || env[key] === undefined || env[key] === "") return fallback;
+  const value = Number(env[key]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+function computeUnitsToMinor(units) {
+  if (!Number.isFinite(units) || units <= 0) return null;
+  const micros = Math.round(units * 1_000_000);
+  if (!Number.isSafeInteger(micros) || micros <= 0) return null;
+  const minor = Math.ceil(micros / COMPUTE_UNITS_PER_YUAN);
+  return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
+}
+function fixedMediaQuote({ model, provider, units, env, envKey, fallback }) {
+  const price = readPositiveOverride(env, envKey, fallback);
+  if (price == null) return null;
+  const minor = computeUnitsToMinor(units == null ? price : price);
+  if (!minor) return null;
+  return {
+    model, provider, source: MEDIA_PRICE_SOURCE, chat: false, maxCostMinor: minor,
+    verifiedMinor() { return minor; },
+  };
+}
+function headerValue(headers, name) {
+  if (!headers) return "";
+  if (typeof headers.get === "function") return String(headers.get(name) || headers.get(name.toLowerCase()) || "");
+  return String(headers[name] || headers[name.toLowerCase()] || "");
+}
+function quoteCall({ url, body, model, headers, env, now = Date.now() }) {
   const parsed = messageShape(body);
-  const resolvedModel = model || parsed?.model || null;
+  const resource = headerValue(headers, "X-Api-Resource-Id");
+  const resolvedModel = model || parsed?.model || resource || null;
   const provider = providerForUrl(url);
+  if (/\/auc\/bigmodel\/query(?:\?|$)/.test(String(url || ""))) return { passthrough: true };
+  if (resolvedModel === "hy-image-v3") {
+    return fixedMediaQuote({ model: resolvedModel, provider: provider || "tokenhub", env, envKey: HY_IMAGE_V3_PER_IMAGE_ENV, fallback: HY_IMAGE_V3_PER_IMAGE_UNITS });
+  }
+  if (resolvedModel === "hy-image-v3.5-preview") {
+    return fixedMediaQuote({ model: resolvedModel, provider: provider || "tokenhub", env, envKey: HY_IMAGE_V3_5_PREVIEW_PER_IMAGE_ENV, fallback: HY_IMAGE_V3_5_PREVIEW_PER_IMAGE_UNITS });
+  }
+  if (resolvedModel === "hy-vision-2.0-instruct") {
+    const inputPer1M = readPositiveOverride(env, HY_VISION_INPUT_ENV, HY_VISION_INPUT_PER_1M_UNITS);
+    const outputPer1M = readPositiveOverride(env, HY_VISION_OUTPUT_ENV, HY_VISION_OUTPUT_PER_1M_UNITS);
+    const reserveUnits = readPositiveOverride(env, HY_VISION_RESERVE_ENV, HY_VISION_RESERVE_UNITS);
+    if (inputPer1M == null || outputPer1M == null || reserveUnits == null) return null;
+    const maxCostMinor = computeUnitsToMinor(reserveUnits);
+    if (!maxCostMinor) return null;
+    return {
+      model: resolvedModel, provider: provider || "tokenhub", source: MEDIA_PRICE_SOURCE, chat: true, maxCostMinor,
+      verifiedMinor(usage) {
+        if (!usage || !Number.isSafeInteger(usage.input) || !Number.isSafeInteger(usage.output)) return null;
+        return computeUnitsToMinor((usage.input * inputPer1M + usage.output * outputPer1M) / 1_000_000);
+      },
+    };
+  }
+  if (resolvedModel === "music-2.5") {
+    return fixedMediaQuote({ model: resolvedModel, provider: provider || "302", env, envKey: MUSIC_2_5_PER_SONG_ENV, fallback: MUSIC_2_5_PER_SONG_UNITS });
+  }
+  if (resolvedModel === "volc.seedasr.auc") {
+    const perMinute = readPositiveOverride(env, SEEDASR_PER_MINUTE_ENV, SEEDASR_PER_MINUTE_UNITS);
+    const reserveMinutes = readPositiveOverride(env, SEEDASR_UNKNOWN_RESERVE_MINUTES_ENV, SEEDASR_UNKNOWN_RESERVE_MINUTES);
+    if (perMinute == null || reserveMinutes == null) return null;
+    let durationMs = null;
+    try { durationMs = JSON.parse(body || "{}").durationMs; } catch { durationMs = null; }
+    const known = Number.isSafeInteger(durationMs) && durationMs > 0;
+    const minutes = known ? durationMs / 60_000 : reserveMinutes;
+    const minor = computeUnitsToMinor(minutes * perMinute);
+    if (!minor) return null;
+    return {
+      model: resolvedModel, provider: "volc", source: MEDIA_PRICE_SOURCE, chat: false, maxCostMinor: minor,
+      verifiedMinor() { return known ? minor : null; },
+    };
+  }
+  if (resolvedModel === "tencent-tts") {
+    let fields = {};
+    try { fields = JSON.parse(body || "{}"); } catch { return null; }
+    if (fields.FastVoiceType || fields.VoiceType === 200000000) return null;
+    const per100 = readPositiveOverride(env, TTS_PREMIUM_PER_100_CHARS_ENV, TTS_PREMIUM_PER_100_CHARS_UNITS);
+    if (per100 == null || !Number.isSafeInteger(fields.chars) || fields.chars <= 0) return null;
+    const minor = computeUnitsToMinor(fields.chars / 100 * per100);
+    if (!minor) return null;
+    return {
+      model: resolvedModel, provider: "tencent", source: MEDIA_PRICE_SOURCE, chat: false, maxCostMinor: minor,
+      verifiedMinor() { return minor; },
+    };
+  }
   const configured = readConfiguredYuan(env, provider, resolvedModel);
   if (configured && configured.invalid) return null;
   const chat = isChatUrl(url) || Boolean(parsed && parsed.chat);
@@ -312,10 +423,11 @@ function replayError() {
   return billingError("COMPUTE_REPLAY", "这次请求已经提交，请勿重复发起");
 }
 
-async function prepareCall(scope, { url, body, model }) {
+async function prepareCall(scope, { url, body, model, headers }) {
   if (!scope || !scope.context) throw billingError("COMPUTE_CONTEXT_REQUIRED", "算力暂不可用，请稍后重试");
   if (!OPERATION_TYPES.has(scope.operationType)) throw unpricedError();
-  const quote = quoteCall({ url, body, model, env: scope.env || process.env });
+  const quote = quoteCall({ url, body, model, headers, env: scope.env || process.env });
+  if (quote && quote.passthrough) return { passthrough: true };
   if (!quote) throw unpricedError();
   const operationId = operationIdFor(scope, url, quote.model);
   const requestHash = requestHashFor(scope.operationType, quote.model, url, body);
@@ -372,7 +484,9 @@ function instrumentFetch(fetchImpl) {
   if (fetchImpl && fetchImpl.computeBilled) return fetchImpl;
   async function wrapped(url, options = {}) {
     if (!billingEnabled(activeEnv())) return fetchImpl(url, options);
-    const prepared = await prepareCall(store.getStore(), { url, body: options.body, model: messageShape(options.body)?.model || null });
+    const model = messageShape(options.body)?.model || headerValue(options.headers, "X-Api-Resource-Id") || null;
+    const prepared = await prepareCall(store.getStore(), { url, body: options.body, model, headers: options.headers });
+    if (prepared && prepared.passthrough) return fetchImpl(url, options);
     let response;
     try { response = await fetchImpl(url, options); }
     catch (error) {
@@ -468,7 +582,10 @@ function resetBillingStateForTests() {
 }
 
 module.exports = {
-  COMPUTE_UNITS_PER_YUAN, DEEPSEEK_MODEL, KNOWN_MODELS, OPERATION_TYPES, PRICE_VERSION,
+  COMPUTE_UNITS_PER_YUAN, DEEPSEEK_MODEL, HY_IMAGE_V3_PER_IMAGE_UNITS, HY_IMAGE_V3_5_PREVIEW_PER_IMAGE_UNITS,
+  HY_VISION_INPUT_PER_1M_UNITS, HY_VISION_OUTPUT_PER_1M_UNITS, HY_VISION_RESERVE_UNITS,
+  KNOWN_MODELS, MEDIA_PRICE_SOURCE, MUSIC_2_5_PER_SONG_UNITS, OPERATION_TYPES, PRICE_VERSION,
+  SEEDASR_PER_MINUTE_UNITS, SEEDASR_UNKNOWN_RESERVE_MINUTES, TTS_PREMIUM_PER_100_CHARS_UNITS,
   billAs, billCall, billingEnabled, contextForOpenid, createScope, instrumentFetch, loadComputeStatement,
   noteBillingIdentity, parseStatement, priceCatalog, quoteCall, requestHashFor, resetBillingStateForTests,
   runScope, tariffMicros, withStableBillingId,

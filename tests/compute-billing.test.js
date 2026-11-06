@@ -109,12 +109,10 @@ test("token price reuses the published deepseek tariff and a missing model is re
   assert.equal(quote.source, billing.PRICE_VERSION);
   assert.equal(quote.maxCostMinor, Math.max(1, Math.ceil(hold / billing.COMPUTE_UNITS_PER_YUAN)));
   assert.notEqual(quote.maxCostMinor, Math.ceil((2000 / 1000) * 0.01 * 1_000_000));
-  assert.equal(billing.quoteCall({ url: URL, body: JSON.stringify({ model: "hy-vision-2.0-instruct", messages: [{ content: "x" }] }), env: {} }), null);
-  assert.equal(billing.quoteCall({ url: "https://api.302.ai/minimaxi/v1/music_generation", body: JSON.stringify({ model: "music-2.5" }), model: "music-2.5", env: {} }), null);
   const missing = priceCatalogMissing();
-  assert.ok(missing.includes("hy-image-v3"));
-  assert.ok(missing.includes("music-2.5"));
-  assert.ok(missing.includes("tencent-tts"));
+  assert.ok(missing.includes("deepseek/deepseek-flash"));
+  assert.ok(missing.includes("volc.bigasr.auc_turbo"));
+  assert.equal(missing.includes("hy-image-v3"), false);
   const wallet = bridge();
   const calls = [];
   await assert.rejects(billing.runScope(scope(wallet.post, new Map()), () => billing.instrumentFetch(async () => { calls.push(1); return response(200, {}); })(
@@ -232,4 +230,38 @@ test("statement is a signed POST with limit and an optional opaque cursor", asyn
   assert.equal(billing.parseStatement({ version: 1, unit: "compute", items: [{ ...row, type: "prompt text" }], nextCursor: null }), null);
   assert.equal(billing.parseStatement({ version: 1, unit: "CNY", items: [row], nextCursor: null }), null);
   assert.equal(billing.parseStatement({ version: 1, unit: "compute", items: new Array(51).fill(row), nextCursor: null }), null);
+});
+
+test("media quotes use confirmed compute-unit prices and the existing yuan ratio", () => {
+  const { IMAGE_MODEL } = require("../cloudfunctions/storyImages/tokenhub");
+  assert.equal(IMAGE_MODEL, "hy-image-v3");
+  const image = billing.quoteCall({ url: "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation", model: "hy-image-v3", env: {} });
+  assert.equal(image.source, billing.MEDIA_PRICE_SOURCE);
+  assert.equal(image.maxCostMinor, 200_000);
+  assert.equal(image.verifiedMinor(), 200_000);
+  const overridden = billing.quoteCall({ url: "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation", model: "hy-image-v3", env: { COMPUTE_PRICE_HY_IMAGE_V3_PER_IMAGE_UNITS: "0.8" } });
+  assert.equal(overridden.maxCostMinor, 400_000);
+  assert.equal(billing.quoteCall({ url: "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation", model: "hy-image-v3", env: { COMPUTE_PRICE_HY_IMAGE_V3_PER_IMAGE_UNITS: "0" } }), null);
+  const preview = billing.quoteCall({ model: "hy-image-v3.5-preview", env: {} });
+  assert.equal(billing.HY_IMAGE_V3_5_PREVIEW_PER_IMAGE_UNITS, 0.3);
+  assert.equal(preview.maxCostMinor, 150_000);
+  const vision = billing.quoteCall({ url: "https://tokenhub.tencentmaas.com/v1/chat/completions", body: JSON.stringify({ model: "hy-vision-2.0-instruct", messages: [{ content: "x" }] }), env: {} });
+  assert.equal(vision.maxCostMinor, 50_000);
+  assert.equal(vision.verifiedMinor({ input: 1000, output: 200 }), 11_000);
+  assert.equal(vision.verifiedMinor(null), null);
+  const music = billing.quoteCall({ url: "https://api.302.ai/minimaxi/v1/music_generation", model: "music-2.5", env: {} });
+  assert.equal(music.maxCostMinor, 1_000_000);
+  assert.equal(music.verifiedMinor(), 1_000_000);
+  const minute = billing.quoteCall({ url: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit", model: "volc.seedasr.auc", body: JSON.stringify({ durationMs: 60_000 }), env: {} });
+  assert.equal(minute.maxCostMinor, 13_500);
+  assert.equal(minute.verifiedMinor(), 13_500);
+  const unknownAudio = billing.quoteCall({ url: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit", headers: { "X-Api-Resource-Id": "volc.seedasr.auc" }, env: {} });
+  assert.equal(unknownAudio.maxCostMinor, 135_000);
+  assert.equal(unknownAudio.verifiedMinor(), null);
+  assert.equal(billing.quoteCall({ url: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/query", model: "volc.seedasr.auc", env: {} }).passthrough, true);
+  assert.equal(billing.quoteCall({ url: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash", model: "volc.bigasr.auc_turbo", env: {} }), null);
+  const speech = billing.quoteCall({ url: "https://tts.tencentcloudapi.com", model: "tencent-tts", body: JSON.stringify({ chars: 100, VoiceType: 101001 }), env: {} });
+  assert.equal(speech.maxCostMinor, 3_000);
+  assert.equal(speech.verifiedMinor(), 3_000);
+  assert.equal(billing.quoteCall({ url: "https://tts.tencentcloudapi.com", model: "tencent-tts", body: JSON.stringify({ chars: 100, VoiceType: 200000000, FastVoiceType: "fast-1" }), env: {} }), null);
 });
