@@ -125,3 +125,9 @@
 
 - 后端范围规则按用户再次强调补充：实际线上基线、指定函数部署、接口/数据/权限/环境配置差异、部署后回读。此次回归修复没有云部署/数据迁移/权限修改；cloudfunctions相对0.1.1106a源码无差异，但本轮未重新读取线上所有配置，不宣称排除了第三方线上漂移。
 - 恢复原PNG后1856项检查通过；清理的是开发工具compile缓存，未清用户storage。375x667桌面三个导航图案显示，人生之书打开书架，记下此刻弹出随手记/回忆录并收起，记忆之家正常打开；没有写入测试内容。
+
+## 0.1.1106b approved PNG compression
+
+- User explicitly approved applying only the prepared three PNG compressed files and uploading. Applied story-tab-personal.png, story-tab-family.png, capture-note-paper.png from /tmp/shiguang-1106b-trial/png-compression-proposal/. Original/candidate SHA256 checked before copy; decoded dimensions and RGBA bytes identical. PNG ancillary chunks preserved. Combined saving 18,485 bytes; no format/path/layout changes in this compression step.
+- All 1856 tests pass: /tmp/1106b-approved-check.log. Relative to 0.1.1106a, the only application changes are restoring three PNG references and the original pack exclusions, plus these three explicitly authorized compressed PNGs. Workflow/handoff documentation is also updated. No cloud function source, API, database, permissions, environment or backend deployment changes in this round.
+- Scope baseline: 0.1.1106a a68bc0242fbcbff913f665dbddb5c163a500fea1. Earlier desktop restoration check covered all three navigation entrances; no test data created. Internal trial upload only; phone display after upload remains to be observed. Official CLI reports aggregate package sizes, not a downloadable per-file package manifest; local asset hashes and source scope are verified separately, not described as remote per-file verification.
