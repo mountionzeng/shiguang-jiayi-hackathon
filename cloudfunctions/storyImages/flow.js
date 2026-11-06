@@ -362,10 +362,16 @@ function createStoryImageHandlers(deps) {
     }
     let result;
     try {
-      result = await provider.generate({
+      const billing = require("./computeBilling");
+      const owner = String(job.familyId || "").startsWith("family_") ? String(job.familyId).slice("family_".length) : "";
+      result = await billing.billAs({
+        operationType: "storyImages",
+        stableId: job.requestId || job._id,
+        context: billing.contextForOpenid(owner),
+      }, () => provider.generate({
         prompt: job.prompt, width: job.width, height: job.height, seed: job.seed,
         ...(referenceImages.length ? { referenceImages } : {}),
-      });
+      }));
     } catch (error) {
       const outcome = core.classifyGenerateError(error);
       log.error("storyImages generate", outcome.errorCode, String(error && error.message));

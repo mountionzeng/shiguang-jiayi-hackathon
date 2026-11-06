@@ -21,6 +21,12 @@ async function main(event = {}) {
   // settlement, cost or identity fields through the client cloud-function API.
   if (event.action === "computeBalance") return loadComputeBalance(context);
   if (event.action === "textComputeUsage") return readRecentTextUsage(cloud.database(), context);
+  // Ledger reads never accept a caller-chosen account, subject or amount.
+  if (event.action === "computeStatement") {
+    return require("./computeBilling").loadComputeStatement(context, {
+      limit: event.limit, historyOffset: event.historyOffset, attentionOffset: event.attentionOffset,
+    });
+  }
 
   const fallbackIdentity = {
     accountId: accountIdFor(openid),

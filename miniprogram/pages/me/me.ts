@@ -12,7 +12,8 @@ import {
   saveRoomProfileRemoteFirst,
 } from "../../services/roomRepository";
 import { clearAiConsent, requestAiConsent } from "../../services/aiConsent";
-import { loadTextComputeUsage, TextComputeRow } from "../../services/textComputeUsageService";
+import { loadTextComputeUsage, textComputeHint, TextComputeRow } from "../../services/textComputeUsageService";
+import { LedgerRow, loadComputeStatement } from "../../services/computeStatementService";
 import { formatComputeBalance, loadCurrentAccount, loadSharedComputeBalance, saveCurrentAccountName } from "../../services/accountService";
 import { JoinedFamilyRoom, loadJoinedFamilyRooms } from "../../services/familyInviteService";
 import { logLoadError } from "../../services/loadErrorLog";
@@ -47,6 +48,10 @@ Page({
     computeRate: "",
     textComputeRows: [] as TextComputeRow[],
     textComputeHint: "正在读取文字用量…",
+    ledgerRows: [] as LedgerRow[],
+    ledgerHint: "正在读取算力流水…",
+    ledgerOffset: 0,
+    ledgerHasMore: false,
     joinedRooms: [] as JoinedFamilyRoom[],
     cloudPhotoCount: 0,
     cloudPhotoBytes: "0 KB",
@@ -59,10 +64,11 @@ Page({
   onShow() {
     this._computeVisible = true;
     this._computeEpoch += 1;
-    this.setData({ computeBalance: "正在读取…", textComputeRows: [], textComputeHint: "正在读取文字用量…" });
+    this.setData({ computeBalance: "正在读取…", textComputeRows: [], textComputeHint: "正在读取文字用量…", ledgerRows: [], ledgerHint: "正在读取算力流水…", ledgerOffset: 0, ledgerHasMore: false });
     clearInterval(this._computeTimer);
     void this.refreshCompute();
     void this.refreshTextCompute();
+    void this.refreshLedger(0);
     void webLoginEntryEnabled().then(enabled => this.setData({ webLoginEnabled: enabled }));
     this._computeTimer = setInterval(() => { void this.refreshCompute(); void this.refreshTextCompute(); }, 5000);
     void this.refresh().catch((error) => { logLoadError("me", error); wx.showToast({ title: "数据加载失败，请重新打开本页重试", icon: "none" }); });
@@ -71,6 +77,7 @@ Page({
   _computeTimer: undefined as ReturnType<typeof setInterval> | undefined,
   _computeReading: false,
   _textComputeReading: false,
+  _ledgerReading: false,
   _computeVisible: false,
   _computeEpoch: 0,
   onHide() { this._computeVisible = false; this._computeEpoch += 1; clearInterval(this._computeTimer); this._computeTimer = undefined; },
@@ -83,12 +90,28 @@ Page({
       const view = await loadTextComputeUsage();
       if (this._computeVisible && epoch === this._computeEpoch) this.setData({
         textComputeRows: view.rows,
-        textComputeHint: !view.enabled ? "文字用量记录尚未开启"
-          : view.rows.length ? "按 2026-09-23 价格记录预估，尚未扣减余额；最近 10 次文字调用，不含图片和语音" : "暂无已记录的文字调用",
+        textComputeHint: textComputeHint(view),
       });
     } catch {
       if (this._computeVisible && epoch === this._computeEpoch) this.setData({ textComputeRows: [], textComputeHint: "文字用量暂未读到，请稍后重试" });
     } finally { this._textComputeReading = false; }
+  },
+  loadMoreLedger() { void this.refreshLedger(this.data.ledgerOffset + 20, true); },
+  async refreshLedger(offset = 0, append = false) {
+    if (this._ledgerReading) return;
+    this._ledgerReading = true;
+    const epoch = this._computeEpoch;
+    try {
+      const view = await loadComputeStatement(offset);
+      if (this._computeVisible && epoch === this._computeEpoch) this.setData({
+        ledgerRows: append ? [...this.data.ledgerRows, ...view.rows] : view.rows,
+        ledgerHint: view.hint,
+        ledgerHasMore: view.available && view.hasMore,
+        ledgerOffset: offset,
+      });
+    } catch {
+      if (this._computeVisible && epoch === this._computeEpoch && !append) this.setData({ ledgerRows: [], ledgerHint: "算力流水暂未读到，请稍后重试", ledgerHasMore: false });
+    } finally { this._ledgerReading = false; }
   },
   async refreshCompute() {
     if (this._computeReading) return;

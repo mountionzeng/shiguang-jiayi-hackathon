@@ -34,6 +34,16 @@
   </view>
 
   <view class="text-compute-section">
+    <view class="compute-label">算力流水</view>
+    <view class="text-compute-hint">{{ledgerHint}}</view>
+    <view class="text-compute-row" wx:for="{{ledgerRows}}" wx:key="id">
+      <view class="text-compute-title"><text>{{item.label}}</text><text class="text-compute-time">{{item.time}}</text></view>
+      <view class="text-compute-detail">{{item.detail}}</view>
+    </view>
+    <view wx:if="{{ledgerHasMore}}" class="text-compute-detail" bindtap="loadMoreLedger">查看更早的流水</view>
+  </view>
+
+  <view class="text-compute-section">
     <view class="compute-label">最近文字算力</view>
     <view class="text-compute-hint">{{textComputeHint}}</view>
     <view class="text-compute-row" wx:for="{{textComputeRows}}" wx:key="id">

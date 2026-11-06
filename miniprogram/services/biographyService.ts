@@ -11,6 +11,8 @@ import {
 import type { ShiguangAppOptions } from "../app";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
+import { newComputeRequestId } from "./computeRequest";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 
 interface CloudBiographyResult {
   title?: unknown;
@@ -96,6 +98,7 @@ export async function generateBiographyWithStatus(
           ...(chapter?.storyId ? { storyId: chapter.storyId } : {}),
           ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),
           ...(chapter?.writingInstruction !== undefined ? { writingInstruction: chapter.writingInstruction } : {}),
+          computeRequestId: newComputeRequestId(),
         },
       }));
 
@@ -106,6 +109,7 @@ export async function generateBiographyWithStatus(
       console.warn("云函数返回格式不完整，将使用本地草稿");
       fallbackReason = "malformed";
     } catch (error) {
+      promptComputeBillingFailure(error);
       console.warn("AI 云生成不可用，将使用本地草稿");
       fallbackReason = failureReason(error);
     }

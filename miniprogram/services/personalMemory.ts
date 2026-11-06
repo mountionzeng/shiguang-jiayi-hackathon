@@ -2,6 +2,8 @@ import type { ShiguangAppOptions } from '../app';
 import type { MemoryContribution } from '../domain/biography';
 import { currentConsentVersion, hasAiConsent } from './aiConsent';
 import { CLOUD_AI_ENABLED } from '../config/runtime';
+import { newComputeRequestId } from './computeRequest';
+import { promptComputeBillingFailure } from './computeBillingPrompt';
 
 export interface PersonalInsight {
   lineageKey: string;
@@ -36,7 +38,8 @@ export function learnFromSavedMemory(memory: MemoryContribution): void {
   if (memory.scope !== 'personal' || !hasAiConsent() || !CLOUD_AI_ENABLED || typeof getApp !== 'function' || !wx.cloud) return;
   const app = getApp<ShiguangAppOptions>();
   if (!app.globalData.cloudReady || !app.globalData.aiReady) return;
-  void call({action:'extract',memoryId:memory.id}).catch(() => {
+  void call({action:'extract',memoryId:memory.id,computeRequestId:newComputeRequestId()}).catch(error => {
+    promptComputeBillingFailure(error);
     // Saving has already succeeded. A later save can retry the same evidence.
     console.warn('个人理解暂未更新，原话已保存');
   });

@@ -1,4 +1,6 @@
 import {requestAiConsent} from './aiConsent';
+import {promptComputeBillingFailure} from './computeBillingPrompt';
+import {newComputeRequestId} from './computeRequest';
 
 export interface WritingSource {index:number; title:string; url:string;}
 export interface WritingSearchResult {text:string; sources:WritingSource[]; query:string; searchedAt:string;}
@@ -20,7 +22,9 @@ export async function requestWritingSearch(initialQuery:string, onQuery?:(query:
   if (!query || query.length > 300) throw new Error('请填写300字以内的公开检索词');
   onQuery?.(query);
   if (!await requestAiConsent()) return;
-  const response = await wx.cloud.callFunction({name:'chatInterview',data:{action:'writingSearch',query,searchConsent:true}});
+  let response;
+  try { response = await wx.cloud.callFunction({name:'chatInterview',data:{action:'writingSearch',query,searchConsent:true,computeRequestId:newComputeRequestId()}}); }
+  catch (error) { promptComputeBillingFailure(error); throw error; }
   const value = response.result as WritingSearchResult | undefined;
   if (!value || typeof value.text !== 'string' || !value.text.trim() || !Array.isArray(value.sources) || !value.sources.length ||
       value.sources.some(source=>!Number.isSafeInteger(source.index) || source.index < 1 || typeof source.title !== 'string' || !/^https?:\/\//.test(source.url)))
