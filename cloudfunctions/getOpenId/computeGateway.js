@@ -14,7 +14,7 @@ function subjectFor(context) {
   return "shiguang:" + crypto.createHash("sha256").update(context.APPID + ":" + context.OPENID).digest("hex");
 }
 function postCompute(context, action, fields = {}, env = process.env) {
-  if (!["balance", "reserve", "settle"].includes(action)) throw new Error("INVALID_COMPUTE_ACTION");
+  if (!["balance", "reserve", "settle", "statement"].includes(action)) throw new Error("INVALID_COMPUTE_ACTION");
   const secret = env.DRINKING_TIME_BRIDGE_SECRET || "";
   const base = env.DRINKING_TIME_BRIDGE_BASE_URL || "";
   if (secret.length < 32 || !base.startsWith("https://")) throw new Error("COMPUTE_NOT_CONFIGURED");
@@ -63,4 +63,43 @@ async function loadComputeBalance(context, post = postCompute) {
         Number.isSafeInteger(result[key]) && result[key] >= 0)) throw new Error("INVALID_COMPUTE_BALANCE");
   return result;
 }
-module.exports = { canonicalJson, subjectFor, postCompute, loadComputeBalance };
+function statementEnabled(env = process.env) {
+  return env.SHIGUANG_COMPUTE_STATEMENT_ENABLED === "true";
+}
+
+/**
+ * Read-only ledger. POST /compute/statement, signed exactly like balance.
+ * Stays behind SHIGUANG_COMPUTE_STATEMENT_ENABLED. Caller userId, subject and
+ * amounts are ignored; subject is derived from the cloud context.
+ */
+async function getComputeStatement(context, query, env = process.env) {
+  if (!statementEnabled(env)) return { version: 1, available: false, reason: "statement_not_enabled" };
+  const secret = env.DRINKING_TIME_BRIDGE_SECRET || "";
+  const base = env.DRINKING_TIME_BRIDGE_BASE_URL || "";
+  if (secret.length < 32 || !base.startsWith("https://")) {
+    return { version: 1, available: false, reason: "statement_not_configured" };
+  }
+  try {
+    return await postCompute(context, "statement", statementRequestFields(query), env);
+  } catch (error) {
+    if (error && error.message === "COMPUTE_NOT_CONFIGURED") {
+      return { version: 1, available: false, reason: "statement_not_configured" };
+    }
+    return { version: 1, available: false, reason: "statement_unavailable" };
+  }
+}
+
+function statementRequestFields(query) {
+  const source = query && typeof query === "object" ? query : {};
+  const fields = { limit: integerIn(source.limit, 1, 50) || 20 };
+  if (typeof source.cursor === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(source.cursor)) fields.cursor = source.cursor;
+  return fields;
+}
+
+function integerIn(value, minimum, maximum) {
+  return Number.isSafeInteger(value) && value >= minimum && value <= maximum ? value : null;
+}
+
+module.exports = {
+  canonicalJson, subjectFor, postCompute, loadComputeBalance, getComputeStatement, statementEnabled, statementRequestFields,
+};

@@ -27,7 +27,7 @@ function createExtractor(db,cloud) {
     const controller = new AbortController();
     const timer = setTimeout(()=>controller.abort(),15000);
     try {
-      const response = await defaultFetch(baseUrl+'/chat/completions',{method:'POST',signal:controller.signal,
+      const response = await require('./computeBilling').instrumentFetch(defaultFetch)(baseUrl+'/chat/completions',{method:'POST',signal:controller.signal,
         headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json','X-Request-ID':'memory-'+source.evidenceId},
         body:JSON.stringify({model,messages:[{role:'system',content:SYSTEM_PROMPT},{role:'user',content:userMessage}]})});
       if (!response.ok) throw new Error('AI_REQUEST_FAILED');

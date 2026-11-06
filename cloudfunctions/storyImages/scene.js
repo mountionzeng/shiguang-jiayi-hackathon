@@ -49,13 +49,14 @@ function createSceneExtractor({ apiKey, model, baseUrl, fetchImpl = defaultFetch
     const timer = setTimeout(() => controller.abort(), source.scope === "book" ? Math.max(timeoutMs, 30000) : timeoutMs);
     let response;
     try {
-      response = await fetchImpl(`${root}/chat/completions`, {
+      response = await require("./computeBilling").instrumentFetch(fetchImpl)(`${root}/chat/completions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({ model, temperature: 0.2, messages: buildSceneMessages(source) }),
       });
     } catch (error) {
+      if (error && error.definitelyNotSubmitted) throw error;
       if (error && error.name === "AbortError") {
         throw new StoryImageError("SCENE_TIMEOUT", "读这一章花的时间太长了，可以再试一次");
       }

@@ -1,4 +1,5 @@
 import type { ShiguangAppOptions } from "../app";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 
 export interface AudioCapability { enabled: boolean; reason?: string }
 export interface StoryAudioCapabilities {
@@ -42,9 +43,16 @@ function assertAudioReady():void {
 
 async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> {
   assertAudioReady();
-  const response=await wx.cloud.callFunction({name:'storyAudio',data:{...data,action}});
+  const computeRequestId = typeof data.computeRequestId === "string" ? data.computeRequestId : typeof data.requestId === "string" ? data.requestId : undefined;
+  let response;
+  try { response=await wx.cloud.callFunction({name:'storyAudio',data:{...data,action,...(computeRequestId?{computeRequestId}:{})}}); }
+  catch (error) { if (action === "create" || action === "createMusic") promptComputeBillingFailure(error); throw error; }
   const result=response.result as ({error?:string;code?:string;message?:string}&T)|undefined;
-  if(!result||result.error)throw new StoryAudioServiceError(result?.code || 'STORY_AUDIO_ERROR',result?.message || '声音服务暂不可用，请稍后重试');
+  if(!result||result.error){
+    const failure=new StoryAudioServiceError(result?.code || 'STORY_AUDIO_ERROR',result?.message || '声音服务暂不可用，请稍后重试');
+    if (action === "create" || action === "createMusic") promptComputeBillingFailure(failure);
+    throw failure;
+  }
   return result;
 }
 export const newAudioRequestId=()=>`audio-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;

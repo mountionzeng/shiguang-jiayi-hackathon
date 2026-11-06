@@ -195,6 +195,18 @@ function buildUserMessage(event, memories) {
 }
 
 async function main(event, dependencies = {}) {
+  if (!dependencies.__billingScope) {
+    const billing = require("./computeBilling");
+    const box = billing.createScope({
+      operationType: "generateBiography",
+      requestId: event && (event.computeRequestId || event.requestId),
+      post: dependencies.computePost,
+      holdStore: dependencies.holdStore,
+      env: process.env,
+      db: dependencies.db,
+    });
+    return billing.runScope(box, () => main(event, { ...dependencies, __billingScope: box }));
+  }
   const apiKey = process.env.AI_API_KEY;
   const model = process.env.AI_MODEL;
   const configuredBaseUrl = process.env.AI_BASE_URL || "";
@@ -217,6 +229,7 @@ async function main(event, dependencies = {}) {
     db = db || cloud.database();
     identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
   }
+  require("./computeBilling").noteBillingIdentity(identity, db);
   let sources = event.memories;
   if (!dependencies.skipGuard || event.storyId || event.memoryIds) {
     cloud = cloud || require("wx-server-sdk");

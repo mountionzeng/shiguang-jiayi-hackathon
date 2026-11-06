@@ -63,3 +63,50 @@ test('wallet deadline covers a stalled connection within the login function time
   await rejection;
   assert.equal(cleared, true);
 });
+
+test('statement POST is signed on /compute/statement the same way as balance', async () => {
+  const { EventEmitter } = require('node:events');
+  const crypto = require('node:crypto');
+  const secret = 'test-secret'.repeat(4);
+  let captured;
+  const sandbox = { module: { exports: {} }, Buffer, URL, process: { env: {} },
+    require(name) {
+      return name === 'node:https' ? { request(url, options, callback) {
+        captured = { href: url.href, method: options.method, headers: options.headers, payload: '' };
+        const response = new EventEmitter();
+        response.statusCode = 200;
+        response.headers = { 'content-type': 'application/json' };
+        const request = new EventEmitter();
+        request.end = payload => {
+          captured.payload = payload;
+          callback(response);
+          response.emit('data', Buffer.from(JSON.stringify({ version: 1, unit: 'compute', items: [], nextCursor: null })));
+          response.emit('end');
+        };
+        request.destroy = () => {};
+        return request;
+      } } : require(name);
+    },
+    setTimeout() { return 1; },
+    clearTimeout() {},
+  };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../cloudfunctions/getOpenId/computeGateway'), 'utf8'), sandbox);
+  const env = { DRINKING_TIME_BRIDGE_SECRET: secret, DRINKING_TIME_BRIDGE_BASE_URL: 'https://example.invalid/api/shiguang', SHIGUANG_COMPUTE_STATEMENT_ENABLED: 'true' };
+  const result = await sandbox.module.exports.getComputeStatement(
+    { APPID: 'wx123', OPENID: 'test_user' },
+    { limit: 20, cursor: 'opaque_cursor', userId: 9, subject: 'forged', amountMicros: 1 },
+    env,
+  );
+  assert.equal(result.unit, 'compute');
+  assert.equal(captured.method, 'POST');
+  assert.equal(captured.href, 'https://example.invalid/api/shiguang/compute/statement');
+  const body = JSON.parse(captured.payload);
+  assert.deepEqual(Object.keys(body).sort(), ['cursor', 'limit', 'subject']);
+  assert.equal(body.limit, 20);
+  assert.equal(body.cursor, 'opaque_cursor');
+  assert.equal(body.subject, subjectFor({ APPID: 'wx123', OPENID: 'test_user' }));
+  const expected = crypto.createHmac('sha256', secret).update(
+    'POST\n/compute/statement\n' + captured.headers['x-shiguang-timestamp'] + '\n' + captured.headers['x-shiguang-nonce'] + '\n' + canonicalJson(body),
+  ).digest('hex');
+  assert.equal(captured.headers['x-shiguang-signature'], expected);
+});

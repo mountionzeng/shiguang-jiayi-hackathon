@@ -365,7 +365,7 @@ test("提交配图先征得在线 AI 同意，再带着家庭、档案、章节�
   assert.deepEqual(submit?.data, {
     memberId: "owner", chapterId: "chapter-a", requestId: "req-test-00000001", purpose: "illustration",
     referenceImageId: "family_o-owner_img_req-aaaaaaaa",
-    action: "submit", familyId: "family_o-owner",
+    action: "submit", familyId: "family_o-owner", computeRequestId: "req-test-00000001",
   });
 });
 
@@ -658,8 +658,8 @@ test("看图写一句话单独征得照片授权，同一次打开不重复询�
   await storyImageApi.captionPhotos({ photoIds: ["photo-b"], requestId: "req-caption-two2" });
   assert.equal(modalCount, 1);
   assert.deepEqual(calls.filter(call => call.name === "storyImages").map(call => call.data), [
-    { action: "caption", familyId: "family_o-owner", photoIds: ["photo-a"], requestId: "req-caption-one1" },
-    { action: "caption", familyId: "family_o-owner", photoIds: ["photo-b"], requestId: "req-caption-two2" },
+    { action: "caption", familyId: "family_o-owner", photoIds: ["photo-a"], requestId: "req-caption-one1", computeRequestId: "req-caption-one1" },
+    { action: "caption", familyId: "family_o-owner", photoIds: ["photo-b"], requestId: "req-caption-two2", computeRequestId: "req-caption-two2" },
   ]);
 });
 

@@ -57,7 +57,7 @@ function createTokenHubImageClient({ apiKey, baseUrl, fetchImpl = defaultFetch, 
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       let response;
       try {
-        response = await fetchImpl(root + IMAGE_PATH, {
+        response = await require("./computeBilling").instrumentFetch(fetchImpl)(root + IMAGE_PATH, {
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
           signal: controller.signal,

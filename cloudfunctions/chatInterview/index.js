@@ -451,6 +451,18 @@ async function generateMemoryConnection(event, options) {
 }
 
 async function main(event, dependencies = {}) {
+  if (!dependencies.__billingScope) {
+    const billing = require("./computeBilling");
+    const box = billing.createScope({
+      operationType: "chatInterview",
+      requestId: event && (event.computeRequestId || event.requestId),
+      post: dependencies.computePost,
+      holdStore: dependencies.holdStore,
+      env: process.env,
+      db: dependencies.db,
+    });
+    return billing.runScope(box, () => main(event, { ...dependencies, __billingScope: box }));
+  }
   const apiKey = process.env.CHAT_AI_API_KEY || process.env.AI_API_KEY;
   const model = process.env.CHAT_AI_MODEL || process.env.AI_MODEL;
   const configuredBaseUrl = process.env.CHAT_AI_BASE_URL || process.env.AI_BASE_URL || "";
@@ -502,6 +514,7 @@ async function main(event, dependencies = {}) {
     db = db || cloud.database();
     identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
   }
+  require("./computeBilling").noteBillingIdentity(identity, db);
 
   if (event?.action === 'writingSearch') {
     if (event.searchConsent !== true) throw new Error('WRITING_SEARCH_CONSENT_REQUIRED');

@@ -18,7 +18,7 @@ function createVisionClient({ apiKey, model, baseUrl, fetchImpl = defaultFetch }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetchImpl(`${root}/chat/completions`, {
+      const response = await require("./computeBilling").instrumentFetch(fetchImpl)(`${root}/chat/completions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         signal: controller.signal,
@@ -41,6 +41,7 @@ function createVisionClient({ apiKey, model, baseUrl, fetchImpl = defaultFetch }
         : "";
       return { ok: true, content: String(content || "") };
     } catch (error) {
+      if (error && error.definitelyNotSubmitted) throw error;
       return { ok: false, errorCode: error && error.name === "AbortError" ? "VISION_TIMEOUT" : "VISION_REQUEST_FAILED" };
     } finally {
       clearTimeout(timer);

@@ -10,6 +10,8 @@ import {
 import { draftTitleFromAnswers } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { currentConsentVersion, requestAiConsent } from "./aiConsent";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
+import { newComputeRequestId } from "./computeRequest";
 
 export interface WritingOptions {
   writingMode?: "polish" | "compose";
@@ -170,6 +172,7 @@ export async function organizeMemory(
           ...(input.photoReference ? {photoReference: input.photoReference} : {}),
           ...(input.conversation ? { conversation: input.conversation } : {}),
         } : {}),
+        computeRequestId: newComputeRequestId(),
       },
     }));
     if (input.materialSourceId && (response.result as CloudOrganizedMemoryResult | undefined)?.materialReadingApplied !== true) {
@@ -182,6 +185,7 @@ export async function organizeMemory(
     if (cloudDraft) return cloudDraft;
     console.warn("AI 整理返回格式不完整，将保留原话草稿");
   } catch (error) {
+    promptComputeBillingFailure(error);
     logServiceFailure('organizeMemory', 'ai', error);
     console.warn("AI 整理不可用，将保留原话草稿");
     return { ...fallback, fallbackReason: "request-failed" };
@@ -214,11 +218,13 @@ export async function organizeInlineAnswer(
         ...(input.writingInstruction !== undefined ? { writingInstruction: input.writingInstruction } : {}),
         ...(input.basisText !== undefined ? { basisText: input.basisText } : {}),
         ...(input.conversation ? { conversation: input.conversation } : {}),
+        computeRequestId: newComputeRequestId(),
       },
     }));
     const cloudDraft = parseCloudDraft(response.result, fallback);
     return cloudDraft?.generationMode === "cloud-ai" ? cloudDraft : undefined;
   } catch (error) {
+    promptComputeBillingFailure(error);
     logServiceFailure('organizeMemory', 'ai', error);
     console.warn("就地小忆整理不可用，将保留原话");
     return undefined;

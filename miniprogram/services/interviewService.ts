@@ -11,6 +11,8 @@ import {
 } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
+import { newComputeRequestId } from "./computeRequest";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 import { measurePerformance } from "./performanceLog";
 
 interface CloudInterviewResult {
@@ -104,6 +106,7 @@ export async function generateInterviewPrompt(
         ...(input.replyIntent ? { replyIntent: input.replyIntent } : {}),
         ...(input.sourceText !== undefined ? { sourceText: input.sourceText } : {}),
         ...(input.sourceOnly === true ? { sourceOnly: true } : {}),
+        computeRequestId: newComputeRequestId(),
       },
     }));
 
@@ -118,6 +121,7 @@ export async function generateInterviewPrompt(
     console.warn("AI 追问返回格式不完整，将使用本地追问规则");
     return localFallbackPrompt(input, "invalid-result");
   } catch (error) {
+    promptComputeBillingFailure(error);
     logServiceFailure('chatInterview', 'ai', error);
     console.warn("AI 追问不可用，将使用本地追问规则");
     const failure = error as { code?: unknown; errMsg?: unknown; message?: unknown } | undefined;
