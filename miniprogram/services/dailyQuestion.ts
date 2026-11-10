@@ -4,6 +4,8 @@ import type {ShiguangAppOptions} from '../app';
 import type {InterviewDimension} from '../domain/interview';
 import {CLOUD_AI_ENABLED} from '../config/runtime';
 import {hasAiConsent, requestAiConsent, currentConsentVersion} from './aiConsent';
+import {promptComputeBillingFailure} from './computeBillingPrompt';
+import {newComputeRequestId} from './computeRequest';
 export interface DailyTopic {anchor:string; focus:'experience'|'choice'|'feeling'|'expression'; gap:string}
 export interface DailyQuestion {text:string; dimension:InterviewDimension; sourceId:string; anchor:string; generationMode:'cloud-ai'; focus?:DailyTopic['focus']; gap?:string}
 interface Entry {version:string; day:string; question:DailyQuestion; history:string[]; topics?:DailyTopic[]}
@@ -70,12 +72,13 @@ export async function generateDailyQuestion(input:{storyId?:string;memoryId?:str
   const finish=startPerformanceMeasure('ai.daily-question');
   let outcome:'ok'|'error'='error';
   try {
-  const response=await wx.cloud.callFunction({name:'chatInterview',data:{action:'dailyQuestion',...input,previousQuestions,previousTopics:validTopics(previousTopics)}});
+  const response=await wx.cloud.callFunction({name:'chatInterview',data:{action:'dailyQuestion',...input,previousQuestions,previousTopics:validTopics(previousTopics),computeRequestId:newComputeRequestId()}});
   const result=response.result as Partial<DailyQuestion> | undefined;
   if(result?.generationMode!=='cloud-ai' || typeof result.text!=='string' || !result.text.trim() || result.text.length>80 || typeof result.anchor!=='string' || typeof result.sourceId!=='string' || !['person','time','place','event','feeling'].includes(result.dimension || '')) throw new Error('DAILY_INVALID_RESULT');
   outcome='ok';
   return result as DailyQuestion;
   } catch (error) {
+    promptComputeBillingFailure(error);
     logServiceFailure('chatInterview', 'ai', error);
     throw error;
   } finally { finish(outcome); }

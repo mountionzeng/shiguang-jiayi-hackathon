@@ -446,7 +446,21 @@ async function readMemoryImage(ctx, event) {
   return {url:urls[before.fileID] || ''};
 }
 
-async function main(event = {}) {
+async function main(event = {}, dependencies = {}) {
+  if (!dependencies.__billingScope) {
+    const billing = require("./computeBilling");
+    const context = cloud.getWXContext();
+    const box = billing.createScope({
+      operationType: "storyImages",
+      requestId: event && (event.computeRequestId || event.requestId),
+      context: { APPID: context.APPID, OPENID: context.OPENID },
+      post: dependencies.computePost,
+      holdStore: dependencies.holdStore,
+      env: process.env,
+      db: dependencies.db,
+    });
+    return billing.runScope(box, () => main(event, { ...dependencies, __billingScope: box }));
+  }
   const context = cloud.getWXContext();
   if (event.Type === "Timer" || context.SOURCE === "wx_trigger") {
     await ensureCollections();

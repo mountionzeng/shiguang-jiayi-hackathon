@@ -1,6 +1,7 @@
 import { prepareReferencePhotos } from "./referencePhotos";
 import { classifyServiceFailure, logServiceFailure } from './serviceFailure';
 import { measurePerformance } from "./performanceLog";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 import type { ShiguangAppOptions } from "../app";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
@@ -138,9 +139,11 @@ export async function callStoryImages<T>(action: string, data: Record<string, un
   let raw: unknown;
   try {
     const operation = action === "submit" ? "image.submit" : action === "status" ? "image.status" : action === "list" ? "image.list" : "image.other";
-    const response = await measurePerformance(operation, () => wx.cloud.callFunction({ name: "storyImages", data: { ...data, action, familyId } }));
+    const computeRequestId = typeof data.computeRequestId === "string" ? data.computeRequestId : typeof data.requestId === "string" ? data.requestId : undefined;
+    const response = await measurePerformance(operation, () => wx.cloud.callFunction({ name: "storyImages", data: { ...data, action, familyId, ...(computeRequestId ? { computeRequestId } : {}) } }));
     raw = response.result;
   } catch (error) {
+    if (['submit', 'caption'].includes(action)) promptComputeBillingFailure(error);
     logServiceFailure('storyImages', ['selectCover', 'remove'].includes(action) ? 'write' : ['submit', 'caption'].includes(action) ? 'ai' : 'read', error);
     throw callFailure(error);
   }
@@ -149,7 +152,9 @@ export async function callStoryImages<T>(action: string, data: Record<string, un
     throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
   }
   if (result.error) {
-    throw new StoryImageServiceError(String(result.error.code ?? "ERROR"), String(result.error.message ?? "配图没成功"));
+    const failure = new StoryImageServiceError(String(result.error.code ?? "ERROR"), String(result.error.message ?? "配图没成功"));
+    if (['submit', 'caption'].includes(action)) promptComputeBillingFailure(failure);
+    throw failure;
   }
   return result as unknown as T;
 }

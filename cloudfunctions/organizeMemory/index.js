@@ -240,6 +240,18 @@ function organizationBrief(memoryType, inlineAnswer = false, writingMode) {
 }
 
 async function main(event, dependencies = {}) {
+  if (!dependencies.__billingScope) {
+    const billing = require("./computeBilling");
+    const box = billing.createScope({
+      operationType: "organizeMemory",
+      requestId: event && (event.computeRequestId || event.requestId),
+      post: dependencies.computePost,
+      holdStore: dependencies.holdStore,
+      env: process.env,
+      db: dependencies.db,
+    });
+    return billing.runScope(box, () => main(event, { ...dependencies, __billingScope: box }));
+  }
   if (typeof event?.action === 'string' && event.action.startsWith('capture')) {
     return require('./materialCapture').handle(event, dependencies);
   }
@@ -266,6 +278,7 @@ async function main(event, dependencies = {}) {
     db = db || cloud.database();
     identity = identity || await resolveActiveIdentity(db, cloud.getWXContext());
   }
+  require("./computeBilling").noteBillingIdentity(identity, db);
 
   let source = { transcript: event.transcript, memberName: event.memberName, memoryType: event.memoryType, storyTitle: event.storyTitle, inlineAnswer: event.inlineAnswer === true };
   if (!dependencies.skipGuard && event.inlineAnswer !== true) {

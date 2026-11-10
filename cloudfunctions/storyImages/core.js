@@ -46,6 +46,8 @@ const SCENE_FAILURE_MESSAGES = {
   MEMORY_NOT_FOUND: "这段回忆已不可用于配图，请重新打开",
   MEMORY_EMPTY: "先保存几句回忆，再请小忆配图",
   REVISION_CHANGED: "文字已修改，请按新内容重新配图",
+  INSUFFICIENT_COMPUTE: "算力不足，请先充值",
+  PRICE_NOT_CONFIGURED: "该模型计费暂未配置",
   SCENE_TIMEOUT: "读取章节超时，还没有开始画图，请稍后重试",
   SCENE_REQUEST_FAILED: "暂时无法读取章节画面，还没有开始画图，请稍后重试",
   SCENE_PARSE_FAILED: "没能提炼出这一章的画面，还没有开始画图，请稍后重试",
@@ -718,6 +720,7 @@ function buildImagePrompt(scene, purpose, visualReference, source, artDirection 
  * success without a picture may already have cost money, so it stays uncertain.
  */
 function classifyGenerateError(error) {
+  if (error && error.definitelyNotSubmitted) return { status: "failed", errorCode: error.code || "GENERATE_FAILED" };
   const httpStatus = error && error.httpStatus;
   if (httpStatus === 422) return { status: "blocked", errorCode: "CONTENT_BLOCKED" };
   if (httpStatus >= 400 && httpStatus < 500) return { status: "failed", errorCode: `HTTP_${httpStatus}` };

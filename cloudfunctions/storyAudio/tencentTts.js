@@ -33,7 +33,11 @@ function createTencentTtsAdapter({client}) {
     // TextToVoice officially supports 16 kHz/8 kHz. Requesting 24 kHz looks
     // harmless in mocks but is rejected by the real Tencent endpoint.
     const input={Text:text,SessionId:sessionId,VoiceType:clone?200000000:voiceType,...(clone?{FastVoiceType:clone}:{}),Codec:'wav',SampleRate:16000,Speed:speed,Volume:0,EnableSubtitle:true};
-    const response=await client.TextToVoice(input),audioBase64=clean(response?.Audio);
+    const response=await require('./computeBilling').billCall({
+      model:'tencent-tts', url:'https://tts.tencentcloudapi.com',
+      body:JSON.stringify({SessionId:sessionId,VoiceType:input.VoiceType,FastVoiceType:input.FastVoiceType||'',chars:Array.from(text).length}),
+      call:() => client.TextToVoice(input),
+    }),audioBase64=clean(response?.Audio);
     if(!audioBase64||!/^[A-Za-z0-9+/]+={0,2}$/.test(audioBase64))fail('TTS_PROVIDER_INVALID_RESPONSE','腾讯云没有返回有效音频');
     return {audioBase64,subtitles:subtitles(response?.Subtitles)};
   }
