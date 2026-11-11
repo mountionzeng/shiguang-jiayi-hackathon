@@ -247,37 +247,92 @@ function jsonResponse(status, body) {
 
 // ---------- TokenHub 出图客户端 ----------
 
-test("TokenHub 出图：同步接口、API Key 鉴权、关闭改写、明确带上 AI 生成水印", async () => {
+test("TokenHub 出图：同步 v3.5 messages 请求、API Key 鉴权、带上 AI 生成水印", async () => {
   let sent;
   const client = tokenhub.createTokenHubImageClient({
     apiKey: "sk-test",
+    env: {},
     fetchImpl: async (url, init) => {
       sent = { url, init };
       return jsonResponse(200, {
-        id: "4-WandImage-abc", data: [{ url: "https://aigc-image.cos.myqcloud.com/x/result.png", revised_prompt: "改写后" }],
-        request_id: "r", tokenhub_usage: { total_tokens: 1024 },
+        id: "1374200352-WandImage-abc",
+        object: "image.chat.completion.chunk",
+        model: "HY-Image-3.5-preview-4090-Tob-v1.2",
+        choices: [{
+          index: 0,
+          delta: { type: "image", image: { url: "https://aigc-output-image-file.cos.ap-guangzhou.myqcloud.com/x/main.png", width: 1024, height: 768 } },
+          finish_reason: null,
+        }],
+        usage: { total_tokens: 15000 },
+        tokenhub_usage: { total_tokens: 15000 },
+        request_id: "r",
       });
     },
   });
   assert.equal(client.configured, true);
+  assert.equal(tokenhub.IMAGE_MODEL, "hy-image-v3.5-preview");
+  assert.equal(tokenhub.IMAGE_PATH, "/v1/wand/hunyuan-image/v35-generation");
   const result = await client.generate({ prompt: "画面", width: 1024, height: 768, seed: 12345 });
   assert.deepEqual(result, {
-    resultUrl: "https://aigc-image.cos.myqcloud.com/x/result.png", revisedPrompt: "改写后", providerJobId: "4-WandImage-abc", usageTokens: 1024,
+    resultUrl: "https://aigc-output-image-file.cos.ap-guangzhou.myqcloud.com/x/main.png",
+    revisedPrompt: "",
+    providerJobId: "1374200352-WandImage-abc",
+    usageTokens: 15000,
   });
-  assert.equal(sent.url, "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation");
+  assert.equal(sent.url, "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v35-generation");
   assert.equal(sent.init.method, "POST");
   assert.equal(sent.init.headers.Authorization, "Bearer sk-test");
-  assert.deepEqual(JSON.parse(sent.init.body), { model: "hy-image-v3", prompt: "画面", size: "1024x768", seed: 12345, revise: false, footnote: "AI生成" });
+  assert.equal(sent.init.signal.constructor.name, "AbortSignal");
+  assert.deepEqual(JSON.parse(sent.init.body), {
+    model: "hy-image-v3.5-preview",
+    messages: [{ role: "user", content: [{ type: "text", text: "画面" }] }],
+    size: "1024x768",
+    seed: 12345,
+    footnote: "AI生成",
+  });
   assert.equal(tokenhub.createTokenHubImageClient({ apiKey: "" }).configured, false);
 });
 
-test("TokenHub 出图可以携带最多三张参考图片 URL", async () => {
+test("TokenHub 出图解析旧 data[0].url，并在新字段优先时忽略旧地址", async () => {
+  const legacy = tokenhub.createTokenHubImageClient({
+    apiKey: "k",
+    env: {},
+    fetchImpl: async () => jsonResponse(200, {
+      id: "4-WandImage-old",
+      data: [{ url: "https://aigc-image.cos.myqcloud.com/x/result.png", revised_prompt: "改写后" }],
+      tokenhub_usage: { total_tokens: 1024 },
+    }),
+  });
+  assert.deepEqual(await legacy.generate({ prompt: "画面", width: 1024, height: 768 }), {
+    resultUrl: "https://aigc-image.cos.myqcloud.com/x/result.png", revisedPrompt: "改写后", providerJobId: "4-WandImage-old", usageTokens: 1024,
+  });
+  const both = tokenhub.createTokenHubImageClient({
+    apiKey: "k",
+    env: {},
+    fetchImpl: async () => jsonResponse(200, {
+      id: "new-id",
+      choices: [{ delta: { image: { url: "https://aigc-output.example/final.png" } } }],
+      data: [{ url: "https://aigc-image.cos.myqcloud.com/x/legacy.png", revised_prompt: "旧改写" }],
+      usage: { total_tokens: 20000 },
+    }),
+  });
+  const preferred = await both.generate({ prompt: "画面", width: 1024, height: 768 });
+  assert.equal(preferred.resultUrl, "https://aigc-output.example/final.png");
+  assert.equal(preferred.revisedPrompt, "旧改写");
+  assert.equal(preferred.usageTokens, 20000);
+});
+
+test("TokenHub 出图把参考图放进 user content，仍最多三张 https 地址", async () => {
   let sent;
   const client = tokenhub.createTokenHubImageClient({
     apiKey: "sk-test",
+    env: {},
     fetchImpl: async (url, init) => {
       sent = { url, body: JSON.parse(init.body) };
-      return jsonResponse(200, { id: "4-WandImage-ref", data: [{ url: "https://aigc-image.cos.myqcloud.com/x/ref.png" }] });
+      return jsonResponse(200, {
+        id: "ref",
+        choices: [{ delta: { image: { url: "https://aigc-output.example/ref.png" } } }],
+      });
     },
   });
   await client.generate({
@@ -286,8 +341,58 @@ test("TokenHub 出图可以携带最多三张参考图片 URL", async () => {
     height: 768,
     referenceImages: ["https://tmp.example/photo-cat.jpg"],
   });
-  assert.deepEqual(sent.body.images, ["https://tmp.example/photo-cat.jpg"]);
+  assert.equal(sent.body.images, undefined);
+  assert.equal(sent.body.prompt, undefined);
+  assert.equal(sent.body.revise, undefined);
+  assert.deepEqual(sent.body.messages[0].content, [
+    { type: "text", text: "画面" },
+    { type: "image_url", image_url: { url: "https://tmp.example/photo-cat.jpg" } },
+  ]);
   await assert.rejects(client.generate({ prompt: "画面", width: 1024, height: 768, referenceImages: ["wxfile://local.jpg"] }), error => error.httpStatus === 400);
+  await assert.rejects(client.generate({
+    prompt: "画面", width: 1024, height: 768,
+    referenceImages: ["https://a.example/1.jpg", "https://a.example/2.jpg", "https://a.example/3.jpg", "https://a.example/4.jpg"],
+  }), error => error.httpStatus === 400);
+});
+
+test("TOKENHUB_IMAGE_MODEL 与 TOKENHUB_IMAGE_PATH 可把请求退回 hy-image-v3", async () => {
+  let sent;
+  const client = tokenhub.createTokenHubImageClient({
+    apiKey: "sk-test",
+    env: {
+      TOKENHUB_IMAGE_MODEL: "hy-image-v3",
+      TOKENHUB_IMAGE_PATH: "/v1/wand/hunyuan-image/v3-generation",
+    },
+    fetchImpl: async (url, init) => {
+      sent = { url, body: JSON.parse(init.body) };
+      return jsonResponse(200, { id: "old", data: [{ url: "https://aigc-image.cos.myqcloud.com/x/old.png" }] });
+    },
+  });
+  await client.generate({
+    prompt: "画面", width: 1024, height: 768, seed: 7,
+    referenceImages: ["https://tmp.example/photo-cat.jpg"],
+  });
+  assert.equal(sent.url, "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation");
+  assert.deepEqual(sent.body, {
+    model: "hy-image-v3",
+    prompt: "画面",
+    size: "1024x768",
+    images: ["https://tmp.example/photo-cat.jpg"],
+    seed: 7,
+    revise: false,
+    footnote: "AI生成",
+  });
+  const blank = tokenhub.createTokenHubImageClient({
+    apiKey: "k",
+    env: { TOKENHUB_IMAGE_MODEL: "  ", TOKENHUB_IMAGE_PATH: "" },
+    fetchImpl: async (url) => {
+      sent = { url };
+      return jsonResponse(200, { choices: [{ delta: { image: { url: "https://aigc-output.example/a.png" } } }] });
+    },
+  });
+  await blank.generate({ prompt: "画面", width: 1024, height: 768 });
+  assert.equal(blank.model, "hy-image-v3.5-preview");
+  assert.equal(sent.url, "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v35-generation");
 });
 
 test("TokenHub 出图在云函数的 60 秒上限前停止并预留结果落库时间", () => {
@@ -303,8 +408,22 @@ test("TokenHub 出图：拒绝的请求带着 HTTP 状态码抛出，成功却�
   await assert.rejects(refused.generate({ prompt: "p", width: 1024, height: 768 }), error => error.httpStatus === 422);
   const empty = tokenhub.createTokenHubImageClient({ apiKey: "k", fetchImpl: async () => jsonResponse(200, { data: [] }) });
   await assert.rejects(empty.generate({ prompt: "p", width: 1024, height: 768 }), error => error.httpStatus === undefined && error.message === "TOKENHUB_NO_IMAGE");
+  const filtered = tokenhub.createTokenHubImageClient({
+    apiKey: "k",
+    fetchImpl: async () => jsonResponse(200, {
+      choices: [{ index: 0, delta: {}, finish_reason: "error" }],
+      error: { type: "invalid_request_error", code: "content_filter", message: "input moderation rejected" },
+    }),
+  });
+  await assert.rejects(filtered.generate({ prompt: "p", width: 1024, height: 768 }), error => error.httpStatus === undefined && error.message === "TOKENHUB_NO_IMAGE");
+  const httpOnly = tokenhub.createTokenHubImageClient({
+    apiKey: "k",
+    fetchImpl: async () => jsonResponse(200, { choices: [{ delta: { image: { url: "http://insecure.example/a.png" } } }] }),
+  });
+  await assert.rejects(httpOnly.generate({ prompt: "p", width: 1024, height: 768 }), error => error.message === "TOKENHUB_NO_IMAGE");
   const tooBig = tokenhub.createTokenHubImageClient({ apiKey: "k", fetchImpl: async () => { throw new Error("should not call"); } });
   await assert.rejects(tooBig.generate({ prompt: "p", width: 2048, height: 1024 }), error => error.httpStatus === 400);
+  await assert.rejects(tooBig.generate({ prompt: "p", width: 4096, height: 4096 }), error => error.httpStatus === 400);
   await assert.rejects(tooBig.generate({ prompt: "p", width: 1024, height: 768, seed: 0 }), error => error.httpStatus === 400);
 });
 
@@ -1511,6 +1630,8 @@ test("云函数配置：每分钟补做一次，申请内容安全接口，并�
   assert.equal(fs.existsSync(path.join(__dirname, "../cloudfunctions/storyImages/hunyuan.js")), false);
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../deploy/wechat-cloud.manifest.json"), "utf8"));
   assert.ok(manifest.cloudFunctions.storyImages.environmentVariables.includes("AIGC_CONTENT_PRODUCER"));
+  assert.ok(manifest.cloudFunctions.storyImages.environmentVariables.includes("TOKENHUB_IMAGE_MODEL"));
+  assert.ok(manifest.cloudFunctions.storyImages.environmentVariables.includes("TOKENHUB_IMAGE_PATH"));
 });
 
 test("清空记忆之家时先删云存储里的配图文件，再删配图记录", () => {

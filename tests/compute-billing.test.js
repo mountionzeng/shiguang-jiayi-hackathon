@@ -234,7 +234,7 @@ test("statement is a signed POST with limit and an optional opaque cursor", asyn
 
 test("media quotes use confirmed compute-unit prices and the existing yuan ratio", () => {
   const { IMAGE_MODEL } = require("../cloudfunctions/storyImages/tokenhub");
-  assert.equal(IMAGE_MODEL, "hy-image-v3");
+  assert.equal(IMAGE_MODEL, "hy-image-v3.5-preview");
   const image = billing.quoteCall({ url: "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation", model: "hy-image-v3", env: {} });
   assert.equal(image.source, billing.MEDIA_PRICE_SOURCE);
   assert.equal(image.maxCostMinor, 200_000);
@@ -242,9 +242,21 @@ test("media quotes use confirmed compute-unit prices and the existing yuan ratio
   const overridden = billing.quoteCall({ url: "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation", model: "hy-image-v3", env: { COMPUTE_PRICE_HY_IMAGE_V3_PER_IMAGE_UNITS: "0.8" } });
   assert.equal(overridden.maxCostMinor, 400_000);
   assert.equal(billing.quoteCall({ url: "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v3-generation", model: "hy-image-v3", env: { COMPUTE_PRICE_HY_IMAGE_V3_PER_IMAGE_UNITS: "0" } }), null);
-  const preview = billing.quoteCall({ model: "hy-image-v3.5-preview", env: {} });
+  const previewBody = JSON.stringify({
+    model: IMAGE_MODEL,
+    messages: [{ role: "user", content: [{ type: "text", text: "画面" }, { type: "image_url", image_url: { url: "https://example/a.jpg" } }] }],
+    size: "1024x768",
+    footnote: "AI生成",
+  });
+  const preview = billing.quoteCall({
+    url: "https://tokenhub.tencentmaas.com/v1/wand/hunyuan-image/v35-generation",
+    body: previewBody,
+    env: {},
+  });
   assert.equal(billing.HY_IMAGE_V3_5_PREVIEW_PER_IMAGE_UNITS, 0.3);
+  assert.equal(preview.chat, false);
   assert.equal(preview.maxCostMinor, 150_000);
+  assert.equal(preview.verifiedMinor(), 150_000);
   const vision = billing.quoteCall({ url: "https://tokenhub.tencentmaas.com/v1/chat/completions", body: JSON.stringify({ model: "hy-vision-2.0-instruct", messages: [{ content: "x" }] }), env: {} });
   assert.equal(vision.maxCostMinor, 50_000);
   assert.equal(vision.verifiedMinor({ input: 1000, output: 200 }), 11_000);
