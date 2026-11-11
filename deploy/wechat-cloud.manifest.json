@@ -158,6 +158,8 @@
         "STORY_IMAGES_DIAGNOSE_TOKEN",
         "TOKENHUB_API_KEY",
         "TOKENHUB_BASE_URL",
+        "TOKENHUB_IMAGE_MODEL",
+        "TOKENHUB_IMAGE_PATH",
         "VISION_API_KEY",
         "VISION_BASE_URL",
         "VISION_MODEL",
