@@ -12,6 +12,8 @@ async function call(action: string, input: Record<string, unknown> = {}) {
   const response = await wx.cloud.callFunction({
     name: "drinkingTimeBridge",
     data: { action, ...input },
+  }).catch(() => {
+    throw new Error("网页故事暂时无法读取，请稍后重试。");
   });
   const result = response.result as any;
   if (!result || result.error || result.ok === false)

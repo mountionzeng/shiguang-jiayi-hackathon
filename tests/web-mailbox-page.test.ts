@@ -67,3 +67,19 @@ test("a friend cannot generate a new share link and an unmounted read cannot rep
   await pending;
   assert.equal(p.data.document.id, "friend");
 });
+
+
+test("cloud invocation failure ends loading and shows a retryable message without server internals", async () => {
+  (globalThis as any).wx = {
+    hideShareMenu() {},
+    cloud: { callFunction: async () => { throw new Error("mailbox_disabled at /var/user/index.js with request-id private-trace"); } },
+  };
+  const p = await page();
+  await p.refresh();
+  assert.equal(p.data.busy, false);
+  assert.equal(p.data.error, "网页故事暂时无法读取，请稍后重试。");
+  (globalThis as any).wx.cloud.callFunction = async () => ({ result: { stories: [] } });
+  await p.refresh();
+  assert.equal(p.data.error, "");
+  assert.deepEqual(p.data.stories, []);
+});
