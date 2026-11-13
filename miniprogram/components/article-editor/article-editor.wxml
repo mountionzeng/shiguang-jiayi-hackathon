@@ -10,8 +10,8 @@
     <view wx:if="{{mergeIds.length > 0 && module.blockId}}" class="merge-select-layer" data-id="{{module.id}}" data-block="{{module.blockId}}" catchtap="select" aria-label="选择文字模块" />
     <view wx:if="{{mergeMenu === module.id}}" class="merge-action" role="button" catchtap="mergeText">合并</view>
     <block wx:if="{{selected === module.id}}">
-      <view wx:if="{{module.kind !== 'audio'}}" class="move-handle" data-id="{{module.id}}" catchtouchstart="start" catchtouchmove="move" catchtouchend="end" catchtouchcancel="end" aria-label="拖动模块">移动</view>
-      <view wx:if="{{module.kind !== 'audio'}}" class="resize-handle" data-id="{{module.id}}" data-resize="true" catchtouchstart="start" catchtouchmove="move" catchtouchend="end" catchtouchcancel="end" aria-label="拖动调整大小">↘</view>
+      <view wx:if="{{module.kind === 'image'}}" class="move-handle" data-id="{{module.id}}" catchtouchstart="start" catchtouchmove="move" catchtouchend="end" catchtouchcancel="end" aria-label="拖动模块">移动</view>
+      <view wx:if="{{module.kind === 'image'}}" class="resize-handle" data-id="{{module.id}}" data-resize="true" catchtouchstart="start" catchtouchmove="move" catchtouchend="end" catchtouchcancel="end" aria-label="拖动调整大小">↘</view>
       <view class="delete-handle" role="button" catchtap="remove" aria-label="删除选中的模块">×</view>
     </block>
   </view>

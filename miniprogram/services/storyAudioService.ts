@@ -13,6 +13,7 @@ export interface StoryAudioCapabilities {
   submission: AudioCapability;
   pricingVersion: string | null;
   accountScope: string;
+  fullArticleAudio?:boolean;
   officialVoices?:Array<{id:string;label:string}>;
 }
 export interface StoryAudioPlayback {
@@ -56,8 +57,8 @@ export const audioCreatePath=(input:{storyId:string;revisionId:string;chapterId:
 ].join('&');
 export const storyAudioApi={
   capabilities:()=>call<StoryAudioCapabilities>('capabilities'),
-  create:(input:{requestId:string;storyId:string;revisionId:string;chapterId:string;blockId?:string;voice:{kind:'official'|'clone';id:string};background?:{id:string;volume:number}})=>call<{operation:StoryAudioOperation}>('create',input),
-  createMusic:(input:{requestId:string;storyId:string;revisionId:string;chapterId:string;blockId:string})=>call<{operation:StoryAudioOperation}>('createMusic',input),
+  create:(input:{requestId:string;storyId:string;revisionId:string;chapterId:string;blockId?:string;scope?:'chapter';voice:{kind:'official'|'clone';id:string};background?:{id:string;volume:number}})=>call<{operation:StoryAudioOperation}>('create',input),
+  createMusic:(input:{requestId:string;storyId:string;revisionId:string;chapterId:string;blockId:string;scope?:'chapter'})=>call<{operation:StoryAudioOperation}>('createMusic',input),
   status:(requestId:string)=>call<{operation:StoryAudioOperation}>('status',{requestId}),
   prepareVoice:(input:{requestId:string;profileId:string;consentVersion:string;voiceGender:1|2})=>call<{profile:VoiceProfile;upload:{cloudPath:string}}>('voicePrepare',input),
   registerVoiceSample:(input:{profileId:string;fileID:string})=>call<{profile:VoiceProfile}>('voiceRegisterSample',input),

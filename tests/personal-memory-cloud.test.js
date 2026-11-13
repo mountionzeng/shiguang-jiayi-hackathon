@@ -256,3 +256,28 @@ test('writing session preserves the generated shelf story and acknowledged revis
  await f.call({operation:'save',revision:0,mutationId:'story-link-1',snapshot:sessionSnapshot({outputStoryId:'story-generated',outputStoryRevisionId:'revision-generated'})});
  const result=await f.call();assert.equal(result.snapshot.outputStoryId,'story-generated');assert.equal(result.snapshot.outputStoryRevisionId,'revision-generated');
 });
+
+
+test('article turns claim once, recover the same reply and reject changed payloads or revoked accounts',async context=>{
+ env(context);const f=fixture();let tail=Promise.resolve();
+ f.db.runTransaction=fn=>{const result=tail.then(()=>fn(f.db));tail=result.catch(()=>{});return result;};
+ const old=global.fetch;context.after(()=>global.fetch=old);let calls=0,finish;
+ global.fetch=async()=>{calls++;return new Promise(resolve=>{finish=()=>resolve({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({dimension:'event',text:'已有材料足够，可以从纸船出发写。'})}}]})});});};
+ const event={action:'articleTurn',turnId:'article-fictional-123',input:{answer:'请直接写一个开头',sourceText:'【虚构】蓝纸船与黄色灯塔',scope:'chapter:module',storyTitle:'纸船',conversation:[]}};
+ const first=chatCloud.main(event,{cloud:f.cloud});
+ while(!finish)await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(await chatCloud.main(event,{cloud:f.cloud}),{turnId:event.turnId,status:'sending'});assert.equal(calls,1);
+ finish();const result=await first;assert.equal(result.status,'ready');
+ assert.deepEqual(await chatCloud.main(event,{cloud:f.cloud}),result);assert.equal(calls,1);
+ await assert.rejects(chatCloud.main({...event,input:{...event.input,sourceText:'改过的稿'}},{cloud:f.cloud}),/ARTICLE_TURN_CONFLICT/);
+ f.records.get('user_accounts:'+accountDocumentIdFor('alice-openid')).status='disabled';
+ await assert.rejects(chatCloud.main(event,{cloud:f.cloud}),/账号|IDENTITY/);assert.equal(calls,1);
+});
+test('article turns do not retry empty model output or reuse another account receipt',async context=>{
+ env(context);const f=fixture();const old=global.fetch;context.after(()=>global.fetch=old);let calls=0;
+ global.fetch=async()=>{calls++;return {ok:true,json:async()=>({choices:[{message:{content:''}}]})};};
+ const event={action:'articleTurn',turnId:'article-fictional-fail',input:{answer:'写一下',sourceText:'虚构纸船',scope:'same',storyTitle:'',conversation:[]}};
+ await assert.rejects(chatCloud.main(event,{cloud:f.cloud}),/EMPTY_MODEL_OUTPUT/);assert.equal(calls,1);
+ assert.equal((await chatCloud.main(event,{cloud:f.cloud})).status,'failed');assert.equal(calls,1);
+ f.as('bob');await assert.rejects(chatCloud.main(event,{cloud:f.cloud}),/EMPTY_MODEL_OUTPUT/);assert.equal(calls,2);
+});

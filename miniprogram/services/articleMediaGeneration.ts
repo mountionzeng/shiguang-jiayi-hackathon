@@ -3,7 +3,7 @@ import { storyAudioApi, newAudioRequestId } from './storyAudioService';
 import { storyImageReferenceId } from './bookImages';
 import { requestAiConsent } from './aiConsent';
 export type ArticleMediaKind='image'|'music'|'narration';
-export interface ArticleMediaTask {kind:ArticleMediaKind;requestId:string;storyId:string;revisionId:string;chapterId:string;blockId:string;text:string;jobId?:string;voiceId?:string}
+export interface ArticleMediaTask {kind:ArticleMediaKind;requestId:string;storyId:string;revisionId:string;chapterId:string;blockId:string;text:string;jobId?:string;voiceId?:string;scope?:'chapter';artDirection?:string;referencePhotoIds?:string[];phoneReferencePhotoIds?:string[]}
 export type ArticleMediaResult={kind:'image';photoId:string;url:string}|{kind:'music'|'narration';operationId:string};
 export function pendingArticleMedia(key:string):ArticleMediaTask[] {
   const value=wx.getStorageSync(key);
@@ -23,6 +23,10 @@ export function createArticleMediaTask(input:Omit<ArticleMediaTask,'requestId'>)
 export async function runArticleMedia(task:ArticleMediaTask,persist:()=>void,active:()=>boolean):Promise<ArticleMediaResult|undefined> {
   if(!await requestAiConsent())throw Object.assign(new Error('未允许使用 AI，尚未生成'),{code:'NOT_SUBMITTED'});
   if(!active())return;
+  if(task.kind!=='image' && task.scope==='chapter') {
+    const caps=await storyAudioApi.capabilities();
+    if(caps.fullArticleAudio!==true)throw Object.assign(new Error('全文声音服务正在更新，请稍后再试；没有开始生成'),{code:'NOT_SUBMITTED'});
+  }
   if(task.kind==='image') {
     if(!task.jobId){const job=await storyImageApi.submitChapterImage({...task,purpose:'illustration',selectedText:task.text,selectedBlockId:task.blockId});task.jobId=job.jobId;persist();}
   } else if(task.kind==='music') {

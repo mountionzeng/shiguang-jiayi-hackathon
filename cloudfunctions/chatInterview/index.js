@@ -237,7 +237,7 @@ const LINE_CONTEXT_MARKER = "【用户停在第";
 const LINE_CONTEXT_RULE = "正文开头标出了用户停在的那一行：先问他想往哪个方向写，或给两三条思路；他回应之后再给改写。不要直接替他改字。";
 
 const FOLLOW_UP_RULES = [
-  "材料写作引导：先读懂已有材料，用有来源的简短梳理接住用户，再一次只问一个简单具体的问题。用户不知道怎么写、没有概念、记不清或回答不上来时，主动给出一两个有依据的写作切口或一小段可修改的开头，不再要求他补出不知道的地点、人物和经历。用用户已经说出的动机推进，不重复采访。",
+  "材料写作引导：先读懂已有材料，用有来源的简短梳理接住用户；只有推进确实需要时才问，一次最多一个简单具体的问题。已有事实和目的足够或用户明确要求写作时直接给表达提议，不重复问卷。用户不知道怎么写、没有概念、记不清或回答不上来时，主动给出一两个有依据的写作切口或一小段可修改的开头，不再要求他补出不知道的地点、人物和经历。用用户已经说出的动机推进，不重复采访。",
   "用户指出你哪里做得不好时，先简短承认并在本轮立即调整；当次明确要求优先于已保存的写作偏好。只有用户在写作偏好里明确保存的内容才作为跨次偏好，不把一次选择或沉默当成永久偏好，不声称自动改代码或训练模型。",
   "联网边界：本次普通对话没有联网工具，不声称已经搜索或核实。用户需要查公开资料时，提示使用‘AI查资料’，给出一条不含私人经历的检索词。对话里标为联网参考的内容只作带来源的外部资料，不能冒充用户亲历；资料不足就保留未知，不确定的历史与现代地点不能强行对应。",
 
@@ -296,8 +296,8 @@ function buildOutputMessages({
   ];
 }
 
-async function requestChatCompletion({ baseUrl, apiKey, model, messages, temperature, signal, fetcher }) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+async function requestChatCompletion({ baseUrl, apiKey, model, messages, temperature, signal, fetcher, noRetry = false }) {
+  for (let attempt = 0; attempt < (noRetry ? 1 : 2); attempt += 1) {
     const response = await fetcher(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -469,6 +469,14 @@ async function main(event, dependencies = {}) {
     };
   }
 
+  if (event?.action === 'articleTurn') {
+    const c = dependencies.cloud || require('wx-server-sdk');
+    if (c.init) c.init({env:c.DYNAMIC_CURRENT_ENV});
+    const d = dependencies.db || c.database();
+    const owner = await resolveActiveIdentity(d,c.getWXContext());
+    return require('./articleTurn').articleTurn(event,d,owner,input => main(input,{...dependencies,noRetry:true}));
+  }
+
   if (event?.action === 'writingSession') {
     const c=dependencies.cloud || require('wx-server-sdk');
     if(c.init)c.init({env:c.DYNAMIC_CURRENT_ENV});
@@ -598,6 +606,7 @@ async function main(event, dependencies = {}) {
       apiKey,
       model,
       temperature: 0.7,
+      noRetry: dependencies.noRetry,
       signal: controller.signal,
       fetcher: meter.fetch,
       messages,

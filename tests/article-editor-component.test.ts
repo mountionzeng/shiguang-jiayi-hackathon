@@ -228,7 +228,7 @@ test('deselecting, background tap and chapter switch cancel merge without modify
   context.clear();assert.deepEqual(context.data.mergeIds,[]);
   context.beginMerge({currentTarget:{dataset:{id:a.id,block:a.blockId}}});
   events.length=0;
-  definition.observers['chapter, paths, width'].call(context,{...chapter,id:'chapter-new'}, {},360);
+  definition.observers['chapter, paths, width, audioAtTop'].call(context,{...chapter,id:'chapter-new'}, {},360);
   assert.equal(events.length,0,'chapter observer must not recursively notify its updating parent');
   assert.deepEqual(context.data.mergeIds,[]);assert.equal(events.filter(e=>e.name==='change').length,0);
   assert.deepEqual(chapter.content.map(b=>b.text),['甲','乙']);

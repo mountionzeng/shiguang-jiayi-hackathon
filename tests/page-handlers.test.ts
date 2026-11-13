@@ -3883,38 +3883,28 @@ test("new chapter action appends a blank chapter and opens it without a chooser"
   assert.notEqual(page.data.panel, "new-chapter");
 });
 
-test('article module selection starts a short conversation and follows live text without consuming input', async context => {
+test('article opening is local, reads live selection and clears cancelled targets', async context => {
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
   const page = instantiate(await pageDefinition('book'));
   page.data.storyId = 'fictional-selection'; page.activeChapterId = 'a'; page.data.writingMode = 'creative';
   page.data.view = 'chapter'; page.data.panel = '';
-  page.data.article = { title: '纸船', content: [{blockId:'b1',text:'灯塔下放纸船'}, {blockId:'b2',text:''}], layout: {pages:[{modules:[
-    {id:'t1',kind:'text',bind:{blockId:'b1'}}, {id:'i1',kind:'image',assetId:'image'}, {id:'t2',kind:'text',bind:{blockId:'b2'}}
+  page.data.article = { title: '纸船', content: [{blockId:'b1',text:'灯塔下放纸船'}, {blockId:'b2',text:'未保存的第二段'}], layout: {pages:[{modules:[
+    {id:'t1',kind:'text',bind:{blockId:'b1'}}, {id:'i1',kind:'image',assetId:'image'}
   ]}]} };
   callPage(page, 'restoreArticleChat');
   callPage(page, 'onXiaoyiAnswerInput', {detail:{value:'未发送的想法'}});
   await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
   await callPage(page, 'openXiaoyi');
-  assert.ok((page.data.xiaoyiMessages as any[]).length, 'opening after selecting text must offer a writing starter');
-  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
-  assert.equal(page.data.xiaoyiSelectionLabel, '已定位到当前文字');
-  assert.match((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /灯塔下放纸船/);
+  assert.deepEqual(page.data.xiaoyiMessages, [], 'opening must not invent a conversation turn');
+  assert.equal(callPage(page, 'xiaoyiContextText'), '灯塔下放纸船');
   assert.equal(page.data.xiaoyiAnswer, '未发送的想法');
-  const count = (page.data.xiaoyiMessages as any[]).length;
-  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
-  assert.equal((page.data.xiaoyiMessages as any[]).length, count);
   (page.data.article as any).content[0].text = '新写的灯塔';
   assert.equal(callPage(page, 'xiaoyiContextText'), '新写的灯塔');
-  await callPage(page, 'onArticleModuleSelected', {detail:{id:'i1'}});
-  assert.equal(page.data.xiaoyiSelectionLabel, '已定位到当前图片');
-  assert.match((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /新写的灯塔/);
-  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t2'}});
-  assert.equal(callPage(page, 'xiaoyiContextText'), '');
-  assert.match((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /零散的想法/);
+  await callPage(page, 'onArticleModuleSelected', {detail:{id:''}});
+  assert.equal(page.data.xiaoyiSelectionLabel, '已定位到当前文章');
+  assert.equal(callPage(page, 'xiaoyiContextText'), '新写的灯塔\n未保存的第二段');
   page.data.protectedCopy = true;
-  await callPage(page, 'onArticleModuleSelected', {detail:{id:'t1'}});
   assert.equal(callPage(page, 'xiaoyiContextText'), '');
-  assert.doesNotMatch((page.data.xiaoyiMessages as any[]).slice(-1)[0].text, /灯塔/);
 });
 
 test('save as memory creates one private reusable memory and preserves the article and chat', async context => {
@@ -4046,7 +4036,7 @@ test('memory composition uses live article context and edited draft without over
 
 test('chat send does not depend on native input being replayed through setData', () => {
   const wxml=readFileSync('miniprogram/pages/book/book.wxml','utf8');
-  assert.match(wxml,/<button[^>]*bindtap="askXiaoyiQuestion"[^>]*disabled="{{xiaoyiLoading}}"[^>]*aria-label="发送"/);
+  assert.match(wxml,/<button[^>]*bindtap="askXiaoyiQuestion"[^>]*aria-label="发送"/);
 });
 
 
@@ -4193,51 +4183,26 @@ test('旧云端没有会话协议时保留本地草稿，不提交成另一段�
 });
 
 
-test('article opening requests one source-bound AI starter without consuming input or applying a late reply after closing', async context => {
+test('article Logo never calls AI on open, reopen, selection or edited text', async context => {
   const storage = installWxMock(createInitialRoomState()); context.after(storage.restore);
-  const {clearAiConsent} = await import('../miniprogram/services/aiConsent');
-  clearAiConsent(); context.after(clearAiConsent);
-  wx.setStorageSync('aiConsentDecision',{granted:true,version:1,decidedAt:'2026-11-02T00:00:00.000Z'});
-  const before = (globalThis as any).getApp;
-  (globalThis as any).getApp = () => ({globalData:{cloudReady:true,aiReady:true}});
-  context.after(() => {(globalThis as any).getApp=before;});
-  let resolveReply: any; const calls: any[]=[];
-  (wx as any).cloud={callFunction:({name,data}:any)=>{
-    calls.push({name,data});
-    if(name==='recordAiConsent') return Promise.resolve({result:{success:true}});
-    return new Promise(resolve=>{resolveReply=resolve;});
-  }};
-  const page=instantiate(await pageDefinition('book'));
-  page.data.storyId='starter-fixture';page.activeChapterId='chapter';page.data.view='chapter';
+  let calls = 0;
+  (wx as any).cloud = {callFunction: async () => { calls++; throw new Error('opening must be free'); }};
+  const page = instantiate(await pageDefinition('book'));
+  page.data.storyId='starter-fixture'; page.activeChapterId='chapter'; page.data.view='chapter';
   page.data.article={title:'Boat',content:[{blockId:'b',text:'Fictional blue paper boat'}],layout:{pages:[{modules:[{id:'t',kind:'text',bind:{blockId:'b'}}]}]}};
-  callPage(page,'restoreArticleChat');
-  await callPage(page,'onArticleModuleSelected',{detail:{id:'t'}});
+  await callPage(page,'openXiaoyi');
   callPage(page,'onXiaoyiAnswerInput',{detail:{value:'unsent thought'}});
-  const opened=callPage(page,'openXiaoyi');
-  for(let i=0;i<20&&!resolveReply;i++) await new Promise(resolve=>setImmediate(resolve));
-  assert.ok(resolveReply);
-  const request=calls.find(item=>item.name==='chatInterview');
-  assert.equal(request.data.sourceOnly,true);
-  assert.equal(request.data.sourceText,'Fictional blue paper boat');
-  assert.equal(page.data.xiaoyiLoading,false,'the automatic starter does not disable typing');
-  assert.equal(page.data.xiaoyiAnswer,'unsent thought');
-  resolveReply({result:{text:'What did the paper boat carry?',dimension:'event',generationMode:'cloud-ai'}});
-  await opened;
-  assert.equal((page.data.xiaoyiMessages as any[]).slice(-1)[0].text,'What did the paper boat carry?');
-  assert.equal(page.data.xiaoyiAnswer,'unsent thought');
-  await callPage(page,'openXiaoyi');
-  assert.equal(calls.filter(item=>item.name==='chatInterview').length,1);
-  (page.data.article as any).content[0].text='Fictional red paper boat';
-  resolveReply=undefined;
-  const changed=callPage(page,'openXiaoyi');
-  for(let i=0;i<20&&!resolveReply;i++) await new Promise(resolve=>setImmediate(resolve));
-  assert.ok(resolveReply);
   callPage(page,'closeXiaoyi');
-  resolveReply({result:{text:'Late AI response',dimension:'event',generationMode:'cloud-ai'}});
-  await changed;
-  assert.ok(!(page.data.xiaoyiMessages as any[]).some(item=>item.text==='Late AI response'));
   await callPage(page,'openXiaoyi');
-  assert.equal(calls.filter(item=>item.name==='chatInterview').length,2);
+  await callPage(page,'onArticleModuleSelected',{detail:{id:'t'}});
+  (page.data.article as any).content[0].text='Fictional red paper boat';
+  await callPage(page,'openXiaoyi');
+  assert.equal(calls,0);
+  assert.deepEqual(page.data.xiaoyiMessages,[]);
+  assert.equal(page.data.xiaoyiAnswer,'unsent thought');
+  assert.equal(callPage(page,'xiaoyiContextText'),'Fictional red paper boat');
+  assert.match(String(page.data.xiaoyiWelcome),/Fictional red paper boat/);
+  assert.match(String(page.data.xiaoyiWelcome),/写顺/);
 });
 
 test('book management deletes the chosen shelf row and cancel keeps all books and memories', async context => {
@@ -4700,4 +4665,36 @@ test('switching text modules cancels the previous module pending scroll position
   await callPage(page,'onArticleModuleSelected',{detail:{id:'upper-module'}});
   complete([{top:60,bottom:460,scrollTop:100},{top:340}]);
   assert.equal(page.data.articleScrollTop,100,'a delayed lower-module measurement must not pull the upper module off screen');
+});
+
+
+test('article candidate keeps its origin across reopen and refuses adoption after scope or draft changes',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+ const page=instantiate(await pageDefinition('book'));page.data.storyId='candidate';page.activeChapterId='chapter';
+ page.data.article={content:[{blockId:'b',text:'原稿'}],layout:{pages:[{modules:[{id:'m',kind:'text',bind:{blockId:'b'}}]}]}};
+ callPage(page,'restoreArticleChat');page.articleDraftBasis=callPage(page,'articleConversationBasis');page.data.xiaoyiDraftText='候选';
+ callPage(page,'saveArticleChat');callPage(page,'releaseArticleChat');callPage(page,'restoreArticleChat');
+ assert.equal(page.articleDraftBasis,callPage(page,'articleConversationBasis'));
+ let applied=0;page.xiaoyiLand=async()=>{applied++;return true;};
+ page.articleChatModuleId='m';await callPage(page,'useXiaoyiDraft');assert.equal(applied,0);assert.equal(page.data.xiaoyiDraftText,'候选');
+ page.articleChatModuleId='';(page.data.article as any).content[0].text='用户刚改的新稿';
+ await callPage(page,'useXiaoyiDraft');assert.equal(applied,0);assert.equal(page.data.xiaoyiDraftText,'候选');assert.match(String(page.data.xiaoyiStatus),/正文或选中范围已变化/);
+});
+test('article sends consume input immediately and keep typing during a reply',async context=>{
+ const storage=installWxMock(createInitialRoomState());context.after(storage.restore);
+ const {clearAiConsent}=await import('../miniprogram/services/aiConsent');clearAiConsent();context.after(clearAiConsent);
+ const old=(globalThis as any).getApp;context.after(()=>{(globalThis as any).getApp=old;});
+ (globalThis as any).getApp=()=>({globalData:{aiReady:true,cloudReady:true}});
+ wx.setStorageSync('aiConsentDecision',{granted:true,version:1});
+ let finish:(value:any)=>void=()=>{},sent:any;
+ (wx as any).cloud={callFunction:({data}:any)=>{sent=data;return new Promise(resolve=>{finish=resolve;});}};
+ const page=instantiate(await pageDefinition('book'));page.data.storyId='input';page.activeChapterId='chapter';page.data.article={content:[{text:'未保存全文'}]};
+ callPage(page,'restoreArticleChat');page.data.xiaoyiAnswer='第一条';const pending=callPage(page,'askXiaoyiQuestion');
+ assert.equal(page.data.xiaoyiAnswer,'');
+ while(!sent)await new Promise(resolve=>setImmediate(resolve));
+ callPage(page,'onXiaoyiAnswerInput',{detail:{value:'新输入'}});
+ assert.equal(sent.input.sourceText,'未保存全文');assert.equal(sent.input.replyIntent,undefined);
+ finish({result:{turnId:sent.turnId,status:'ready',reply:'直接给出表达提议'}});await pending;
+ assert.equal(page.data.xiaoyiAnswer,'新输入');assert.equal(page.data.xiaoyiLoading,false);
+ assert.deepEqual((page.xiaoyiConversation as any[]).map(t=>t.text),['第一条','直接给出表达提议']);
 });

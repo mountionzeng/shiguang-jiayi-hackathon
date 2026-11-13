@@ -127,6 +127,8 @@ export interface OrganizeMemoryInput extends WritingOptions {
 }
 
 export interface OrganizeInlineAnswerInput extends WritingOptions {
+  /** Article chat supplies the complete explicit live scope, never an unrelated excerpt. */
+  articleContext?: boolean;
   answer: string;
   /** Explicit user-only dialogue material, up to eight 500-character segments. */
   transcript?: string[];
@@ -205,6 +207,7 @@ export async function organizeInlineAnswer(
       name: "organizeMemory",
       data: {
         inlineAnswer: true,
+        ...(input.articleContext ? {articleContext:true} : {}),
         transcript: transcript.map(text => text.trim()).filter(Boolean),
         memoryType: input.memoryType ?? "note",
         memberName: input.memberName,
