@@ -63,3 +63,15 @@
 - 未改图片、其他打包设置、业务代码或云端配置。下一只读方案为上传候选8张PNG仅重压IDAT数据流，预计减少18018字节；已验证重新解压与原图像数据字节完全一致，保持IHDR及所有非IDAT原始标记。方案尚未应用，需用户明确批准后再验证实际包；不能把估算当作成功。正式好友真机/媒体等缺口继续保留。
 
 本机证据：`/tmp/mailbox-live-20261113/internal-client-acceptance.json`、`native-compacted-check-verified.log`、`native-compacted-home.png`、`native-compacted-receipt.png`、`native-minify-enabled.png`、`assets-after-style-minify.json`、`upload-0.1.1113m-minified.log`、`upload-0.1.1113m-reopened.log`、`upload-0.1.1113m-compacted.log`、`style-compaction-applied.json`、`png-lossless-final-proposal.json`。实际上传产物资源尚无法检查，因上传被平台拒绝；没有把模拟器资源显示当作已上传包证明。
+
+
+## 11月14日：内部客户端0.1.1113m上传成功
+
+- 用户明确批准仅在上传副本对8张PNG无损压缩并重传。候选d034707570f59e3bf2ac95b2a4740adbcd720387只重压原IDAT数据流，节省18018字节；逐图CRC合法、解压数据及RGBA像素/尺寸完全一致，全部非IDAT原始块逐字节保留（包含色彩、EXIF、文本标记）。两个头像、三个导航图、记录纸底图、书封面和书脊之外的图片未改；开发工作树原图哈希全部不变。
+- 上传副本干净，新增差异严格等于批准的8张PNG。完整类型及1906项测试通过，开发工具正常重新编译后首页封面、头像和三个导航显示保持原样。业务代码未变，复用此前真实双网页账号及本人小程序接收/复开/分享撤销证据；本轮没有新建故事、生成付费内容或向朋友发送消息。
+- 官方CLI明确返回上传成功，并生成上传信息JSON。版本0.1.1113m；主包2096871字节（上限2097152，余281字节），总包2251105字节，邮箱子包9487字节。此为实际微信返回值，不再是压缩估算。后续任何主包增量都需重新检查体积。
+- 本轮只上传客户端，未重新部署云函数或更改云配置；未实时重读所有云端源码/配置，因此不声称外部绝无漂移。原受控创建范围保持既有记录。
+- 微信公众平台此前被浏览器站点安全策略阻止，未绕过。已请用户核对体验版是否为0.1.1113m，若仍为旧版再设置；后台实际体验指向尚未确认，不能把上传成功写成体验版已切换。没有提审或正式发布。
+- 实际上传包逐文件资源解包尚未核对；已有证据为上传输入的精确范围/哈希、完整解码及模拟器显示，以及微信返回的各包体积。真实第二微信好友打开、手机图/声音/视频播放和完整剪辑线传播仍未验收，功能继续observing。
+
+证据留本机：`/tmp/mailbox-live-20261113/png-lossless-applied.json`、`apply-approved-png-compression.py`、`native-png-check.log`、`native-png-home.png`、`upload-0.1.1113m-png.log`、`upload-0.1.1113m-png.json`、`internal-client-acceptance.json`。开发原图及可读样式不随上传副本替换；候选d034707与前版8221ba3的完整已授权差异留Git历史。
