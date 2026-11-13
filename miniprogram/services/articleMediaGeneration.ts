@@ -43,7 +43,7 @@ export async function runArticleMedia(task:ArticleMediaTask,persist:()=>void,act
     } else {
       const {operation}=await storyAudioApi.status(task.requestId);
       if(operation.status==='ready')return {kind:task.kind,operationId:operation.id};
-      if(['failed','unknown','cancelled'].includes(operation.status))throw new Error(operation.error?.message || '声音生成未完成，请稍后再试');
+      if(['failed','unknown','cancelled'].includes(operation.status))throw Object.assign(new Error(operation.error?.message || '声音生成未完成，请稍后再试'),{code:operation.status==='failed'?operation.error?.code:undefined});
     }
     if(active())await new Promise<void>(resolve=>setTimeout(resolve,3000));
   }
@@ -51,5 +51,5 @@ export async function runArticleMedia(task:ArticleMediaTask,persist:()=>void,act
 }
 
 export function mediaDefinitelyNotSubmitted(error:unknown):boolean {
-  return ['NOT_SUBMITTED','MUSIC_NOT_CONFIGURED','REVISION_CHANGED','INVALID_INPUT','EMPTY_NARRATION','TEXT_TOO_LONG','STORY_PROTOCOL_REQUIRED','AUDIO_NOT_READY','AUDIO_NOT_CONFIGURED','VOICE_NOT_FOUND','CONSENT_DECLINED'].includes((error as {code?:string})?.code || '');
+  return ['TTS_PERMISSION_REQUIRED','NOT_SUBMITTED','MUSIC_NOT_CONFIGURED','REVISION_CHANGED','INVALID_INPUT','EMPTY_NARRATION','TEXT_TOO_LONG','STORY_PROTOCOL_REQUIRED','AUDIO_NOT_READY','AUDIO_NOT_CONFIGURED','VOICE_NOT_FOUND','CONSENT_DECLINED'].includes((error as {code?:string})?.code || '');
 }
