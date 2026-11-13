@@ -170,3 +170,34 @@
 - 发现失败朗读任务重开时反复短暂显示正在朗读。已保留云端failed错误码，仅TTS_PERMISSION_REQUIRED（明确未提交）允许移出待办；unknown继续保留，不自动重新扣费。新增服务入口测试覆盖全文scope/版本传递、旧capability拒绝及unknown保留。完整检查1892/1892通过，日志check-final.log。
 - 手机软键盘、音频生成后播放/保存重开仍未通过；TTS调用权限与音乐配置必须后续补齐。当前无权限开通、无体验版上传。
 - 下一步必须先清理《壮》第三章（正常删除、历史可恢复）及迟到的新建测试书（最近删除），复核原有两章、五本书，再记录预览状态。还不能把此记录称作完整验收交付。
+
+
+### 19:14 后配置续办（最新状态优先）
+
+- 19:02 已完成清理：通过正常目录删除《壮》第三章，保留历史；迟到创建的同名0章测试书移入最近删除。19:07再次核对书架5本、《壮》2章，原章节未改。上节“待清理”已完成。
+- 用户明确授权只给storyAudio补已有302配置和TextToVoice权限，测试累计上限5元，不上传体验版、不新增供应商。
+- 19:14:09通过微信开发者工具保存STORY_MUSIC_302_KEY和STORY_MUSIC_ENABLED=true，重新打开配置核对成功。密钥复用drinking-time-local既有API302_KEY，不输出、不写源码；其余运行时、内存、超时不变。腾讯云函数列表同样确认更新时间19:14:09。
+- 发现docs/audio-story-rollout.md记录9月成功朗读使用J.Z专用凭证，而当前自定义环境没有这组凭证。本次实际登录账号为“拾光家忆 DK”，确认其CloudBase环境与AppID一致；该账号语音合成服务此前未开通。未向SCF_QcsRole或TCB_QCSRoleInRunLog盲目附加权限。
+- 用户在实际开通前明确同意《腾讯云语音合成服务条款》和《腾讯语音合成公有云服务等级协议》。开通回执显示“服务已开通”，后付费默认关闭；未购买资源包。仍需领取/核对免费额度，验证TextToVoice真实可调用与全文声音链路，不能把服务开通当作朗读验收通过。
+- 本阶段尚无新增付费调用；成功图片任务仍1次，供应商精确费用未核对。status.json已移除错误的“付费调用0/费用0”描述。
+- 自动审批拦下可能泄露环境密钥的截图和完整配置文本输出；改用只输出控件/角色字段的安全检查。无密钥输出或扩权重试。
+
+### 19:45 语音权限复测与安全验证交接
+
+- 基础/精品音色免费资源包已领取：800万字符，生效2026-11-13 19:29:53，到期2027-02-13 19:29:53；设置页后付费关闭。截图/tmp/shiguang-media-20261113/tts-postpaid-disabled.png。
+- 19:33在《壮》新增【临时验收】声音配置复测1113，保存两段虚构文字后重新提交全文朗读，仍明确返回TTS_PERMISSION_REQUIRED。本轮TTS明确权限拒绝共2次，音乐供应商提交仍0。服务开通不等于云函数临时身份获得权限。
+- CloudBase新旧控制台未显示可修改运行角色；CAM仅有主账号和sms-login-api，没有专用语音子用户。未向短信用户、SCF配置角色或TCB日志角色添加语音权限。
+- 已创建未关联策略ShiguangStoryAudioTextToVoiceOnly（policyId=293861921），仅allow tts:TextToVoice、resource=*。本地无秘密草案/tmp/shiguang-media-20261113/storyAudio-TextToVoice-policy.json。
+- 正在准备自定义子用户shiguang-story-audio，只勾编程访问，不勾控制台访问。“填写用户信息→下一步”触发图片验证码，尚未进入权限选择和最终审阅。没有创建或读取新密钥，没有完成授权关联。Chrome tab 1813455214已markHandoff，等待用户完成验证码。截图/tmp/shiguang-media-20261113/tencent-security-verification.png。
+- 新凭证最终创建须遵循工具手动接管要求，不让用户发密钥到对话。后续仅将专用凭证成组写入storyAudio的STORY_AUDIO_TENCENT_SECRET_ID/KEY，不混入平台临时token。
+- 代码仍e7f4945，1892项检查通过；本阶段只改交接和非代码配置。无新二维码、无体验版上传。第二轮临时第三章19:45已点击正常删除，回执和重开仍待核对。
+
+- 19:47 cleanup verified: the second temporary chapter was removed through normal revision flow; shelf again shows the original five books and target book two chapters. CAPTCHA remains pending; no credential created.
+
+### 20:15 专用语音配置及字幕根因修复
+
+- 用户完成验证码并亲自点击最终创建。shiguang-story-audio 仅编程访问，唯一关联策略 ShiguangStoryAudioTextToVoiceOnly。只将其专用 ID/key 写入 storyAudio 后端环境；保存后重新编辑核对两项一致，既有音乐 key/enabled 保留。没有把密钥写入仓库或聊天；一次格式诊断使用的0600临时凭证文件已自动删除。
+- 在《壮》新增第三章【临时验收】全文声音配置完成1113，仍为两段虚构纸船/灯塔文字，保存成功。20:06真实朗读不再权限拒绝，但为 unknown。云请求 c83b9773-a30a-48ba-a18c-4e0156b151d0 日志明确 TTS_PROVIDER_INVALID_RESPONSE / 腾讯云字幕时间无效。未重试该任务。
+- 免费额度内用10字“【虚构验收】雨停了。”独立格式诊断，腾讯已返回音频；RequestId dce6f2cd-74bf-4217-a0d7-3f7d127a21cb，原始非秘密字幕记录 /tmp/shiguang-media-20261113/tts-subtitle-diagnostic.json。句首【为250→250的PPP，而下一字从250开始。旧实现仅合并句尾零时长标点，错误拒绝句首标点。
+- tencentTts 现将零时长标点合并到相邻真实时间字幕，保持音频时序；无相邻语音、错位时间及零时长语音仍拒绝。新增回归先失败后通过，20项语音测试通过；完整类型检查与1893项全部通过，check-tts-punctuation.log。仅需重新部署 storyAudio；其他函数不动。
+- 此第三轮临时章尚未清理，音乐尚未实际提交；未知朗读任务不可作为成功或自动重复。新二维码仍待验收。

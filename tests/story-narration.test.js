@@ -125,6 +125,25 @@ test('Tencent zero-duration punctuation joins the preceding cue without changing
   await assert.rejects(invalid.synthesize({text:'我',sessionId:'audio-zero-speech',voiceType:101001}),{code:'TTS_PROVIDER_INVALID_RESPONSE'});
 });
 
+
+test('Tencent leading zero-duration punctuation joins the following cue at its real start',async()=>{
+  const adapter=createTencentTtsAdapter({client:{async TextToVoice(){return {Audio:'YWJj',Subtitles:[
+    {Text:'【',Phoneme:'PPP',BeginTime:250,EndTime:250},
+    {Text:'虚',Phoneme:'xv1',BeginTime:250,EndTime:580},
+    {Text:'】',Phoneme:'PPP',BeginTime:580,EndTime:750},
+    {Text:'。',Phoneme:'PPP',BeginTime:750,EndTime:750},
+  ]};}}});
+  const result=await adapter.synthesize({text:'【虚】。',sessionId:'audio-leading-punctuation',voiceType:101001});
+  assert.deepEqual(result.subtitles,[{text:'【虚',beginMs:250,endMs:580},{text:'】。',beginMs:580,endMs:750}]);
+  for(const rows of [
+    [{Text:'【',Phoneme:'PPP',BeginTime:250,EndTime:250}],
+    [{Text:'【',Phoneme:'PPP',BeginTime:250,EndTime:250},{Text:'虚',BeginTime:200,EndTime:580}],
+  ]){
+    const invalid=createTencentTtsAdapter({client:{async TextToVoice(){return {Audio:'YWJj',Subtitles:rows};}}});
+    await assert.rejects(invalid.synthesize({text:'【虚',sessionId:'audio-invalid-leading',voiceType:101001}),{code:'TTS_PROVIDER_INVALID_RESPONSE'});
+  }
+});
+
 test('narration is not ready until one player-ready private work has been published',async()=>{
   const published=[];
   const fixture=narrationFixture({publisher:{async publish(input){published.push(input);return {fileID:'cloud://private/final.wav',format:'wav',text:input.operation.snapshot.text,durationMs:input.narration.durationMs,timeline:input.narration.timeline,synchronized:input.narration.synchronized};}}});
