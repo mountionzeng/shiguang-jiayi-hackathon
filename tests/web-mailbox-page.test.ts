@@ -83,3 +83,30 @@ test("cloud invocation failure ends loading and shows a retryable message withou
   assert.equal(p.data.error, "");
   assert.deepEqual(p.data.stories, []);
 });
+
+test("opening the inbox after a QR visit ignores the stale launch scene, but a new scan still previews", async () => {
+  let scene = "wm_" + "A".repeat(28);
+  const calls: Array<{ action: string; code?: string }> = [];
+  (globalThis as any).wx = {
+    hideShareMenu() {},
+    getEnterOptionsSync: () => ({ path: "packages/web-mailbox/pages/index/index", query: { scene } }),
+    cloud: { callFunction: async ({ data }: any) => {
+      calls.push(data);
+      if (data.action === "mailboxList") return { result: { stories: [{ id: "receipt", title: "Paper stars" }] } };
+      if (data.code === "A".repeat(28)) throw new Error("expired QR");
+      return { result: { title: "New scan" } };
+    } },
+  };
+  const p = await page();
+  p.onLoad({});
+  p.onShow();
+  await new Promise(r => setTimeout(r, 5));
+  assert.deepEqual(calls.map(c => c.action), ["mailboxList"]);
+  assert.equal(p.data.error, "");
+  assert.equal(p.data.stories[0].title, "Paper stars");
+  scene = "wm_" + "B".repeat(28);
+  p.onShow();
+  await new Promise(r => setTimeout(r, 5));
+  assert.deepEqual(calls.map(c => c.action), ["mailboxList", "mailboxPreview"]);
+  assert.equal(p.data.preview.title, "New scan");
+});

@@ -52,6 +52,15 @@ Page({
       scene = decodeURIComponent(query.scene || "");
     } catch {}
     this.lastScene = scene;
+    // Internal navigation must not replay the QR used to launch the app earlier.
+    if (!scene) {
+      const enter = wx.getEnterOptionsSync?.();
+      if (enter?.path === "packages/web-mailbox/pages/index/index") {
+        try {
+          this.lastScene = decodeURIComponent(enter.query?.scene || "");
+        } catch {}
+      }
+    }
     if (/^wm_[A-F0-9]{28}$/.test(scene)) this.setData({ code: scene.slice(3) });
     if (query.id && /^[a-f0-9-]{36}$/.test(query.id)) {
       if (query.token && /^[A-Za-z0-9_-]{43}$/.test(query.token))
