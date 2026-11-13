@@ -48,3 +48,6 @@
 - 自动审批拒绝临时暂停新接收码创建配置，未执行；当前仅两个授权测试账号开放，公众创建不开放。正式好友真机查看、图片/声音/视频播放、剪辑线真实完整传输尚未验收，不把本人文字接收冒称全部上线完成。
 
 证据目录含internal-client-acceptance.json、native-final-check.log、native-received.png、native-reopened.png、native-private-after-revoke.png、native-receipt-web.png、final-private-cleanup-read.log及upload-0.1.1113m.log。释放本轮开发工具/文件范围，等待打包配置确认后继续。
+
+
+用户随后明确批准仅开启官方WXSS样式压缩并重传。本轮仅占用project.config.json的setting.minifyWXSS及验收记录；固定候选后需重新读取配置、检查界面/资源/实际微信包。其他源码与资源不变。

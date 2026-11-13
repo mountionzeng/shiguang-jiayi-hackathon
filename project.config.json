@@ -14,7 +14,8 @@
     "minified": true,
     "postcss": true,
     "urlCheck": true,
-    "minifyWXML": true
+    "minifyWXML": true,
+    "minifyWXSS": true
   },
   "simulatorType": "wechat",
   "condition": {},
