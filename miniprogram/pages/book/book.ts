@@ -96,7 +96,7 @@ Page({
     retainedDrafts: [] as ChapterDraft[],
     articleSessionId: "",
     articleChatPhotos: [] as Array<{id:string;path:string}>,
-    mediaSelectedBlock: '', companionToolsOpen: false, birdHintActive: false, mediaBusy: false, mediaStatus: '',
+    mediaSelectedBlock: '', companionToolsOpen: false, birdHintActive: false, mediaBusy: false, mediaStatus: '', mediaAudioId:'', mediaAudioState:'idle' as 'idle'|'loading'|'playing'|'paused',
     mediaPanelKind: '' as ArticleMediaKind | '', mediaPanelText: '', mediaArtDirection: '', mediaReferences: [] as PhoneReferencePhoto[], mediaPickingReference:false, mediaPanelNotice:'',
     article: null as ArticleChapter | null, articleScrollTop: 0, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
     openingChapter: null as { title: string; text: string } | null,
@@ -577,7 +577,7 @@ Page({
   },
   onHide() {
     if (!this.data.mediaPickingReference) this.closeArticleMediaPanel();
-    this.mediaHidden=true; this.mediaPlayer?.stop();
+    this.mediaHidden=true; this.releaseArticleAudio();
     this.articleCaretEpoch++;
     this.saveArticleChat();
     if (this.articlePending) void this.flushArticle();
@@ -594,7 +594,7 @@ Page({
     }
   },
   onUnload() {
-    this.mediaHidden=true; this.mediaPlayer?.destroy();
+    this.mediaHidden=true; this.releaseArticleAudio(false);
     this.articleCaretEpoch++;
     this.saveArticleChat();
     if (this.articleTimer) clearTimeout(this.articleTimer);
@@ -1233,6 +1233,7 @@ Page({
     if (this.data.editing && !this.backupEdits("contents")) return;
     this.releaseArticleChat();
     resetXiaoyiPanel.call(this);
+    this.releaseArticleAudio();
     this.setData({ openingChapter: null, view: "contents", moreOpen: false, panel: "", ...this.chapterData() });
   },
   async openChapter(event: { currentTarget: { dataset: { id: string } } }) {
@@ -1644,6 +1645,11 @@ Page({
   mediaRunning: false,
   mediaPlayer: undefined as WechatMiniprogram.InnerAudioContext | undefined,
   mediaPlayingId: '',
+  mediaPlaybackEpoch: 0,
+  releaseArticleAudio(update=true) {
+    this.mediaPlaybackEpoch++; this.mediaPlayer?.destroy(); this.mediaPlayer=undefined; this.mediaPlayingId='';
+    if(update&&!this.unloaded)this.setData({mediaAudioId:'',mediaAudioState:'idle'});
+  },
   mediaTaskKey() { return this.articleKey()+':media'; },
   mediaPanelScope: '',
   mediaPanelEpoch: 0,
@@ -1739,18 +1745,28 @@ Page({
   },
   async playArticleAudio(event:{detail?:{id?:string};currentTarget?:{dataset:{id?:string}}}) {
     const id=event.detail?.id || event.currentTarget?.dataset.id || '',chapterId=this.data.article?.id,storyId=this.data.storyId;
-    if(!chapterId||!storyId)return;
-    if(this.mediaPlayingId===id&&this.mediaPlayer&&!this.mediaPlayer.paused){this.mediaPlayer.pause();return;}
+    if(!id||!chapterId||!storyId||this.data.mediaAudioState==='loading')return;
+    if(this.mediaPlayingId===id&&this.mediaPlayer){
+      if(this.mediaPlayer.paused)this.mediaPlayer.play();else this.mediaPlayer.pause();
+      return;
+    }
+    this.releaseArticleAudio();
+    const epoch=this.mediaPlaybackEpoch;
+    const active=()=>!this.unloaded&&!this.mediaHidden&&this.data.view==='chapter'&&this.data.article?.id===chapterId&&this.data.storyId===storyId&&epoch===this.mediaPlaybackEpoch;
+    this.setData({mediaAudioId:id,mediaAudioState:'loading',mediaStatus:''});
     try {
       if(!await this.flushArticle())throw new Error('声音模块尚未保存，请稍后重试');
+      if(!active())return;
       const response=await wx.cloud.callFunction({name:'storyBooks',data:{action:'audioPlayback',storyId,chapterId,moduleId:id}});
       const result=response.result as {url?:string;error?:unknown;message?:string};
-      if(!result?.url||result.error)throw new Error(result?.message || '暂时无法播放');
-      if(this.unloaded||this.mediaHidden||this.data.article?.id!==chapterId)return;
-      this.mediaPlayer?.destroy();this.mediaPlayer=wx.createInnerAudioContext();this.mediaPlayingId=id;
-      this.mediaPlayer.onError(()=>{if(!this.unloaded)this.setData({mediaStatus:'播放没有成功，请再点一次'});});
-      this.mediaPlayer.src=result.url;this.mediaPlayer.play();
-    } catch(error){if(!this.unloaded)this.setData({mediaStatus:error instanceof Error?error.message:'暂时无法播放'});}
+      if(!result?.url||result.error)throw new Error('暂时无法播放，请再点一次');
+      if(!active())return;
+      const player=wx.createInnerAudioContext();this.mediaPlayer=player;this.mediaPlayingId=id;
+      const update=(mediaAudioState:'idle'|'playing'|'paused')=>{if(active()&&this.mediaPlayer===player)this.setData({mediaAudioState});};
+      player.onPlay(()=>update('playing'));player.onPause(()=>update('paused'));player.onEnded(()=>{update('idle');if(this.mediaPlayer===player){this.mediaPlayer=undefined;this.mediaPlayingId='';player.destroy();}});
+      player.onError(()=>{if(active()&&this.mediaPlayer===player){this.releaseArticleAudio();this.setData({mediaStatus:'播放没有成功，请再点一次'});}});
+      player.src=result.url;player.play();
+    } catch {if(active())this.setData({mediaAudioState:'idle',mediaStatus:'暂时无法播放，请再点一次'});}
   },
   articleChatLoadedKey: '',
   articleChatSelection: '',

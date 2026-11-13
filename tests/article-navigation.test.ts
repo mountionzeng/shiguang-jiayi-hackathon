@@ -571,3 +571,27 @@ test('reference picker survives native hide and cancel without changing manuscri
  assert.equal(p.data.mediaPanelKind,'image');cancel({errMsg:'chooseMedia:fail cancel'});await pending;
  assert.equal(p.data.mediaPickingReference,false);assert.equal(p.data.mediaPanelNotice,'');assert.equal(p.data.mediaArtDirection,'保留暖色');assert.equal(JSON.stringify(p.data.article),before);
 });
+
+test('inline audio reflects playback events and resumes without requesting a new URL',async t=>{
+  const {p}=await setup();p.data.view='chapter';p.data.storyId='story-test';p.flushArticle=async()=>true;
+  const handlers:Record<string,()=>void>={};let requests=0,plays=0,destroyed=0;
+  const player={src:'',paused:true,destroy(){destroyed++;},play(){plays++;this.paused=false;handlers.play();},pause(){this.paused=true;handlers.pause();},onPlay(fn:()=>void){handlers.play=fn;},onPause(fn:()=>void){handlers.pause=fn;},onEnded(fn:()=>void){handlers.ended=fn;},onError(fn:()=>void){handlers.error=fn;}};
+  const old=(globalThis as any).wx;
+  (globalThis as any).wx={...old,createInnerAudioContext:()=>player,cloud:{callFunction:async()=>{requests++;return {result:{url:'https://example.test/audio.wav'}};}}};
+  t.after(()=>{(globalThis as any).wx=old;});
+  const event={currentTarget:{dataset:{id:'audio-module'}}};
+  await p.playArticleAudio(event);assert.equal(p.data.mediaAudioState,'playing');
+  await p.playArticleAudio(event);assert.equal(p.data.mediaAudioState,'paused');
+  await p.playArticleAudio(event);assert.equal(p.data.mediaAudioState,'playing');assert.equal(requests,1);assert.equal(plays,2);
+  p.releaseArticleAudio();handlers.play();assert.equal(p.data.mediaAudioState,'idle');assert.equal(destroyed,1);
+});
+
+test('leaving inline audio while its URL loads prevents stale playback',async t=>{
+  const {p}=await setup();p.data.view='chapter';p.data.storyId='story-test';p.flushArticle=async()=>true;
+  let resolve:any,created=0;const old=(globalThis as any).wx;
+  (globalThis as any).wx={...old,createInnerAudioContext:()=>{created++;throw Error('stale playback');},cloud:{callFunction:()=>new Promise(r=>{resolve=r;})}};
+  t.after(()=>{(globalThis as any).wx=old;});
+  const running=p.playArticleAudio({currentTarget:{dataset:{id:'audio-module'}}});await Promise.resolve();
+  p.releaseArticleAudio();resolve({result:{url:'https://example.test/audio.wav'}});await running;
+  assert.equal(created,0);assert.equal(p.data.mediaAudioState,'idle');
+});

@@ -70,6 +70,7 @@ function createMusicService({repo,workerRepo,storage,env=process.env,fetchBytes=
       await workerRepo.assertNarrationSource(operation);
       // Claim before POST. An interrupted POST is never automatically submitted again.
       if(!await workerRepo.updateOperation(operation.id,{status:'queued'},{status:'submitted',updatedAt:now()}))return repo.getOperation(operation.id);
+      let stage='provider',providerStatus=null;
       try {
         const body=JSON.stringify({model:MODEL,prompt:'Create instrumental music only, no vocals, no spoken words. Match the mood and setting of this passage: '+operation.snapshot.text,lyrics:'[Intro]\n[Inst]\n[Outro]',stream:false,output_format:'url',audio_setting:{sample_rate:44100,bitrate:128000,format:'mp3'}});
         const payload=await require('./computeBilling').billAs({
@@ -79,9 +80,16 @@ function createMusicService({repo,workerRepo,storage,env=process.env,fetchBytes=
           model:MODEL, url:'https://api.302.ai/minimaxi/v1/music_generation', body,
           call: async () => JSON.parse((await fetchBytes('https://api.302.ai/minimaxi/v1/music_generation',{body,headers:{Authorization:'Bearer '+env.STORY_MUSIC_302_KEY,'Content-Type':'application/json'}})).toString('utf8')),
         }));
+        providerStatus=Number.isInteger(payload?.base_resp?.status_code)?payload.base_resp.status_code:null;
+        stage='response';
         const sourceUrl=safeAudioUrl(resultUrl(payload));
+        stage='persist';
         await workerRepo.updateOperation(operation.id,{status:'submitted'},{status:'storing',sourceUrl,updatedAt:now()});
       } catch (error) {
+        // Never log provider bodies, URLs, passage text or credentials.
+        const rawCode=error?.code||error?.message;
+        const code=/^(AUDIO_HTTP_[0-9]{3}|AUDIO_TIMEOUT|AUDIO_TOO_LARGE|AUDIO_DOWNLOAD_HOST|ERR_INVALID_URL|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN)$/.test(rawCode)?rawCode:'UNCLASSIFIED';
+        console.warn('[storyAudio.music]',JSON.stringify({requestId:operation.requestId,stage,code,providerStatus}));
         if (error?.definitelyNotSubmitted) {
           await workerRepo.updateOperation(operation.id,{status:'submitted'},{status:'failed',error:{code:error.code||'MUSIC_NOT_SUBMITTED',message:error.message||'配乐还没有提交'},updatedAt:now()});
         } else {

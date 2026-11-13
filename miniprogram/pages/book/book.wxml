@@ -116,7 +116,7 @@ module.exports = {status: status};
       <button bindtap="openArticleMediaPanel" data-kind="narration" disabled="{{mediaBusy}}">全文转有声书</button>
     </view>
     <view wx:if="{{article.audioModules.length}}" class="article-audio-players">
-      <button wx:for="{{article.audioModules}}" wx:key="id" data-id="{{item.id}}" bindtap="playArticleAudio">▶ {{item.kind === 'music' ? '音乐' : '有声书'}} · 播放 / 暂停</button>
+      <button wx:for="{{article.audioModules}}" wx:key="id" data-id="{{item.id}}" bindtap="playArticleAudio" disabled="{{mediaAudioState === 'loading'}}">{{mediaAudioId === item.id && mediaAudioState === 'playing' ? 'Ⅱ' : '▶'}} {{item.kind === 'music' ? '音乐' : '有声书'}} · {{mediaAudioId !== item.id || mediaAudioState === 'idle' ? '播放' : mediaAudioState === 'loading' ? '正在加载…' : mediaAudioState === 'playing' ? '暂停' : '继续播放'}}</button>
     </view>
     <view wx:if="{{chapterAiLabelText}}" class="chapter-ai-label">{{chapterAiLabelText}}</view>
     <view wx:if="{{!protectedCopy}}" class="article-memory-actions">
