@@ -1,3 +1,4 @@
+const {actions:mailboxActions,runMailbox}=require('./mailbox');
 const {checkOutgoingPackage,createOutgoingModerator,withModerationIdentity}=require('./outgoingText');
 const { recordDeliveryActivity } = require('./activity');
 const cloud = require("wx-server-sdk");
@@ -199,6 +200,14 @@ async function cacheDeliveryAssets(event, context, baseUrl, secret) {
 
 async function main(event = {}) {
   const action = String(event.action || "");
+  if(mailboxActions[action]){
+    if(process.env.WECHAT_MAILBOX_ENABLED!=='true')throw new Error('mailbox_disabled');
+    const baseUrl=String(process.env.DRINKING_TIME_BRIDGE_BASE_URL||''),secret=String(process.env.DRINKING_TIME_BRIDGE_SECRET||'');
+    if(!/^https:\/\//.test(baseUrl)||secret.length<32)throw new Error('bridge_not_configured');
+    const rawContext=cloud.getWXContext(),context={...rawContext,APPID:rawContext.APPID||process.env.WECHAT_APP_ID};
+    return runMailbox(event,context,{post:(path,body,shape)=>post(baseUrl,path,body,secret,shape,1024*1024),moderate});
+  }
+
   if (action === "chapterDeliveryEnabled") return { enabled: process.env.CHAPTER_PACKAGE_ENABLED === "true" && process.env.CHAPTER_DELIVERY_ENABLED === "true" };
   const deliveryAction = Boolean(chapterDeliveryPathForAction(action));
   if (action === "stageChapterAssets" || deliveryAction) {

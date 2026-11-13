@@ -45,6 +45,13 @@
       "pages": [
         "pages/confirm/index"
       ]
+    },
+    {
+      "root": "packages/web-mailbox",
+      "name": "web-mailbox",
+      "pages": [
+        "pages/index/index"
+      ]
     }
   ],
   "window": {

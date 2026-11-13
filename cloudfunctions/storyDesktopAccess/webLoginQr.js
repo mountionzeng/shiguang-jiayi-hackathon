@@ -4,15 +4,17 @@ const PAGE='packages/web-login/pages/confirm/index';
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 
 async function webLoginQr(repo,request,options){
-  const verified=verifySignedRequest(request,options,PATH,['code','expiresAt']);
-  const {code,expiresAt}=request.body,now=options.now();
+  const verified=verifySignedRequest(request,options,PATH,['code','expiresAt','purpose']);
+  const {code,expiresAt,purpose}=request.body,now=options.now();
+  if(purpose!==undefined&&purpose!=='mailbox')fail('invalid_input');
+  if(purpose==='mailbox'&&!options.mailboxEnabled)fail('mailbox_disabled');
   if(!/^[A-F0-9]{28}$/.test(code||'')||!Number.isSafeInteger(expiresAt)||expiresAt<=now||expiresAt>now+120000)fail('invalid_input');
   await repo.transaction(tx=>claimNonce(tx,verified.timestampMs,verified.nonce));
   const envVersion=options.envVersion||'release';
   if(!['release','trial','develop'].includes(envVersion))fail('qr_not_configured');
   let response;
   try {
-    response=await options.generate({scene:`wl_${code}`,page:PAGE,checkPath:envVersion==='release',envVersion,width:360});
+    response=await options.generate({scene:`${purpose==='mailbox'?'wm':'wl'}_${code}`,page:purpose==='mailbox'?'packages/web-mailbox/pages/index/index':PAGE,checkPath:envVersion==='release',envVersion,width:360});
   } catch(error) {
     // Diagnose real platform prerequisites without logging scenes, signatures,
     // credentials, full provider messages or any account information.

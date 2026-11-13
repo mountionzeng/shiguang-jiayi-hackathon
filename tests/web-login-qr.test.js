@@ -42,3 +42,12 @@ test('provider diagnostics preserve failure and never log the request or provide
   finally{console.error=original;}
   assert.deepEqual(logs,[['web_login_qr_generation_failed',{sdkCode:-604101,providerCode:85096,invalidPage:false,unreleased:true,permissionDenied:false,hints:[],numericCodes:[85096]}]]);
 });
+
+test('mailbox QR has its own fixed page, scene and separately gated purpose',async()=>{
+ const f=setup(),body={code,expiresAt:now+120000,purpose:'mailbox'};
+ await assert.rejects(webLoginQr(f.repo,f.request(body),f.options),/mailbox_disabled/);
+ await webLoginQr(f.repo,f.request(body),{...f.options,mailboxEnabled:true});
+ assert.equal(f.calls[0].page,'packages/web-mailbox/pages/index/index');
+ assert.equal(f.calls[0].scene,'wm_'+code);
+ await assert.rejects(webLoginQr(f.repo,f.request({...body,purpose:'arbitrary'}),{...f.options,mailboxEnabled:true}));
+});

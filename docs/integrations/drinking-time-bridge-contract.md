@@ -2,9 +2,9 @@
 
 | 项 | 值 |
 |---|---|
-| 约定版本 | **1.7.1** |
-| 状态 | 本地实现，默认关闭，待双端真实验收 |
-| 日期 | 2026-11-02 |
+| 约定版本 | **1.8.0** |
+| 状态 | 1.8 邮箱增量本地实现、默认关闭、待双端真实验收；既有协议部署记录保持 |
+| 日期 | 2026-11-13 |
 | 权威版本 | Drinking Time 仓库 `docs/integrations/shiguang-bridge-contract.md` |
 | 副本 | 拾光家忆仓库 `docs/integrations/drinking-time-bridge-contract.md`（必须与权威版本同版本号） |
 | 实现基线 | Drinking Time `9f7f9f4`（桥接口），拾光家忆 `d83f1ed`（云函数 `drinkingTimeBridge`） |
@@ -681,6 +681,7 @@ canonicalJson(正文)，单行，没有末尾换行：
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| 1.8.0 | 2026-11-13 | 新增本人小程序私密邮箱接收、固定部分投影、显式好友分享/撤销；默认关闭，双端自动化通过，真实验收待续。 |
 | 1.7.0 | 2026-10-24 | 新增章节投递、一次性领取、收件、图片 capability 和受约束发回契约；默认关闭，新增桥签名向量与双端测试要求。 |
 | 1.6.0 | 2026-10-23 | 新增 `/web-login/confirm`：网页 6 位码登录确认与绑定微信（默认关闭，向后兼容）。签名测试向量 V1 不变，新增 V2。 |
 | 1.5.1 | 2026-09-19 | 电脑配对 nonce 改为 MySQL 原子领取，跨进程和重启后仍拒绝五分钟窗口内重放；`storyAccess` 只有在电脑权威地址、密钥和开关完整配置后才可落库。补充迁移先行、生产者最后开启和反向关闭的发布/回滚清单。 |
@@ -695,3 +696,17 @@ canonicalJson(正文)，单行，没有末尾换行：
 - 扫码只自动preview，显示浏览器信息后须人点击确认或拒绝。网页确认后进入正常工作区，再可选询问迁移；没有未迁移故事或读取失败时不拦阻工作区。
 - Web需要 `WECHAT_SCAN_LOGIN_ENABLED=true`、`WECHAT_LOGIN_QR_ENABLED=true` 和 `SHIGUANG_STORY_AUTHORITY_URL/SECRET`。出码云函数需要 `WEB_LOGIN_QR_ENABLED=true`、`wxacode.getUnlimited`权限；确认云函数仍需 `WEB_LOGIN_CONFIRM_ENABLED=true`。导入开关独立。
 - 没有配置时，新前端明确提示扫码不可用，不以固定体验码冒充登录码。先部署兼容新令牌的后端和原生确认云函数，再部署出码路由、上传正确小程序、真实验收，最后切换前端。
+
+## 1.8.0 增量：邮箱所选内容到本人小程序（2026-11-13，未部署）
+
+此增量依用户新需求实现，所有新开关默认关闭，不改变已有登录、邮箱验证、故事导入、钱包和章节投递协议。
+
+- `POST /v1/web-login/qr` 新增可选 `purpose:"mailbox"`。已有无 purpose 请求不变。新用途额外要求 `WECHAT_MAILBOX_ENABLED=true`，固定 scene=`wm_`+28位十六进制确认令牌、固定页面 `packages/web-mailbox/pages/index/index`，仍120秒有效，不能指定任意页面。
+- 微信 `drinkingTimeBridge` 新 action：`mailboxPreview`、`mailboxConfirm`、`mailboxList`、`mailboxRead`、`mailboxShare`、`mailboxRevoke`。统一签名调用 Web `POST /api/shiguang/mailbox`。subject 只来自 getWXContext 的 APPID/OPENID，客户端 subject/userId/fingerprint 均不可信。
+- 正文 action 分别为 preview/confirm/list/read/share/revoke。preview/confirm 用 code；read 用 id 与可选好友 token；share 用 id 和云函数读取的固定内容 fingerprint；revoke 只用 id。继续使用现有路径/正文签名、持久 nonce 与主体限流。
+- 扫码预览不绑定、不接收。手机明确确认才把网页发送账号关联到本人的小程序“内容接收身份”，并记录私密来稿。这不是登录账号合并，不移动身份、故事或余额；已绑定其他微信主体时失败关闭。
+- Web 端只发送服务器核实的已保存内容。局部投影不包含未选段落、历史、其他素材或剪辑线；不可变来稿在“小程序 → 我的 → 网页寄来的故事”查看。网页联系人往来仍追踪固定所选部分的保存变化；小程序本次接收是独立不可变副本，更新需另寄新版。
+- read 对本人返回 document 与 fingerprint，对拿到已开启好友链接的微信用户仅返回 document；未分享、错误 token 或撤销后不可读取。分享由本人点击，云函数先校验该份内容文字，再使用服务器 fingerprint 创建链接；重复打开分享面板保留旧链接，停止分享后旧链接失效。生成链接不代用户向好友发消息。
+- document 包括 id/title/mine/chapters[{title,text}]/images[HTTPS URL]/media[{kind:video|audio,label,url}]/shared/createdAt。小程序可阅读、看图、播放现成视频/声音；不提供网页剪辑线编辑或原生书稿编辑。
+- 受管视频/音频沿用邮箱独立留存，签名媒体能力20分钟有效并随分享撤销失效；其他远端图片/视频沿用原 HTTPS 来源，不能保证第三方地址永久有效。网页可配置 `WECHAT_MAILBOX_PUBLIC_ORIGIN`，默认正式站；该 HTTPS 域名及实际远端媒体域名需符合小程序合法域名配置。
+- 本次包JSON上限900KiB，每网页账号最多200份来稿；超限保留原稿并明确失败。服务端新增0042两表；旧数据不重写，账号不回填。上线先迁移，再同时部署 Web、drinkingTimeBridge、storyDesktopAccess 与小程序包，完成真实两账号/媒体/撤销验证后才开启三处 WECHAT_MAILBOX_ENABLED。没有新增腾讯云公网路由，复用既有出码入口。

@@ -27,7 +27,7 @@ async function main(event={}){
         try{const response=await cloud.openapi.security.msgSecCheck({openid,scene:3,version:2,content:text});return response?.result?.suggest==='pass';}catch{return false;}
       },async signMedia(fileID,maxAge){const result=await cloud.getTempFileURL({fileList:[{fileID,maxAge}]});
       return result.fileList?.find(item=>item.fileID===fileID&&item.status===0)?.tempFileURL;}};
-    if(isLoginQr)return response(200,await webLoginQr(repo,request,{...options,envVersion:process.env.WEB_LOGIN_QR_ENV_VERSION,generate:generateQr}));
+    if(isLoginQr)return response(200,await webLoginQr(repo,request,{...options,envVersion:process.env.WEB_LOGIN_QR_ENV_VERSION,mailboxEnabled:process.env.WECHAT_MAILBOX_ENABLED==='true',generate:generateQr}));
     if(isImport)return response(200,await webImport(repo,request,{...options,download:async fileID=>(await cloud.downloadFile({fileID})).fileContent}));
     if(request.path===READ_PATH)return response(200,{story:await readAuthoritativeStory(repo,request,options)});
     if(request.path===WRITE_PATH)return response(200,{result:await writeAuthoritativeStory(repo,request,options)});

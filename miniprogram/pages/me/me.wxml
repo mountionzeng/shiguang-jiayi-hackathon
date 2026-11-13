@@ -132,6 +132,7 @@
 
   <view class="me-section-title">账号</view>
   <view class="me-list">
+    <navigator class="me-row" url="/packages/web-mailbox/pages/index/index" hover-class="none"><text class="me-row-icon">信</text><view class="me-row-copy"><text class="me-row-title">网页寄来的故事</text><text class="me-row-note">查看私密来稿，再选择转给微信朋友</text></view><text class="me-row-arrow">›</text></navigator>
     <button class="me-row" bindtap="openAccountLink" hover-class="none"><text class="me-row-icon">屏</text><view class="me-row-copy"><text class="me-row-title">在电脑上继续</text><text class="me-row-note">选择微信故事，生成一次性电脑登录码</text></view><text class="me-row-arrow">›</text></button>
     <button class="me-row" wx:if="{{webLoginEnabled}}" bindtap="openWebLogin" hover-class="none"><text class="me-row-icon">登</text><view class="me-row-copy"><text class="me-row-title">登录电脑</text><text class="me-row-note">用微信扫码，确认后登录网页</text></view><text class="me-row-arrow">›</text></button>
     <button class="me-row" bindtap="editAccountProfile" hover-class="none">
