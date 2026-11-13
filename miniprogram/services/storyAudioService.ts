@@ -43,7 +43,12 @@ function assertAudioReady():void {
 
 async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> {
   assertAudioReady();
-  const response=await wx.cloud.callFunction({name:'storyAudio',data:{...data,action}});
+  let response:Awaited<ReturnType<typeof wx.cloud.callFunction>>;
+  try {response=await wx.cloud.callFunction({name:'storyAudio',data:{...data,action}});}
+  catch {
+    throw new StoryAudioServiceError(action==='status'?'AUDIO_STATUS_UNAVAILABLE':'AUDIO_REQUEST_UNCONFIRMED',
+      action==='status'?'暂时没能读到声音结果，已保留任务，正在继续查询':'暂时没能确认声音请求，已保留任务；重新打开本章可继续查询');
+  }
   const result=response.result as ({error?:string;code?:string;message?:string}&T)|undefined;
   if(!result||result.error)throw new StoryAudioServiceError(result?.code || 'STORY_AUDIO_ERROR',result?.message || '声音服务暂不可用，请稍后重试');
   return result;

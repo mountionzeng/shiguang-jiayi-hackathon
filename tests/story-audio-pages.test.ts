@@ -172,3 +172,12 @@ test('unavailable voice page offers a working exit even when opened directly',()
   assert.match(template,/wx:elif="{{available}}"[^>]*bindtap="beginRecording"/);
   assert.doesNotMatch(template,/暂未开放录音/);
 });
+
+
+test('audio transport failure hides technical details and never labels a submission as rejected',async context=>{
+  const previous=(globalThis as any).wx;
+  (globalThis as any).wx={cloud:{callFunction:async()=>{throw new Error('cloud.callFunction:fail ESOCKETTIMEDOUT private trace');}}};
+  context.after(()=>{(globalThis as any).wx=previous;});
+  await assert.rejects(storyAudioApi.status('audio-existing'),(error:unknown)=>error instanceof StoryAudioServiceError&&error.code==='AUDIO_STATUS_UNAVAILABLE'&&!error.message.includes('ESOCKET'));
+  await assert.rejects(storyAudioApi.createMusic({requestId:'audio-existing',storyId:'story-a',revisionId:'revision-a',chapterId:'chapter-a',blockId:'block-a'}),(error:unknown)=>error instanceof StoryAudioServiceError&&error.code==='AUDIO_REQUEST_UNCONFIRMED'&&!error.message.includes('private'));
+});

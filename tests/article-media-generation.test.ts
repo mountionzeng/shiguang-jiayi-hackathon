@@ -31,3 +31,15 @@ test('definitive TTS permission rejection can leave pending queue while unknown 
  storyAudioApi.status=async()=>({operation:{status:'unknown',error:{code:'TTS_PERMISSION_REQUIRED',message:'结果未知'}} as any});
  await assert.rejects(runArticleMedia({...task},()=>{},()=>true),error=>!mediaDefinitelyNotSubmitted(error));
 });
+
+
+test('audio status timeout resumes polling the same operation without submitting again',async t=>{
+ const calls=fixture(t,{fullArticleAudio:true},{status:'ready',id:'op-test'});
+ let reads=0;const ids:string[]=[];
+ const previous=globalThis.setTimeout;
+ (globalThis as any).setTimeout=(fn:()=>void)=>{queueMicrotask(fn);return 1;};
+ t.after(()=>{globalThis.setTimeout=previous;});
+ storyAudioApi.status=async id=>{ids.push(id);if(++reads===1)throw Object.assign(new Error('连接暂时中断'),{code:'AUDIO_STATUS_UNAVAILABLE'});return {operation:{status:'ready',id:'op-test'} as any};};
+ assert.deepEqual(await runArticleMedia({...task},()=>{},()=>true),{kind:'narration',operationId:'op-test'});
+ assert.equal(calls.length,1);assert.deepEqual(ids,[task.requestId,task.requestId]);
+});

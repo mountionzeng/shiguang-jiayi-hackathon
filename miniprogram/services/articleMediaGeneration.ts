@@ -41,7 +41,14 @@ export async function runArticleMedia(task:ArticleMediaTask,persist:()=>void,act
       if(result.image?.url && result.image.moderation==='pass')return {kind:'image',photoId:storyImageReferenceId(result.image.imageId),url:result.image.url};
       if(['failed','blocked','unknown','expired'].includes(result.job.status))throw new Error(result.job.message || '配图未完成，请稍后再试');
     } else {
-      const {operation}=await storyAudioApi.status(task.requestId);
+      let response;
+      try {response=await storyAudioApi.status(task.requestId);}
+      catch(error) {
+        if((error as {code?:string})?.code!=='AUDIO_STATUS_UNAVAILABLE')throw error;
+        if(active())await new Promise<void>(resolve=>setTimeout(resolve,3000));
+        continue;
+      }
+      const {operation}=response;
       if(operation.status==='ready')return {kind:task.kind,operationId:operation.id};
       if(['failed','unknown','cancelled'].includes(operation.status))throw Object.assign(new Error(operation.error?.message || '声音生成未完成，请稍后再试'),{code:operation.status==='failed'?operation.error?.code:undefined});
     }
