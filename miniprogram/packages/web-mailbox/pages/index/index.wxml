@@ -18,7 +18,9 @@
    <button wx:if="{{document.shared}}" bindtap="stopSharing" disabled="{{busy}}" class="secondary">停止这份故事的分享</button>
   </block>
  </block>
- <view wx:else wx:for="{{stories}}" wx:key="id" data-id="{{item.id}}" bindtap="open" class="story" role="button">{{item.title}}</view>
+ <block wx:else>
+  <view wx:for="{{stories}}" wx:key="id" data-id="{{item.id}}" bindtap="open" class="story" role="button">{{item.title}}</view>
+ </block>
  <view wx:if="{{!preview && !document && !stories.length && !busy}}" class="hint">从网页邮箱选择内容，选择“微信小程序”，再用本人的微信扫码接收。</view>
  <button wx:if="{{!busy}}" bindtap="refresh" class="secondary">重新读取</button>
 </view>
