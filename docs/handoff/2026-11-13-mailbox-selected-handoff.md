@@ -75,3 +75,8 @@
 - 实际上传包逐文件资源解包尚未核对；已有证据为上传输入的精确范围/哈希、完整解码及模拟器显示，以及微信返回的各包体积。真实第二微信好友打开、手机图/声音/视频播放和完整剪辑线传播仍未验收，功能继续observing。
 
 证据留本机：`/tmp/mailbox-live-20261113/png-lossless-applied.json`、`apply-approved-png-compression.py`、`native-png-check.log`、`native-png-home.png`、`upload-0.1.1113m-png.log`、`upload-0.1.1113m-png.json`、`internal-client-acceptance.json`。开发原图及可读样式不随上传副本替换；候选d034707与前版8221ba3的完整已授权差异留Git历史。
+
+
+## 11月14日：用户确认体验版
+
+用户回复“体验版已是 0.1.1113m”，据此记录体验入口已指向本次上传版本。此为用户后台确认，非本会话直接读取微信后台；没有提审或正式发布。真实第二微信好友打开、手机图片/声音/视频播放及完整剪辑线传播仍待验收，功能保持 observing。
