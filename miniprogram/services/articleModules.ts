@@ -89,6 +89,15 @@ export function changeArticleText(input: ArticleChapter, blockId: string, value:
   fitArticleText(next, blockId);
   return { chapter: next, focused: blockId, split: false };
 }
+/** Confirm an exact edit without normalizing any surrounding text. */
+export function replaceArticleBlockText(chapter: ArticleChapter, blockId: string, expected: string, value: string) {
+  const index = chapter.content.findIndex(block => block.blockId === blockId && block.text === expected);
+  if (index < 0) throw new Error('STALE_SENTENCE_EDIT');
+  const next = clone(chapter);
+  next.content[index].text = value;
+  fitArticleText(next, blockId);
+  return next;
+}
 /** Combine text at its first reading position; retain media and server-resolved ancestry. */
 export function mergeArticleTextModules(input: ArticleChapter, blockIds: string[]): ArticleChapter {
   if (blockIds.length !== 2 || new Set(blockIds).size !== 2) throw new Error('请选择两个文字模块');

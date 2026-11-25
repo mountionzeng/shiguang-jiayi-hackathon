@@ -1,17 +1,28 @@
 import { articleEditorPages } from '../../services/articleEditorLayout';
 import type { ManuscriptChapter } from '../../domain/biography';
+import type { SentenceReview } from '../../services/articleSentenceEdit';
 import { articleChapter, changeArticleText, moveArticleModule, removeArticleModule, mergeArticleTextModules, type ArticleChapter } from '../../services/articleModules';
 Component({
   options: { multipleSlots: true },
-  properties: { audioAtTop: {type:Boolean,value:false}, keyboardHeight: {type:Number,value:0}, adjustPosition: {type:Boolean,value:true}, backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 } },
+  properties: { audioAtTop: {type:Boolean,value:false}, keyboardHeight: {type:Number,value:0}, adjustPosition: {type:Boolean,value:true}, backdrop: {type:String,value:''}, chapter: { type: Object, value: {} }, paths: { type: Object, value: {} as Record<string,string> }, width: { type: Number, value: 320 }, sentenceReview: { type: Object, value: undefined as SentenceReview | undefined } },
   data: { mergeIds: [] as string[], mergeMenu: '', focusRequest: '', selectionCursor: -1, editingBlock: '', caretCursor: null as number | null, caretRequest: 0, caretMeasureText: '', caretMeasureStyle: '', textHeights: {} as Record<string, { key: string; height: number }>, imageSelection: undefined as Promise<{ start: number; end: number } | null> | undefined, current: null as ArticleChapter | null, gesture: null as {id:string;resize:boolean;x:number;y:number;chapter:ArticleChapter} | null, pages: [] as any[], selected: '', focused: '', scale: 1, note: '' },
   lifetimes: { detached() { this.data.editingBlock = ''; this.data.caretRequest++; } },
   observers: {
+    sentenceReview(review: SentenceReview | null) {
+      this.render(() => {
+        if (!review || this.properties.sentenceReview?.id !== review.id) return;
+        this.createSelectorQuery().select('#article-sentence-review').boundingClientRect(rect => {
+          if (rect && !Array.isArray(rect) && this.properties.sentenceReview?.id === review.id) {
+            this.triggerEvent('reviewposition', { id: review.id, top: rect.top });
+          }
+        }).exec();
+      });
+    },
     keyboardHeight(height: number) {
       if (height > 0) this.revealCaret(); else this.data.caretRequest++;
     },
     'chapter, paths, width, audioAtTop': function(chapter: ManuscriptChapter, _paths: Record<string, string>, width: number) {
-      if (!chapter) return;
+      if (!Array.isArray(chapter?.content)) return;
       try {
         // Saving the same chapter updates the parent property. Keep the native
         // textarea mounted so that this acknowledgement cannot steal its caret.
@@ -27,7 +38,7 @@ Component({
         }
         this.data.textHeights = {};
         this.data.current = articleChapter(chapter);
-        this.setData({ scale }); this.render();
+        this.setData({ scale, note: '' }); this.render();
       }
       catch (error) { this.setData({ note: error instanceof Error ? error.message : '文章暂时无法打开' }); }
     },
@@ -35,7 +46,12 @@ Component({
   methods: {
     pageModels() {
       const chapter = this.data.current as ArticleChapter | undefined; if (!chapter) return;
-      return articleEditorPages(this.properties.audioAtTop ? {...chapter,audioModules:[]} : chapter, this.data.scale, this.properties.paths, this.data.textHeights);
+      const review = this.properties.sentenceReview;
+      const content = review ? chapter.content.map(block => block.blockId === review.blockId && typeof block.text === 'string'
+        ? { ...block, text: review.prefix + review.before + review.after + review.suffix } : block) : chapter.content;
+      return articleEditorPages({
+        ...chapter, content, audioModules: this.properties.audioAtTop ? [] : chapter.audioModules,
+      }, this.data.scale, this.properties.paths, this.data.textHeights);
     },
     textLineChange(event: { currentTarget: { dataset: { id: string; measure: string } }; detail: { height: number } }) {
       const { id, measure } = event.currentTarget.dataset;
@@ -50,9 +66,12 @@ Component({
       this.data.textHeights[id] = { key: measure, height };
       this.syncGeometry();
     },
-    render() {
+    render(afterRender?: () => void) {
       const pages = this.pageModels();
-      if (pages) this.setData({ pages }, () => this.revealCaret());
+      if (pages) this.setData({ pages }, () => {
+        this.revealCaret();
+        afterRender?.();
+      });
     },
     syncGeometry() {
       const pages = this.pageModels();

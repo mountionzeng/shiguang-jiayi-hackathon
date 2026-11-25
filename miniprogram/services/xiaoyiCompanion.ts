@@ -18,9 +18,19 @@ import { MemoryType } from "../domain/biography";
 import { CLOUD_FOLLOW_UP_LABEL, FOLLOW_UP_LABEL, CONSENT_REQUIRED_FOLLOW_UP_LABEL, InterviewDimension, InterviewMode, InterviewTurn, QUOTA_EXHAUSTED_FOLLOW_UP_LABEL } from "../domain/interview";
 import { generateInterviewPrompt } from "./interviewService";
 import { organizeInlineAnswer } from "./memoryOrganizerService";
+import type { SentenceEdit } from "./articleSentenceEdit";
+import type { ArticleWritingChoices } from "./articleWriting";
+import type { WritingDocumentLink, WritingDocumentPlan } from "./articleFinalDocument";
 
 export type XiaoyiMessageKind = "question" | "answer" | "draft" | "status";
-export interface XiaoyiMessage { id: string; kind: XiaoyiMessageKind; text: string; label?: string }
+export interface XiaoyiMessage {
+  id: string; kind: XiaoyiMessageKind; text: string; label?: string;
+  sentenceEdit?: SentenceEdit;
+  writingChoices?: ArticleWritingChoices;
+  articleDraftLabel?: string;
+  documentWrite?: WritingDocumentPlan;
+  writingDocument?: WritingDocumentLink;
+}
 export type XiaoyiLandKind = "spoken" | "organized";
 
 export interface XiaoyiPanelData {

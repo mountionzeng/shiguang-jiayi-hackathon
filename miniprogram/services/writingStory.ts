@@ -2,6 +2,38 @@ import {accountOwner, memoryPool, type BiographyDraft, type GenerationMode, type
 import {current, hash} from '../domain/storyBookCore';
 import {draftWithChapters} from './chapters';
 import {ensureStoryBooks, storyCommand} from './storyBooks';
+import type {WritingDocumentPlan} from './articleFinalDocument';
+
+/** Persist approved prose in one existing story-create transaction. */
+export async function saveWritingDocument(plan: WritingDocumentPlan) {
+  if (!plan.title.trim() || plan.title.length > 40 || !plan.sections.length ||
+      plan.sections.some(section => !section.title.trim() || section.title.length > 40 || !section.text.trim()) ||
+      plan.sections.reduce((total, section) => total + section.text.length, 0) > 20000) {
+    throw new Error('文档标题或正文超出保存范围，请调整后再试。');
+  }
+  const state = await ensureStoryBooks();
+  const initial = state.stories?.find(story => story.id === plan.storyId);
+  if (initial?.deletedAt) throw new Error('这份文档在最近删除中，可以先恢复再打开。');
+  const draft = draftWithChapters({title:plan.title, introduction:'', paragraphs:[], sourceCount:0, generatedAt:'', generationMode:'cloud-ai'},
+    plan.sections.map((section,index) => ({id:`chapter-draft-${index + 1}`,title:section.title,memoryIds:[],
+      content:[{text:section.text}], ...(index === 0 ? {generationMode:'cloud-ai' as const} : {handEdited:true})})));
+  const revisionId = 'revision-' + hash(JSON.stringify([plan.storyId,draft]));
+  const confirm = (state: Awaited<ReturnType<typeof ensureStoryBooks>>) => {
+    const saved = current(state,plan.storyId);
+    if (saved.revisionId !== revisionId || saved.draft?.title !== plan.title ||
+        saved.draft.chapters?.length !== plan.sections.length ||
+        !plan.sections.every((section,index) => {
+          const chapter = saved.draft!.chapters![index];
+          return chapter.title === section.title && chapter.content.length === 1 && chapter.content[0].text === section.text;
+        })) throw new Error('文档保存结果尚未确认，定稿仍保留。');
+    return {storyId:plan.storyId,title:plan.title};
+  };
+  if (initial) return confirm(state);
+  const revision: ManuscriptRevision = {id:revisionId,memberId:'',storyId:plan.storyId,kind:'version',label:'确认定稿',
+    savedAt:'',sourceFingerprint:'',draft};
+  return confirm(await storyCommand({action:'create',storyId:plan.storyId,title:plan.title,writingMode:'creative',memoryIds:[],
+    revision,requestId:revisionId}, {view:'home'}));
+}
 
 /** Write a complete story to the existing shelf, leaving its source memory untouched. */
 export async function saveWritingStory(input:{storyId:string;revisionId:string;memoryId:string;title:string;text:string;generationMode:GenerationMode}) {

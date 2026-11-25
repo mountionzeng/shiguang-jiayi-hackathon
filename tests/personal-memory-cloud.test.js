@@ -281,3 +281,100 @@ test('article turns do not retry empty model output or reuse another account rec
  assert.equal((await chatCloud.main(event,{cloud:f.cloud})).status,'failed');assert.equal(calls,1);
  f.as('bob');await assert.rejects(chatCloud.main(event,{cloud:f.cloud}),/EMPTY_MODEL_OUTPUT/);assert.equal(calls,2);
 });
+
+test('article writing sends the whole manuscript with version and returns only an exact, editable range', async context => {
+  env(context);
+  const f = fixture();
+  const first = '在车站接我那天，下着细雨。爸爸把手里的伞又往我这边挪了一点。';
+  const last = '后来又路过车站，那天也下着细雨。';
+  const wechat = '爸，今天你把伞往我这边挪，我看见啦。';
+  const lines = [first, ...Array.from({length:100}, (_, i) => `第${i + 1}段。窗外在下雨，街道和橱窗亮着灯。`.repeat(4)), last, wechat];
+  const sourceText = lines.join('\n');
+  let offset = 0;
+  const paragraphs = lines.map((value, index) => {
+    const p = {start:offset, end:offset + value.length, editable:index !== lines.length - 1, selected:false};
+    offset += value.length + 1;
+    return p;
+  });
+  const articleWriting = {chapterId:'umbrella', title:'车站的两把伞', revisionId:'rev-8', version:8, paragraphs};
+  const event = {action:'articleTurn', turnId:'article-long-front', input:{sourceText, articleWriting, storyTitle:'两把伞', scope:'full',
+    answer:'前面写车站的那段，收短一点', conversation:[{role:'user',text:'书稿语气朴素一点。'}]}};
+  const calls = [];
+  const responses = [
+    {kind:'edit', text:'把开头这段收短了一点。', target:0, original:first, replacement:'那天下雨，爸爸到车站接我，把伞又往我这里挪了一点。'},
+    {kind:'edit', text:'我改了结尾。', target:lines.length-2, original:last, replacement:'后来我又去了车站。'},
+    {kind:'clarify',text:'你想改哪一段？',targets:[0, lines.length-2]},
+    {kind:'edit',text:'我换了微信里的说法。',target:lines.length-1,original:wechat,replacement:'爸，谢谢你。'},
+    {kind:'edit',text:'缩短',target:0,original:'并不存在的文字',replacement:'改好了。'},
+  ];
+  const oldFetch = global.fetch;
+  context.after(() => {global.fetch = oldFetch;});
+  global.fetch = async (_url, options) => {
+    calls.push(JSON.parse(JSON.parse(options.body).messages[1].content));
+    const content = JSON.stringify(responses[calls.length - 1]);
+    return {ok:true,json:async () => ({choices:[{message:{content}}]})};
+  };
+  const call = (input, step) => chatCloud.main(input,{cloud:f.cloud,nowMs:Date.UTC(2026, 10, 25) + step * 60_000});
+  const original = await call(event,0);
+  assert.ok(sourceText.length > 8000);
+  assert.deepEqual(original.decision,{kind:'edit',target:0,start:0,end:first.length,replacement:responses[0].replacement});
+  assert.equal(calls[0].article.revisionId,'rev-8');
+  assert.equal(calls[0].article.version,8);
+  assert.equal(calls[0].article.paragraphs.at(-2).text,last);
+  assert.equal(calls[0].article.paragraphs.at(-1).editable,false);
+  assert.match(calls[0].history[0].text,/语气朴素/);
+  assert.deepEqual(await call(event,0),original);
+  assert.equal(calls.length,1);
+
+  const follow = await call({...event,turnId:'article-long-follow',input:{...event.input,answer:'把刚才那段再改得口语一点',
+    articleWriting:{...articleWriting,recent:{target:0,start:0,end:first.length,draft:responses[0].replacement}}}},1);
+  assert.equal(calls[1].recent.draft,responses[0].replacement);
+  assert.deepEqual(calls[1].required,{target:0,quote:first});
+  assert.equal(follow.decision,undefined,'follow-up cannot edit the similarly worded ending');
+  const unclear = await call({...event,turnId:'article-long-unclear',input:{...event.input,answer:'车站那段收短一点'}},2);
+  assert.deepEqual(unclear.decision,{kind:'clarify',targets:[0,lines.length-2]});
+  for (const [index,suffix] of ['alternative','missing'].entries()) {
+    const result = await call({...event,turnId:'article-long-' + suffix},index + 3);
+    assert.equal(result.decision,undefined,'a locked passage or an invented quote cannot produce a suggestion');
+  }
+});
+
+test('article writing keeps long notes and distinguishes organization from a draft in its receipt', async context => {
+  env(context);
+  const f = fixture();
+  const sourceText = '';
+  const articleWriting = {chapterId:'scratch',title:'随手记',revisionId:'rev-1',version:1,paragraphs:[]};
+  const note = '零散笔记：' + '下雨天，爸爸来车站接我。'.repeat(100)
+    + '\n旧稿说他递给我一把伞。我记不清。\n给爸爸的微信（定稿）：爸，我看见啦。';
+  const replies = [
+    {kind:'chat',text:'我先收下这些笔记。'},
+    {kind:'chat',text:'你记得下雨和车站。递伞是旧稿里不确定的细节。微信原话单独留着。'},
+    {kind:'draft',label:'书稿',text:'那天下雨，爸爸来车站接我。他把伞往我这边挪了挪。'},
+  ];
+  const old = global.fetch;
+  const calls = [];
+  context.after(()=>{global.fetch=old;});
+  global.fetch = async (_url, opts) => {
+    const {messages} = JSON.parse(opts.body);
+    calls.push(JSON.parse(messages[1].content));
+    assert.match(messages[0].content,/记不清的细节只指导取舍/);
+    assert.match(messages[0].content,/分类|硬套栏目/);
+    return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(replies[calls.length - 1])}}]})};
+  };
+  const asks = [note,'帮我理一下','帮我把车站那天的事写出来'];
+  const history = [];
+  const results = [];
+  for (const [index,answer] of asks.entries()) {
+    const result = await chatCloud.main({action:'articleTurn',turnId:'article-long-notes-'+index,
+      input:{answer,sourceText,articleWriting,scope:'scratch',storyTitle:'随手记',conversation:history}},
+    {cloud:f.cloud,nowMs:Date.UTC(2026,10,25) + index * 60000});
+    history.push({role:'user',text:answer},{role:'assistant',text:result.reply});
+    results.push(result);
+  }
+  assert.ok(note.length > 500);
+  assert.equal(calls[0].request,note);
+  assert.equal(calls[2].history[0].text,note);
+  assert.equal(results[1].decision,undefined);
+  assert.deepEqual(results[2].decision,{kind:'draft',label:'书稿'});
+  assert.equal(results[2].reply,replies[2].text);
+});

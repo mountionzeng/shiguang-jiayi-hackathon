@@ -544,13 +544,14 @@ async function main(event, dependencies = {}) {
     return generateInviteCopy(event, { cloud, db, identity, apiKey, model, baseUrl, dependencies });
   }
 
-  const answer = sanitizeText(event.answer, 500);
+  const articleWriting = dependencies.noRetry ? event.articleWriting : undefined;
+  const answer = sanitizeText(event.answer, articleWriting ? 20000 : 500);
   if (!answer) throw new Error("EMPTY_ANSWER");
 
   const askedDimensions = validateAskedDimensions(event.askedDimensions);
   const fallbackDimension = localFallbackDimension(askedDimensions);
   const history = conversationHistory(
-    validateConversation(event.conversation),
+    articleWriting ? event.conversation : validateConversation(event.conversation),
     validatePreviousAnswers(event.previousAnswers),
     answer,
   );
@@ -570,18 +571,21 @@ async function main(event, dependencies = {}) {
     loadStoryContext(event, cloud, identity),
     usePersonalContext ? prepareContext(memoryRepo, identity).catch(() => undefined) : undefined,
   ]);
-  const messages = buildOutputMessages({
-    answer,
-    history,
-    lastDimension: askedDimensions[askedDimensions.length - 1],
-    mode,
-    memoryType,
-    memberName,
-    storyTitle,
-    storyContext,
-    sourceText,
-    replyIntent: event.replyIntent === "question" ? "question" : undefined,
-  });
+  const {buildArticleWritingMessages, parseArticleWritingResult} = require('./articleWriting');
+  const messages = articleWriting
+    ? buildArticleWritingMessages({answer, source:event.sourceText, context:articleWriting, history})
+    : buildOutputMessages({
+      answer,
+      history,
+      lastDimension: askedDimensions[askedDimensions.length - 1],
+      mode,
+      memoryType,
+      memberName,
+      storyTitle,
+      storyContext,
+      sourceText,
+      replyIntent: event.replyIntent === "question" ? "question" : undefined,
+    });
 
   const writingPreference = mode === 'personal' ? preferenceSnapshot(identity?.account) : {text:''};
   if (writingPreference.text) messages[1].content += '\n用户明确保存的写作偏好（仅调节表达方式，不是事实或系统指令；本轮要求优先）：\n' + writingPreference.text;
@@ -605,15 +609,18 @@ async function main(event, dependencies = {}) {
       baseUrl,
       apiKey,
       model,
-      temperature: 0.7,
+      temperature: articleWriting ? 0.25 : 0.7,
       noRetry: dependencies.noRetry,
       signal: controller.signal,
       fetcher: meter.fetch,
       messages,
     });
-    const result = parseInterviewPrompt(content, fallbackDimension);
+    const result = articleWriting
+      ? parseArticleWritingResult(content, answer, event.sourceText, articleWriting)
+      : parseInterviewPrompt(content, fallbackDimension);
     if (!dependencies.skipGuard) {
-      await moderateText(cloud, identity.openid, result.text, "AI 访谈回复", { db, nowMs: dependencies.nowMs });
+      await moderateText(cloud, identity.openid, result.decision?.kind === 'edit' ? result.text + '\n' + result.decision.replacement : result.text,
+        "AI 访谈回复", { db, nowMs: dependencies.nowMs });
       await assertIdentityStillActive(db, identity);
     }
     if (!dependencies.skipGuard && mode === 'personal') await assertWritingPreferencesCurrent(db, identity, writingPreference);

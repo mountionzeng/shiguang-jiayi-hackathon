@@ -1,10 +1,15 @@
 import { choosePhoneReferencePhotos, isPhotoPickerCancel, type PhoneReferencePhoto } from '../../services/phoneReferencePhotos';
-import { ArticleConversation, ArticleTurn, articleConversationErrorMessage } from "../../services/articleConversation";
+import { ARTICLE_CHAT_INPUT_LIMIT, ArticleConversation, ArticleTurn, articleConversationErrorMessage } from "../../services/articleConversation";
 import {createArticleMediaTask,pendingArticleMedia,storeArticleMedia,finishArticleMedia,runArticleMedia,mediaDefinitelyNotSubmitted,type ArticleMediaKind,type ArticleMediaTask} from '../../services/articleMediaGeneration';
 import { loadBookMedia } from '../../services/bookMedia';
 import { WritingSession } from '../../services/writingSession';
 import { bookCoverSource } from "../../services/bookCoverSource";
 import { articleChatMaterial } from '../../services/articleChatMaterial';
+import { applySentenceReview, proposeSentenceEdit, sentenceEditLabels, sentenceReview, type SentenceEdit, type SentenceReview } from '../../services/articleSentenceEdit';
+import { articleWritingResult, articleWritingSnapshot, recentArticleEdit } from '../../services/articleWriting';
+import { articleDocumentRequest, articleDocumentSections } from '../../services/articleFinalDocument';
+import { saveWritingDocument } from '../../services/writingStory';
+import { newStoryId } from '../../services/storyRecords';
 import { organizeInlineAnswer } from '../../services/memoryOrganizerService';
 import { articleChapter, addArticlePhoto, appendArticleText, insertArticlePhotoAfter, insertArticleAudioAfter, type ArticleChapter } from '../../services/articleModules';
 import { saveArticle, isArticleRejected, type ArticleSaveRequest } from '../../services/articleService';
@@ -58,7 +63,7 @@ import { chapterPhotoIds, chapterLayoutView, ChapterLayoutViewPage } from "../..
 import { chapterIdsWithReturns, invalidatePendingReturns, loadPendingReturns, PendingReturn, returnsForChapter, senderLabel } from "../../services/storyReturnsInbox";
 import {
   askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
-  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
+  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, XiaoyiMessage, xiaoyiMessagesAppend,
 } from "../../services/xiaoyiCompanion";
 
 const FALLBACK_REASONS: Record<BiographyFallbackReason, string> = {
@@ -96,6 +101,9 @@ Page({
     retainedDrafts: [] as ChapterDraft[],
     articleSessionId: "",
     articleChatPhotos: [] as Array<{id:string;path:string}>,
+    articleChatInputLimit: ARTICLE_CHAT_INPUT_LIMIT,
+    sentenceReview: null as SentenceReview | null,
+    sentenceLabels: sentenceEditLabels(),
     mediaSelectedBlock: '', companionToolsOpen: false, birdHintActive: false, mediaBusy: false, mediaStatus: '', mediaAudioId:'', mediaAudioState:'idle' as 'idle'|'loading'|'playing'|'paused',
     mediaPanelKind: '' as ArticleMediaKind | '', mediaPanelText: '', mediaArtDirection: '', mediaReferences: [] as PhoneReferencePhoto[], mediaPickingReference:false, mediaPanelNotice:'',
     article: null as ArticleChapter | null, articleScrollTop: 0, articleWidth: 320, articlePaths: {} as Record<string,string>, articleStatus: "", articleDirty: false,
@@ -305,7 +313,7 @@ Page({
   },
   articleKey(chapterId?: string) { return `article-draft:${cachedAccountScope()}:${this.story?.id || this.data.storyId}:${chapterId ?? this.activeChapterId}`; },
   onArticleChange(event: { detail: { chapter: ArticleChapter; titleChanged?: boolean } }) {
-    this.setData({ articleShareUrl: '' });
+    this.setData({ articleShareUrl: '', ...(this.data.sentenceReview ? { sentenceReview: null } : {}) });
     const incoming = event.detail.chapter;
     const latest = this.articlePending || this.data.article;
     // The child edits body/layout; its title may predate a still-debounced title input.
@@ -485,7 +493,7 @@ Page({
     this.pendingChapterClaim = /^[A-Za-z0-9_-]{43}$/.test(options.chapterClaim || '') ? options.chapterClaim! : '';
     this.sendSnapshot = undefined;
     this.sendAccountScope = "";
-    this.setData({articleSessionId:options.articleSession || ""});
+    this.setData({articleSessionId:options.articleSession || "", sentenceLabels: sentenceEditLabels(wx.getAppBaseInfo?.().language)});
     this.openOrganizeOnLoad = options.memoryIds !== undefined || !!options.articleSession;
     this.requestedMemberId = options.memberId || "";
     this.requestedStoryKey = options.storyId || loadCurrentStoryId();
@@ -1769,6 +1777,7 @@ Page({
     } catch {if(active())this.setData({mediaAudioState:'idle',mediaStatus:'暂时无法播放，请再点一次'});}
   },
   articleChatLoadedKey: '',
+  documentWrites: undefined as Set<string> | undefined,
   articleChatSelection: '',
   articleChatModuleId: '',
   async onArticleModuleSelected(event: { detail: { id: string } }) {
@@ -1810,7 +1819,7 @@ Page({
     this.articleDraftSourceIds = [];
     this.articleChatSelection = '';
     this.articleChatModuleId = '';
-    this.setData({xiaoyiSelectionLabel: '已定位到当前文章'});
+    this.setData({xiaoyiSelectionLabel: '已定位到当前文章', sentenceReview: null});
     this.setData({articleChatPhotos: [], articleMemoryOpen:false, articleMemoryLoading:false, articleMemoryRows:[]});
   },
   restoreArticleChat() {
@@ -1959,11 +1968,20 @@ Page({
           const messages = [...this.data.xiaoyiMessages];
           let index = messages.findIndex(item => item.id === turn.id);
           if (index < 0) {messages.push({id:turn.id,kind:'answer',text:turn.text});index=messages.length-1;}
-          messages.splice(index+1,0,{id:replyId,kind:'question',text:turn.reply!,label:'小忆 · AI生成'});
+          const suggestion = turn.articleWriting && !this.data.protectedCopy
+            ? articleWritingResult(turn.source, turn.articleWriting, turn.text, turn.decision) : undefined;
+          const draftLabel = turn.decision?.kind === 'draft' && typeof turn.decision.label === 'string'
+            ? turn.decision.label.trim().slice(0,40) : '';
+          messages.splice(index+1,0,{id:replyId,kind:draftLabel ? 'draft' : 'question',text:turn.reply!,
+            label:draftLabel || '小忆 · AI生成', ...(draftLabel ? {articleDraftLabel:draftLabel} : {}), ...suggestion});
           this.setData({xiaoyiMessages:messages});
         }
         return this.saveArticleChat() === true;
-      }, current, resume);
+      }, current, resume, turn => {
+        if (!turn.articleWriting) return;
+        const lastEdit = [...this.data.xiaoyiMessages].reverse().find(message => message.sentenceEdit)?.sentenceEdit;
+        return recentArticleEdit(turn.source, turn.articleWriting, lastEdit);
+      });
     } catch(error) {
       logServiceFailure('chatInterview', 'ai', error);
       if (current()) this.setData({xiaoyiStatus:articleConversationErrorMessage(error)});
@@ -2002,7 +2020,7 @@ Page({
     if (!this.data.article && this.data.writingMode !== "creative") return;
     if ((this.data.protectedCopy && !this.data.article) || this.data.view !== "chapter" || this.data.panel || this.data.saving || this.data.generating) return;
     if (this.data.article) this.restoreArticleChat();
-    this.setData({ xiaoyiOpen: true, birdHintActive:false, xiaoyiAnswer: this.data.xiaoyiAnswer, xiaoyiDraftText: this.data.xiaoyiDraftText, xiaoyiWritingInstruction: this.data.xiaoyiWritingInstruction, moreOpen: false, xiaoyiStatus: this.articleChatQueue?.paused ? "有尚未完成的对话，点小忆菜单核对后继续。" : "", xiaoyiContextPreview: "正在读取当前正文…" });
+    this.setData({ xiaoyiOpen: true, sentenceReview:null, birdHintActive:false, xiaoyiAnswer: this.data.xiaoyiAnswer, xiaoyiDraftText: this.data.xiaoyiDraftText, xiaoyiWritingInstruction: this.data.xiaoyiWritingInstruction, moreOpen: false, xiaoyiStatus: this.articleChatQueue?.paused ? "有尚未完成的对话，点小忆菜单核对后继续。" : "", xiaoyiContextPreview: "正在读取当前正文…" });
     this.updateViewport();
     this.xiaoyiCapturePending = this.captureXiaoyiContext();
     return this.xiaoyiCapturePending;
@@ -2128,14 +2146,199 @@ Page({
   },
   xiaoyiContextKey() { return [this.data.storyId, this.data.memberId, this.activeChapterId].join(":"); },
   xiaoyiMessagesAppend,
+  articleWritingContext() {
+    const chapter = this.articlePending || this.data.article;
+    if (!chapter?.layout || this.data.protectedCopy) return;
+    const selected = chapter.layout.pages.flatMap(page => page.modules).find(module => module.id === this.articleChatModuleId);
+    const blockId = selected?.kind === 'text' && 'blockId' in selected.bind ? selected.bind.blockId : '';
+    return articleWritingSnapshot(chapter, this.articleBase?.revisionId || this.revisionId,
+      this.articleBase?.version ?? this.story?.version ?? 0, blockId);
+  },
+  async chooseArticleWritingPassage(event: {currentTarget:{dataset:{id:string;choice:number}}}) {
+    const {id, choice} = event.currentTarget.dataset;
+    const index = Number(choice);
+    const group = this.data.xiaoyiMessages.find(message => message.id === id)?.writingChoices;
+    const item = group?.items[index];
+    if (!group || !item || group.chosen !== undefined || this.data.protectedCopy ||
+        this.articleChatLoadedKey !== this.articleChatKey() || this.data.view !== 'chapter') return;
+    try {
+      const snapshot = this.articleWritingContext();
+      const target = snapshot?.context.paragraphs.findIndex(p => p.editable && p.blockId === item.blockId &&
+        p.start - p.blockStart === item.offset && snapshot.source.slice(p.start, p.end) === item.paragraph) ?? -1;
+      if (!snapshot || group.chapterId !== snapshot.context.chapterId ||
+          group.revisionId !== snapshot.context.revisionId || target < 0) {
+        this.setData({xiaoyiStatus:this.data.sentenceLabels.choiceStale});
+        return;
+      }
+      const queue = this.ensureArticleConversation();
+      if (this.data.xiaoyiLoading && !queue.running) return;
+      const turn = queue.enqueue(group.request, snapshot.source, this.articleChatKey(), this.xiaoyiConfig(),
+        {...snapshot.context, chosen:target});
+      if (!turn) return;
+      const messages = this.data.xiaoyiMessages.map(message => message.id === id
+        ? {...message, writingChoices:{...group, chosen:index}} : message);
+      this.setData({xiaoyiMessages:[...messages,{id:turn.id,kind:'answer',text:item.excerpt}]});
+      this.saveArticleChat();
+      await this.sendArticleConversation();
+    } catch (error) { this.setData({xiaoyiStatus:articleConversationErrorMessage(error)}); }
+  },
+  proposeArticleSentence(text: string): boolean {
+    const chapter = this.articlePending || this.data.article;
+    if (!chapter) return false;
+    const selected = chapter.layout?.pages.flatMap(page => page.modules).find(module => module.id === this.articleChatModuleId);
+    const blockId = selected?.kind === 'text' && 'blockId' in selected.bind ? selected.bind.blockId : '';
+    const edit = proposeSentenceEdit(text, chapter, this.articleBase?.revisionId || this.revisionId, blockId);
+    if (!edit || (edit === 'unresolved' && !this.data.protectedCopy)) return false;
+
+    const labels = this.data.sentenceLabels;
+    const reply = this.data.protectedCopy ? labels.protected : labels.pending;
+    const id = `sentence-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
+    this.setData({ xiaoyiAnswer: '', xiaoyiStatus: '', xiaoyiMessages: [...this.data.xiaoyiMessages,
+      { id, kind: 'answer', text: text.trim() },
+      { id: id + '-reply', kind: 'question', text: reply,
+        ...(!this.data.protectedCopy && edit !== 'unresolved' ? { sentenceEdit: edit } : {}) },
+    ] });
+    this.saveArticleChat();
+    return true;
+  },
+  setSentenceEditStatus(id: string, status: SentenceEdit['status']) {
+    this.setData({ xiaoyiMessages: this.data.xiaoyiMessages.map(message => message.id === id && message.sentenceEdit
+      ? { ...message, text: this.data.sentenceLabels[status], sentenceEdit: { ...message.sentenceEdit, status } }
+      : message) });
+    this.saveArticleChat();
+  },
+  currentSentenceReview(id: string) {
+    const edit = this.data.xiaoyiMessages.find(message => message.id === id)?.sentenceEdit;
+    const chapter = this.articlePending || this.data.article;
+    if (!chapter || !edit || edit.status !== 'pending' || this.data.protectedCopy || this.data.view !== 'chapter' ||
+        this.articleChatLoadedKey !== this.articleChatKey()) return;
+    const review = sentenceReview(chapter, this.articleBase?.revisionId || this.revisionId, id, edit);
+    if (!review) this.setSentenceEditStatus(id, 'stale');
+    return review;
+  },
+  openSentenceReview(event: { currentTarget: { dataset: { id: string } } }) {
+    const review = this.currentSentenceReview(event.currentTarget.dataset.id);
+    if (!review) return;
+    this.selectComponent('#article-editor')?.clear();
+    wx.hideKeyboard();
+    this.setData({ xiaoyiOpen: false, sentenceReview: review });
+    this.updateViewport();
+  },
+  onSentenceReviewPosition(event: { detail: { id: string; top: number } }) {
+    const { id, top } = event.detail;
+    if (this.data.sentenceReview?.id !== id || !Number.isFinite(top)) return;
+    this.createSelectorQuery().select('.article-scroll').fields({ rect: true, scrollOffset: true }).exec(([viewport]) => {
+      if (this.unloaded || this.data.sentenceReview?.id !== id || !viewport) return;
+      this.setData({ articleScrollTop: Math.max(0, viewport.scrollTop + top - viewport.top - 24) });
+    });
+  },
+  rejectSentenceEdit() {
+    const id = this.data.sentenceReview?.id;
+    if (!id) return;
+    this.setSentenceEditStatus(id, 'rejected');
+    return this.openXiaoyi();
+  },
+  async acceptSentenceEdit() {
+    const id = this.data.sentenceReview?.id;
+    const chapter = this.articlePending || this.data.article;
+    if (!id || !chapter) return;
+    const review = this.currentSentenceReview(id);
+    if (!review) return this.openXiaoyi();
+    let updated;
+    try { updated = applySentenceReview(chapter, review); }
+    catch {
+      return wx.showToast({ title: this.data.sentenceLabels.limit, icon: 'none' });
+    }
+    const key = this.articleChatKey();
+    this.onArticleChange({ detail: { chapter: updated } });
+    this.setData({ article: updated });
+    await this.openXiaoyi();
+    const saved = await this.flushArticle();
+    if (this.unloaded || this.articleChatKey() !== key) return;
+    if (saved || this.backupArticle()) this.setSentenceEditStatus(id, 'accepted');
+    if (!saved) this.setData({ xiaoyiStatus: this.data.articleStatus || this.data.sentenceLabels.saveFailed });
+  },
+  async finalizeArticleDocument(text: string, request: NonNullable<ReturnType<typeof articleDocumentRequest>>) {
+    const key = this.articleChatKey();
+    if (this.articleChatLoadedKey !== key || this.data.view !== 'chapter') return;
+    const messages = this.data.xiaoyiMessages;
+    let write = [...messages].reverse().find(item => item.documentWrite && item.text === text);
+    if (write && messages.some(item => item.id === write!.id + '-saved')) {
+      this.setData({xiaoyiAnswer:'',xiaoyiStatus:''});
+      this.saveArticleChat();
+      return this.openArticleDocument({currentTarget:{dataset:{id:write.id+'-saved'}}});
+    }
+    if (!write) {
+      if (this.articleChatQueue?.items.length || this.data.xiaoyiLoading) {
+        this.setData({xiaoyiStatus:'还有一条回复没完成。等你看到要保存的版本，再发送这条消息。'});
+        return;
+      }
+      if (!request.title || request.title.length > 40) {
+        this.setData({xiaoyiStatus:'新文档叫什么？在保存要求里写上标题，例如《书名》。'});
+        return;
+      }
+      const sections = articleDocumentSections(messages, request);
+      if (!Array.isArray(sections)) {
+        this.setData({xiaoyiStatus:sections === 'draft' ? '这段对话还没有可保存的稿子。先请小忆写出正文。'
+          : sections === 'ambiguous' ? '找到不止一份原话。请贴出要保存的那份，并标上它的标题和「定稿」。'
+          : '还没找到已定下来的原话。请贴出原话，并标上它的标题和「定稿」。'});
+        return;
+      }
+      const storyId = newStoryId();
+      write = {id:'document-'+storyId,kind:'answer',text,documentWrite:{storyId,title:request.title,sections}};
+      this.setData({xiaoyiMessages:[...messages,write]});
+      if (this.saveArticleChat() !== true) { this.setData({xiaoyiMessages:messages}); return; }
+    }
+    const plan = write.documentWrite!;
+    const replyId = write.id+'-saved';
+    const writes = this.documentWrites ??= new Set();
+    if (writes.has(plan.storyId)) return;
+    writes.add(plan.storyId);
+    this.setData({xiaoyiAnswer:'',xiaoyiStatus:'正在保存定稿…'});
+    this.saveArticleChat();
+    const current = () => !this.unloaded && key === this.articleChatKey() && this.articleChatLoadedKey === key;
+    try {
+      const link = await saveWritingDocument(plan);
+      const reply: XiaoyiMessage = {id:replyId,kind:'status',text:link.title,writingDocument:link};
+      if (current()) {
+        const latest = this.data.xiaoyiMessages;
+        this.setData({xiaoyiStatus:'',xiaoyiMessages:latest.some(item => item.id === replyId) ? latest : [...latest,reply]});
+        this.saveArticleChat();
+      } else {
+        const saved = wx.getStorageSync(key);
+        if (Array.isArray(saved?.messages) && !saved.messages.some((item: XiaoyiMessage) => item.id === replyId)) {
+          try { wx.setStorageSync(key,{...saved,messages:[...saved.messages,reply]}); }
+          catch { /* The saved document remains in the story shelf. */ }
+        }
+      }
+    } catch (error) {
+      if (current()) {
+        this.setData({xiaoyiAnswer:this.data.xiaoyiAnswer || text,
+          xiaoyiStatus:(error instanceof Error ? error.message : '暂未确认保存结果。') + ' 定稿已保留，可以再次发送保存要求。'});
+        this.saveArticleChat();
+      }
+    } finally { writes.delete(plan.storyId); }
+  },
+  openArticleDocument(event: {currentTarget:{dataset:{id:string}}}) {
+    const document = this.data.xiaoyiMessages.find(item => item.id === event.currentTarget.dataset.id)?.writingDocument;
+    if (document && this.articleChatLoadedKey === this.articleChatKey()) {
+      wx.navigateTo({url:'/pages/book/book?storyId='+encodeURIComponent(document.storyId)});
+    }
+  },
   async askXiaoyiQuestion() {
     if (this.data.article) {
       const text = this.data.xiaoyiAnswer;
       if (!text.trim()) return;
       try {
+        const document = articleDocumentRequest(text);
+        if (document) return await this.finalizeArticleDocument(text.trim(), document);
+        if (this.proposeArticleSentence(text)) return;
         const queue = this.ensureArticleConversation();
         if (this.data.xiaoyiLoading && !queue.running) return;
-        const turn = queue.enqueue(text,this.xiaoyiContextText(),JSON.stringify([this.articleChatKey(),this.articleChatModuleId,this.articleBase?.revisionId,this.articleBase?.version]),this.xiaoyiConfig());
+        const snapshot = this.articleWritingContext();
+        const turn = queue.enqueue(text,snapshot?.source ?? this.xiaoyiContextText(),
+          JSON.stringify([this.articleChatKey(),this.articleChatModuleId,this.articleBase?.revisionId,this.articleBase?.version]),
+          this.xiaoyiConfig(), snapshot?.context);
         if (!turn) return;
         this.setData({xiaoyiAnswer:'',xiaoyiMessages:[...this.data.xiaoyiMessages,{id:turn.id,kind:'answer',text:turn.text}]});
         this.saveArticleChat();

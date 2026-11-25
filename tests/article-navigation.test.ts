@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { articleChapter } from '../miniprogram/services/articleModules';
+import { clearAiConsent } from '../miniprogram/services/aiConsent';
+import { createDemoRoomStateForTests } from './fixtures';
+import { current } from '../miniprogram/domain/storyBookCore';
 
 let definition: any;
 async function setup() {
@@ -14,7 +17,7 @@ async function setup() {
     getStorageSync: (key: string) => structuredClone(stored.get(key)),
     setStorageSync: (key: string, value: any) => stored.set(key, JSON.parse(JSON.stringify(value))),
     removeStorageSync: (key: string) => stored.delete(key),
-    showToast() {}, disableAlertBeforeUnload() {},
+    showToast() {}, disableAlertBeforeUnload() {}, hideKeyboard() {},
     cloud: { callFunction: async ({ data }: any) => {
       requests.push(data);
       return {result:{error:'VERSION_CONFLICT',message:'文章已在别处修改，请重新打开后重试'}};
@@ -43,6 +46,223 @@ const type = (p: any, text: string) => {
   const chapter = {...p.data.article, content:p.data.article.content.map((b:any, i:number) => i ? b : {...b,text})};
   p.onArticleChange({detail:{chapter}}); clearTimeout(p.articleTimer);
 };
+
+test('chat sentence edits can be reviewed, rejected, accepted and reopened without changing the other section', async () => {
+  const {p, page, requests} = await setup();
+  const before = '那一下，我看见了，也记住了。';
+  const after = '那一下，我一直记得。';
+  const wechat = '爸，今天你把伞往我这边挪，我看见啦。';
+  const content = '## 书稿\n那天下雨，爸爸来车站接我。\n' + before + '\n\n## 给爸爸的微信\n' + wechat;
+  p.chapters[0] = articleChapter({ id:'a', title:'车站的两把伞', content:[{text:content}], memoryIds:[] });
+  p.selectComponent = () => undefined;
+  let savedChapter = p.chapters[0];
+  (wx as any).cloud.callFunction = async ({name,data}:any) => {
+    assert.equal(name,'storyBooks');
+    assert.equal(data.action,'articleSave');
+    requests.push(data);
+    savedChapter = data.chapter;
+    return {result:{revisionId:'revision-accepted',version:3}};
+  };
+  await open(p,'a');
+  await p.openXiaoyi();
+  const send = async () => {
+    p.onXiaoyiAnswerInput({detail:{value:`把书稿最后一句改成『${after}』`}});
+    await p.askXiaoyiQuestion();
+    const id = p.data.xiaoyiMessages.at(-1).id;
+    p.openSentenceReview({currentTarget:{dataset:{id}}});
+    assert.equal(p.data.sentenceReview.before,before);
+    assert.equal(p.data.sentenceReview.after,after);
+    assert.match(p.data.sentenceReview.suffix, /给爸爸的微信/);
+  };
+  await send();
+  await p.rejectSentenceEdit();
+  assert.equal(p.data.xiaoyiMessages.at(-1).sentenceEdit.status, 'rejected');
+  assert.equal(p.data.article.content[0].text, content);
+  assert.equal(requests.length, 0);
+  await send();
+  await p.acceptSentenceEdit();
+  const expected = content.replace(before,after);
+  assert.equal(p.data.article.content[0].text, expected);
+  assert.equal(requests.length,1);
+  assert.equal(savedChapter.content[0].text,expected);
+
+  const reopened = page();
+  reopened.chapters[0] = savedChapter;
+  reopened.story = {...reopened.story, version:3, currentRevisionId:'revision-accepted'};
+  reopened.revisionId = 'revision-accepted';
+  await open(reopened,'a');
+  await reopened.openXiaoyi();
+  assert.equal(reopened.data.article.content[0].text,expected);
+  assert.deepEqual(reopened.data.xiaoyiMessages.flatMap((item:any)=>item.sentenceEdit?.status || []), ['rejected','accepted']);
+});
+
+test('a suggestion cannot overwrite newer unsaved text in its source block', async () => {
+  const {p,requests} = await setup();
+  p.chapters[0] = articleChapter({id:'a',title:'书稿',content:[{text:'原来的一句。'}],memoryIds:[]});
+  await open(p,'a');
+  await p.openXiaoyi();
+  p.onXiaoyiAnswerInput({detail:{value:'把最后一句改成「建议改法。」'}});
+  await p.askXiaoyiQuestion();
+  const id = p.data.xiaoyiMessages.at(-1).id;
+  type(p,'我已经手动改了这一句。');
+  p.openSentenceReview({currentTarget:{dataset:{id}}});
+  assert.equal(p.data.sentenceReview,null);
+  assert.equal(p.data.xiaoyiMessages.at(-1).sentenceEdit.status,'stale');
+  assert.equal(p.articlePending.content[0].text,'我已经手动改了这一句。');
+  assert.equal(requests.length,0);
+});
+
+test('article chat keeps long manuscript context, revises the preceding suggestion and restores the adopted edit', async t => {
+  const {p, page, stored, requests} = await setup();
+  const oldApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({globalData:{aiReady:true,cloudReady:true}});
+  clearAiConsent();
+  stored.set('aiConsentDecision',{granted:true,version:1});
+  t.after(() => {clearAiConsent(); (globalThis as any).getApp = oldApp;});
+  const opening = '爸爸到车站接我的那天，雨落得又细又密。他提着两把伞，见了面又把手里的伞朝我这边挪了一点。';
+  const early = '那天下雨，爸爸来车站接我，还把伞往我这里挪。';
+  const rewritten = '那天爸到车站来接我，又把伞往我这边挪了挪。';
+  const closing = '再经过车站的那天，雨落得又细又密。入口旁的人也打着伞。';
+  const wechat = '爸，今天你把伞往我这边挪，我看见啦。';
+  const filler = Array.from({length:85}, (_, i) => `第${i + 1}段。窗外灯亮着，街上有人撑伞回家。`.repeat(6)).join('\n');
+  p.chapters[0] = articleChapter({id:'a',title:'车站的两把伞',memoryIds:[],content:[
+    {text:'书稿\n'+opening},{text:filler},{text:closing},{text:'给爸爸的微信（原样保留）\n'+wechat},
+  ]});
+  let savedChapter = p.chapters[0];
+  const calls: any[] = [];
+  (wx as any).cloud.callFunction = async ({name,data}:any) => {
+    if (name === 'storyBooks') {
+      requests.push(data);
+      savedChapter = data.chapter;
+      return {result:{revisionId:'revision-long-3',version:3}};
+    }
+    assert.equal(name,'chatInterview');
+    assert.equal(data.action,'articleTurn');
+    const {sourceText,articleWriting,answer} = data.input;
+    const all = articleWriting.paragraphs.map((p:any)=>sourceText.slice(p.start,p.end));
+    const start = all.indexOf(opening);
+    const end = all.indexOf(closing);
+    calls.push({...data.input, all});
+    assert.ok(sourceText.includes('第43段') && sourceText.includes(closing) && sourceText.includes(wechat));
+    assert.equal(articleWriting.paragraphs[all.indexOf(wechat)].editable,false);
+    let decision;
+    if (answer === '前面写车站的那段收短一点') {
+      assert.equal(articleWriting.revisionId,'revision-new');
+      decision = {kind:'edit',target:start,start:0,end:opening.length,replacement:early};
+    } else if (answer === '把刚才那段再改得口语一点') {
+      assert.equal(articleWriting.recent.target,start);
+      assert.equal(articleWriting.recent.draft,early);
+      decision = {kind:'edit',target:start,start:0,end:opening.length,replacement:rewritten};
+    } else if (articleWriting.chosen !== undefined) {
+      assert.equal(articleWriting.chosen,end);
+      decision = {kind:'edit',target:end,start:0,end:closing.length,replacement:'后来路过车站，那天下着细雨。'};
+    } else {
+      assert.equal(articleWriting.revisionId,'revision-long-3');
+      assert.equal(articleWriting.recent.draft,rewritten);
+      decision = {kind:'clarify',targets:[all.indexOf(rewritten),end]};
+    }
+    return {result:{turnId:data.turnId,status:'ready',reply:'小忆的建议',decision}};
+  };
+  const send = async (instance:any, value:string) => {
+    instance.onXiaoyiAnswerInput({detail:{value}});
+    await instance.askXiaoyiQuestion();
+    return instance.data.xiaoyiMessages.at(-1);
+  };
+  await open(p,'a');
+  await p.openXiaoyi();
+  p.selectComponent = () => undefined;
+  const first = await send(p,'前面写车站的那段收短一点');
+  assert.equal(first.sentenceEdit.before,opening);
+  assert.equal(first.sentenceEdit.after,early);
+  assert.equal(requests.length,0);
+  const next = await send(p,'把刚才那段再改得口语一点');
+  assert.equal(next.sentenceEdit.before,opening);
+  assert.equal(next.sentenceEdit.after,rewritten);
+  p.openSentenceReview({currentTarget:{dataset:{id:next.id}}});
+  await p.acceptSentenceEdit();
+  assert.equal(requests.length,1);
+  assert.deepEqual(savedChapter.content.map((b:any)=>b.text),['书稿\n'+rewritten,filler,closing,'给爸爸的微信（原样保留）\n'+wechat]);
+
+  const reopened = page();
+  reopened.chapters[0] = savedChapter;
+  reopened.story = {...reopened.story,version:3,currentRevisionId:'revision-long-3'};
+  reopened.revisionId = 'revision-long-3';
+  await open(reopened,'a');
+  await reopened.openXiaoyi();
+  assert.equal(reopened.data.xiaoyiMessages.find((m:any)=>m.id===next.id).sentenceEdit.status,'accepted');
+  const ask = await send(reopened,'车站那段再收短一些');
+  assert.deepEqual(ask.writingChoices.items.map((item:any)=>item.excerpt),[rewritten,closing]);
+  await reopened.chooseArticleWritingPassage({currentTarget:{dataset:{id:ask.id,choice:1}}});
+  const selected = reopened.data.xiaoyiMessages.at(-1).sentenceEdit;
+  assert.equal(selected.before,closing);
+  assert.equal(calls.length,4);
+  assert.equal(requests.length,1,'selecting an excerpt prepares a suggestion and does not save');
+});
+
+test('messy notes become a draft, then an exact two-section local story after the user confirms', async t => {
+  const {p, page, stored} = await setup();
+  const oldApp = (globalThis as any).getApp;
+  (globalThis as any).getApp = () => ({globalData:{aiReady:true,cloudReady:true}});
+  clearAiConsent();
+  stored.set('aiConsentDecision',{granted:true,version:1});
+  t.after(() => {clearAiConsent(); (globalThis as any).getApp = oldApp;});
+  const final = '那天下雨，爸爸来车站接我。他带了两把伞，见面后，还是把他那把往我这边挪了挪。';
+  const verbatim = '爸，今天你把伞往我这边挪，我看见啦。';
+  const notes = '零散笔记\n下雨，爸爸来车站接我。两把伞。爸爸把他撑的那把往我这里挪。\n\n'
+    + '旧稿：他递给我一把，我们并肩走着。\n这两处我记不清。\n\n'
+    + '重复记录：' + '雨天和车站是我确定记得的事。'.repeat(50) + '\n\n'
+    + '留给爸爸的微信（定稿）：' + verbatim;
+  const rough = final + '那一下，我看见了，也记住了。';
+  const responses = [
+    {reply:'我先把这些笔记收着。'},
+    {reply:'记得的事：下雨，爸爸到车站接你，带了两把伞。\n旧稿里还拿不准的：递伞、并肩走。\n已经定下来的微信：'+verbatim},
+    {reply:rough,decision:{kind:'draft',label:'书稿'}},
+    {reply:final,decision:{kind:'draft',label:'书稿'}},
+  ];
+  const calls:any[] = [];
+  (wx as any).cloud.callFunction = async ({name,data}:any) => {
+    assert.equal(name,'chatInterview');
+    calls.push(data.input);
+    return {result:{turnId:data.turnId,status:'ready',...responses[calls.length - 1]}};
+  };
+  const send = async (instance:any, value:string) => {
+    instance.onXiaoyiAnswerInput({detail:{value}});
+    await instance.askXiaoyiQuestion();
+    return instance.data.xiaoyiMessages.at(-1);
+  };
+  await open(p,'a');
+  await p.openXiaoyi();
+  await send(p,notes);
+  assert.equal(calls[0].answer,notes);
+  assert.match((await send(p,'帮我理一下')).text,/拿不准/);
+  assert.equal(calls[1].conversation[0].text,notes);
+  assert.equal((await send(p,'帮我把车站那天的事写出来')).text,rough);
+  assert.equal((await send(p,'我想把这段放进书里。读到爸爸把伞往我这边挪了挪，就可以停了')).articleDraftLabel,'书稿');
+  assert.equal(calls[3].conversation.at(-1).text,rough);
+  const original = createDemoRoomStateForTests();
+  original.storyMigration = {version:1,status:'active',pending:[]};
+  original.stories = [];
+  original.manuscriptRevisions = [];
+  stored.set('shiguang-family-room-v5',original);
+  delete (wx as any).cloud;
+  const nav:string[] = [];
+  (wx as any).navigateTo = ({url}:any) => nav.push(url);
+  const command = '这版就定了。帮我建一份叫《车站的两把伞》的文档，把刚才的书稿和之前定下来的那条微信分开放进去，两段都按原话保存';
+  const result = await send(p,command);
+  assert.equal(calls.length,4,'saving calls no writing model');
+  const {storyId} = result.writingDocument;
+  const saved = current(stored.get('shiguang-family-room-v5'),storyId).draft!;
+  assert.equal(saved.introduction,'');
+  assert.deepEqual(saved.chapters!.map(section=>[section.title,section.content[0].text]),[['书稿',final],['留给爸爸的微信',verbatim]]);
+  assert.equal(p.data.article.content[0].text,'原文a');
+  await send(p,command);
+  assert.equal(stored.get('shiguang-family-room-v5').stories.length,1);
+  const reopened = page();
+  await open(reopened,'a');
+  await reopened.openXiaoyi();
+  reopened.openArticleDocument({currentTarget:{dataset:{id:result.id}}});
+  assert.equal(nav[nav.length - 1],'/pages/book/book?storyId='+storyId);
+});
 
 test('a restored conflicting article cannot trap chapter navigation or spill into another chapter', async () => {
   const {p, page, stored, requests} = await setup();

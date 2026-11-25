@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const {assertIdentityStillActive, assertConsentVersion, AI_CONSENT_VERSION} = require('./aiGuard');
+const {validateArticleWriting} = require('./articleWriting');
 const COLLECTION = 'article_chat_turns';
 const initialized = new WeakSet();
 const missing = error => /DOCUMENT_NOT_FOUND|document (?:does not exist|not found)|document\.get:fail -1|document\.get:fail document with _id .* does not exist/i.test(String(error?.message || error?.errMsg));
@@ -10,13 +11,18 @@ async function read(db, id) {
 function inputSnapshot(value) {
   if (!value || typeof value !== 'object') throw new Error('ARTICLE_TURN_INVALID');
   const text = (v, max) => {if(typeof v !== 'string' || v.length > max) throw new Error('ARTICLE_TURN_INVALID'); return v;};
-  const answer = text(value.answer,500).trim();
+  const answer = text(value.answer,value.articleWriting === undefined ? 500 : 20000).trim();
   if (!answer || !Array.isArray(value.conversation) || value.conversation.length > 200) throw new Error('ARTICLE_TURN_INVALID');
-  return {answer,sourceText:text(value.sourceText,40000),scope:text(value.scope,500),storyTitle:text(value.storyTitle,200),
-    conversation:value.conversation.map(t => {
+  const sourceText = text(value.sourceText,40000);
+  const conversation = value.conversation.map(t => {
       if (!t || !['user','assistant'].includes(t.role)) throw new Error('ARTICLE_TURN_INVALID');
-      return {role:t.role,text:text(t.text,5000)};
-    })};
+      return {role:t.role,text:text(t.text,value.articleWriting === undefined ? 5000 : 20000)};
+  });
+  if (value.articleWriting !== undefined && conversation.reduce((length, turn) => length + turn.text.length, 0) > 40000) {
+    throw new Error('ARTICLE_TURN_INVALID');
+  }
+  return {answer,sourceText,scope:text(value.scope,500),storyTitle:text(value.storyTitle,200),
+    conversation, ...(value.articleWriting === undefined ? {} : {articleWriting:validateArticleWriting(value.articleWriting,sourceText)})};
 }
 /** Claim once before inference. Lost receipts and concurrent retries never re-run the model. */
 async function articleTurn(event, db, identity, generate) {
@@ -30,7 +36,8 @@ async function articleTurn(event, db, identity, generate) {
     }
     initialized.add(db);
   }
-  const receipt = row => ({turnId:event.turnId,status:row.status,...(row.status==='ready' ? {reply:row.reply} : {})});
+  const receipt = row => ({turnId:event.turnId,status:row.status,...(row.status==='ready'
+    ? {reply:row.reply,...(row.decision ? {decision:row.decision} : {})} : {})});
   const claimed = await db.runTransaction(async tx => {
     await assertIdentityStillActive(tx,identity);
     const row = await read(tx,id);
@@ -54,8 +61,8 @@ async function articleTurn(event, db, identity, generate) {
   }
   await db.runTransaction(async tx => {
     await assertIdentityStillActive(tx,identity);
-    await tx.collection(COLLECTION).doc(id).update({data:{status:'ready',reply:result.text}});
+    await tx.collection(COLLECTION).doc(id).update({data:{status:'ready',reply:result.text,...(result.decision ? {decision:result.decision} : {})}});
   });
-  return receipt({status:'ready',reply:result.text});
+  return receipt({status:'ready',reply:result.text,decision:result.decision});
 }
 module.exports = {articleTurn,inputSnapshot};
