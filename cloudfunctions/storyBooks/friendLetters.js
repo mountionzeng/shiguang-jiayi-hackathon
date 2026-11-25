@@ -63,7 +63,7 @@ async function listFriendLetters(repo, ctx, canaryFamilies, approveText) {
       shown.add(id);
       if (letters.length === HOME_LIMIT) break;
     } catch (error) {
-      if (error.code !== 'STORY_FORBIDDEN') throw error;
+      if (!['STORY_FORBIDDEN', 'CONTENT_REJECTED'].includes(error.code)) throw error;
     }
   }
   return { letters };
