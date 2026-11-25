@@ -14,10 +14,14 @@
     "pages/room/room",
     "pages/review/review",
     "pages/book/book",
-    "pages/story-images/story-images",
     "pages/story-cover/story-cover"
   ],
   "subPackages": [
+    {
+      "root": "pages/story-images",
+      "name": "story-images",
+      "pages": ["story-images"]
+    },
     {
       "root": "packages/story-sharing",
       "name": "story-sharing",

@@ -1043,8 +1043,16 @@ test("书稿页「图片」里的已有图片保留本章与全书入口，未�
   const markup = readFileSync("miniprogram/pages/book/book.wxml", "utf8");
   assert.match(markup, /class="photo-option" data-action="images" bindtap="selectTool">已有图片/);
   assert.equal((markup.match(/data-action="images"/g) || []).length, 1, "本章与全书共用一个图片库入口");
-  const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as { pages: string[] };
-  assert.ok(app.pages.includes("pages/story-images/story-images"));
+  const app = JSON.parse(readFileSync("miniprogram/app.json", "utf8")) as {
+    pages: string[];
+    subPackages: Array<{ root: string; pages: string[] }>;
+  };
+  const gallery = app.subPackages.find(group => group.root === "pages/story-images");
+  assert.deepEqual(gallery?.pages, ["story-images"]);
+  assert.ok(!app.pages.includes("pages/story-images/story-images"));
+  const pageSource = readFileSync("miniprogram/pages/story-images/story-images.ts", "utf8");
+  assert.match(pageSource, /onShareAppMessage\s*\(/);
+  assert.match(pageSource, /path:\s*["']\/pages\/index\/index["']/);
 });
 
 test("书稿照片菜单把插图、底图和封面入口路由到对应后端页面", async context => {
