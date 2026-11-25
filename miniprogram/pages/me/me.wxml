@@ -27,10 +27,25 @@
       <view class="compute-balance serif">{{computeBalance}}</view>
     </view>
     <view class="compute-copy">
-      <text>首次登录赠送 10 算力，同一账号仅领取一次</text>
-      <text>绑定同一账号后，手机和电脑共用算力</text>
+      <text>新账号首次由网站账本赠送 5 算力，只领一次；已有账号不补发，绑定也不会再领。</text>
+      <text>请从电脑网页的登录或绑定页扫码。邮箱来稿码和故事电脑码不能授权钱包。</text>
+      <text>绑定同一账号后，手机和电脑共用同一份网站算力。</text>
+      <view wx:if="{{computeRegistrationRequired}}">
+        <text>已有网页账号，请从网页的算力绑定入口扫码。首次开户，请从网页的微信登录入口扫码并确认。</text>
+        <button wx:if="{{webLoginEnabled}}" bindtap="openWebLogin">查看扫码方式</button>
+      </view>
       <text wx:if="{{computeBalance === '0.00 算力'}}">余额用完后，AI 功能暂停；故事仍可查看和编辑</text>
     </view>
+  </view>
+
+  <view class="text-compute-section">
+    <view class="compute-label">算力流水</view>
+    <view class="text-compute-hint">{{ledgerHint}}</view>
+    <view class="text-compute-row" wx:for="{{ledgerRows}}" wx:key="id">
+      <view class="text-compute-title"><text>{{item.label}}</text><text class="text-compute-time">{{item.time}}</text></view>
+      <view class="text-compute-detail">{{item.detail}}</view>
+    </view>
+    <view wx:if="{{ledgerHasMore}}" class="text-compute-detail" bindtap="loadMoreLedger">查看更早的流水</view>
   </view>
 
   <view class="text-compute-section">
@@ -132,8 +147,9 @@
 
   <view class="me-section-title">账号</view>
   <view class="me-list">
+    <navigator class="me-row" url="/packages/web-mailbox/pages/index/index" hover-class="none"><text class="me-row-icon">信</text><view class="me-row-copy"><text class="me-row-title">网页寄来的故事</text><text class="me-row-note">查看私密来稿，再选择转给微信朋友</text></view><text class="me-row-arrow">›</text></navigator>
     <button class="me-row" bindtap="openAccountLink" hover-class="none"><text class="me-row-icon">屏</text><view class="me-row-copy"><text class="me-row-title">在电脑上继续</text><text class="me-row-note">选择微信故事，生成一次性电脑登录码</text></view><text class="me-row-arrow">›</text></button>
-    <button class="me-row" wx:if="{{webLoginEnabled}}" bindtap="openWebLogin" hover-class="none"><text class="me-row-icon">登</text><view class="me-row-copy"><text class="me-row-title">登录电脑</text><text class="me-row-note">输入电脑网页上显示的码并确认</text></view><text class="me-row-arrow">›</text></button>
+    <button class="me-row" wx:if="{{webLoginEnabled}}" bindtap="openWebLogin" hover-class="none"><text class="me-row-icon">登</text><view class="me-row-copy"><text class="me-row-title">登录或绑定电脑</text><text class="me-row-note">从网页登录/绑定页扫码，共用算力；不要用邮箱码或故事电脑码</text></view><text class="me-row-arrow">›</text></button>
     <button class="me-row" bindtap="editAccountProfile" hover-class="none">
       <text class="me-row-icon">称</text>
       <view class="me-row-copy"><text class="me-row-title">修改个人信息</text><text class="me-row-note">称呼与一个字头像</text></view>

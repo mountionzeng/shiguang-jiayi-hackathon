@@ -1,4 +1,6 @@
 import { FamilyRoomState, MemoryContribution } from "../domain/biography";
+import { withComputeRequest } from "./computeRequest";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 import { InviteCardStyleId } from "./inviteCard";
 
 export interface FamilyInvitation {
@@ -63,10 +65,16 @@ export async function generateFamilyInvitationCopy(input: {
   currentMessage: string;
 }): Promise<{ headline: string; message: string; aiDisclosure: string }> {
   if (!wx.cloud) throw new Error("当前微信版本暂不支持 AI 写邀请语");
-  const response = await wx.cloud.callFunction({
-    name: "chatInterview",
-    data: { action: "inviteCopy", ...input },
-  });
+  let response;
+  try {
+    response = await withComputeRequest(`inviteCopy:${input.inviteeName}:${input.relation}:${input.currentHeadline}:${input.currentMessage}`, (computeRequestId)=>wx.cloud.callFunction({
+      name: "chatInterview",
+      data: { action: "inviteCopy", ...input, computeRequestId },
+    }));
+  } catch (error) {
+    promptComputeBillingFailure(error);
+    throw error;
+  }
   return response.result as { headline: string; message: string; aiDisclosure: string };
 }
 

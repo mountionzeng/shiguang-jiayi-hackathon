@@ -101,8 +101,10 @@
       "deploymentClass": "configured",
       "defaultDeploy": false,
       "activationRequirements": ["Configure provider credentials and capability flags", "Confirm product entitlement, IAM access, quota, and billing mode", "Run one controlled request with a stable request ID", "Install the configured timer trigger"],
-      "timeoutSeconds": 20,
+      "timeoutSeconds": 180,
       "environmentVariables": [
+        "STORY_MUSIC_ENABLED",
+        "STORY_MUSIC_302_KEY",
         "STORY_AUDIO_PRICING_VERSION",
         "STORY_AUDIO_TTS_ENABLED",
         "STORY_AUDIO_VOICE_CLONE_ENABLED",
@@ -192,6 +194,7 @@
         "DRINKING_TIME_BRIDGE_SECRET",
         "STORY_DESKTOP_AUTHORITY_ENABLED",
         "WEB_LOGIN_CONFIRM_ENABLED",
+        "WEB_STORY_IMPORT_ENABLED",
         "WECHAT_APP_ID",
         "STORY_IDENTITY_BOOTSTRAP_APP_ID"
       ]
@@ -199,11 +202,14 @@
     "storyDesktopAccess": {
       "deploymentClass": "configured",
       "defaultDeploy": false,
-      "activationRequirements": ["Configure STORY_DESKTOP_AUTHORITY_SECRET", "Explicitly enable STORY_DESKTOP_ACCESS_ENABLED after authority setup"],
+      "activationRequirements": ["Configure STORY_DESKTOP_AUTHORITY_SECRET", "Deploy the standalone package including sibling dependencies", "Explicitly enable only the required desktop, import or login QR capability", "For login QR, install wxacode.getUnlimited permission and upload the matching confirmation client"],
       "timeoutSeconds": 20,
       "environmentVariables": [
         "STORY_DESKTOP_ACCESS_ENABLED",
         "STORY_DESKTOP_AUTHORITY_SECRET",
+        "WEB_LOGIN_QR_ENABLED",
+        "WEB_LOGIN_QR_ENV_VERSION",
+        "WEB_STORY_IMPORT_ENABLED",
         "STORY_SHARE_CARD_ENABLED"
       ]
     },
@@ -273,7 +279,9 @@
         "Configure ORGANIZE_AI_*, CHAT_AI_*, or fallback AI_* provider settings",
         "Set WECHAT_APP_ID and keep AI_SERVER_RELEASE_READY false until validation",
         "Confirm provider entitlement, quota, and billing mode",
-        "Verify input/output moderation and one controlled request before enabling both release gates"
+        "Verify input/output moderation and one controlled request before enabling both release gates",
+        "Before enabling MATERIAL_CAPTURE_READY: install and verify private capture collection/index and storage rules in deploy/material-capture/README.md",
+        "Verify real photo understanding and ordinary-audio ASR entitlement with two-account isolation; existing organize actions remain independent"
       ],
       "timeoutSeconds": 60,
       "environmentVariables": [
@@ -297,8 +305,13 @@
         "AI_MODERATION_TENCENT_SECRET_KEY",
         "AI_MODERATION_TENCENT_SESSION_TOKEN",
         "AI_MODERATION_TENCENT_REGION",
-        "AI_MODERATION_TENCENT_BIZ_TYPE"
-      ]
+        "AI_MODERATION_TENCENT_BIZ_TYPE",
+        "MATERIAL_CAPTURE_READY",
+        "PHOTO_ACCESS_INTERNAL_TOKEN",
+        "VISION_MODEL",
+        "DOUBAO_SPEECH_API_KEY"
+      ],
+      "databaseRulesFile": "deploy/material-capture/database.rules.json"
     },
     "ensureCloudCollections": {
       "deploymentClass": "bootstrapOnce",
@@ -374,6 +387,7 @@
     "story_desktop_nonces": [],
     "story_desktop_operations": [],
     "story_excerpt_operations": [],
+    "story_friend_letter_inboxes": [],
     "story_grants": [
       "principal_status_story: principalId, status, storyId",
       "family_story_status: familyId, storyId, status"

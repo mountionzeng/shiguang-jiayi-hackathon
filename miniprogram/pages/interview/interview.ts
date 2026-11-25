@@ -2,7 +2,6 @@ import {
   accountOwner,
   appendAiRevision,
   createContribution,
-  createContributionFromSegments,
   contributionScope,
   contributionStoryTitle,
   FamilyMember,
@@ -22,6 +21,7 @@ import {
   DIMENSION_CHIPS,
   draftTitleFromAnswers,
   CLOUD_FOLLOW_UP_LABEL,
+  CONSENT_REQUIRED_FOLLOW_UP_LABEL,
   FOLLOW_UP_LABEL,
   INTERVIEW_DIMENSIONS,
   InterviewDimension,
@@ -30,11 +30,16 @@ import {
   pickInterviewQuestion,
   sharedQuestionSeed,
 } from "../../domain/interview";
+import {CLOUD_DATABASE_ENABLED} from "../../config/runtime";
+import {WritingSession, type WritingSnapshot} from "../../services/writingSession";
+import {saveWritingStory} from "../../services/writingStory";
+import {newStoryId} from "../../services/storyRecords";
+import {requestWritingSearch, writingSearchContext, isWritingSearchRequest, editWritingPreferences, type WritingSource} from '../../services/writingSupport';
 import { generateInterviewPrompt } from "../../services/interviewService";
 import { organizeMemory } from "../../services/memoryOrganizerService";
 import {
   askXiaoyiQuestion, initialXiaoyiPanelData, onXiaoyiAnswerInput, onXiaoyiDraftInput, onXiaoyiWritingInstruction, organizeXiaoyiAnswer,
-  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, XiaoyiLandKind, xiaoyiMessagesAppend,
+  resetXiaoyiPanel, useXiaoyiDraft, useXiaoyiOriginal, XiaoyiConfig, xiaoyiMessagesAppend,
 } from "../../services/xiaoyiCompanion";
 import {
   appendContributionRemoteFirst,
@@ -43,17 +48,19 @@ import {
   roomDataModeLabel,
 } from "../../services/roomRepository";
 import { loadSharedFamilyRoom, submitSharedContribution } from "../../services/familyInviteService";
-import { discardLocalPhotos, saveLocalPhoto } from "../../services/bookImages";
-import { classifyImportFiles, ImportFileLike, readImportTextFile } from "../../services/memoryImport";
-import { CAPTION_EDITED_LABEL, CAPTION_LABEL, storyImageApi } from "../../services/storyImageService";
-import { resumePhotoUploads } from "../../services/photoCloud";
+import { readLocalPhotos } from "../../services/bookImages";
+import { ImportFileLike } from "../../services/memoryImport";
 import { activeStory, linkStoryMemories } from "../../services/storyBooks";
 import { storyShelf } from "../../services/storyShelf";
-import { CLOUD_AI_RELEASE_READY } from "../../config/runtime";
+import {recordCaptureAudio,stopCaptureAudio,cancelCaptureAudio} from '../../services/captureAudio';
+import {readAttachedMemoryMaterials,captureHasUnreadMedia,captureSourceText,readCaptureMaterials,readCaptureSession,pendingCaptureDrafts,assertCaptureScope,loadCaptureDraft,storeCaptureDraft,stageCaptureFiles,sendMemoryCapture,continueMemoryCapture,saveCaptureOriginal,captureAudioUrl,type MemoryCaptureDraft,type MemoryCaptureReceipt} from '../../services/memoryCapture';
+
+interface CaptureMessageView extends MemoryCaptureReceipt {hasReading:boolean;photoPaths:string[];localStatus?:''|'sending'|'failed'}
 
 interface MessageView {
   id: string;
-  kind: "opening" | "followup" | "answer";
+  kind: "opening" | "followup" | "answer" | "research" | "request";
+  sources?: WritingSource[];
   text: string;
   label: string;
 }
@@ -77,6 +84,8 @@ interface MemberOptionView {
 }
 
 interface InterviewLoadOptions {
+  captureId?: string;
+  capture?: string;
   storyId?: string;
   sourceId?: string;
   storyTitle?: string;
@@ -162,8 +171,33 @@ function splitRecoverableText(text: string): string[] {
   return chunks;
 }
 
+function draftAiLabel(contribution:MemoryContribution, text:string):string {
+  const label=memoryAiLabel(contribution);
+  return label && text.trim()!==contribution.text.trim() ? "文字 AI 生成 · 已由你修改" : label;
+}
+
 Page({
   data: {
+    captureDraft: null as MemoryCaptureDraft | null,
+    captureReceipts: [] as CaptureMessageView[],
+    captureSessionId: '',
+    captureMemoryId: '',
+    captureReadOnly: false,
+    capturePending: [] as Array<{id:string;sessionId?:string;label:string}>,
+    captureBusy: false,
+    captureMaterialsRead: false,
+    captureReading: false,
+    sourceMaterials: [] as MemoryCaptureReceipt[],
+    sourceReadError: '',
+    sourceTranscript: "",
+    sourceTranscriptOpen: false,
+    sessionNotice: "",
+    sessionRecoveryNote: "",
+    sessionBlocked: false,
+    captureRecording: false,
+    captureEntry: false,
+    captureError: '',
+    captureExpandedId: '',
     memberName: "",
     memberRelation: "",
 
@@ -173,7 +207,12 @@ Page({
 
     inputText: "",
     asking: false,
+    searching: false,
+    searchQuery: "",
+    searchError: "",
+    preferencesBusy: false,
     organizing: false,
+    writingInstruction: "",
     scrollIntoView: "",
 
     // 先等档案读完再决定显示哪一屏，免得从首页进来时先闪一下「选择讲述方式」。
@@ -211,20 +250,22 @@ Page({
     keyboardHeight: 0,
     sharedFamilyId: "",
     importing: false,
-    importDraftOpen: false,
-    importPhotoIds: [] as string[],
-    importPhotoPaths: [] as string[],
-    importCaption: "",
-    importAiOriginal: "",
-    importAiLabel: "",
-    importAiLoading: false,
-    importCaptionAiReady: CLOUD_AI_RELEASE_READY,
+
   },
 
   messageSeq: 0,
+  writingSession: undefined as WritingSession | undefined,
+  outputStoryId:"",
+  outputStoryRevisionId:"",
+  sessionInitializing: false,
+  sourceText: "",
+  researchText: "",
+  materialSourceMemoryId: "",
+  materialSourceBaseText: "",
   pendingContribution: undefined as MemoryContribution | undefined,
   persistedContributionId: "",
   interviewUnloaded: false,
+  capturePlayer: undefined as WechatMiniprogram.InnerAudioContext | undefined,
   xiaoyiAskedDimensions: [] as InterviewDimension[],
   xiaoyiConversation: [] as InterviewTurn[],
 
@@ -232,8 +273,11 @@ Page({
     this.interviewUnloaded = false;
     try {
     const sharedFamilyId = decodeQueryValue(options.familyId);
+    const captureEntry = (options.capture === "1" || !!options.captureId) && !sharedFamilyId;
+    const requestedSourceId = decodeQueryValue(options.sourceId);
     const shared = sharedFamilyId ? await loadSharedFamilyRoom(sharedFamilyId) : undefined;
-    const state = shared?.state ?? await loadRoomStateRemoteFirst({ view: "home" });
+    // 首页只提供摘要；指定记忆续聊必须读取完整正文，再按 ID 限定本次来源。
+    const state = shared?.state ?? await loadRoomStateRemoteFirst({ view: requestedSourceId ? "memories" : "home" });
     const member = shared
       ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
       : authorFor(state, await loadCurrentMemberRemoteFirst(state));
@@ -250,7 +294,6 @@ Page({
       ? (state.stories ?? []).find(story => story.id === requestedStoryId && !story.deletedAt)
       : undefined;
     if (requestedStoryId && !requestedStory) throw new Error("这本故事书已不可用");
-    const requestedSourceId = decodeQueryValue(options.sourceId);
     const requestedMemoryType: MemoryType | undefined =
       options.memoryType === "memoir"
         ? "memoir"
@@ -258,17 +301,45 @@ Page({
           ? "note"
           : undefined;
     // 记忆库是共用的：接着聊的那一段可以是任何人讲的。
-    const source = (sharedFamilyId ? state.contributions : memoryPool(state.contributions)).find((memory) => (
+    let source = (sharedFamilyId ? state.contributions : memoryPool(state.contributions)).find((memory) => (
       memory.id === requestedSourceId &&
+      !memory.deletedAt &&
       (!sharedFamilyId || (
         memory.authorMemberId === member.id && contributionScope(memory) === "family"
       ))
     ));
+    if (requestedSourceId && !source) throw new Error("这段记忆已不可用");
+    let restored: WritingSnapshot | undefined;
+    if (source && !sharedFamilyId && CLOUD_DATABASE_ENABLED && wx.cloud) {
+      const loaded = await WritingSession.open(source.id, text => this.sessionStatus(text));
+      this.writingSession = loaded.session;
+      restored = loaded.snapshot;
+      source = state.contributions.find(item => item.id === loaded.session.rootMemoryId && !item.deletedAt);
+      if(!source)throw new Error("会话原材料暂未读到，请重新打开");
+      this.setData({sessionBlocked:!loaded.session.canWrite,sessionRecoveryNote:restored ? "" : "此前未保存完整聊天；原记忆仍在。从这次起，对话与草稿会一起保存。"});
+    }
     const sourceStoryTitle = source ? contributionStoryTitle(source) : "";
     const storyTitle = requestedStory?.title || sourceStoryTitle || requestedStoryTitle;
-    const sourcePreview = source
-      ? `${source.text.slice(0, 72)}${source.text.length > 72 ? "……" : ""}`
-      : "";
+    let sourceText = source?.text || "";
+    this.materialSourceMemoryId = !sharedFamilyId && source?.photoIds?.some(id=>/^photo-(?!ai-)/.test(id)) ? source.id : "";
+    this.materialSourceBaseText = source?.text || "";
+    let sourceMediaNote = "";
+    if (source?.materialCaptureId && !sharedFamilyId) {
+      const session = await readCaptureSession(source.materialCaptureId);
+      if (this.interviewUnloaded) return;
+      if (!Array.isArray(session.items) || session.items.some(item => item.memoryId && item.memoryId !== source.id)) {
+        throw new Error("原素材与这段记忆不一致，请重新打开");
+      }
+      const originals = session.items.filter(item => item.memoryId === source.id);
+      if (!originals.length) throw new Error("这段记忆的原素材暂未读到，请重新打开");
+      this.setData({sourceMaterials:originals});
+      sourceText = captureSourceText(originals);
+      if (originals.some(captureHasUnreadMedia)) {
+        sourceMediaNote = "附带的图片或录音未完成读取，不推断其中的内容；先读取材料，不要求用户先想好怎么写。";
+      }
+    }
+    const sourcePreview = `${sourceText.slice(0, 72)}${sourceText.length > 72 ? "……" : ""}`;
+    this.sourceText = [sourceMediaNote, sourceText].filter(Boolean).join("\n\n");
     // 从首页推荐问点进来时，第一句就是用户刚才点的那个问题，不换成泛泛的“后来你又想起了什么”。
     const requestedQuestion = decodeQueryValue(options.question).slice(0, 80);
     const requestedDimension = INTERVIEW_DIMENSIONS.find(
@@ -276,8 +347,12 @@ Page({
     );
     const continuation = requestedQuestion ||
       (storyTitle ? "这一次，你还想补充什么？" : "后来你又想起了什么？");
-    const opening = source
-      ? storyTitle
+    const opening = captureEntry
+      ? "把这一刻先记下来吧。文字、照片、录音可以一起发，也可以分几次补充，都会保存在这段记忆里。想聊或整理时，再叫我。"
+      : source
+      ? !sourceText && sourceMediaNote
+        ? "这段图片或录音已经保存。你想先聊其中的什么？"
+        : storyTitle
         ? `我们继续聊「${storyTitle}」吧。\n上次你讲到：“${sourcePreview}”\n${continuation}`
         : `我们接着这段往下聊吧。\n上次你讲到：“${sourcePreview}”\n${continuation}`
       : requestedMemoryType === "note"
@@ -285,10 +360,11 @@ Page({
         : `${requestedQuestion || question.text}\n想到自己、家人或朋友都可以。先慢慢讲，聊完后再决定放进哪个故事。`;
 
     this.setData({
+      captureEntry,
       memberName: member.name,
       memberRelation: member.relation,
       sharedFamilyId,
-      stage: source || storyTitle || requestedMemoryType ? "chat" : "choose",
+      stage: captureEntry || source || storyTitle || requestedMemoryType ? "chat" : "choose",
       memoryType: requestedMemoryType ?? this.data.memoryType,
       askedDimensions: requestedQuestion && requestedDimension ? [requestedDimension] : [],
       dateLabel: today(),
@@ -307,10 +383,114 @@ Page({
       audienceOptions: memberOptionsFor(state.members, member.id),
     });
 
-    this.pushMessage("opening", opening);
+    this.setData({sourceTranscript: source?.materialCaptureId ? sourceText : ""});
+    if (!restored) this.pushMessage("opening", source?.materialCaptureId
+      ? (this.data.sourceMaterials.some(captureHasUnreadMedia)
+        ? "原件已保存。先读取材料里的内容，再一起整理，你不用先想好怎么写。"
+        : "材料已经读取好了，可以随时展开核对原文。我们不用急着决定写法，先从一个小问题开始：你为什么想留下这份材料？")
+      : opening);
+    if (restored) {
+      this.outputStoryId=restored.outputStoryId || "";
+      this.outputStoryRevisionId=restored.outputStoryRevisionId || "";
+      const output = state.contributions.find(item => item.id === restored!.outputMemoryId && !item.deletedAt);
+      this.pendingContribution = output;
+      this.persistedContributionId = output?.id || "";
+      if (output && !restored.saved && restored.draftText && restored.draftOrganizationMode === "cloud-ai") {
+        this.pendingContribution = appendAiRevision(output, "ai", restored.draftAiText || restored.draftText, restored.draftAiTitle || restored.draftTitle, "cloud-ai");
+      }
+      // Earlier versions echoed form selections as if the user had sent a chat message.
+      // Preserve the setting privately, but do not present a generated form echo as their words.
+      const priorDirections=restored.messages.filter(item=>item.kind === "request" && item.label === "本次写法");
+      const messages=restored.messages.filter(item=>!(item.kind === "request" && item.label === "本次写法"));
+      this.setData({messages, answers:restored.answers, inputText:restored.inputText,
+        askedDimensions:restored.askedDimensions.filter((item):item is InterviewDimension=>INTERVIEW_DIMENSIONS.includes(item as InterviewDimension)),
+        draftTitle:restored.draftTitle,draftText:restored.draftText,draftSummary:restored.draftSummary,
+        writingInstruction:restored.writingInstruction || priorDirections.slice(-1)[0]?.text || "",
+        draftLength:restored.draftText.length,tooLong:restored.draftText.length>MAX_MEMORY_LENGTH,
+        draftOrganizationMode:restored.draftOrganizationMode,saved:!!output && restored.saved,
+        draftAiLabel:output ? draftAiLabel(this.pendingContribution!,restored.draftText) : "",
+        stage:"chat",scrollIntoView:messages[messages.length-1]?.id || ""});
+      this.messageSeq=Math.max(0,...restored.messages.map(item=>Number(item.id.replace("msg-","")) || 0));
+      if(priorDirections.length)await this.persistSession();
+      this.researchText=messages.filter(item=>item.kind==="research").map(item=>item.text+"\n"+(item.sources || []).map(source=>`[${source.index}] ${source.title} ${source.url}`).join("\n")).join("\n\n");
+    } else if (source && !source.materialCaptureId && !this.materialSourceMemoryId) {
+      this.pendingContribution=source;this.persistedContributionId=source.id;
+      this.setData({draftText:source.text,draftTitle:source.title || "",draftLength:source.text.length,saved:true,draftAiLabel:memoryAiLabel(source)});
+    }
+    if (this.writingSession && !restored) await this.persistSession();
+    if(captureEntry){
+      wx.setNavigationBarTitle({title:'随手记'});
+      if(options.captureId)await this.restoreCaptureSession(decodeQueryValue(options.captureId));
+      if(!this.data.captureDraft && !this.data.captureReadOnly)await this.stageCapture([]);
+      await this.refreshPendingCaptures();
+    }
     } catch (error) {
       wx.showModal({ title: "暂时无法加载", content: "请返回后重新打开，不会切换到另一份本地数据。", showCancel: false, success: () => wx.navigateBack() });
     }
+  },
+
+  sessionStatus(text:string) {
+    if (!this.interviewUnloaded) {
+      this.setData({sessionNotice:text,sessionBlocked:!!this.writingSession && !this.writingSession.canWrite});
+      if(text === "聊天与草稿已保存")wx.disableAlertBeforeUnload();
+    }
+  },
+  sessionSnapshot():WritingSnapshot {
+    const aiRevision=this.pendingContribution ? memoryAiRevisions(this.pendingContribution).filter(item=>item.kind === "ai").slice(-1)[0] : undefined;
+    return {messages:this.data.messages,answers:this.data.answers,askedDimensions:this.data.askedDimensions,
+      inputText:this.data.inputText,draftTitle:this.data.draftTitle,draftText:this.data.draftText,
+      ...(this.data.writingInstruction ? {writingInstruction:this.data.writingInstruction} : {}),
+      ...(this.outputStoryId ? {outputStoryId:this.outputStoryId,outputStoryRevisionId:this.outputStoryRevisionId} : {}),
+      draftSummary:this.data.draftSummary,draftOrganizationMode:this.data.draftOrganizationMode,
+      ...(aiRevision ? {draftAiText:aiRevision.text,draftAiTitle:aiRevision.title || ""} : {}),
+      outputMemoryId:this.persistedContributionId,saved:this.data.saved};
+  },
+  async persistSession() {if(this.writingSession)await this.writingSession.save(this.sessionSnapshot());},
+  checkpointSession() {this.writingSession?.checkpoint(this.sessionSnapshot());},
+  async ensureSession() {
+    if(this.writingSession || this.data.sharedFamilyId || !CLOUD_DATABASE_ENABLED || !wx.cloud)return;
+    this.sessionInitializing=true;
+    try {
+      const root=this.pendingContribution || await this.persistSpokenAnswers(this.data.answers);
+      const loaded=await WritingSession.open(root.id,text=>this.sessionStatus(text));
+      this.writingSession=loaded.session;
+    } finally {this.sessionInitializing=false;}
+  },
+  async retrySessionSave() {
+    try {await this.writingSession?.retry();}
+    catch(error){this.sessionStatus(error instanceof Error ? error.message : "同步尚未完成，请稍后重试");}
+  },
+  onHide() {if(this.writingSession)void this.persistSession();},
+  showDraft() {if(this.data.draftText)this.setData({stage:"save"});},
+  async publishStory() {
+    await this.ensureSession();
+    if(!this.writingSession)throw new Error("请连接云端后重试，故事草稿仍在本页");
+    if(!this.outputStoryId)this.outputStoryId=newStoryId();
+    await this.persistSession();
+    if(!this.writingSession.canWrite)throw new Error("故事同步尚未完成，请重试保存");
+    const result=await saveWritingStory({storyId:this.outputStoryId,revisionId:this.outputStoryRevisionId,
+      memoryId:this.writingSession.rootMemoryId,title:this.data.draftTitle,text:this.data.draftText,generationMode:this.data.draftOrganizationMode});
+    this.outputStoryRevisionId=result.revisionId;
+    await this.persistSession();
+    if(!this.writingSession.canWrite)throw new Error("故事已在书架，会话同步尚未完成，请重试保存");
+  },
+  async finishArticle() {
+    if(this.data.sharedFamilyId){await this.save();return;}
+    if(this.data.saving || this.data.organizing || this.data.asking || this.data.tooLong || !this.data.draftText.trim())return;
+    this.setData({saving:true,saveError:"",draftText:this.data.draftText,draftTitle:this.data.draftTitle});
+    try {
+      await this.publishStory();
+      this.setData({stage:"chat"});
+      wx.showToast({title:"故事已保存到人生之书",icon:"none"});
+    } catch(error) {this.setData({saveError:error instanceof Error ? error.message : "文章暂未同步，请重试"});}
+    finally {this.setData({saving:false});}
+  },
+  async organizeDraftIntoBook() {
+    if(this.data.sharedFamilyId || this.data.asking || this.data.organizing || this.data.saving || this.data.tooLong || !this.data.draftText.trim())return;
+    await this.finishArticle();
+    if(this.data.saveError || !this.writingSession?.canWrite)return;
+    wx.navigateTo({url:`/pages/book/book?articleSession=${encodeURIComponent(this.writingSession.rootMemoryId)}`,
+      fail:()=>wx.showToast({title:"文章已保留，打开书籍失败，请重试",icon:"none"})});
   },
 
   /**
@@ -319,10 +499,13 @@ Page({
    */
   onUnload() {
     this.interviewUnloaded = true;
+    cancelCaptureAudio();
+    this.capturePlayer?.destroy();
+    if(this.data.captureDraft && !this.data.captureDraft.submitted)void storeCaptureDraft({...this.data.captureDraft,composerText:this.data.inputText});
+    if(this.data.captureEntry || this.data.captureDraft || this.data.captureBusy)return;
     wx.disableAlertBeforeUnload();
-    if (this.data.importDraftOpen) {
-      void discardLocalPhotos(this.data.importPhotoIds.map((id, index) => ({ id, path: this.data.importPhotoPaths[index] })));
-    }
+    if(this.writingSession){void this.persistSession();return;}
+    if(this.sessionInitializing)return;
     const unsentText = this.data.inputText.trim();
     const rawAnswers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (this.data.saved || this.data.saving || rawAnswers.length === 0) return;
@@ -382,11 +565,11 @@ Page({
     }
   },
 
-  pushMessage(kind: MessageView["kind"], text: string, label = "") {
+  pushMessage(kind: MessageView["kind"], text: string, label = "", sources: WritingSource[] = []) {
     this.messageSeq += 1;
     const id = `msg-${this.messageSeq}`;
     this.setData({
-      messages: this.data.messages.concat([{ id, kind, text, label }]),
+      messages: this.data.messages.concat([{ id, kind, text, label, sources }]),
       scrollIntoView: id,
     });
   },
@@ -396,6 +579,8 @@ Page({
     // Keep the native keyboard in charge while composing (including voice IME).
     // setData is reserved for explicit seeds/resets, never input echo.
     this.data.inputText = inputText;
+    this.checkpointSession();
+    if(this.data.captureDraft && !this.data.captureDraft.submitted) {this.data.captureDraft.composerText=inputText;void storeCaptureDraft(this.data.captureDraft);}
     if (inputText.trim()) {
       wx.enableAlertBeforeUnload({
         message: "退出时会尝试保存。为避免网络失败，请先完成保存并确认成功。",
@@ -410,17 +595,31 @@ Page({
   },
 
   async send() {
-    if (this.data.asking || this.data.organizing || this.data.importing || this.data.saving) return;
+    if(this.data.sessionBlocked){wx.showToast({title:"请先重试保存会话",icon:"none"});return;}
+    if(this.data.captureReadOnly)return;
+    if(this.data.captureEntry){
+      if(this.data.captureBusy || this.data.importing || this.data.captureRecording)return;
+      if(!this.data.captureDraft)await this.stageCapture([]);
+      if(this.data.captureDraft)await this.sendCapture();
+      return;
+    }
+    if(this.data.captureDraft){await this.sendCapture();return;}
+    if (this.data.captureReading || this.data.asking || this.data.organizing || this.data.importing || this.data.saving) return;
     const answer = this.data.inputText.trim();
     if (!answer) {
       wx.showToast({ title: "先说一句吧，短一点也行", icon: "none" });
       return;
     }
 
+    if(this.data.messages[this.data.messages.length-1]?.label === "写作方向") {
+      await this.composeArticle();
+      return;
+    }
+    if (isWritingSearchRequest(answer)) { await this.runWritingSearch(answer); return; }
     const previousAnswers = this.data.answers;
     // 小忆问过的话也要交给 AI，它才知道哪些已经问过、用户已经答过。
     const conversation: InterviewTurn[] = this.data.messages.map((message) => ({
-      role: message.kind === "answer" ? "user" : "assistant",
+      role: message.kind === "answer" || message.kind === "request" ? "user" : "assistant",
       text: message.text,
     }));
     const answers = previousAnswers.concat([answer]);
@@ -432,6 +631,15 @@ Page({
     });
 
     try {
+      await this.ensureSession();
+      await this.persistSession();
+      if(this.writingSession && !this.writingSession.canWrite)throw new Error("聊天尚未同步");
+      if (this.materialSourceMemoryId) {
+        const reading = await readAttachedMemoryMaterials(this.materialSourceMemoryId,()=>!this.interviewUnloaded);
+        if(this.interviewUnloaded)return;
+        this.sourceText=[this.materialSourceBaseText,reading].filter(Boolean).join('\n\n');
+        this.setData({sourceTranscript:reading});
+      }
       const prompt = await generateInterviewPrompt({
         answer,
         askedDimensions: this.data.askedDimensions,
@@ -443,19 +651,53 @@ Page({
         storyId: this.data.writingMode === "objective" ? undefined : this.data.storyId,
         previousAnswers,
         conversation,
+        ...((this.sourceText || this.researchText) ? {sourceText: [this.sourceText, this.researchText].filter(Boolean).join("\n\n"), sourceOnly: true} : {}),
       });
       this.setData({
         asking: false,
         askedDimensions: this.data.askedDimensions.concat([prompt.dimension]),
       });
       const label = prompt.generationMode === "cloud-ai" ? CLOUD_FOLLOW_UP_LABEL
+        : prompt.fallbackReason === "consent-declined" ? CONSENT_REQUIRED_FOLLOW_UP_LABEL
         : prompt.fallbackReason === "moderation-quota-exhausted" ? QUOTA_EXHAUSTED_FOLLOW_UP_LABEL : FOLLOW_UP_LABEL;
       this.pushMessage("followup", prompt.text, label);
+      await this.persistSession();
     } catch (error) {
       console.warn("追问生成失败", error);
       this.setData({ asking: false });
       wx.showToast({ title: "小忆刚刚走神了，再试一次", icon: "none" });
     }
+  },
+
+  stopTranscriptTap() {},
+  toggleSourceTranscript() { this.setData({sourceTranscriptOpen: !this.data.sourceTranscriptOpen}); },
+  async searchWritingMaterials() { await this.runWritingSearch(this.data.inputText.trim() || this.data.searchQuery); },
+  async runWritingSearch(initialQuery:string) {
+    if (this.data.asking || this.data.organizing || this.data.saving || this.data.importing || this.data.captureReading || this.data.captureDraft || this.data.captureEntry) return;
+    this.setData({asking:true,searching:true,searchError:""});
+    try {
+      const result = await requestWritingSearch(initialQuery, query=>{ if (!this.interviewUnloaded) this.setData({searchQuery:query}); });
+      if (!result || this.interviewUnloaded) return;
+      this.researchText = writingSearchContext(result);
+      this.pushMessage('request', `帮我查资料：${result.query}`);
+      this.pushMessage('research', result.text, '联网参考 · 请核对来源', result.sources);
+      if (this.data.inputText.trim() === initialQuery) this.setData({inputText:''});
+      await this.ensureSession();await this.persistSession();
+    } catch {
+      if (!this.interviewUnloaded) this.setData({searchError:'搜索未完成，尚未获得可核对的来源。检索词已保留，可点 AI查资料重试。'});
+    } finally { if (!this.interviewUnloaded) this.setData({asking:false,searching:false}); }
+  },
+  copyResearchSource(event:{currentTarget:{dataset:{message:string;index:number}}}) {
+    const message = this.data.messages.find(item=>item.id === event.currentTarget.dataset.message);
+    const source = message?.sources?.[Number(event.currentTarget.dataset.index)];
+    if (source) wx.setClipboardData({data:source.url});
+  },
+  async editWritingPreferences() {
+    if (this.data.preferencesBusy || this.data.asking || this.data.organizing || this.data.saving) return;
+    this.setData({preferencesBusy:true});
+    try { await editWritingPreferences(); }
+    catch { wx.showToast({title:'偏好未保存，请重新打开后再试',icon:'none'}); }
+    finally { if (!this.interviewUnloaded) this.setData({preferencesBusy:false}); }
   },
 
   /**
@@ -465,17 +707,26 @@ Page({
    */
   async persistSpokenAnswers(answers: string[]): Promise<MemoryContribution> {
     const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;
-    const state = shared?.state ?? await loadRoomStateRemoteFirst();
+    const state = shared?.state ?? await loadRoomStateRemoteFirst({view: "memories"});
     const member = shared
       ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
       : authorFor(state, await loadCurrentMemberRemoteFirst(state));
     if (!member) throw new Error("成员身份已失效，请重新接受邀请");
 
     const spokenText = normalizeMemoryText(answers.join(" "));
+    if (!this.pendingContribution && this.writingSession && !this.data.sharedFamilyId) {
+      const source = state.contributions.find(item => item.id === this.writingSession!.rootMemoryId && !item.deletedAt);
+      if (!source) throw new Error('原始记忆已变动，请重新打开');
+      this.pendingContribution = source;this.persistedContributionId = source.id;
+    }
     if (this.pendingContribution && !this.data.sharedFamilyId) {
       const saved = state.contributions.find(item => item.id === this.pendingContribution!.id && !item.deletedAt);
       if (!saved && this.persistedContributionId === this.pendingContribution.id) throw new Error('这段记忆已变动，请重新打开');
-      if (saved) this.pendingContribution = {...this.pendingContribution, photoIds:saved.photoIds};
+      if (saved) {
+        // Conversation and article live in the session; keep the source unchanged.
+        this.pendingContribution = {...this.pendingContribution, photoIds:saved.photoIds};
+        return saved;
+      }
     }
     const base = this.pendingContribution ?? createContribution({
       authorMemberId: member.id,
@@ -490,19 +741,24 @@ Page({
       scope: this.data.sharedFamilyId ? "family" : "personal",
       visibility: this.data.sharedFamilyId ? "family" : "private",
     });
-    const contribution = this.pendingContribution
+    const spokenRevision = this.pendingContribution
       ? appendAiRevision(base, "spoken", spokenText, base.title, base.organizationMode)
       : base;
+    const contribution = this.data.saved && this.pendingContribution
+      ? {...spokenRevision,text:base.text,title:base.title}
+      : spokenRevision;
 
     if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, contribution);
-    else await appendContributionRemoteFirst(contribution, {learn:false});
+    else await appendContributionRemoteFirst(contribution, {learn:false, view:"memories"});
     this.pendingContribution = contribution;
     this.persistedContributionId = contribution.id;
     return contribution;
   },
 
-  async finish() {
-    if (this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
+  async finish() { await this.composeArticle(); },
+
+  async composeArticle() {
+    if (this.data.sessionBlocked || this.data.captureReading || this.data.organizing || this.data.asking || this.data.importing || this.data.saving) return;
     const unsentText = this.data.inputText.trim();
     const answers = this.data.answers.concat(unsentText ? [unsentText] : []);
     if (answers.length === 0) {
@@ -513,7 +769,17 @@ Page({
     this.setData({ organizing: true });
 
     try {
+      if (this.materialSourceMemoryId) {
+        const reading=await readAttachedMemoryMaterials(this.materialSourceMemoryId,()=>!this.interviewUnloaded);
+        if(this.interviewUnloaded)return;
+        this.setData({sourceTranscript:reading});
+      }
       const spoken = await this.persistSpokenAnswers(answers);
+      this.setData({answers,inputText:""});
+      if(unsentText)this.pushMessage("answer",unsentText);
+      await this.ensureSession();
+      await this.persistSession();
+      if(this.writingSession && !this.writingSession.canWrite)throw new Error("聊天尚未同步");
       const draft = await organizeMemory({
         transcript: [spoken.text],
         memoryType: this.data.memoryType,
@@ -522,14 +788,25 @@ Page({
         // The organizer authorizes personal memories; shared-family records stay as spoken text.
         useAi: this.data.writingMode === "creative" && !this.data.sharedFamilyId,
         memoryId: spoken.id,
+        ...(this.materialSourceMemoryId ? {materialSourceId:this.materialSourceMemoryId} : {}),
         expectedSavedText: spoken.text,
         writingMode: "compose",
-        conversation: this.data.messages.slice(-10).map(message => ({
-          role: message.kind === "answer" ? "user" as const : "assistant" as const,
-          content: message.text,
+        writingInstruction: this.data.writingInstruction,
+        articleGuidance:true,
+        conversation: this.data.messages.map(message => ({
+          role: message.kind === "answer" || message.kind === "request" ? "user" as const : "assistant" as const,
+          content: message.label === "写作方向" ? `[写作方向] ${message.text}` : message.text,
         })),
       });
+      if(draft.fallbackReason)throw new Error("写作尚未完成，原话与原稿已保留");
+      if(this.materialSourceMemoryId && draft.generationMode!=='cloud-ai')throw new Error('尚未完成基于材料正文的整理，原话已保存');
+      if(draft.clarification) {
+        this.pushMessage("followup",draft.clarification,"写作方向");
+        await this.persistSession();
+        return;
+      }
       const covered = detectCoveredDimensions(draft.body);
+      this.outputStoryId="";this.outputStoryRevisionId="";
 
       if (draft.generationMode === "cloud-ai") {
         this.pendingContribution = appendAiRevision(spoken, "ai", draft.body, draft.title, draft.generationMode);
@@ -537,6 +814,8 @@ Page({
 
       this.setData({
         stage: "save",
+        saveError:"",
+        saved: false,
         answers,
         inputText: "",
         draftTitle: draft.title,
@@ -551,8 +830,13 @@ Page({
         tooLong: draft.body.length > MAX_MEMORY_LENGTH,
         coveredChips: covered.map((dimension) => DIMENSION_CHIPS[dimension]),
       });
+      await this.persistSession();
+      if(!this.data.sharedFamilyId) {
+        try {await this.publishStory();wx.showToast({title:"故事已保存到人生之书",icon:"none"});}
+        catch(error){this.setData({saveError:error instanceof Error ? error.message : "故事尚未放入书架，请点完成重试"});}
+      }
     } catch (error) {
-      console.warn("整理成片段失败", error);
+      console.warn("按写法整理文章失败", error);
       wx.showToast({ title: "暂时无法整理，请稍后再试", icon: "none" });
     } finally {
       this.setData({ organizing: false });
@@ -599,13 +883,15 @@ Page({
   /** 就地小忆共享机制的落回目标：接到这段记忆的草稿末尾，保存时才真正持久化。 */
   xiaoyiLand(text: string): Promise<boolean> {
     const next = normalizeMemoryText([this.data.draftText.trim(), text.trim()].filter(Boolean).join("\n\n"));
-    const previewLabel = this.pendingContribution ? memoryAiLabel({ ...this.pendingContribution, text: next }) : this.data.draftAiLabel;
+    const previewLabel = this.pendingContribution ? draftAiLabel(this.pendingContribution,next) : this.data.draftAiLabel;
     this.setData({ draftText: next, draftLength: next.length, tooLong: next.length > MAX_MEMORY_LENGTH, draftAiLabel: previewLabel, xiaoyiAnswer: "", xiaoyiDraftText: "", xiaoyiStatus: "已接到草稿后面，你还可以继续改。" });
+    this.checkpointSession();
     return Promise.resolve(true);
   },
 
   onTitleInput(event: { detail: { value: string } }) {
     this.data.draftTitle = event.detail.value;
+    this.checkpointSession();
   },
 
   onDraftInput(event: { detail: { value: string } }) {
@@ -613,9 +899,10 @@ Page({
     // 手改之后立刻打「已由你修改」，避免用户等到点保存才看到标签变化；
     // 真正的 manual revision 记录在 save() 里追加，这里只是显示态。
     const previewLabel = this.pendingContribution
-      ? memoryAiLabel({ ...this.pendingContribution, text: draftText })
+      ? draftAiLabel(this.pendingContribution,draftText)
       : this.data.draftOrganizationMode === "cloud-ai" ? "文字 AI 生成 · 已由你修改" : "";
     this.data.draftText = draftText;
+    this.checkpointSession();
     this.setData({
       draftAiLabel: previewLabel,
       draftLength: draftText.length,
@@ -628,6 +915,7 @@ Page({
   },
 
   beginInterview() {
+    if(this.data.memoryType==='note' && !this.data.sharedFamilyId){wx.redirectTo({url:'/pages/interview/interview?capture=1'});return;}
     this.setData({ stage: "chat" });
   },
 
@@ -703,12 +991,21 @@ Page({
       wx.showToast({ title: "请回到自己的记忆里导入", icon: "none" });
       return;
     }
+    const captureEntry = this.data.captureEntry;
     wx.showActionSheet({
-      itemList: ["从相册或拍照选照片", "从微信聊天选文件", "AI生成配图"],
+      itemList: captureEntry
+        ? ["从相册或拍照选照片", "从微信聊天选文件", "录一段声音"]
+        : ["从相册或拍照选照片", "从微信聊天选文件", "AI生成配图", "录一段声音", "把输入文字整理成记忆"],
       success: result => {
         if (result.tapIndex === 0) void this.importFromAlbum();
         if (result.tapIndex === 1) void this.importFromMessage();
+        if (captureEntry) {
+          if (result.tapIndex === 2) void this.recordCapture();
+          return;
+        }
         if (result.tapIndex === 2) void this.generateMemoryPhotos();
+        if (result.tapIndex === 3) void this.recordCapture();
+        if (result.tapIndex === 4) void this.startTextCapture();
       },
     });
   },
@@ -789,158 +1086,164 @@ Page({
     wx.showModal({ title: "没能导入", content: message || "导入失败，请重试", showCancel: false });
   },
 
-  onImportCaptionInput(event: { detail: { value: string } }) {
-    const importCaption = event.detail.value.slice(0, MAX_MEMORY_LENGTH);
-    const importAiLabel = !importCaption || !this.data.importAiOriginal
-      ? ""
-      : importCaption === this.data.importAiOriginal ? CAPTION_LABEL : CAPTION_EDITED_LABEL;
-    this.data.importCaption = importCaption;
-    this.setData({ importAiLabel });
-  },
-
-  async generateImportCaption() {
-    if (this.data.importAiLoading || !this.data.importPhotoIds.length) return;
-    this.setData({ importAiLoading: true });
-    try {
-      await resumePhotoUploads();
-      const result = await storyImageApi.captionPhotos({ photoIds: this.data.importPhotoIds.slice(0, 3) });
-      if (!result.aiGenerated || !result.caption) throw new Error(result.message || "没看出来，自己写一句吧");
-      this.setData({
-        importCaption: result.caption,
-        importAiOriginal: result.caption,
-        importAiLabel: CAPTION_LABEL,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "没看出来，自己写一句吧";
-      wx.showToast({ title: message, icon: "none", duration: 3000 });
-    } finally {
-      this.setData({ importAiLoading: false });
-    }
-  },
-
-  closePhotoImport() {
-    this.setData({
-      importDraftOpen: false,
-      importPhotoIds: [],
-      importPhotoPaths: [],
-      importCaption: "",
-      importAiOriginal: "",
-      importAiLabel: "",
-    });
-  },
-
-  async cancelPhotoImport() {
-    if (this.data.importAiLoading || this.data.importing) return;
-    const photos = this.data.importPhotoIds.map((id, index) => ({ id, path: this.data.importPhotoPaths[index] }));
-    this.closePhotoImport();
-    await discardLocalPhotos(photos);
-  },
-
-  async savePhotoImport() {
-    if (this.data.importing || !this.data.importPhotoIds.length) return;
-    this.setData({ importing: true });
-    wx.showLoading({ title: "正在保存" });
-    try {
-      await this.persistImportedMemory({
-        title: `照片 · ${new Date().getMonth() + 1}月${new Date().getDate()}日`,
-        text: this.data.importCaption,
-        photoIds: this.data.importPhotoIds,
-        organizationMode: this.data.importAiLabel ? "cloud-ai" : undefined,
-      });
-      this.closePhotoImport();
-      wx.hideLoading();
-      wx.showToast({ title: "已导入到记忆", icon: "success" });
-    } catch (error) {
-      wx.hideLoading();
-      this.setData({ importing: false });
-      this.showImportError(error);
-    }
-  },
-
-  async persistImportedMemory(input: {
-    title: string;
-    text: string;
-    photoIds: string[];
-    segments?: string[];
-    organizationMode?: OrganizationMode;
-  }) {
-    const state = await loadRoomStateRemoteFirst();
-    const member = authorFor(state, await loadCurrentMemberRemoteFirst(state));
-    if (!member?.id) throw new Error("请先写下你的名字");
-    const contributionInput = {
-      authorMemberId: member.id,
-      authorName: member.name,
-      relation: member.relation,
-      text: input.segments?.[0] || input.text,
-      title: input.title,
-      organizationMode: input.organizationMode,
-      memoryType: "note" as const,
-      scope: "personal" as const,
-      visibility: "private" as const,
-      photoIds: input.photoIds,
-    };
-    const contribution = input.segments
-      ? createContributionFromSegments(contributionInput, input.segments, "import")
-      : createContribution(contributionInput);
-    await appendContributionRemoteFirst(contribution);
-    this.setData({ importing: false });
-  },
-
   async saveImportedFiles(files: ImportFileLike[]) {
-    if (this.data.importing) return;
-    this.setData({ importing: true });
-    wx.showLoading({ title: "正在导入" });
-    try {
-      const classified = classifyImportFiles(files);
-      if (!classified.images.length && !classified.text) {
-        throw new Error("这一版只能导入图片和 .txt、.md 文字文件");
+    await this.stageCapture(files);
+  },
+
+  async stageCapture(files:ImportFileLike[]) {
+    if(this.data.captureReadOnly || this.data.captureBusy || this.data.importing)return;
+    this.setData({importing:true,captureError:''});
+    try {const captureDraft=await stageCaptureFiles(files,this.data.captureDraft || undefined,this.data.captureEntry?this.data.captureSessionId:undefined);captureDraft.composerText=this.data.inputText;await storeCaptureDraft(captureDraft);if(!this.interviewUnloaded)this.setData({captureDraft,captureSessionId:captureDraft.sessionId || this.data.captureSessionId});}
+    catch(error){const captureDraft=await loadCaptureDraft(this.data.captureSessionId || undefined);if(!this.interviewUnloaded)this.setData({captureDraft:captureDraft || this.data.captureDraft,captureError:error instanceof Error?error.message:'没能添加素材'});}
+    finally {if(!this.interviewUnloaded)this.setData({importing:false});}
+  },
+  async startTextCapture(){await this.stageCapture([]);},
+  async recordCapture(){
+    if(this.data.captureRecording || this.data.captureBusy)return;
+    this.setData({captureRecording:true,captureError:''});
+    try {const file=await recordCaptureAudio();if(!this.interviewUnloaded)await this.stageCapture([file]);}
+    catch(error){if(!this.interviewUnloaded)this.setData({captureError:error instanceof Error?error.message:'录音中断'});}
+    finally {if(!this.interviewUnloaded)this.setData({captureRecording:false});}
+  },
+  stopCaptureRecording(){stopCaptureAudio();},
+  async removeCaptureFile(event:{currentTarget:{dataset:{kind:string;index:number}}}){
+    const draft=this.data.captureDraft;if(!draft || draft.submitted || this.data.captureBusy)return;
+    const index=Number(event.currentTarget.dataset.index);
+    if(event.currentTarget.dataset.kind==='photo'){draft.photoIds.splice(index,1);draft.photoPaths.splice(index,1);}else draft.audio.splice(index,1);
+    await storeCaptureDraft(draft);this.setData({captureDraft:{...draft}});
+  },
+  async cancelEmptyCapture(){const draft=this.data.captureDraft;if(!draft || draft.submitted || draft.audio.length || draft.photoIds.length || draft.text)return;await storeCaptureDraft(undefined,draft.familyId,draft.id,draft.sessionId);this.setData({captureDraft:null});},
+  updateCaptureReceipt(receipt:MemoryCaptureReceipt,localStatus:''|'sending'|'failed'=''){
+    if(this.interviewUnloaded)return;
+    const rows=[...this.data.captureReceipts],index=rows.findIndex(item=>item.id===receipt.id);
+    const message:CaptureMessageView={...receipt,hasReading:receipt.evidence.some(item=>item.kind!=='user-text'),localStatus,photoPaths:index>=0?rows[index].photoPaths:this.data.captureDraft?.id===receipt.id?this.data.captureDraft.photoPaths:[]};
+    if(index>=0)rows[index]=message;else rows.push(message);
+    this.setData({captureReceipts:rows,captureMaterialsRead:rows.length>0 && rows.every(item=>item.status==='saved' && !captureHasUnreadMedia(item)),...(receipt.memoryId?{captureMemoryId:receipt.memoryId}:{}),scrollIntoView:`capture-message-${receipt.id}`});
+    if(receipt.photoIds.length && !message.photoPaths.length)void this.loadCapturePhotos(receipt);
+  },
+  async loadCapturePhotos(receipt:MemoryCaptureReceipt){
+    try{
+      await assertCaptureScope(receipt.familyId);
+      const photos=await readLocalPhotos(receipt.photoIds);
+      await assertCaptureScope(receipt.familyId);
+      if(this.interviewUnloaded)return;
+      this.setData({captureReceipts:this.data.captureReceipts.map(item=>item.id===receipt.id?{...item,photoPaths:receipt.photoIds.map(id=>photos.photoPaths[id]).filter(Boolean)}:item)});
+    }catch{/* Keep the saved message visible even when a photo cannot load. */}
+  },
+  async retryCapturePhotos(event:{currentTarget:{dataset:{id:string}}}){
+    const receipt=this.data.captureReceipts.find(item=>item.id===event.currentTarget.dataset.id);
+    if(receipt)await this.loadCapturePhotos(receipt);
+  },
+  async refreshPendingCaptures(){
+    const drafts=await pendingCaptureDrafts();
+    if(!this.interviewUnloaded)this.setData({capturePending:drafts.filter(draft=>draft.sessionId!==this.data.captureSessionId).map(draft=>({id:draft.id,sessionId:draft.sessionId,label:(draft.composerText || draft.text || `${draft.photoIds.length}张照片、${draft.audio.length}段录音`).slice(0,36)}))});
+  },
+  async restoreCaptureSession(id:string){
+    const session=await readCaptureSession(id);
+    if(this.interviewUnloaded)return;
+    this.setData({captureSessionId:session.sessionId,captureReceipts:[],captureMemoryId:'',captureReadOnly:!session.sessionId});
+    session.items.forEach(receipt=>this.updateCaptureReceipt(receipt));
+    const draft=session.sessionId?await loadCaptureDraft(session.sessionId):undefined;
+    if(!this.interviewUnloaded)this.setData({captureDraft:draft || null,inputText:draft?.composerText || ''});
+  },
+  async recoverCaptureDraft(event:{currentTarget:{dataset:{id:string;session?:string}}}){
+    if(this.data.captureBusy || this.data.importing || this.data.captureRecording)return;
+    this.setData({captureBusy:true,captureError:''});
+    try{
+      const current=this.data.captureDraft;
+      if(current)await storeCaptureDraft({...current,composerText:this.data.inputText});
+      const draft=await loadCaptureDraft(event.currentTarget.dataset.session || undefined);
+      if(!draft || draft.id!==event.currentTarget.dataset.id)return;
+      // Only a submitted draft (or a later message) has an existing cloud session.
+      this.setData({captureReceipts:[],captureMemoryId:''});
+      if(draft.sessionId && (draft.submitted || draft.id!==draft.sessionId)){
+        try{await this.restoreCaptureSession(draft.sessionId);}
+        catch{if(!this.interviewUnloaded)this.setData({captureError:'已恢复本机原件，云端消息暂未读到，可以重试发送。'});}
       }
-      const importedText = classified.text ? await readImportTextFile(classified.text) : undefined;
-      const savedPhotos = [] as Array<{ id: string; path: string }>;
-      for (const image of classified.images) savedPhotos.push(await saveLocalPhoto(image.path, "import"));
-      if (!importedText) {
-        wx.hideLoading();
-        this.setData({
-          importing: false,
-          importDraftOpen: true,
-          importPhotoIds: savedPhotos.map(photo => photo.id),
-          importPhotoPaths: savedPhotos.map(photo => photo.path),
-          importCaption: "",
-          importAiOriginal: "",
-          importAiLabel: "",
-        });
-        return;
-      }
-      await this.persistImportedMemory({
-        title: importedText.title,
-        text: importedText.segments[0],
-        segments: importedText.segments,
-        photoIds: savedPhotos.map(photo => photo.id),
-      });
-      wx.hideLoading();
-      if (classified.unsupportedNames.length) {
-        wx.showModal({
-          title: "支持的内容已导入",
-          content: `${classified.unsupportedNames.join("、")} 这一版还不能导入。Word、PDF 可以打开后复制文字，粘贴到聊天框里。`,
-          showCancel: false,
-        });
-      } else {
-        wx.showToast({ title: "已导入到记忆", icon: "success" });
-      }
-    } catch (error) {
-      wx.hideLoading();
-      this.setData({ importing: false });
-      throw error;
+      if(!this.interviewUnloaded)this.setData({captureDraft:draft,captureSessionId:draft.sessionId || '',captureReadOnly:false,inputText:draft.composerText || ''});
+      await this.refreshPendingCaptures();
+    }catch(error){if(!this.interviewUnloaded)this.setData({captureError:error instanceof Error?error.message:'恢复未完成，请重试'});}
+    finally{if(!this.interviewUnloaded)this.setData({captureBusy:false});}
+  },
+  startNewCapture(){if(!this.data.captureBusy && !this.data.importing && !this.data.captureRecording)wx.redirectTo({url:'/pages/interview/interview?capture=1'});},
+  async chatAboutCapture(){
+    if(this.data.captureBusy || this.data.importing || this.data.captureRecording || !this.data.captureMemoryId)return;
+    const draft=this.data.captureDraft;
+    if(this.data.inputText.trim() || draft?.text || draft?.photoIds.length || draft?.audio.length){wx.showToast({title:'先发送当前内容，再一起读',icon:'none'});return;}
+    if(this.data.captureReceipts.some(captureHasUnreadMedia)) {
+      this.setData({captureBusy:true,captureReading:true,captureError:''});
+      try {
+        const complete=await readCaptureMaterials(this.data.captureReceipts,receipt=>{
+          this.updateCaptureReceipt(receipt);
+          this.setData({captureExpandedId:receipt.id});
+        },()=>!this.interviewUnloaded);
+        if(!this.interviewUnloaded && !complete)this.setData({captureError:'原件已保留。允许读取材料后，小忆才能根据内容帮你整理。'});
+      } catch(error) {if(!this.interviewUnloaded)this.setData({captureError:error instanceof Error?error.message:'材料未能读完，可继续读取。'});}
+      finally {if(!this.interviewUnloaded)this.setData({captureBusy:false,captureReading:false});}
+      return;
     }
+    wx.navigateTo({url:`/pages/interview/interview?sourceId=${encodeURIComponent(this.data.captureMemoryId)}`});
+  },
+  async readSourceMaterials(){
+    if(this.data.captureReading || this.data.asking || this.data.organizing)return;
+    this.setData({captureReading:true,sourceReadError:''});
+    try {
+      const complete=await readCaptureMaterials(this.data.sourceMaterials,receipt=>{
+        const items=this.data.sourceMaterials.map(item=>item.id===receipt.id?receipt:item);
+        this.sourceText=captureSourceText(items);
+        this.setData({sourceMaterials:items});
+      },()=>!this.interviewUnloaded);
+      if(this.interviewUnloaded)return;
+      if(complete) {
+        this.sourceText=captureSourceText(this.data.sourceMaterials);
+        this.setData({sourceTranscript:this.sourceText});
+        this.pushMessage('opening','材料已经读取好了，可以展开核对。你为什么想留下这份材料？');
+        await this.persistSession();
+      } else this.setData({sourceReadError:'原件已保留。允许读取后，小忆才能根据内容帮你整理。'});
+    } catch(error) {if(!this.interviewUnloaded)this.setData({sourceReadError:error instanceof Error?error.message:'材料未能读完，可继续读取。'});}
+    finally {if(!this.interviewUnloaded)this.setData({captureReading:false});}
+  },
+  async sendCapture(){
+    if(!this.data.captureDraft || this.data.captureBusy || this.data.captureRecording)return;
+    const originalText=this.data.inputText;
+    const draft=this.data.captureDraft;
+    if(!draft.submitted && !draft.text.trim() && !originalText.trim() && !draft.photoIds.length && !draft.audio.length){this.setData({captureError:'先添加文字、图片或录音'});return;}
+    this.setData({captureBusy:true,captureError:''});
+    this.updateCaptureReceipt({id:draft.id,sessionId:draft.sessionId,familyId:draft.familyId,text:draft.submittedText || [draft.text,originalText].filter(Boolean).join('\n'),photoIds:draft.photoIds,audio:draft.audio,status:'received',evidence:[],memoryId:'',message:'',createdAtMs:Date.now()},'sending');
+    try {await sendMemoryCapture(this.data.captureDraft,originalText,receipt=>this.updateCaptureReceipt(receipt));if(!this.interviewUnloaded)this.setData({captureDraft:null,...(this.data.inputText===originalText?{inputText:''}:{})});}
+    catch(error){if(!this.interviewUnloaded){const receipt=this.data.captureReceipts.find(item=>item.id===draft.id);if(receipt)this.updateCaptureReceipt(receipt,'failed');this.setData({captureError:error instanceof Error?error.message:'素材已保留，请稍后继续'});}}
+    finally {if(!this.interviewUnloaded)this.setData({captureBusy:false});}
+    if(!this.interviewUnloaded && this.data.captureEntry && !this.data.captureDraft){
+      if(!draft.sessionId)this.setData({captureReadOnly:true});
+      else await this.stageCapture([]);
+    }
+  },
+  async continueCapture(event:{currentTarget:{dataset:{id:string;original?:boolean}}}){
+    if(this.data.captureBusy)return;
+    const receipt=this.data.captureReceipts.find(item=>item.id===event.currentTarget.dataset.id);if(!receipt)return;
+    this.setData({captureBusy:true,captureError:''});
+    try {if(event.currentTarget.dataset.original)this.updateCaptureReceipt(await saveCaptureOriginal(receipt.id,receipt.familyId));else await continueMemoryCapture(receipt,next=>this.updateCaptureReceipt(next));}
+    catch(error){if(!this.interviewUnloaded)this.setData({captureError:error instanceof Error?error.message:'尚未完成'});}
+    finally {if(!this.interviewUnloaded)this.setData({captureBusy:false});}
+  },
+  toggleCaptureSource(event:{currentTarget:{dataset:{id:string}}}){
+    const id=event.currentTarget.dataset.id;
+    this.setData({captureExpandedId:this.data.captureExpandedId===id?'':id});
+  },
+  previewCapturedPhoto(event:{currentTarget:{dataset:{url:string;id?:string}}}){const {url,id}=event.currentTarget.dataset;const urls=this.data.captureReceipts.find(item=>item.id===id)?.photoPaths || [url];wx.previewImage({current:url,urls});},
+  openCapturedMemory(event:{currentTarget:{dataset:{id:string}}}){wx.navigateTo({url:`/pages/archive/archive?id=${encodeURIComponent(event.currentTarget.dataset.id)}`});},
+  async playCapturedAudio(event:{currentTarget:{dataset:{id:string;fileid:string}}}){
+    try {const url=await captureAudioUrl(event.currentTarget.dataset.id,event.currentTarget.dataset.fileid);if(this.interviewUnloaded)return;this.capturePlayer?.destroy();const player=wx.createInnerAudioContext();this.capturePlayer=player;player.src=url;player.onError(()=>wx.showToast({title:'录音暂时无法播放',icon:'none'}));player.play();}catch(error){this.showImportError(error);}
   },
 
   async save(options: {stayOnPage?: boolean} = {}) {
     if (this.data.saving || this.data.saved) return;
-    this.setData({ saving: true, saveError: "" });
+    // Input handlers keep native typing smooth; publish the latest text before switching to the saved view.
+    this.setData({ saving: true, saveError: "", draftText:this.data.draftText, draftTitle:this.data.draftTitle });
 
     try {
       const shared = this.data.sharedFamilyId ? await loadSharedFamilyRoom(this.data.sharedFamilyId) : undefined;
-      const state = shared?.state ?? await loadRoomStateRemoteFirst();
+      const state = shared?.state ?? await loadRoomStateRemoteFirst({view: "memories"});
       const member = shared
         ? state.members.find(candidate => candidate.id === shared.viewerMemberId)
         : authorFor(state, await loadCurrentMemberRemoteFirst(state));
@@ -1008,9 +1311,9 @@ Page({
       };
       if (this.data.sharedFamilyId) await submitSharedContribution(this.data.sharedFamilyId, this.pendingContribution);
       else {
-        const savedState = await appendContributionRemoteFirst(this.pendingContribution);
+        const savedState = await appendContributionRemoteFirst(this.pendingContribution, {view:"memories"});
         this.persistedContributionId = this.pendingContribution.id;
-        if (this.data.storyId) await linkStoryMemories(activeStory(savedState, this.data.storyId), [this.pendingContribution.id]);
+        if (this.data.storyId) await linkStoryMemories(activeStory(savedState, this.data.storyId), [this.pendingContribution.id], undefined, {view:"home"});
       }
 
       this.setData({
@@ -1034,6 +1337,7 @@ Page({
         icon: "none",
         duration: 2400,
       });
+      await this.ensureSession();await this.persistSession();
       if (this.data.selectedStoryKey && !options.stayOnPage) this.continueToChapter();
     } catch (error) {
       this.setData({

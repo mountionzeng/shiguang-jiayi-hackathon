@@ -13,6 +13,9 @@ test('every identity/grant collection is bootstrapped and has client-deny rules'
   const manifest = json('deploy/wechat-cloud.manifest.json');
   const rules = json('deploy/story-sharing/database.rules.json');
   const { CORE_COLLECTIONS } = require('../cloudfunctions/ensureCloudCollections/bootstrap');
+  assert.ok(CORE_COLLECTIONS.includes('story_friend_letter_inboxes'));
+  assert.ok(manifest.collections.story_friend_letter_inboxes);
+  assert.deepEqual(rules.collections.story_friend_letter_inboxes, { read: false, write: false });
   for (const name of ['story_principals', 'story_identity_aliases', 'story_principal_spaces', 'story_grants', 'story_invitations', 'story_invite_indexes', 'story_invite_rates', 'story_rollout_admissions', 'story_source_policies', 'story_copies', 'story_excerpt_operations', 'story_collaboration_operations', 'story_copy_requests', 'story_copy_edits', 'story_returns', 'story_return_indexes', 'story_desktop_grants', 'story_desktop_nonces', 'story_desktop_operations', 'story_copy_media', 'story_copy_assets']) {
     assert.ok(CORE_COLLECTIONS.includes(name), name);
     assert.ok(manifest.collections[name], name);
@@ -35,5 +38,5 @@ test('release manifest records gated switches and applicable rule files, not sec
   assert.equal(entry.databaseRulesFile, 'deploy/story-sharing/database.rules.json');
   assert.equal(entry.storageRulesFile, 'deploy/story-sharing/storage.rules.json');
   assert.deepEqual(json('deploy/wechat-cloud.manifest.json').cloudFunctions.storyDesktopAccess.environmentVariables,
-    ['STORY_DESKTOP_ACCESS_ENABLED','STORY_DESKTOP_AUTHORITY_SECRET','STORY_SHARE_CARD_ENABLED']);
+    ['STORY_DESKTOP_ACCESS_ENABLED','STORY_DESKTOP_AUTHORITY_SECRET','WEB_LOGIN_QR_ENABLED','WEB_LOGIN_QR_ENV_VERSION','WEB_STORY_IMPORT_ENABLED','STORY_SHARE_CARD_ENABLED']);
 });

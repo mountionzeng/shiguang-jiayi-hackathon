@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {wrapImageText,layoutTextImages,MAX_LONG_HEIGHT,PAGE_HEIGHT} from '../miniprogram/services/bookImageLayout';
+import {wrapImageText,layoutTextImages,MAX_LONG_HEIGHT,PAGE_HEIGHT} from '../miniprogram/packages/story-sharing/services/bookImageLayout';
 const measure=(text:string,size:number)=>Array.from(text).length*size;
 test('wrapping preserves Unicode, spaces, empty paragraphs and trailing newlines',()=>{
   for(const text of ['', ' 🌿\n\n尾字\n', '段落'.repeat(100)+'\n\n', 'a\r\nb\t c']) {

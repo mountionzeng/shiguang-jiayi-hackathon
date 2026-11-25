@@ -21,7 +21,7 @@ interface ImageCard {
   imageId: string; url: string; sizeLabel: string; purposeLabel: string;
   isBackdrop: boolean; referenceReady: boolean; inUse: boolean; inText: boolean; moderationLabel: string; qualityLabel: string; qualityFlawed: boolean;
 }
-interface JobRow { jobId: string; message: string; active: boolean; purposeLabel: string }
+interface JobRow { jobId: string; status: StoryImageJob["status"]; purpose: string; message: string; active: boolean; purposeLabel: string }
 interface ChapterGroup {
   id: string; label: string; title: string; backdropImageId: string; backdropMissing: boolean;
   referencePhotoIds: string[]; referencePhotoLabel: string;
@@ -54,7 +54,8 @@ const photoCard = (photo: GalleryPhoto, aiGenerated = false): ImageCard => ({
   inUse:false, inText:true, moderationLabel:photo.url ? '' : '图片暂不可读取', qualityLabel:'', qualityFlawed:false,
 });
 const jobRow = (job: StoryImageJob): JobRow => ({
-  jobId: job.jobId, message: job.message, active: isActiveJob(job), purposeLabel: PURPOSE_LABELS[job.purpose] ?? "配图",
+  jobId: job.jobId, status: job.status, purpose: job.purpose, message: job.message,
+  active: isActiveJob(job), purposeLabel: PURPOSE_LABELS[job.purpose] ?? "配图",
 });
 const messageOf = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback;
 const imageLimitLabel = (limits: { daily: number | null; book: number | null; unlimited?: boolean }): string =>
@@ -309,17 +310,26 @@ Page({
     } catch(error) { this.setData({previewNotice:messageOf(error,'封面未能保存')}); }
     finally { this.setData({savingBackdrop:false}); }
   },
-  async generate(event: { currentTarget: { dataset: { id: string; purpose?: string; reference?: string } } }) {
-    const chapterId = event.currentTarget.dataset.id;
-    const referenceImageId = event.currentTarget.dataset.reference;
+  async generate(event: { currentTarget: { dataset: { id: string; purpose?: string; reference?: string; jobId?: string; newTask?: boolean } } }) {
+    const { id: chapterId, reference: referenceImageId, jobId, newTask } = event.currentTarget.dataset;
     const purpose: StoryImagePurpose = event.currentTarget.dataset.purpose === "backdrop" ? "backdrop" : "illustration";
     const group = this.data.groups.find(item => item.id === chapterId);
     if (this.confirmingGeneration || this.data.submitting || this.data.pickingReference || this.data.removingId || this.data.savingBackdrop || this.data.savingPlacement || !chapterId) return;
-    if (this.data.selectedText) {
+    // The reopened form can lose inputs that contributed to the original request key.
+    const original = group?.pending?.find(job => job.purpose === purpose && (!jobId || job.jobId === jobId)
+      && (job.status === "unknown" || job.status === "submitted"));
+    if (jobId && !original) return;
+    const startingNew = Boolean(original && jobId && newTask === true);
+    const checkingOriginal = startingNew ? undefined : original;
+    if (!checkingOriginal && (startingNew || this.data.selectedText)) {
       this.confirmingGeneration = true;
-      const confirmed = await new Promise<boolean>(resolve => wx.showModal({ title: '根据这段文字生成图片',
-        content: this.data.selectedText + '\n\n生成成功会产生供应商费用，确认后开始。',
-        confirmText: '确认生成', success: result => resolve(result.confirm), fail: () => resolve(false) }));
+      const confirmed = await new Promise<boolean>(resolve => wx.showModal({
+        title: startingNew ? '另开配图任务？' : '根据这段文字生成图片',
+        content: startingNew ? '原任务可能已产生费用。新任务会使用当前选项，且可能另行扣费。'
+          : this.data.selectedText + '\n\n生成成功会产生供应商费用，确认后开始。',
+        confirmText: startingNew ? '另开任务' : '确认生成',
+        success: result => resolve(result.confirm), fail: () => resolve(false),
+      }));
       this.confirmingGeneration = false;
       if (!confirmed || this.unloaded || this.data.submitting) return;
     }
@@ -327,23 +337,33 @@ Page({
     const referencePhotoIds = this.data.selectedText ? [] : [...new Set([...phoneIds, ...(this.data.useChapterPhotos[chapterId] ? group?.referencePhotoIds || [] : [])])].slice(0, 3);
     this.setData({
       submitting: [chapterId, purpose, referenceImageId].filter(Boolean).join(":"),
-      notice: this.data.memoryId ? "正在读取这段回忆，准备配图…" : "正在读取这一章，准备配图…", noticeChapterId: chapterId,
+      notice: checkingOriginal ? "正在查看原配图任务…" : this.data.memoryId ? "正在读取这段回忆，准备配图…" : "正在读取这一章，准备配图…",
+      noticeChapterId: chapterId,
     });
     try {
-      const job = await storyImageApi.submitChapterImage({
-        ...(this.data.memoryId ? {memoryId:this.data.memoryId} : this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }), chapterId, purpose,
+      const scope = {
+        ...(this.data.memoryId ? { memoryId: this.data.memoryId } : this.data.storyId ? { storyId: this.data.storyId } : { memberId: this.data.memberId }),
+        chapterId, purpose,
+      };
+      const input = {
+        ...scope,
         ...(this.data.selectedText ? { selectedText: this.data.selectedText, selectedBlockId: this.data.selectedBlockId } : {}),
         ...(referenceImageId ? { referenceImageId } : {}),
         ...(!referenceImageId && referencePhotoIds.length ? { referencePhotoIds,
           ...(phoneIds.length ? { phoneReferencePhotoIds: phoneIds.filter(id => referencePhotoIds.includes(id)) } : {}) } : {}),
         ...(this.data.artDirections[chapterId]?.trim() ? { artDirection: this.data.artDirections[chapterId].trim() } : {}),
-      });
+      };
+      const job = startingNew ? await storyImageApi.startAdditionalChapterImage(input)
+        : (jobId ? null : await storyImageApi.recoverChapterImage(scope)) ??
+          (checkingOriginal ? (await storyImageApi.checkImageJob(checkingOriginal.jobId, this.data.storyId || this.data.memberId, this.data.memoryId || undefined)).job
+            : await storyImageApi.submitChapterImage(input));
       if (this.unloaded) return;
-      // submit already contains the job; a full reload here delays the first generation call.
+      // The response already contains the job; update its row without waiting for a reload.
       ++this.refreshId;
       this.setData({ notice: job.message, groups: this.data.groups.map(group => group.id === job.chapterId
         ? { ...group, pending: [jobRow(job), ...group.pending.filter(item => item.jobId !== job.jobId)] } : group) });
       if (isActiveJob(job)) this.activeJobIds = [...new Set([...this.activeJobIds, job.jobId])];
+      if (job.status === "stored") await this.refresh(true);
       this.schedulePoll(true);
     } catch (error) {
       if (this.unloaded) return;
@@ -426,12 +446,20 @@ Page({
   onRoleChapterChange(event: {detail:{value:string}}) {
     if (!this.data.savingPlacement) this.setData({roleChapterIndex:Number(event.detail.value)});
   },
+  previewDimensions: null as {url:string;width:number;height:number} | null,
+  onPreviewImageLoad(event: {currentTarget:{dataset:{url:string}};detail:{width:number;height:number}}) {
+    const {url}=event.currentTarget.dataset, {width,height}=event.detail;
+    if (url === this.data.preview?.url && Number.isFinite(width) && Number.isFinite(height) && width>0 && height>0) {
+      this.previewDimensions={url,width,height};
+    }
+  },
   async useImageRole(event: {currentTarget:{dataset:{role:string}}}) {
     const image = this.data.preview, purpose = event.currentTarget.dataset.role;
     if (!image || !this.data.storyId || this.data.savingPlacement || this.data.savingBackdrop || this.data.submitting) return;
     if (purpose === 'cover' || purpose === 'backdrop') {
       try {
-        const info = await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve,reject)=>wx.getImageInfo({src:image.url,success:resolve,fail:reject}));
+        const info = this.previewDimensions?.url === image.url ? this.previewDimensions :
+          await new Promise<WechatMiniprogram.GetImageInfoSuccessCallbackResult>((resolve,reject)=>wx.getImageInfo({src:image.url,success:resolve,fail:reject}));
         if (this.unloaded || this.data.preview?.imageId !== image.imageId) return;
         this.cropSource={width:info.width,height:info.height,x:.5,y:.5};
         this.setData({cropRole:purpose,cropZoom:100,previewNotice:''}); this.updateCropFrame();

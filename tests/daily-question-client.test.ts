@@ -26,3 +26,19 @@ test('late old article generation cannot replace a newer cached question',async(
  resolveOld(question('旧书带来了什么？'));await old;
  assert.equal((await cache.get('scope','new','day',false,async()=>{throw Error('must use new cache')})).text,latest.text);
 });
+
+test('daily topics survive reopening the cache and stay scoped to their story', async () => {
+ const stored = new Map<string,any>();
+ const storage={read:(scope:string)=>stored.get(scope),write:(scope:string,entry:any)=>{stored.set(scope,entry);}};
+ const first={...question('蓝色旧书有什么没讲过的故事？'),focus:'experience' as const,gap:'旧书还未展开的一段经历'};
+ await new DailyQuestionCache(storage).get('owner:story','v1','day',false,async()=>first);
+ const reopened=new DailyQuestionCache(storage);
+ await reopened.get('owner:story','v2','next-day',false,async (history,topics)=>{
+  assert.deepEqual(history,[first.text]);
+  assert.deepEqual(topics,[{anchor:first.anchor,focus:first.focus,gap:first.gap}]);
+  return question('那次赠书之后发生过什么？');
+ });
+ await reopened.get('other:story','v1','day',false,async (history,topics)=>{
+  assert.deepEqual(history,[]); assert.deepEqual(topics,[]); return first;
+ });
+});

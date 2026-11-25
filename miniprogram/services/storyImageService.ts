@@ -1,12 +1,15 @@
+import { withComputeRequest, finishImageComputeRequest } from "./computeRequest";
 import { prepareReferencePhotos } from "./referencePhotos";
 import { classifyServiceFailure, logServiceFailure } from './serviceFailure';
 import { measurePerformance } from "./performanceLog";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 import type { ShiguangAppOptions } from "../app";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
 import { requestPhotoAiConsent } from "./photoAiConsent";
-import { currentFamilyId } from "./cloudRoomStorage";
+import { cachedAccountScope, currentFamilyId } from "./cloudRoomStorage";
 import { requestIllustrationReferenceConsent } from "./illustrationReferenceConsent";
+import { sha256Hex } from "../domain/chapterPackage";
 
 export type StoryImageStatus =
   | "submitted" | "queued" | "generating" | "generated" | "storing" | "stored" | "failed" | "blocked" | "unknown" | "expired";
@@ -69,6 +72,18 @@ export class StoryImageServiceError extends Error {
   constructor(readonly code: string, message: string) {
     super(message);
   }
+}
+
+class AdditionalImageRejectedError extends StoryImageServiceError {}
+
+function checkAdditionalImageRejection(result: { job?: unknown; rejection?: unknown }, requestId?: string): void {
+  if (result.rejection === undefined) return;
+  const receipt = result.rejection as { state?: unknown; code?: unknown; requestId?: unknown } | null;
+  if (result.job !== null || !requestId || receipt?.requestId !== requestId ||
+      receipt.state !== "rejected_before_create" || receipt.code !== "ART_DIRECTION_BLOCKED") {
+    throw new StoryImageServiceError("MALFORMED", "原配图任务的拒绝回执不完整，请稍后核对");
+  }
+  throw new AdditionalImageRejectedError("ART_DIRECTION_BLOCKED", "这段美术想法没通过平台审核，请改写后再试");
 }
 
 const ACTIVE_STATUSES: StoryImageStatus[] = ["submitted", "queued", "generating", "generated", "storing"];
@@ -138,20 +153,44 @@ export async function callStoryImages<T>(action: string, data: Record<string, un
   let raw: unknown;
   try {
     const operation = action === "submit" ? "image.submit" : action === "status" ? "image.status" : action === "list" ? "image.list" : "image.other";
-    const response = await measurePerformance(operation, () => wx.cloud.callFunction({ name: "storyImages", data: { ...data, action, familyId } }));
+    const computeRequestId = typeof data.computeRequestId === "string" ? data.computeRequestId : typeof data.requestId === "string" ? data.requestId : undefined;
+    const response = await measurePerformance(operation, () => wx.cloud.callFunction({ name: "storyImages", data: { ...data, action, familyId, ...(computeRequestId ? { computeRequestId } : {}) } }));
     raw = response.result;
   } catch (error) {
+    if (['submit', 'caption'].includes(action)) promptComputeBillingFailure(error);
     logServiceFailure('storyImages', ['selectCover', 'remove'].includes(action) ? 'write' : ['submit', 'caption'].includes(action) ? 'ai' : 'read', error);
-    throw callFailure(error);
+    const failure = callFailure(error);
+    if (["submit", "caption"].includes(action) && ["CLOUD_FAILED", "TIMEOUT"].includes(failure.code)) {
+      throw Object.assign(failure, { billingState: { phase: "unknown" } });
+    }
+    throw failure;
   }
   const result = raw as ({ error?: { code?: unknown; message?: unknown } } & Record<string, unknown>) | undefined;
   if (!result || typeof result !== "object") {
-    throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
+    const failure = new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
+    if (["submit", "caption"].includes(action)) throw Object.assign(failure, { billingState: { phase: "unknown" } });
+    throw failure;
   }
   if (result.error) {
-    throw new StoryImageServiceError(String(result.error.code ?? "ERROR"), String(result.error.message ?? "配图没成功"));
+    const failure = new StoryImageServiceError(String(result.error.code ?? "ERROR"), String(result.error.message ?? "配图没成功"));
+    if (['submit', 'caption'].includes(action)) promptComputeBillingFailure(failure);
+    throw failure;
   }
   return result as unknown as T;
+}
+
+const imageTerminalStatuses = new Set<StoryImageStatus>(["stored", "failed", "blocked", "expired"]);
+
+export async function submitPaidImage<T extends { job?: unknown }>(data: Record<string, unknown>): Promise<T> {
+  const { requestId, ...payload } = data;
+  if (typeof requestId === "string") return callStoryImages<T>("submit", { ...payload, requestId });
+  await currentFamilyId();
+  return withComputeRequest(`image:submit:${JSON.stringify(payload)}`,
+    id => callStoryImages<T>("submit", { ...payload, requestId: id }), {
+      createId: newImageRequestId,
+      retainUntilImageStatus: true,
+      retain: result => !isJob(result.job) || !imageTerminalStatuses.has(result.job.status),
+    });
 }
 
 function isJob(value: unknown): value is StoryImageJob {
@@ -159,7 +198,25 @@ function isJob(value: unknown): value is StoryImageJob {
   return Boolean(job && typeof job.jobId === "string" && typeof job.status === "string" && typeof job.message === "string");
 }
 
-async function submitChapterImage(input: { memoryId?: string; storyId?: string; memberId?: string; chapterId: string; purpose: StoryImagePurpose; requestId?: string; referenceImageId?: string; referencePhotoIds?: string[]; phoneReferencePhotoIds?: string[]; artDirection?: string; selectedText?: string; selectedBlockId?: string }): Promise<StoryImageJob> {
+interface ChapterImageScope {
+  memoryId?: string;
+  storyId?: string;
+  memberId?: string;
+  chapterId: string;
+  purpose: StoryImagePurpose;
+}
+
+interface ChapterImageInput extends ChapterImageScope {
+  requestId?: string;
+  referenceImageId?: string;
+  referencePhotoIds?: string[];
+  phoneReferencePhotoIds?: string[];
+  artDirection?: string;
+  selectedText?: string;
+  selectedBlockId?: string;
+}
+
+async function submitChapterImage(input: ChapterImageInput, additionalImage = false): Promise<StoryImageJob> {
   if (!await requestAiConsent()) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "本次没有允许使用在线 AI；配图需要读取已保存的文字");
   }
@@ -211,18 +268,21 @@ async function submitChapterImage(input: { memoryId?: string; storyId?: string; 
     }
   }
   await prepareReferencePhotos(referencePhotoIds);
-  const result = await callStoryImages<{ job?: unknown }>("submit", {
+  const result = await submitPaidImage<{ job?: unknown; rejection?: unknown }>({
     ...(input.memoryId ? {memoryId: input.memoryId} : input.storyId ? { storyId: input.storyId } : { memberId: input.memberId || "" }),
     chapterId: input.chapterId,
     ...(input.selectedText ? { selectedText: input.selectedText, selectedBlockId: input.selectedBlockId } : {}),
-    requestId: input.requestId ?? newImageRequestId(),
+    requestId: input.requestId,
+    ...(additionalImage ? { additionalImage: true } : {}),
     purpose: input.purpose,
     ...(input.referenceImageId ? { referenceImageId: input.referenceImageId } : {}),
     ...(referencePhotoIds.length ? { referencePhotoIds, phoneReferencePhotoIds, photoReferenceConsent: true } : {}),
     ...(input.artDirection?.trim() ? { artDirection: input.artDirection.trim() } : {}),
   });
+  checkAdditionalImageRejection(result, additionalImage ? input.requestId : undefined);
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
-  if (result.job.memoryId !== input.memoryId || result.job.chapterId !== input.chapterId || result.job.purpose !== input.purpose) {
+  if (result.job.memoryId !== input.memoryId || result.job.chapterId !== input.chapterId || result.job.purpose !== input.purpose ||
+      (additionalImage && result.job.jobId !== `${await currentFamilyId()}_${input.requestId}`)) {
     throw new StoryImageServiceError("REQUEST_CONFLICT", "这次配图对应的章节已经变化，请重新操作");
   }
   if (input.referenceImageId && (result.job.referenceApplied !== true || result.job.referenceImageId !== input.referenceImageId)) {
@@ -240,19 +300,104 @@ async function submitChapterImage(input: { memoryId?: string; storyId?: string; 
   return result.job;
 }
 
+type AdditionalImageIntent = ChapterImageInput & { requestId: string };
+
+function chapterImageScope(input: ChapterImageScope): ChapterImageScope {
+  return {
+    ...(input.memoryId ? { memoryId: input.memoryId } : input.storyId ? { storyId: input.storyId } : { memberId: input.memberId }),
+    chapterId: input.chapterId,
+    purpose: input.purpose,
+  };
+}
+
+async function additionalIntentKey(scope: ChapterImageScope): Promise<string> {
+  await currentFamilyId();
+  const account = cachedAccountScope();
+  if (!account) throw new StoryImageServiceError("CLOUD_NOT_READY", "请重新登录后核对原配图任务");
+  return "additional-image:v1:" + sha256Hex(JSON.stringify([account, chapterImageScope(scope)]));
+}
+
+function readAdditionalIntent(key: string, scope: ChapterImageScope): AdditionalImageIntent | undefined {
+  const intent = wx.getStorageSync<AdditionalImageIntent>(key);
+  if (!intent) return undefined;
+  if (!/^req-[a-z0-9]+-[a-z0-9]{8}$/.test(intent.requestId) ||
+      JSON.stringify(chapterImageScope(intent)) !== JSON.stringify(chapterImageScope(scope))) {
+    throw new StoryImageServiceError("REQUEST_CONFLICT", "本机另开任务记录无法确认，请核对原任务");
+  }
+  return intent;
+}
+
+async function lookupChapterImage(scope: ChapterImageScope, requestId?: string): Promise<StoryImageJob | null> {
+  const result = await callStoryImages<{ job?: unknown; rejection?: unknown }>("recover", {
+    ...chapterImageScope(scope),
+    ...(requestId ? { requestId } : {}),
+  });
+  checkAdditionalImageRejection(result, requestId);
+  if (result.job === null) return null;
+  if (!isJob(result.job) || result.job.chapterId !== scope.chapterId || result.job.purpose !== scope.purpose ||
+      result.job.memoryId !== scope.memoryId ||
+      (requestId && result.job.jobId !== `${await currentFamilyId()}_${requestId}`)) {
+    throw new StoryImageServiceError("MALFORMED", "原配图任务回执不完整，请稍后核对");
+  }
+  return result.job;
+}
+
+function closeAdditionalImage(key: string, intent: AdditionalImageIntent): void {
+  try {
+    // A response for an earlier request may arrive after a new intent was saved.
+    if (readAdditionalIntent(key, intent)?.requestId === intent.requestId) wx.removeStorageSync(key);
+  } catch { /* A retained receipt replays the same job. */ }
+}
+
+async function finishAdditionalImage(key: string, intent: AdditionalImageIntent): Promise<StoryImageJob> {
+  // A missing reply does not prove that dispatch failed. Use the saved payload
+  // and ID until the server confirms a job or a terminal rejection.
+  try {
+    const job = await lookupChapterImage(intent, intent.requestId) ?? await submitChapterImage(intent, true);
+    closeAdditionalImage(key, intent);
+    return job;
+  } catch (error) {
+    if (error instanceof AdditionalImageRejectedError) closeAdditionalImage(key, intent);
+    throw error;
+  }
+}
+
+async function recoverChapterImage(scope: ChapterImageScope): Promise<StoryImageJob | null> {
+  const key = await additionalIntentKey(scope);
+  const intent = readAdditionalIntent(key, scope);
+  return intent ? finishAdditionalImage(key, intent) : lookupChapterImage(scope);
+}
+
+async function startAdditionalChapterImage(input: ChapterImageInput): Promise<StoryImageJob> {
+  const key = await additionalIntentKey(input);
+  let intent = readAdditionalIntent(key, input);
+  if (!intent) {
+    intent = { ...input, requestId: newImageRequestId() };
+    // Persist before any cloud submit. A storage error stops the paid action.
+    wx.setStorageSync(key, intent);
+  }
+  return finishAdditionalImage(key, intent);
+}
+
 const bookScope = (bookId?:string) => bookId?.startsWith('story-') ? {storyId:bookId} : (bookId ? {memberId:bookId} : {});
 
 async function checkImageJob(jobId: string,bookId?:string,memoryId?:string): Promise<{ job: StoryImageJob; image?: StoryImage }> {
   const result = await callStoryImages<{ job?: unknown; image?: StoryImage }>("status", { jobId,...(memoryId ? {memoryId} : bookScope(bookId)) });
   if (!isJob(result.job)) throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
   if (memoryId && result.job.memoryId !== memoryId) throw new StoryImageServiceError("MALFORMED", "配图来源不一致，请重新打开");
+  if (imageTerminalStatuses.has(result.job.status)) {
+    finishImageComputeRequest(result.job.jobId.slice(result.job.jobId.lastIndexOf("_") + 1));
+  }
   return { job: result.job, image: result.image };
 }
 
 async function listStoryImages(bookId: string, memoryId?: string): Promise<StoryImageList> {
-  const result = await callStoryImages<Partial<StoryImageList>>("list", memoryId ? {memoryId} : bookId.startsWith("story-") ? { storyId: bookId } : { memberId: bookId });
+  const result = await callStoryImages<Partial<StoryImageList> & { finishedRequestIds?: unknown[] }>("list", memoryId ? {memoryId} : bookId.startsWith("story-") ? { storyId: bookId } : { memberId: bookId });
   if (!Array.isArray(result.images) || !Array.isArray(result.pending) || !result.usage || !result.limits) {
     throw new StoryImageServiceError("MALFORMED", "配图服务返回的内容不完整");
+  }
+  for (const requestId of Array.isArray(result.finishedRequestIds) ? result.finishedRequestIds : []) {
+    if (typeof requestId === "string") finishImageComputeRequest(requestId);
   }
   return result as StoryImageList;
 }
@@ -267,10 +412,13 @@ async function captionPhotos(input: { photoIds: string[]; requestId?: string }):
   if (!await requestPhotoAiConsent(input.photoIds.length)) {
     throw new StoryImageServiceError("CONSENT_DECLINED", "这次没有允许把照片发给 AI；你可以自己写一句");
   }
-  const result = await callStoryImages<Partial<PhotoCaptionResult>>("caption", {
-    photoIds: input.photoIds,
-    requestId: input.requestId ?? newImageRequestId(),
-  }, false);
+  await currentFamilyId();
+  const send = (requestId: string) =>
+    callStoryImages<Partial<PhotoCaptionResult>>("caption", { photoIds: input.photoIds, requestId }, false);
+  const result = input.requestId ? await send(input.requestId) : await withComputeRequest(
+    `image:caption:${JSON.stringify(input.photoIds)}`, send,
+    { createId: newImageRequestId, retain: value => !value.status || value.status === "unknown" },
+  );
   if (typeof result.status !== "string") throw new StoryImageServiceError("MALFORMED", "看图服务返回的内容不完整");
   return {
     status: result.status,
@@ -293,6 +441,8 @@ export const storyImageApi = {
   },
   captionPhotos,
   submitChapterImage,
+  recoverChapterImage,
+  startAdditionalChapterImage,
   checkImageJob,
   listStoryImages,
   removeStoryImage,

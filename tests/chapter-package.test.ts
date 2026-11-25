@@ -103,9 +103,9 @@ test("cross-end: web-made package gives the same lines and package round-trips",
 });
 
 test('export omits empty editor placeholders and only their layout bindings', async () => {
-  const {articleChapter,changeArticleText} = await import('../miniprogram/services/articleModules');
+  const {articleChapter,appendArticleText} = await import('../miniprogram/services/articleModules');
   const start = articleChapter({id:'chapter-one',title:'测试',memoryIds:[],content:[{text:'正文'}]});
-  const edited = changeArticleText(start,start.content[0].blockId,'正文\n').chapter;
+  const edited = appendArticleText(start,'');
   assert.equal(edited.content.length,2);
   const output = toChapterPackage(edited,{},meta,{layout:edited.layout}).package;
   assert.equal(output.chapters[0].blocks.length,1);

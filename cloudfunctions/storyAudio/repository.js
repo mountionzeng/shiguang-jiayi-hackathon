@@ -1,4 +1,4 @@
-const {StoryAudioError,assertUnrestrictedStory}=require('./core');
+const {StoryAudioError,assertUnrestrictedStory,sourceSnapshot}=require('./core');
 const OPERATIONS='audio_operations';
 const STORIES='stories';
 const REVISIONS='biography_drafts';
@@ -54,7 +54,8 @@ function createStoryAudioRepository(db,{signFile}={}) {
           const revision=await getDocument(transaction,REVISIONS,documentId(operation.familyId,operation.revisionId));
           if(!story||story.familyId!==operation.familyId||story.deletedAt)throw new StoryAudioError('STORY_NOT_FOUND','这本故事书已不可用');
           if(story.currentRevisionId!==operation.revisionId||revision?.revision?.storyId!==operation.storyId)throw new StoryAudioError('REVISION_CHANGED','书稿版本已经变化，请重新制作');
-          assertUnrestrictedStory(story,revision.revision.draft);
+          if(operation.blockId)sourceSnapshot({...operation,story,revision:revision.revision});
+          else assertUnrestrictedStory(story,revision.revision.draft);
         }
         await transaction.collection(OPERATIONS).doc(operationId).set({data:withoutId(operation)});
         return true;
@@ -62,7 +63,7 @@ function createStoryAudioRepository(db,{signFile}={}) {
     },
     async signWork(operation) {
       const fileID=operation?.work?.fileID;
-      if(operation?.status!=='ready'||operation?.work?.format!=='wav'||typeof fileID!=='string'||!fileID.startsWith('cloud://')||typeof signFile!=='function')throw new StoryAudioError('WORK_NOT_READY','作品尚未准备好播放');
+      if(operation?.status!=='ready'||!['wav','mp3'].includes(operation?.work?.format)||typeof fileID!=='string'||!fileID.startsWith('cloud://')||typeof signFile!=='function')throw new StoryAudioError('WORK_NOT_READY','作品尚未准备好播放');
       const audioUrl=await signFile(fileID);
       if(typeof audioUrl!=='string'||!audioUrl.startsWith('https://'))throw new StoryAudioError('WORK_NOT_READY','暂时无法打开这份有声作品');
       return {audioUrl};

@@ -3,8 +3,8 @@ import { loadSendSnapshot, selectSendText, SendChapter, SendScope, SendSnapshot,
 import { cachedAccountScope } from '../../../../services/cloudRoomStorage';
 import { storyCoverApi, ShareCoverCandidate } from '../../../../services/storyCoverService';
 import { bookExportApi, bookExportSelection, memoryBookExportSelection, BookExportSelection, BookExportDescriptor } from '../../../../services/bookExport';
-import { renderBookImages, removeImageFiles } from '../../../../services/bookImageRenderer';
-import { ImageLayoutMode, ImageFontSize } from '../../../../services/bookImageLayout';
+import { renderBookImages, removeImageFiles } from '../../services/bookImageRenderer';
+import { ImageLayoutMode, ImageFontSize } from '../../services/bookImageLayout';
 import { sharingHome, storySharing, invitationPath } from '../../../../services/storySharing';
 import { memoryExportApi, MemoryExportSource } from '../../../../services/memoryExport';
 
@@ -327,7 +327,11 @@ Page({
     this.setData({ inviteeName: event.detail.value });
   },
   async prepareFamilyInvitation() {
-    if (this.hidden || this.busy() || this.data.familyShareReady || this.data.destination !== 'family' || !this.data.preview || !this.snapshot || !this.descriptor || !this.exportSelection || !this.data.imagePaths.length) return;
+    if (this.hidden || this.data.invitationBusy || this.data.familyShareReady) return;
+    if (this.busy()) { this.setData({familyInviteNotice:'正在准备分享内容，请稍候再试。'}); return; }
+    if (this.data.destination !== 'family' || !this.data.preview || !this.snapshot || !this.descriptor || !this.exportSelection) {
+      this.setData({familyInviteNotice:'分享内容尚未准备好，请重新选择章节后再试。'}); return;
+    }
     if (this.data.scope === 'text') {
       this.setData({ familyInviteNotice: '阅读邀请按整章授权，请重新选择整章；选段图片可以从发送到社交媒体进入。' }); return;
     }
@@ -389,7 +393,7 @@ Page({
       outcome = 'ok';
     } catch (error) {
       if (!this.hidden && this.epoch === epoch) this.setData({ familyInviteNotice: (error instanceof Error ? error.message : '暂时无法准备邀请。')
-        + (creating ? ' 若结果未确认，请到“亲友阅读与权限”查看，避免重复生成。' : '') });
+        + (creating ? ' 可以直接重试准备邀请。' : '') });
     } finally { finish(outcome); if (!this.hidden && this.epoch === epoch) this.setData({ invitationBusy: false }); }
   },
   async checkExportCapability(epoch: number) {
@@ -428,28 +432,6 @@ Page({
     const ids = selected.slice(0, 6);
     this.resetImages();
     this.setData({ selectedCoverImageIds: ids, notice: selected.length > 6 ? '本次最多选择 6 张封面' : '' }); this.autoGenerate();
-  },
-  chooseTextImageCount(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
-    if (this.lockedForChoice()) return;
-    this.stopGeneration();
-    const count = Number(event.detail.value);
-    if (!Number.isSafeInteger(count) || count < 0 || count > 12) return;
-    this.resetImages();
-    this.setData({ targetTextImageCount: count, notice: '' }); this.autoGenerate();
-  },
-  chooseLayout(event: WechatMiniprogram.TouchEvent) {
-    if (this.lockedForChoice()) return;
-    this.stopGeneration();
-    const layout = event.currentTarget.dataset.layout as ImageLayoutMode;
-    if (layout !== 'pages' && layout !== 'long') return;
-    this.resetImages(); this.setData({ layout, notice: '' }); this.autoGenerate();
-  },
-  chooseFont(event: WechatMiniprogram.CustomEvent<{ value: string }>) {
-    if (this.lockedForChoice()) return;
-    this.stopGeneration();
-    const fontSize = [28, 32, 36][Number(event.detail.value)] as ImageFontSize;
-    if (!fontSize) return;
-    this.resetImages(); this.setData({ fontSize, notice: '' }); this.autoGenerate();
   },
   async verifySnapshot(snapshot: SendSnapshot) {
     try {
@@ -500,7 +482,7 @@ Page({
         : memoryBookExportSelection(source as MemoryExportSource, { targetTextImageCount: this.data.targetTextImageCount, includePhotos: this.data.includeMemoryPhotos });
       this.setData({ renderProgress: '正在准备所选内容…' });
       const preview = await bookExportApi.preview(selection); if (!active()) return;
-      this.setData({ renderProgress: '正在读取封面和底图…' });
+      this.setData({ renderProgress: '正在读取分享图片…' });
       const material = await bookExportApi.material(selection, preview.descriptor.id); if (!active()) return;
       const chosen = this.selected();
       if ((snapshot && (material.descriptor.storyId !== snapshot.storyId || material.descriptor.revisionId !== snapshot.revisionId ||
@@ -511,9 +493,9 @@ Page({
         material.descriptor.chapters.some((chapter, i) => chapter.id !== chosen[i].id || chapter.text !== chosen[i].text)) {
         throw new Error('导出内容与所选版本不一致，请重新进入发送');
       }
-      this.setData({ renderProgress: '正在排版图片…' });
+      this.setData({ renderProgress: '正在准备分享图片…' });
       const task = measurePerformance('book.export-render', () => renderBookImages(material, this.data.layout, this.data.fontSize, this, active,
-        (done, total) => { if (active()) this.setData({ renderProgress: '已生成 ' + done + ' / ' + total + ' 张' }); }));
+        (done, total) => { if (active()) this.setData({ renderProgress: '已生成 ' + done + ' / ' + total + ' 张' }); }, true));
       this.renderTask = task;
       try { paths = await task; } finally { if (this.renderTask === task) this.renderTask = undefined; }
       if (!active()) { removeImageFiles(paths); return; }

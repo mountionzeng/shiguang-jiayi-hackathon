@@ -48,3 +48,19 @@ export function writeChapterDraft(key: string, draft: Omit<ChapterDraft,'token'|
 export function clearChapterDraft(key: string, token: string): void {
   if (readChapterDraft(key)?.token === token) wx.setStorageSync(key,'');
 }
+
+export function readRetainedChapterDrafts(key: string): ChapterDraft[] {
+  const value = wx.getStorageSync<ChapterDraft[] | ''>(key + ':retained');
+  if (!value) return [];
+  if (!Array.isArray(value) || value.some(item => !item.token || !Array.isArray(item.draft?.chapters)))
+    throw new Error('保留草稿读取失败，请勿清理缓存');
+  return value;
+}
+
+// Copy before clearing the active slot. Quota failures must leave the original intact.
+export function retainChapterDraft(key: string, draft: ChapterDraft): void {
+  if (readChapterDraft(key)?.token !== draft.token) throw new Error('草稿已在另一页面更新，请重新打开');
+  const retained = readRetainedChapterDrafts(key);
+  if (!retained.some(item => item.token === draft.token)) wx.setStorageSync(key + ':retained', [...retained, draft]);
+  clearChapterDraft(key, draft.token);
+}

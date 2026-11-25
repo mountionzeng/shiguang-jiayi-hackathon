@@ -273,6 +273,20 @@ test("story AI refuses source-bound stories and memories before provider input i
   await assert.rejects(()=>_test.loadStoryMemories({storyId:"story-a",memoryIds:["memory-a"]},cloud),/STORY_PROTOCOL_REQUIRED/);
 });
 
+test("continued story chat accepts owned editor IDs without weakening restricted-source checks", async () => {
+  const cloud = storyCloudFixture();
+  const record = (await cloud.database().collection("biography_drafts").doc("family_fixture-user_revision-a").get()).data;
+  const block = record.revision.draft.chapters[0].content[0];
+  for (const sourceIds of [undefined, []]) {
+    Object.assign(block, { blockId: "text-local-1", sourceIds });
+    assert.match(await chatInterviewTest.loadStoryContext({ storyId: "story-a" }, cloud), /A 书旧章节/);
+  }
+  for (const extra of [{sourceIds: ["shared"]}, {sourceIds: null}, {sourceIds: "bad"}, {sourceIds: [], sourcePolicyRequired: true}, {sourceIds: [], provenanceVersion: 1}]) {
+    record.revision.draft.chapters[0].content[0] = { text: "restricted", blockId: "text-local-1", ...extra };
+    await assert.rejects(chatInterviewTest.loadStoryContext({storyId: "story-a"}, cloud), /STORY_PROTOCOL_REQUIRED/);
+  }
+});
+
 test("organizeMemory 按 memoryId 读服务端原话，拒绝伪造/越权/已删的 ID", async () => {
   const docs = new Map();
   const rows = {
@@ -591,6 +605,16 @@ test("the interview request carries the current-line rule only when a line is ma
     assert.match(requests[0].messages[0].content, /先问他想往哪个方向写，或给两三条思路；他回应之后再给改写/);
     assert.match(requests[0].messages[1].content, /第 2 行（共 3 行）/);
     assert.doesNotMatch(requests[1].messages[0].content, /先问他想往哪个方向写/);
+    const source = "【虚构原话开头】" + "蓝色旧书的翻页声。".repeat(90) + "【原话末尾：想试试水彩】";
+    await chatInterviewMain({ ...base, sourceOnly: true, sourceText: source });
+    assert.ok(requests[2].messages[1].content.includes(source), "a capture continuation must retain more than the old 500-character summary");
+    const longSource = "【很长原话开头】" + "中间内容".repeat(2000) + "【最近补充：今天想用淡蓝色】";
+    await chatInterviewMain({ ...base, sourceOnly: true, sourceText: longSource });
+    const bounded = requests[3].messages[1].content;
+    assert.match(bounded, /很长原话开头/);
+    assert.match(bounded, /最近补充：今天想用淡蓝色/);
+    assert.ok(bounded.includes(longSource), 'all supplied page text reaches the conversation without silent middle omission');
+    await assert.rejects(chatInterviewMain({...base, sourceText:'文'.repeat(40001)}), /MATERIAL_CONTEXT_TOO_LONG/);
   } finally {
     global.fetch = previousFetch;
     for (const [key, value] of saved) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
@@ -1050,6 +1074,13 @@ test("interview analysis survives JSON parsing beyond the old 80-character limit
   assert.doesNotMatch(result.text, /[{}]/);
 });
 
+test("invalid structured interview output never leaks JSON as a successful reply", () => {
+ for (const output of ['{"text":""}', '{"dimension":"event"}', '{"text":"unfinished', '```json\n{"text":']) {
+  assert.throws(()=>chatInterviewTest.parseInterviewPrompt(output,'event'),/EMPTY_MODEL_OUTPUT|INVALID_MODEL_OUTPUT/);
+ }
+ assert.equal(chatInterviewTest.parseInterviewPrompt('这次先停在这里。','event').text,'这次先停在这里。');
+});
+
 test("interview context keeps the end of a full user answer and accepts a response without a question", () => {
   const answer = "这是此前的经历。".repeat(45) + "最后说明：我不确定年份，先不聊了。";
   const history = chatInterviewTest.validateConversation([{ role: "user", text: answer }]);
@@ -1131,4 +1162,16 @@ test("interview follow-up preserves negation and a feeling that has ended", () =
   assert.match(messages[0].content, /保留否定的作用范围与时间状态/);
   assert.match(messages[0].content, /不能把已经否定或结束的感受当成仍在发生/);
   assert.ok(messages[1].content.includes(answer));
+});
+
+
+test('article composition receives the entire explicit context and rejects oversize instead of truncating',async context=>{
+ const old={...process.env},fetch=global.fetch;process.env.ORGANIZE_AI_API_KEY='test';process.env.ORGANIZE_AI_MODEL='test';
+ context.after(()=>{global.fetch=fetch;for(const k of ['ORGANIZE_AI_API_KEY','ORGANIZE_AI_MODEL']){if(old[k]===undefined)delete process.env[k];else process.env[k]=old[k];}});
+ let payload;global.fetch=async(_url,options)=>{payload=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({title:'纸船',body:'虚构纸船顺流而去。',summary:'纸船',emotions:[],people:[],places:[]})}}]})};};
+ const basis='开头不可丢'+ '甲'.repeat(1000)+'结尾不可丢';
+ const event={inlineAnswer:true,articleContext:true,transcript:['请写下一段'],writingMode:'compose',basisText:basis};
+ await organizeMemoryMain(event);assert.ok(JSON.stringify(payload.messages).includes(basis));
+ await assert.rejects(organizeMemoryMain({...event,basisText:'甲'.repeat(40001)}),/WRITING_BASIS_TOO_LONG/);
+ await assert.rejects(organizeMemoryMain({...event,articleContext:false}),/WRITING_BASIS_TOO_LONG/);
 });

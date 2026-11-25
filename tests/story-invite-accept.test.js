@@ -13,7 +13,7 @@ async function setup(extra = {}) {
   const f = fixture();
   f.account('owner'); f.account('friend'); f.account('other');
   // 朋友的家庭不在灰度名单里：这正是新朋友的真实处境。
-  const options = {
+  const options = {approveChapterText:async()=>true,
     accessEnabled: true, rulesReady: true, invitationsEnabled: true, copyReceiveEnabled: true, sharedEditEnabled: true,
     bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner'], ...extra,
   };
@@ -392,4 +392,88 @@ test('关系过长或带控制字符的邀请被拒绝', async () => {
   const f = await setup();
   await assert.rejects(f.invite({ relation: '关'.repeat(13) }), { code: 'STORY_FORBIDDEN' });
   await assert.rejects(f.invite({ relation: '同‮学' }), { code: 'STORY_FORBIDDEN' });
+});
+
+test('owner can renew an unaccepted invitation without leaving two usable cards', async () => {
+  const f=await setup();
+  const old=await f.invite();
+  const renewed=await f.invite({renewPending:true});
+  assert.notEqual(renewed.token,old.token);
+  assert.equal(f.tables.get('story_invitations:'+old.invitationId).status,'revoked');
+  await assert.rejects(f.call('friend','inviteAccept',{token:old.token}),{code:'STORY_FORBIDDEN'});
+  assert.equal((await f.call('friend','inviteAccept',{token:renewed.token})).status,'approved');
+  await assert.rejects(f.invite({renewPending:true}),{code:'STORY_INVITEE_EXISTS'});
+  assert.equal((await f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'})).chapters[0].id,'chapter-three');
+});
+
+test('renewing a pending card at the directory limit does not consume an extra slot', async () => {
+  const f=await setup();
+  const old=await f.invite();
+  for(let i=0;i<11;i++)await f.invite({inviteeName:'朋友'+i});
+  const renewed=await f.invite({renewPending:true});
+  const ids=f.tables.get('story_invite_indexes:family_owner_story-a').ids;
+  assert.equal(ids.length,12);
+  assert.ok(ids.includes(renewed.invitationId));
+  assert.ok(!ids.includes(old.invitationId));
+});
+
+test('owner resends the latest chapters to the same bound recipient without duplicate people or an extra approval',async()=>{
+  const f=await setup();let invitation=await f.invite();
+  await f.call('friend','inviteAccept',{token:invitation.token});
+  const membersBefore=[...f.tables.keys()].filter(k=>k.startsWith('family_members:'));
+  for(let version=2;version<=3;version++){
+    const previous=invitation;
+    f.tables.get('biography_drafts:family_owner_revision-a').revision.draft.chapters[0].title='新版标题'+version;
+    invitation=await f.invite({resendAccepted:true,renewPending:true,chapterIds:['chapter-one']});
+    assert.notEqual(invitation.token,previous.token);
+    assert.equal((await f.call('friend','inviteGet',{token:invitation.token})).status,'approved');
+    assert.equal((await f.call('friend','inviteAccept',{token:invitation.token})).status,'approved');
+    const read=await f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'});
+    assert.equal(read.chapters.length,1);assert.equal(read.chapters[0].title,'新版标题'+version);
+    await assert.rejects(f.call('other','inviteAccept',{token:invitation.token}),{code:'STORY_FORBIDDEN'});
+    await assert.rejects(f.call('friend','inviteAccept',{token:previous.token}),{code:'STORY_FORBIDDEN'});
+    assert.deepEqual([...f.tables.keys()].filter(k=>k.startsWith('family_members:')),membersBefore);
+    assert.equal(f.tables.get('story_invite_indexes:family_owner_story-a').ids.length,1);
+  }
+  await f.call('owner','inviteRevoke',{familyId:'family_owner',storyId:'story-a',invitationId:invitation.invitationId});
+  await assert.rejects(f.call('friend','sharedRead',{familyId:'family_owner',storyId:'story-a'}),{code:'STORY_FORBIDDEN'});
+});
+
+test('share preparation reuses an existing unbound person and renews the pending invitation by member id',async()=>{
+  const f=await setup();addMember(f,'小岚');
+  const first=await f.invite({targetMemberId:'member-manual'});
+  const next=await f.invite({renewPending:true,resendAccepted:true});
+  assert.equal(f.tables.get('story_invitations:'+next.invitationId).targetMemberId,'member-manual');
+  await assert.rejects(f.call('friend','inviteAccept',{token:first.token}),{code:'STORY_FORBIDDEN'});
+  assert.equal((await f.call('friend','inviteAccept',{token:next.token})).status,'approved');
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('family_members:family_owner_')).length,1);
+});
+
+test('sending again after revocation restores only the previously bound recipient',async()=>{
+  const f=await setup();const first=await f.invite();
+  await f.call('friend','inviteAccept',{token:first.token});
+  await f.call('owner','inviteRevoke',access(first));
+  const next=await f.invite({renewPending:true,resendAccepted:true});
+  assert.equal((await f.call('friend','inviteAccept',{token:next.token})).status,'approved');
+  await assert.rejects(f.call('other','inviteAccept',{token:next.token}),{code:'STORY_FORBIDDEN'});
+});
+
+test('legacy pending invitation followed by a same-name person is renewed against that person',async()=>{
+  const f=await setup();const first=await f.invite();addMember(f,'小岚');
+  const next=await f.invite({renewPending:true,resendAccepted:true});
+  assert.equal(f.tables.get('story_invitations:'+next.invitationId).targetMemberId,'member-manual');
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('story_grants:')).length,0);
+  await assert.rejects(f.call('friend','inviteAccept',{token:first.token}),{code:'STORY_FORBIDDEN'});
+  await f.call('friend','inviteAccept',{token:next.token});
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('family_members:family_owner_')).length,1);
+});
+
+test('existing bound person without an invitation for this book can receive a new share but another account cannot claim it',async()=>{
+  const f=await setup();addMember(f,'小岚');
+  const member=f.tables.get('family_members:family_owner_member-manual');
+  member.accountId=f.account('friend').accountId;
+  const next=await f.invite({renewPending:true,resendAccepted:true});
+  await assert.rejects(f.call('other','inviteAccept',{token:next.token}),{code:'STORY_FORBIDDEN'});
+  await f.call('friend','inviteAccept',{token:next.token});
+  assert.equal([...f.tables.keys()].filter(k=>k.startsWith('family_members:family_owner_')).length,1);
 });

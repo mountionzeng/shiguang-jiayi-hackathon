@@ -1,3 +1,4 @@
+import { cachedAccountScope } from "./cloudRoomStorage";
 import type { ManuscriptChapter } from "../domain/biography";
 import type { ChapterPackage } from "../domain/chapterPackage";
 import { enqueuePhotoUpload, ensurePhotoUploads } from "./photoCloud";
@@ -19,6 +20,7 @@ type UploadResult = { deliveryId: string; uploadTickets: Array<{ assetId: string
 type Outbox = {
   action: "sendChapter" | "createChapterClaimLink" | "returnChapter";
   requestId: string;
+  sourceKey?: string;
   package: ChapterPackage;
   assetFiles: Record<string, string>;
   assetPhotos: Record<string, string>;
@@ -59,7 +61,13 @@ function saveOutbox(item: Outbox) {
 }
 function removeOutbox(action: Outbox["action"], id: string) { writeOutbox(readOutbox().filter(item => item.action !== action || item.requestId !== id)); }
 
-async function createOutbox(action: Outbox["action"], chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, recipientContactId?: string) {
+// A retry is valid only for the exact source that created its immutable package.
+// Old outbox entries without this key are retained, but cannot substitute an old draft.
+function deliverySourceKey(chapter: ManuscriptChapter, storyTitle: string, storyId?: string): string {
+  return JSON.stringify([cachedAccountScope(), storyId || '', storyTitle, chapter]);
+}
+
+async function createOutbox(sourceKey: string, action: Outbox["action"], chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string, recipientContactId?: string) {
   if (chapter.packageLineage) chapter = chapterWithReturnSource(chapter, (wx.getStorageSync(READS_KEY) || {}) as Record<string, { package?: ChapterPackage }>);
   const prepared = await prepareChapterPackage(chapter, displayName, storyTitle, storyId, action === "returnChapter" ? "return" : chapter.packageLineage ? "forward" : "copy");
   if (Object.keys(prepared.assetPhotos).length !== Object.keys(prepared.assetFiles).length)
@@ -70,7 +78,7 @@ async function createOutbox(action: Outbox["action"], chapter: ManuscriptChapter
     wx.setStorageSync(ROOTS_KEY, roots);
   }
   return {
-    action, requestId: requestId(), package: prepared.package, assetFiles: prepared.assetFiles,
+    action, sourceKey, requestId: requestId(), package: prepared.package, assetFiles: prepared.assetFiles,
     assetPhotos: prepared.assetPhotos, assetFileIDs: {}, cloudPaths: {}, ...(recipientContactId ? { recipientContactId } : {}),
   } satisfies Outbox;
 }
@@ -117,15 +125,17 @@ export const listChapterDeliveryInbox = () => call<{ items: Array<{ deliveryId: 
 
 export async function sendChapter(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId: string | undefined, recipientContactId: string) {
   guarded();
-  const prior = readOutbox().find(item => item.action === "sendChapter" && item.recipientContactId === recipientContactId && item.package.chapters[0]?.chapterId === chapter.id);
-  const item = prior ?? await createOutbox("sendChapter", chapter, displayName, storyTitle, storyId, recipientContactId);
+  const sourceKey = deliverySourceKey(chapter, storyTitle, storyId);
+  const prior = readOutbox().find(item => item.sourceKey === sourceKey && item.action === "sendChapter" && item.recipientContactId === recipientContactId && item.package.chapters[0]?.chapterId === chapter.id);
+  const item = prior ?? await createOutbox(sourceKey, "sendChapter", chapter, displayName, storyTitle, storyId, recipientContactId);
   saveOutbox(item);
   return uploadOutgoing(item);
 }
 export async function createChapterClaimLink(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string) {
   guarded();
-  const prior = readOutbox().find(item => item.action === "createChapterClaimLink" && item.package.chapters[0]?.chapterId === chapter.id);
-  const item = prior ?? await createOutbox("createChapterClaimLink", chapter, displayName, storyTitle, storyId);
+  const sourceKey = deliverySourceKey(chapter, storyTitle, storyId);
+  const prior = readOutbox().find(item => item.sourceKey === sourceKey && item.action === "createChapterClaimLink" && item.package.chapters[0]?.chapterId === chapter.id);
+  const item = prior ?? await createOutbox(sourceKey, "createChapterClaimLink", chapter, displayName, storyTitle, storyId);
   saveOutbox(item);
   return uploadOutgoing(item);
 }
@@ -144,10 +154,11 @@ export function chapterWithReturnSource(chapter: ManuscriptChapter, reads: Recor
 export async function returnChapter(chapter: ManuscriptChapter, displayName: string, storyTitle: string, storyId?: string) {
   guarded();
   const source = chapterWithReturnSource(chapter, (wx.getStorageSync(READS_KEY) || {}) as Record<string, { package?: ChapterPackage }>);
-  const prior = readOutbox().find(item => item.action === "returnChapter" &&
+  const sourceKey = deliverySourceKey(source, storyTitle, storyId);
+  const prior = readOutbox().find(item => item.sourceKey === sourceKey && item.action === "returnChapter" &&
     item.package.chapters[0]?.chapterId === source.packageLineage?.sourceChapterId &&
     item.package.lineage.parentPackageId === source.packageLineage?.receivedPackageId);
-  const item = prior ?? await createOutbox("returnChapter", source, displayName, storyTitle, storyId);
+  const item = prior ?? await createOutbox(sourceKey, "returnChapter", source, displayName, storyTitle, storyId);
   saveOutbox(item);
   return uploadOutgoing(item);
 }

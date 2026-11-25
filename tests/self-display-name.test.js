@@ -30,7 +30,7 @@ async function returnSetup({ remark = '小岚的备注' } = {}) {
   // 主人邀请时写的备注：接受邀请后记在 applicants[].displayName，回信署名原先读的就是它。
   f.tables.set('story_invitations:invite-1', { applicants: [{ principalId: reader.principalId, displayName: remark, status: 'approved' }] });
   f.tables.set('story_grants:' + grantIdFor('family_owner', 'story-original', reader.principalId), { familyId: 'family_owner', storyId: 'story-original', principalId: reader.principalId, ownerPrincipalId: owner.principalId, status: 'active', version: 1, invitationId: 'invite-1', scope: { type: 'chapters', chapterIds: ['chapter-three'] }, permissions: { read: true, copy: true, forward: false, publish: false } });
-  await receiveTextCopy(f.repo, reader, { sourceFamilyId: 'family_owner', sourceStoryId: 'story-original', sourceRevisionId: 'revision-source', chapterIds: ['chapter-three'], requestId: 'receive-request-001', target: { mode: 'new', storyId: 'story-copy', title: '我的夏天' } });
+  await receiveTextCopy(f.repo, reader, { sourceFamilyId: 'family_owner', sourceStoryId: 'story-original', sourceRevisionId: 'revision-source', chapterIds: ['chapter-three'], requestId: 'receive-request-001', target: { mode: 'new', storyId: 'story-copy', title: '我的夏天' } }, {approveText:async()=>true});
   const read = () => {
     const story = f.tables.get('stories:family_reader_story-copy');
     return { story, chapterId: f.tables.get('biography_drafts:family_reader_' + story.currentRevisionId).revision.draft.chapters[0].id };
@@ -38,7 +38,7 @@ async function returnSetup({ remark = '小岚的备注' } = {}) {
   let { story, chapterId } = read();
   await appendOwnExperience(f.repo, reader, { storyId: story.id, revisionId: story.currentRevisionId, expectedVersion: story.version, chapterId, text: '我记得那把蓝伞', requestId: 'append-own-0001' });
   ({ story } = read());
-  await sendOwnReturn(f.repo, reader, { storyId: story.id, revisionId: story.currentRevisionId, expectedVersion: story.version, chapterId, requestId: 'send-return-001' });
+  await sendOwnReturn(f.repo, reader, { storyId: story.id, revisionId: story.currentRevisionId, expectedVersion: story.version, chapterId, requestId: 'send-return-001' }, {approveText:async()=>true});
   return { ...f, owner, reader, ownerAccount, readerAccount };
 }
 
@@ -93,7 +93,7 @@ test('回信列表里 assertSpaceOwner 的次数不变：仍然是两次，名�
 async function changesSetup() {
   const f = fixture();
   f.account('owner'); const friendAccount = f.account('friend');
-  const service = createStoryService(f.repo, { accessEnabled: true, rulesReady: true, invitationsEnabled: true, sharedEditEnabled: true, copyReceiveEnabled: true, bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner'], approveSharedEdit: async () => true });
+  const service = createStoryService(f.repo, {approveChapterText:async()=>true, accessEnabled: true, rulesReady: true, invitationsEnabled: true, sharedEditEnabled: true, copyReceiveEnabled: true, bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner'], approveSharedEdit: async () => true });
   const call = (who, action, input = {}) => service({ APPID: 'wx-original', OPENID: who }, { action, ...input });
   await call('owner', 'create', { storyId: 'story-a', title: '外婆家的夏天', writingMode: 'objective', memoryIds: [], requestId: 'create-story-a' });
   f.tables.get('stories:family_owner_story-a').currentRevisionId = 'revision-a';
@@ -103,7 +103,7 @@ async function changesSetup() {
   await call('friend', 'inviteAccept', { token: inv.token });
   const read = await call('friend', 'sharedRead', { familyId: 'family_owner', storyId: 'story-a' });
   await call('friend', 'sharedEdit', { familyId: 'family_owner', storyId: 'story-a', chapterId: 'chapter-three', revisionId: read.revisionId, expectedVersion: read.story.version, requestId: 'edit-flow-one', title: '井水西瓜', textBlocks: [{ index: 0, text: '井水里的西瓜很凉，很甜。' }] });
-  const changes = repo => createStoryService(repo, { accessEnabled: true, rulesReady: true, invitationsEnabled: true, sharedEditEnabled: true, copyReceiveEnabled: true, bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner'] })({ APPID: 'wx-original', OPENID: 'owner' }, { action: 'chapterChanges', familyId: 'family_owner', storyId: 'story-a', chapterId: 'chapter-three' });
+  const changes = repo => createStoryService(repo, {approveChapterText:async()=>true, accessEnabled: true, rulesReady: true, invitationsEnabled: true, sharedEditEnabled: true, copyReceiveEnabled: true, bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner'] })({ APPID: 'wx-original', OPENID: 'owner' }, { action: 'chapterChanges', familyId: 'family_owner', storyId: 'story-a', chapterId: 'chapter-three' });
   return { ...f, friendAccount, changes };
 }
 

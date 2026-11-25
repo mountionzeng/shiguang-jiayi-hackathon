@@ -1,2 +1,4 @@
 @import "../../shared.wxss";
 .edit-title{height:96rpx;margin:32rpx 0 18rpx;border-bottom:1rpx solid var(--jade);font-size:36rpx}.edit-block{width:100%;box-sizing:border-box;min-height:220rpx;margin:18rpx 0;padding:24rpx;border:1rpx solid var(--line);border-radius:14rpx;background:#fffdf8;font-size:32rpx;line-height:1.85}
+
+.shared-cover,.shared-photo{display:block;width:100%;height:auto;margin:20rpx 0;border-radius:12rpx}.shared-cover{width:65%;margin:24rpx auto}.paragraph{white-space:pre-wrap}

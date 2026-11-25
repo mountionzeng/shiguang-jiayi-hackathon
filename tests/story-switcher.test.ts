@@ -92,7 +92,7 @@ test("the persistent story switcher opens all three destinations, and 随手记 
     assert.deepEqual(events, ["openpersonal", "openfamily"]);
     assert.deepEqual(relaunches, []);
     assert.deepEqual(navigations, [
-      "/pages/interview/interview?memoryType=note",
+      "/pages/interview/interview?memoryType=note&capture=1",
       `/pages/interview/interview?memoryType=memoir&sourceId=demo-personal-rain&storyTitle=${encodeURIComponent("外公接我放学")}`,
       "/pages/recall/recall",
     ]);

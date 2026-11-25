@@ -1,8 +1,10 @@
+const {validateAudioModules,approveAudioModules}=require('./articleAudio');
 const {revisionAttribution,summarizeChanges}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
 const {assertSpaceOwner,identityError}=require('./identity');
 const {allowsSources}=require('./provenance');
+const {getMemory,getOwnerMemberId}=require('./memoryExports');
 const hash=value=>crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail=(message,code='INVALID_INPUT')=>{throw Object.assign(new Error(message),{code});};
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -12,13 +14,18 @@ function normalize(input){
   if(!input||!/^request-[a-z0-9-]{8,100}$/.test(input.requestId||'')||!core.STORY_ID.test(input.storyId||'')||
     !/^revision-[a-zA-Z0-9-]{1,120}$/.test(input.revisionId||'')||!Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<1)fail('保存信息不完整');
   const c=input.chapter;
-  if(!exact(c,['id','title','content','layout','packageAssets','backdropImageId'])||!/^chapter-[a-z0-9-]{1,60}$/.test(c.id||'')||typeof c.title!=='string'||c.title.length>40||!Array.isArray(c.content)||c.content.length>512)fail('文章格式不正确');
+  if(!exact(c,['id','title','content','layout','packageAssets','backdropImageId','memoryIds','audioModules'])||!/^chapter-[a-z0-9-]{1,60}$/.test(c.id||'')||typeof c.title!=='string'||c.title.length>40||!Array.isArray(c.content)||c.content.length>512)fail('文章格式不正确');
+  if(c.memoryIds!==undefined&&(!Array.isArray(c.memoryIds)||c.memoryIds.length>500||c.memoryIds.some(id=>typeof id!=='string'||!/^[0-9A-Za-z_-]{1,120}$/.test(id))))fail('记忆来源格式不正确');
   if(c.backdropImageId!==undefined && (typeof c.backdropImageId!=='string' || (c.backdropImageId && !/^family_[0-9A-Za-z_-]+_img_req-[a-z0-9-]{8,60}$/.test(c.backdropImageId))))fail('底图引用不正确');
+  validateAudioModules(c);
   const ids=new Set();
   for(const b of c.content){
-    if(!exact(b,['blockId','parentBlockId','text','photoId'])||!blockPattern.test(b.blockId||'')||ids.has(b.blockId)||
+    if(!exact(b,['blockId','parentBlockId','mergeSourceBlockIds','text','photoId'])||!blockPattern.test(b.blockId||'')||ids.has(b.blockId)||
       (b.parentBlockId!==undefined&&!blockPattern.test(b.parentBlockId))||
       !(typeof b.text==='string'&&b.photoId===undefined&&b.text.length<=20000||typeof b.photoId==='string'&&/^photo-[a-z0-9-]{1,120}$/.test(b.photoId)&&b.text===undefined))fail('文章模块不正确');
+    if(b.mergeSourceBlockIds!==undefined && (typeof b.text!=='string'||!Array.isArray(b.mergeSourceBlockIds)||
+      b.mergeSourceBlockIds.length>512||new Set(b.mergeSourceBlockIds).size!==b.mergeSourceBlockIds.length||
+      b.mergeSourceBlockIds.some(id=>typeof id!=='string'||!blockPattern.test(id))))fail('合并来源不正确');
     ids.add(b.blockId);
   }
   if(!exact(c.packageAssets||{},Object.keys(c.packageAssets||{}))||Object.keys(c.packageAssets||{}).length>12)fail('图片数量超限');
@@ -38,19 +45,32 @@ function normalize(input){
 function moduleChanges(before,after){
   const previous=new Map(before.content.map((b,i)=>[b.blockId||'legacy-'+i,b]));
   const changes=[];
-  for(const block of after.content){const old=previous.get(block.blockId);previous.delete(block.blockId);
-    if(!old||old.text!==block.text||old.photoId!==block.photoId)changes.push({kind:block.photoId?'image':'text',action:old?'changed':'added',blockId:block.blockId,before:old?.text||old?.photoId||'',after:block.text||block.photoId||''});}
+  for(const [index,block] of after.content.entries()){const blockId=block.blockId||'legacy-'+index,old=previous.get(blockId);previous.delete(blockId);
+    if(!old||old.text!==block.text||old.photoId!==block.photoId)changes.push({kind:block.photoId?'image':'text',action:old?'changed':'added',blockId,before:old?.text||old?.photoId||'',after:block.text||block.photoId||''});}
   for(const [blockId,old] of previous)changes.push({kind:old.photoId?'image':'text',action:'removed',blockId,before:old.text||old.photoId||'',after:''});
+  const oldAudio=new Map((before.audioModules || []).map(m=>[m.id,m]));
+  for(const audio of after.audioModules || []){const old=oldAudio.get(audio.id);oldAudio.delete(audio.id);
+    if(!old || core.stable(old)!==core.stable(audio))changes.push({kind:'audio',action:old?'changed':'added',blockId:audio.id,before:old?(old.kind==='music'?'纯音乐':'有声书'):'',after:audio.kind==='music'?'纯音乐':'有声书'});}
+  for(const old of oldAudio.values())changes.push({kind:'audio',action:'removed',blockId:old.id,before:old.kind==='music'?'纯音乐':'有声书',after:''});
   if((before.backdropImageId||'')!==(after.backdropImageId||''))changes.push({kind:'image',action:'changed',before:before.backdropImageId||'',after:after.backdropImageId||''});
   if(before.title!==after.title)changes.push({kind:'title',action:'changed',before:before.title,after:after.title});
   if(core.stable(before.layout||null)!==core.stable(after.layout||null))changes.push({kind:'layout',action:'changed',before:'',after:''});
   return changes;
 }
-async function saveArticle(repo,ctx,raw,{approveText,approveImage,approveBackdrop,now=()=>new Date().toISOString()}={}){
+async function saveArticle(repo,ctx,raw,{approveImage,approveBackdrop,publishLetters,now=()=>new Date().toISOString()}={}){
   const input=normalize(raw),stamp=now(),receipt='article-'+hash([ctx.principalId,input.requestId]),fingerprint=hash(input);
-  if(typeof approveText!=='function'||typeof approveImage!=='function')fail('内容检查暂时不可用','MODERATION_UNAVAILABLE');
-  if(!await approveText([input.chapter.title,...input.chapter.content.map(b=>b.text||'')].join('\n'),ctx.verifiedOpenid,'文章'))fail('文字未通过内容检查','CONTENT_REJECTED');
   await repo.ensureCollection?.('story_chapter_edits');
+  // An immutable acknowledgement is authoritative even if the checker is now
+  // unavailable or returns a different verdict. Never mislabel a committed save.
+  const confirmed=await repo.get('story_chapter_edits',receipt);
+  if(confirmed){
+    await assertSpaceOwner(repo,ctx);
+    if(confirmed.familyId!==ctx.familyId||confirmed.fingerprint!==fingerprint)fail('保存请求已经改变','VERSION_CONFLICT');
+    return confirmed.result;
+  }
+  // Private edits use the existing immutable version flow. Text is checked at distribution.
+  if(typeof approveImage!=='function')fail('图片检查暂时不可用','MODERATION_UNAVAILABLE');
+  const ownerMemberId=input.chapter.memoryIds?.length ? await getOwnerMemberId(repo,ctx.familyId) : undefined;
   return repo.transaction(async tx=>{
     await assertSpaceOwner(tx,ctx);
     const prior=await tx.get('story_chapter_edits',receipt);
@@ -62,14 +82,34 @@ async function saveArticle(repo,ctx,raw,{approveText,approveImage,approveBackdro
     if(!row||row.familyId!==ctx.familyId||row.storyId!==story.id)throw identityError();
     const draft=clone(row.revision.draft),before=draft.chapters.find(c=>c.id===input.chapter.id);
     if(!before)throw identityError();
+    // Add references, never consume a memory or detach another article. Old clients omit this field.
+    const addedMemoryIds=(input.chapter.memoryIds||[]).filter(id=>!before.memoryIds.includes(id));
+    for(const id of new Set(addedMemoryIds)){
+      const memory=await getMemory(tx,ctx.familyId,id);
+      if(!memory||memory.deletedAt||memory.scope!=='personal'||!ownerMemberId||memory.authorMemberId!==ownerMemberId||
+        memory.sourcePolicyRequired||memory.sourceIds||memory.sourceSystem)fail('所选记忆已不可用，请重新选择','STORY_NOT_FOUND');
+    }
+    const memoryIds=[...new Set([...before.memoryIds,...addedMemoryIds])];
+    story.memoryIds=[...new Set([...story.memoryIds,...addedMemoryIds])];
+    if(memoryIds.length>500||story.memoryIds.length>500)fail('记忆来源过多，请另开一本书');
     const existing=new Map(before.content.map((b,i)=>[b.blockId||'block-'+hash(['article-existing',before.id,i]),b]));
     const otherIds=new Set(draft.chapters.filter(c=>c.id!==before.id).flatMap(c=>c.content.map(b=>b.blockId)));
     const submitted=new Map(input.chapter.content.map(b=>[b.blockId,b]));
     const inherited=(id,seen=new Set())=>{
       if(seen.has(id))fail('段落来源存在循环');seen.add(id);
-      const old=existing.get(id);if(old)return old.sourceIds||[];
-      const item=submitted.get(id);if(!item)fail('新增段落的来源不存在');
-      return item.parentBlockId?inherited(item.parentBlockId,seen):[];
+      const old=existing.get(id),item=submitted.get(id);
+      if(!old&&!item)fail('新增段落的来源不存在');
+      const roots=old ? old.sourceIds||[] : item.parentBlockId ? inherited(item.parentBlockId,new Set(seen)) : [];
+      // Resolve only server-known blocks in this chapter, never client sourceIds.
+      // Missing merge IDs can be unsaved splits or ancestors retired by an earlier
+      // acknowledged merge. The retained block always keeps its trusted roots.
+      const merged=(item?.mergeSourceBlockIds||[]).flatMap(sourceId=>{
+        if(otherIds.has(sourceId))fail('不能合并其他章节的模块');
+        const source=existing.get(sourceId);
+        if(source&&typeof source.text!=='string')fail('只能合并文字模块');
+        return source?.sourceIds||[];
+      });
+      return [...new Set([...roots,...merged])];
     };
     const content=[];
     for(const item of input.chapter.content){
@@ -81,15 +121,17 @@ async function saveArticle(repo,ctx,raw,{approveText,approveImage,approveBackdro
       if(item.photoId&&old?.photoId!==item.photoId&&!await approveImage(ctx,item.photoId))fail('图片未通过检查','CONTENT_REJECTED');
       content.push({...(old||{}),blockId:item.blockId,...(draft.provenanceVersion===1?{sourceIds}:{}),...(typeof item.text==='string'?{text:item.text}:{photoId:item.photoId})});
     }
+    await approveAudioModules(tx,ctx,story.id,before,input.chapter);
     const assets=input.chapter.packageAssets||{};
     for(const [id,asset] of Object.entries(assets))if(before.packageAssets?.[id]?.photoId!==asset.photoId&&!await approveImage(ctx,asset.photoId))fail('图片未通过检查','CONTENT_REJECTED');
     for(const id of [input.chapter.layout.settings.bodyTextureAssetId,...input.chapter.layout.pages.flatMap(p=>p.modules.filter(m=>m.kind==='image').map(m=>m.assetId))].filter(Boolean))if(!assets[id])fail('排版引用了不存在的图片');
     if(input.chapter.backdropImageId && input.chapter.backdropImageId!==before.backdropImageId &&
       (typeof approveBackdrop!=='function' || !await approveBackdrop(ctx,input.chapter.backdropImageId)))fail('底图未通过检查','CONTENT_REJECTED');
-    const after={...before,...(input.chapter.backdropImageId!==undefined?{backdropImageId:input.chapter.backdropImageId}:{}),title:input.chapter.title,content,layout:input.chapter.layout,packageAssets:assets};
+    const after={...before,...(input.chapter.audioModules!==undefined?{audioModules:input.chapter.audioModules}:{}),memoryIds,...(input.chapter.backdropImageId!==undefined?{backdropImageId:input.chapter.backdropImageId}:{}),title:input.chapter.title,content,layout:input.chapter.layout,packageAssets:assets};
     if(!after.backdropImageId)delete after.backdropImageId;
     const changes=moduleChanges({...before,content:before.content.map((b,i)=>({...b,blockId:b.blockId||'block-'+hash(['article-existing',before.id,i])}))},after);
     draft.chapters=draft.chapters.map(c=>c.id===after.id?after:c);Object.assign(draft,core.flatten(draft.chapters));core.validateDraft(draft,story);
+    draft.sourceCount=story.memoryIds.length;
     if(Buffer.byteLength(JSON.stringify(draft))>240000)fail('文章太大，请分成不同章节');
     const revisionId='revision-'+hash([receipt]),version=story.version+1;
     const revision={...await revisionAttribution(tx,ctx,summarizeChanges(changes)),id:revisionId,storyId:story.id,memberId:'',kind:'version',label:'自动保存',savedAt:stamp,sourceFingerprint:row.revision.sourceFingerprint||'',sourceRevisionId:input.revisionId,editedByPrincipalId:ctx.principalId,editedChapterIds:[after.id],draft};
@@ -97,6 +139,7 @@ async function saveArticle(repo,ctx,raw,{approveText,approveImage,approveBackdro
     await tx.set('biography_drafts',`${ctx.familyId}_${revisionId}`,{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision});
     await tx.set('stories',`${ctx.familyId}_${story.id}`,{...story,version,currentRevisionId:revisionId,updatedAt:stamp});
     await tx.set('story_chapter_edits',receipt,{familyId:ctx.familyId,principalId:ctx.principalId,storyId:story.id,chapterId:after.id,revisionId,sourceRevisionId:input.revisionId,createdAt:stamp,fingerprint,changes,result});
+    if(changes.length)await publishLetters?.(tx,ctx,story,revision,[{chapterId:after.id,summary:revision.changeSummary}]);
     return result;
   });
 }

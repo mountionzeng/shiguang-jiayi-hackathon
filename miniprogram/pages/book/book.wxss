@@ -11,11 +11,11 @@ page { height: 100%; overflow: hidden; }
 .save-button { font-weight: 600; }
 .writing-page { position: relative; }
 .send-chevron { margin-left: 6rpx; font-size: 24rpx; }
-.send-dismiss { position: absolute; inset: 96rpx 0 0; z-index: 8; }
-.send-menu { position: absolute; z-index: 9; top: 96rpx; right: 22%; width: 370rpx; padding: 8rpx 16rpx; border: 1rpx solid var(--line); border-radius: 16rpx; background: var(--paper-card); box-shadow: 0 12rpx 32rpx rgba(42,46,43,.14); }
+.send-dismiss { position: absolute; inset: var(--book-nav-bottom, 96rpx) 0 0; z-index: 8; }
+.send-menu { position: absolute; z-index: 9; top: var(--book-nav-bottom, 96rpx); right: 22%; width: 370rpx; padding: 8rpx 16rpx; border: 1rpx solid var(--line); border-radius: 16rpx; background: var(--paper-card); box-shadow: 0 12rpx 32rpx rgba(42,46,43,.14); }
 .send-menu .send-option { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 100rpx; padding: 20rpx 14rpx; margin: 0; font-size: 30rpx; color: var(--jade); text-align: left; }
 .send-option + .send-option { border-top: 1rpx solid var(--line); }
-.more-menu { position: absolute; z-index: 9; top: 96rpx; right: 24rpx; width: 440rpx; max-width: 88%; max-height: 65%; box-sizing: border-box; padding: 8rpx 20rpx; border: 1rpx solid var(--line); border-radius: 16rpx; background: var(--paper-card); box-shadow: 0 12rpx 32rpx rgba(42,46,43,.14); }
+.more-menu { position: absolute; z-index: 9; top: var(--book-nav-bottom, 96rpx); right: 24rpx; width: 440rpx; max-width: 88%; max-height: 65%; box-sizing: border-box; padding: 8rpx 20rpx; border: 1rpx solid var(--line); border-radius: 16rpx; background: var(--paper-card); box-shadow: 0 12rpx 32rpx rgba(42,46,43,.14); }
 .more-menu .more-option { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 92rpx; padding: 20rpx 12rpx; margin: 0; text-align: left; font-size: 29rpx; line-height: 1.5; color: var(--jade); }
 .more-option + .more-option { border-top: 1rpx solid var(--line); }
 .more-menu .more-back { color: var(--ink-soft); font-size: 26rpx; }
@@ -33,6 +33,8 @@ page { height: 100%; overflow: hidden; }
 .body-field .manuscript-body { width: 100%; height: 0; flex: 1; min-height: 0; font-size: 34rpx; line-height: 1.85; color: var(--ink); overflow-y: auto; }
 .book-photo { width: 100%; }
 .notice { flex: none; max-height: 100rpx; overflow-y: auto; padding: 12rpx 32rpx; font-size: 26rpx; color: var(--ink); background: var(--apricot-soft); }
+.retained-draft-card { padding-bottom:32rpx;border-bottom:1rpx solid var(--jade); }
+.retained-draft-text { display:block;white-space:pre-wrap;line-height:1.8;margin-top:16rpx; }
 .panel-actions { flex: none; display: flex; justify-content: space-between; padding: 0 20rpx; border-bottom: 1rpx solid var(--line); }
 .reading-panel { flex: 1; height: 0; min-height: 0; }
 .panel-content { padding: 28rpx 32rpx calc(48rpx + env(safe-area-inset-bottom)); }
@@ -69,7 +71,7 @@ page { height: 100%; overflow: hidden; }
 /* ---- 目录页：书名、目录、还没写进书的记忆 ---- */
 /* 微信按钮默认宽 184px 且优先级高于单个类名，所以按钮一律用两层类名写宽度。 */
 .contents-content { padding-top: 32rpx; }
-.contents-head { position: relative; overflow: hidden; min-height: 380rpx; border: 1rpx solid var(--line); border-radius: 24rpx; background: var(--jade-soft); }
+.contents-head { position: relative; overflow: hidden; border: 1rpx solid var(--line); border-radius: 24rpx; background: var(--jade-soft); }
 .contents-summary { margin-top: 6rpx; font-size: 24rpx; line-height: 1.5; color: var(--ink-soft); }
 .contents-section { display: flex; align-items: baseline; justify-content: space-between; margin: 44rpx 0 8rpx; padding-bottom: 12rpx; border-bottom: 2rpx solid rgba(79, 127, 107, .32); font-size: 34rpx; font-weight: 600; color: var(--ink); }
 .contents-add-inline { display: flex; align-items: center; justify-content: center; width: auto; min-height: 88rpx; margin: 24rpx 0; padding: 0 18rpx; border: 1rpx solid rgba(79,127,107,.28); border-radius: 999rpx; background: rgba(234,241,237,.78); color: var(--jade); font-family: "PingFang SC", "Heiti SC", sans-serif; font-size: 25rpx; font-weight: 600; }
@@ -116,7 +118,7 @@ page { height: 100%; overflow: hidden; }
 .insertion-preview { padding: 24rpx 0; white-space: pre-wrap; line-height: 1.9; font-size: 30rpx; }
 
 
-.photo-menu { position: absolute; z-index: 9; top: 96rpx; left: 12%; width: 540rpx; max-width: 84%; padding: 12rpx 20rpx; border: 1rpx solid var(--line); border-radius: 20rpx; background: var(--paper-card); box-shadow: 0 12rpx 32rpx rgba(42,46,43,.14); }
+.photo-menu { position: absolute; z-index: 9; top: var(--book-nav-bottom, 96rpx); left: 12%; width: 540rpx; max-width: 84%; padding: 12rpx 20rpx; border: 1rpx solid var(--line); border-radius: 20rpx; background: var(--paper-card); box-shadow: 0 12rpx 32rpx rgba(42,46,43,.14); }
 .photo-menu .photo-option { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; width: 100%; min-height: 100rpx; margin: 0; padding: 20rpx 12rpx; font-size: 30rpx; line-height: 1.5; text-align: left; color: var(--jade); }
 .photo-option + .photo-option { border-top: 1rpx solid var(--line); }
 .photo-menu .photo-menu-back { width: 100%; min-height: 80rpx; margin: 0; padding: 12rpx; font-size: 26rpx; text-align: left; color: var(--ink-soft); }
@@ -124,10 +126,9 @@ page { height: 100%; overflow: hidden; }
 .photo-chapter-list { max-height: 48vh; }
 .photo-chapter-option text:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .photo-menu-empty { padding: 20rpx 12rpx; font-size: 27rpx; color: var(--ink-soft); }
-.contents-cover-background, .contents-cover-shade { position: absolute; inset: 0; width: 100%; height: 100%; }
-.contents-cover-shade { background: linear-gradient(180deg, rgba(251,248,241,.18), rgba(251,248,241,.94)); }
-.contents-book-copy { position: relative; padding: 36rpx 30rpx; background: rgba(251,248,241,.72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-.contents-head-covered .contents-book-copy { margin-top: 180rpx; background: rgba(251,248,241,.78); border-top: 1rpx solid rgba(255,255,255,.6); }
+.contents-cover-background { position: absolute; inset: 0; width: 100%; height: 100%; }
+.contents-book-copy { position: relative; padding: 36rpx 30rpx; background: rgba(251,248,241,.6); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+
 .contents-intro-label { margin-top: 30rpx; color: #355c4c; font-size: 26rpx; font-weight: 600; }
 .contents-intro-label { display: flex; align-items: center; justify-content: space-between; }
 .intro-edit { width: auto; min-height: 54rpx; margin: 0; padding: 0 18rpx; border: 1rpx solid rgba(79,127,107,.28); border-radius: 999rpx; background: rgba(255,255,255,.52); color: var(--jade); font-size: 23rpx; line-height: 52rpx; }
@@ -170,7 +171,9 @@ page { height: 100%; overflow: hidden; }
 .article-toolbar { flex:none;display:flex;align-items:center;justify-content:space-between;min-height:96rpx;border-bottom:1rpx solid var(--line);padding:0 16rpx; }
 .article-toolbar button { background:transparent;color:var(--jade);font-size:30rpx;margin:0;min-height:88rpx;padding:0 16rpx;display:flex;align-items:center; }
 .article-toolbar button::after { border:none; }.article-toolbar text { font-size:24rpx;color:var(--muted);flex:1;overflow:hidden;max-height:80rpx; }
-.article-scroll { flex:1;min-height:0;box-sizing:border-box;padding:24rpx 32rpx; }.article-title { font-size:38rpx;line-height:1.5;padding:8rpx 0 20rpx; }
+.article-scroll { flex:1;min-height:0;box-sizing:border-box;padding:24rpx 32rpx; }
+/* Native inputs need an explicit height; vertical padding clips the title under border-box. */
+.article-title { width:100%;height:88rpx;line-height:56rpx;margin-bottom:12rpx;padding:0;font-size:38rpx; }
 
 .article-toolbar button { width:auto;flex:none; }.article-toolbar text { color:#68776c; }.article-scroll > .chapter-ai-label { display:inline-block; }
 
@@ -179,16 +182,107 @@ page { height: 100%; overflow: hidden; }
 .article-share-note { margin:20rpx 0; font-size:28rpx; line-height:1.6; color:#627269; }
 .article-share-sheet button { margin-top:16rpx; font-size:32rpx; color:#315c4c; }
 
-.article-scroll { padding:12rpx 24rpx 110rpx; }
-.article-bird.article-bird { position:fixed;right:24rpx;bottom:28rpx;z-index:12;width:128rpx;min-height:100rpx;margin:0;padding:8rpx 0;background:rgba(255,253,246,.9);border-radius:24rpx;font-size:20rpx;line-height:1.2;color:#527c6c; }
-.article-bird image { display:block;width:80rpx;height:80rpx;margin:auto; }
+/* Controls float over the manuscript; the soft fade has no card edge. */
+.article-companion-dock { position:absolute;left:0;right:0;bottom:0;z-index:20;display:flex;align-items:center;height:224rpx;padding:0 24rpx env(safe-area-inset-bottom);background:transparent;pointer-events:none; }
+.sentence-review-actions { position:absolute;right:24rpx;bottom:calc(24rpx + env(safe-area-inset-bottom));z-index:20;display:flex;gap:12rpx; }
+.sentence-review-actions button { width:88rpx;height:88rpx;margin:0;padding:0;display:flex;align-items:center;justify-content:center;font-size:38rpx;color:#275442;background:#f4f7f1;border:1px solid #a6b8a8;border-radius:16rpx; }
+.sentence-review-actions button:last-child { color:#fff;background:#416757;border-color:#416757; }
+.sentence-review-actions button::after,.sentence-review-entry::after { border:0; }
+.sentence-review-entry { margin:0;padding:0;text-align:left;font-size:inherit;line-height:1.55;color:inherit;background:transparent;white-space:pre-wrap;overflow-wrap:anywhere; }
+.sentence-review-entry text { display:block; }
+.sentence-review-old { color:#854234;text-decoration:line-through; }
+.sentence-review-new,.sentence-review-link { color:#275442; }
+.sentence-review-link { margin-top:10rpx;font-size:24rpx; }
+.sentence-passage-choice { width:100%;margin:12rpx 0 0;padding:12rpx 16rpx;line-height:1.5;text-align:left;font-size:inherit;color:#275442;background:#eef3eb;white-space:pre-wrap;overflow-wrap:anywhere; }
+.sentence-passage-choice::after { border:none; }
+.article-companion-dock::before { content:"";position:absolute;inset:-56rpx 0 0;pointer-events:none;background:linear-gradient(to top,rgba(240,239,228,.88),rgba(240,239,228,.48) 55%,rgba(240,239,228,0));-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);-webkit-mask-image:linear-gradient(to top,#000 35%,transparent);mask-image:linear-gradient(to top,#000 35%,transparent); }
+.article-companion-dock > .article-bird { position:relative;pointer-events:auto; }
+.article-companion-dock > .article-media-actions { position:relative;pointer-events:none; }
+.article-scroll { padding:12rpx 24rpx 0; }
+.article-dock-clearance { height:calc(248rpx + env(safe-area-inset-bottom));pointer-events:none; }
+.article-bird.article-bird { position:relative;flex:none;width:224rpx;height:224rpx;min-height:224rpx;margin:0;padding:0;background:transparent;border-radius:50%;color:#527c6c; }
+.article-bird image { position:absolute;left:8rpx;top:0;width:208rpx;height:208rpx; }
 .article-bird::after { border:0; }
-.writing-page > .xiaoyi-panel { margin:8rpx 20rpx 16rpx;max-height:65%; }
+.writing-page > .xiaoyi-panel { flex:0 1 auto;min-height:0;box-sizing:border-box;margin:8rpx 20rpx 16rpx;max-height:65%; }
+.xiaoyi-head > view { flex:1;min-width:0; }
+.xiaoyi-composer { display:flex;align-items:flex-end;gap:12rpx;margin-top:14rpx; }
+.xiaoyi-composer .xiaoyi-answer { flex:1;min-width:0;width:0;margin-top:0;max-height:180rpx; }
+.xiaoyi-send.xiaoyi-send { flex:none;display:flex;align-items:center;justify-content:center;width:80rpx;height:80rpx;min-height:80rpx;margin:0;padding:0;border-radius:50%;background:var(--jade);color:var(--paper-card);font-size:42rpx;line-height:1; }
+.xiaoyi-send::after { border:0; }
+.xiaoyi-send[disabled] { opacity:.55; }
 .xiaoyi-materials { display:flex;gap:10rpx;flex-wrap:wrap;align-items:center; }
 .xiaoyi-materials image { width:100rpx;height:100rpx;border-radius:8rpx; }
 .xiaoyi-materials button { width:auto;margin:0;padding:8rpx 12rpx;font-size:25rpx;background:#f2f3ec;color:#527c6c; }
 
-.article-memory-entry { margin: 8rpx 24rpx 16rpx; padding: 8rpx 16rpx; width: fit-content; font-size: 26rpx; color: #617e70; background: transparent; }
+.article-memory-actions { display: flex; justify-content: center; gap: 24rpx; margin: 8rpx 24rpx 16rpx; }
+.article-memory-entry { margin: 0; padding: 8rpx 16rpx; width: fit-content; font-size: 26rpx; color: #617e70; background: transparent; }
 .article-memory-entry::after { border: 0; }
 .article-memory-picker { margin: 12rpx 24rpx; padding: 20rpx; background: #faf8f1; border-radius: 16rpx; }
 .article-memory-list { max-height: 360rpx; }
+
+/* Keep the panel content-sized after the viewport excludes the keyboard.
+ * The article receives the remaining space; the panel must never grow empty. */
+.writing-page.keyboard-open.companion-open > .xiaoyi-panel { max-height:70%; margin:8rpx 16rpx 0; padding:12rpx; border-radius:16rpx 16rpx 0 0; }
+.keyboard-open.companion-open .xiaoyi-secondary-actions { display:none; }
+.keyboard-open.companion-open .xiaoyi-thread { max-height:40vh; margin-top:4rpx; }
+.keyboard-open.companion-open .xiaoyi-answer { min-height:64rpx; }
+.keyboard-open.companion-open .xiaoyi-composer { margin-top:8rpx; }
+.keyboard-open.companion-open .xiaoyi-actions { margin-top:6rpx; }
+
+.article-media-actions { flex:1;min-width:0; }
+.article-media-buttons { display:flex;align-items:center;justify-content:space-around;gap:8rpx;flex-wrap:nowrap; }
+.article-media-buttons .article-media-button { flex:none;min-width:0;width:132rpx;height:132rpx;min-height:132rpx;margin:0;padding:0;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-size:24rpx;line-height:1.5;background:transparent;box-shadow:none;border:0;border-radius:0;color:#416f60; }
+.article-media-buttons .article-media-button::after { border:0; }
+.article-media-status { display:block;font-size:23rpx;color:#68776c;padding:10rpx; }
+
+/* Floating module preview leaves the manuscript and bird dock dimensions intact. */
+.article-media-mask { position:fixed;inset:0;z-index:90;display:flex;align-items:flex-end;padding:24rpx 24rpx calc(224rpx + env(safe-area-inset-bottom));box-sizing:border-box;background:rgba(36,49,40,.12); }
+.article-media-panel { width:100%;max-height:70vh;box-sizing:border-box;padding:24rpx;background:#faf8f1;border-radius:24rpx;box-shadow:0 8rpx 32rpx rgba(36,49,40,.14); }
+.article-media-heading { font-size:30rpx;color:#315c4c; }
+.article-media-description { display:block;margin-top:8rpx;font-size:24rpx;color:#68776c; }
+.article-media-preview { max-height:180rpx;margin:16rpx 0;font-size:27rpx;line-height:1.6;white-space:pre-wrap; }
+.article-media-generate { width:auto;margin:0 0 0 auto;padding:12rpx 30rpx;font-size:26rpx;line-height:1.5;background:#527c6c;color:#fff;border-radius:28rpx; }
+.article-media-generate::after { border:0; }
+
+/* Reading shows only the bird; editing reveals its existing tools in place. */
+.article-media-buttons { opacity:0;visibility:hidden;pointer-events:none;transform:translateY(8rpx);transition:opacity 200ms ease,transform 200ms ease,visibility 200ms; }
+.article-media-buttons.companion-tools-visible { opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto; }
+@media (prefers-reduced-motion:reduce) { .article-media-buttons { transition:none;transform:none; } }
+
+/* A readable hint appears once on chapter entry, then leaves only the bird. */
+.article-bird.article-bird { overflow:visible; }
+.article-bird-label { position:absolute;left:0;right:0;top:-36rpx;line-height:32rpx;font-size:25rpx;font-weight:500;white-space:nowrap;pointer-events:none;animation:bird-hint-fade .3s 5s ease-out forwards; }
+@keyframes bird-hint-fade { to { opacity:0; } }
+@media (prefers-reduced-motion:reduce) { .article-bird-label { animation-duration:0s; } }
+
+/* One menu owns companion actions; the conversation gets the available panel space. */
+.companion-open > .xiaoyi-panel { display:flex;flex-direction:column;overflow:hidden; }
+.companion-open .xiaoyi-thread { flex:0 1 auto;min-height:0;max-height:46vh; }
+.companion-open .xiaoyi-composer,.companion-open .xiaoyi-head { flex:none; }
+.xiaoyi-menu.xiaoyi-menu { flex:1;min-width:0;margin:0;padding:0 8rpx;text-align:left;font-size:25rpx;line-height:64rpx;background:transparent;color:var(--jade); }
+.xiaoyi-menu::after { border:0; }
+
+/* One navigation row shares the system capsule's vertical space. */
+.book-navigation.article-toolbar { box-sizing:border-box;min-height:0;padding-left:6px;gap:2px; }
+.book-navigation.article-toolbar button { box-sizing:border-box;height:44px;min-height:44px;padding:0 6px;font-size:14px;white-space:nowrap; }
+.book-navigation.article-toolbar .book-nav-back { width:32px;padding:0;font-size:32px;justify-content:center; }
+.book-navigation.article-toolbar .book-nav-title { display:block;flex:1;min-width:0;width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;font-size:15px;line-height:44px; }
+
+.xiaoyi-welcome { padding: 10rpx 0 14rpx; font-size: 25rpx; line-height: 1.65; color: #5d645d; }
+
+.article-audio-tools { display:flex; gap:12rpx; margin:4rpx 24rpx 12rpx; }
+.article-audio-tools button { margin:0; padding:8rpx 16rpx; font-size:24rpx; line-height:1.5; color:#416f60; background:transparent; }
+.article-audio-tools button::after, .article-reference-add::after { border:0; }
+.article-audio-players { margin:0 24rpx 14rpx; }
+.article-audio-players button { font-size:25rpx; color:#416f60; background:#f1f3ed; margin-bottom:8rpx; }
+.article-image-direction { box-sizing:border-box; width:100%; height:108rpx; padding:12rpx; border:1rpx solid #d9ddd3; border-radius:10rpx; font-size:25rpx; line-height:1.5; background:#fffefa; }
+.article-image-references { display:flex; align-items:center; gap:12rpx; margin-top:14rpx; }
+.article-image-reference { position:relative; width:88rpx; height:88rpx; }
+.article-image-reference image { width:100%; height:100%; border-radius:8rpx; }
+.article-image-reference button { position:absolute; right:-6rpx; top:-6rpx; width:32rpx; height:32rpx; padding:0; margin:0; line-height:30rpx; font-size:24rpx; background:#527c6c; color:#fff; border-radius:50%; }
+.article-reference-add { margin:0; padding:12rpx; font-size:25rpx; line-height:1.5; color:#416f60; background:#f0f2eb; }
+.article-reference-note { margin:10rpx 0 14rpx; font-size:22rpx; color:#68776c; }
+.article-media-panel { overflow-y:auto; }
+.article-media-mask.article-media-keyboard { padding:12rpx; }
+.article-media-keyboard .article-media-panel { max-height:100%; }
+.article-media-keyboard .article-media-preview { max-height:72rpx; }

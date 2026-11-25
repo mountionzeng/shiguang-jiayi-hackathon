@@ -1,14 +1,18 @@
+const {actions:mailboxActions,runMailbox}=require('./mailbox');
+const {checkOutgoingPackage,createOutgoingModerator,withModerationIdentity}=require('./outgoingText');
 const { recordDeliveryActivity } = require('./activity');
 const cloud = require("wx-server-sdk");
+const { loginDisplayName } = require("./loginProfile");
 const https = require("node:https");
 const fs = require("node:fs");
 const crypto = require("node:crypto");
 const { bridgeUrl, chapterDeliveryActionForPath, chapterDeliveryPathForAction, chapterDeliveryBody, chapterDeliveryResultShapeError,
   issueDesktopResultShapeError, signature, webLoginBody, webLoginResultShapeError } = require("./core");
-const { prepareDesktopBody } = require("./egress");
+const { prepareDesktopBody, prepareWebImportIdentity } = require("./egress");
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db=cloud.database();
+const moderate=(...args)=>createOutgoingModerator(cloud.callFunction?.bind(cloud),withModerationIdentity(db))(...args);
 function reader(target){
   return {async get(table,id){
     try{return (await target.collection(table).doc(id).get()).data;}
@@ -196,6 +200,14 @@ async function cacheDeliveryAssets(event, context, baseUrl, secret) {
 
 async function main(event = {}) {
   const action = String(event.action || "");
+  if(mailboxActions[action]){
+    if(process.env.WECHAT_MAILBOX_ENABLED!=='true')throw new Error('mailbox_disabled');
+    const baseUrl=String(process.env.DRINKING_TIME_BRIDGE_BASE_URL||''),secret=String(process.env.DRINKING_TIME_BRIDGE_SECRET||'');
+    if(!/^https:\/\//.test(baseUrl)||secret.length<32)throw new Error('bridge_not_configured');
+    const rawContext=cloud.getWXContext(),context={...rawContext,APPID:rawContext.APPID||process.env.WECHAT_APP_ID};
+    return runMailbox(event,context,{post:(path,body,shape)=>post(baseUrl,path,body,secret,shape,1024*1024),moderate});
+  }
+
   if (action === "chapterDeliveryEnabled") return { enabled: process.env.CHAPTER_PACKAGE_ENABLED === "true" && process.env.CHAPTER_DELIVERY_ENABLED === "true" };
   const deliveryAction = Boolean(chapterDeliveryPathForAction(action));
   if (action === "stageChapterAssets" || deliveryAction) {
@@ -224,6 +236,7 @@ async function main(event = {}) {
   if (action === "cacheChapterDeliveryAssets") return cacheDeliveryAssets(event, context, baseUrl, secret);
   if (deliveryAction) {
     const { path, body } = chapterDeliveryBody(action, event, context, { appIdFallback: process.env.WECHAT_APP_ID });
+    await checkOutgoingPackage(action,body.package,context,moderate);
     const result = await post(baseUrl, path, body, secret,
       (contentType, data) => chapterDeliveryResultShapeError(contentType, data, action), 256 * 1024);
     if (["sendChapter", "createChapterClaimLink", "returnChapter"].includes(action)) {
@@ -242,6 +255,18 @@ async function main(event = {}) {
   }
   if (action === "confirmWebLogin") {
     const loginBody = webLoginBody(event, context, { appIdFallback: process.env.WECHAT_APP_ID });
+    if (loginBody.decision === 'confirm' && process.env.WEB_STORY_IMPORT_ENABLED === 'true') {
+      // Failure to prepare import must not prevent the established login path.
+      try { await prepareWebImportIdentity(repo, {...context,APPID:context.APPID||process.env.WECHAT_APP_ID}, {
+        bootstrapAppId:process.env.STORY_IDENTITY_BOOTSTRAP_APP_ID||process.env.WECHAT_APP_ID,
+      }); } catch { console.warn('web_import_identity_not_ready'); }
+    }
+    if (loginBody.decision === 'confirm') {
+      try {
+        const name = await loginDisplayName(db, context);
+        if (name) loginBody.displayName = name;
+      } catch { console.warn('web_login_profile_not_ready'); }
+    }
     return post(baseUrl, path, loginBody, secret, webLoginResultShapeError);
   }
   const body = await prepareDesktopBody(repo, event, context, {
@@ -250,4 +275,10 @@ async function main(event = {}) {
   });
   return post(baseUrl, path, body, secret);
 }
-module.exports = { main };
+module.exports = { main:async event=>{
+  try{return await main(event);}
+  catch(error){
+    if(['MODERATION_UNAVAILABLE','MODERATION_REVIEW','CONTENT_REJECTED'].includes(error?.code))return {error:'CHAPTER_DELIVERY_ERROR',code:error.code,message:error.message};
+    throw error;
+  }
+} };

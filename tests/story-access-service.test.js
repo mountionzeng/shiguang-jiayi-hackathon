@@ -5,7 +5,7 @@ const { createStoryService } = require('../cloudfunctions/storyBooks/service');
 const { aliasIdFor } = require('../cloudfunctions/storyBooks/identity');
 const { grantIdFor } = require('../cloudfunctions/storyBooks/access');
 
-const options = { accessEnabled: true, rulesReady: true, bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner', 'family_reader'] };
+const options = {approveChapterText:async()=>true, accessEnabled: true, rulesReady: true, bootstrapAppId: 'wx-original', sharedReadFamilyIds: ['family_owner', 'family_reader'] };
 const context = { APPID: 'wx-original', OPENID: 'owner' };
 const create = { action: 'create', storyId: 'story-a', title: '我的故事', writingMode: 'objective', memoryIds: [], requestId: 'create-story-a' };
 

@@ -457,3 +457,71 @@ test('opt-in request timing stays outside state chunks and does not relax authen
   assert.equal(next.digest,chunk.digest,'per-request timings do not affect chunk fingerprints');
   assert.equal(next.offset,chunk.nextOffset);
 });
+
+function generatedCommand(){
+ const chapters=[{id:'chapter-writing',title:'虚构测试故事',memoryIds:['source-one'],content:[{text:'【虚构】雨后大家修好了桥。\n'}]}];
+ const draft={title:'虚构测试故事',chapters,...core.flatten(chapters),sourceCount:1,generatedAt:'',generationMode:'cloud-ai'};
+ return {action:'create',storyId:'story-generated',title:'虚构测试故事',writingMode:'creative',memoryIds:['source-one'],requestId:'generated-request-001',
+  revision:{id:'revision-generated-001',storyId:'story-generated',memberId:'',kind:'version',label:'生成故事',savedAt:'',sourceFingerprint:'',draft}};
+}
+function seedGeneratedSource(tables){
+ tables.set('family_members:family_test_owner',{familyId:'family_test',memberId:'owner',relation:'自己',role:'owner',name:'我'});
+ tables.set('memories:family_test_source-one',{familyId:'family_test',id:'source-one',authorMemberId:'owner',scope:'personal',text:'【虚构】修桥原始材料',reviewStatus:'confirmed'});
+}
+test('generated story creation commits full text and shelf entry together and retries without duplicating source or story',async()=>{
+ const f=fixture();seedGeneratedSource(f.tables);const source=structuredClone(f.tables.get('memories:family_test_source-one'));
+ const {createStoryService}=require('../cloudfunctions/storyBooks/service');let checked='';
+ const service=createStoryService(f.repo,{approveChapterText:async text=>{checked=text;return true;}});
+ const input=generatedCommand();await service({OPENID:'test'},input);await service({OPENID:'test'},input);
+ const state=await f.handlers.state({familyId:'family_test'});assert.equal(state.stories.length,1);
+ assert.equal(state.stories[0].currentRevisionId,input.revision.id);assert.equal(state.manuscriptRevisions.length,1);
+ assert.deepEqual(state.manuscriptRevisions[0].draft.chapters,input.revision.draft.chapters);
+ assert.match(checked,/雨后大家修好了桥/);assert.deepEqual(f.tables.get('memories:family_test_source-one'),source);
+});
+test('initial manuscript moderation failure or invalid sources leave no empty shelf book',async()=>{
+ const f=fixture();seedGeneratedSource(f.tables);const before=structuredClone(f.tables);
+ const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+ await assert.rejects(createStoryService(f.repo,{approveChapterText:async()=>false})({OPENID:'test'},generatedCommand()),{code:'CONTENT_REJECTED'});
+ assert.deepEqual(f.tables,before);
+ const input=generatedCommand();input.revision.draft.chapters[0].memoryIds=['unrelated'];
+ await assert.rejects(f.handlers.command({familyId:'family_test'},input));assert.deepEqual(f.tables,before);
+});
+test('a source removed between initial load and creation transaction cannot create a generated story',async()=>{
+ const f=fixture();seedGeneratedSource(f.tables);const transact=f.repo.transaction;
+ f.repo.transaction=fn=>{f.tables.get('memories:family_test_source-one').deletedAt='today';return transact(fn);};
+ const handlers=createHandlers(f.repo);
+ await assert.rejects(handlers.command({familyId:'family_test'},generatedCommand()),/来源已变化/);
+ assert.equal([...f.tables.keys()].some(key=>key.startsWith('stories:')),false);
+ assert.equal([...f.tables.keys()].some(key=>key.startsWith('biography_drafts:')),false);
+});
+
+
+test('delete reads only its book metadata, preserves received originals and histories, and is retry-safe',async()=>{
+  const {handlers:h,repo,tables}=fixture(),ctx={familyId:'family_test'};
+  await h.command(ctx,{action:'create',storyId:'story-fast-delete',title:'收到的书',writingMode:'objective',memoryIds:[],requestId:'create-fast-delete'});
+  const key='stories:family_test_story-fast-delete';
+  tables.set(key,{...tables.get(key),sourcePolicyRequired:true,currentRevisionId:'revision-kept'});
+  tables.set('biography_drafts:family_test_revision-kept',{familyId:'family_test',storyId:'story-fast-delete',revision:{id:'revision-kept',storyId:'story-fast-delete',draft:{text:'保留原文'}}});
+  tables.set('stories:family_other_story-fast-delete',{familyId:'family_other',id:'story-fast-delete',version:1});
+  tables.set('memories:family_test_source',{familyId:'family_test',text:'原始记忆'});
+  const before=new Map([...tables].map(([k,v])=>[k,structuredClone(v)]));
+  repo.all=async()=>{throw new Error('delete must not scan histories or collections');};
+  const command={action:'delete',storyId:'story-fast-delete',expectedVersion:1,requestId:'delete-fast-book'};
+  assert.deepEqual(await h.command(ctx,command),{ok:true,storyId:'story-fast-delete'});
+  assert.ok(tables.get(key).deletedAt);
+  assert.equal(tables.get(key).currentRevisionId,'revision-kept');
+  for(const k of ['biography_drafts:family_test_revision-kept','stories:family_other_story-fast-delete','memories:family_test_source'])assert.deepEqual(tables.get(k),before.get(k));
+  assert.deepEqual(await h.command(ctx,command),{ok:true,storyId:'story-fast-delete'});
+  assert.equal(tables.get(key).version,2);
+});
+
+test('metadata-only delete still rejects concurrent changes and another family',async()=>{
+  const {handlers:h,repo,tables}=fixture(),ctx={familyId:'family_test'};
+  await h.command(ctx,{action:'create',storyId:'story-delete-conflict',title:'保留',writingMode:'objective',memoryIds:[],requestId:'create-delete-conflict'});
+  const key='stories:family_test_story-delete-conflict', transact=repo.transaction;
+  repo.transaction=fn=>{tables.get(key).version=2;return transact(fn);};
+  await assert.rejects(h.command(ctx,{action:'delete',storyId:'story-delete-conflict',expectedVersion:1,requestId:'delete-conflict-one'}),/已有更新/);
+  assert.equal(tables.get(key).deletedAt,undefined);
+  await assert.rejects(h.command({familyId:'family_other'},{action:'delete',storyId:'story-delete-conflict',expectedVersion:2,requestId:'delete-other-family'}));
+  assert.equal(tables.get(key).deletedAt,undefined);
+});

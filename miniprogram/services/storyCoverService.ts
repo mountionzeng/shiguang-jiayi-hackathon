@@ -1,7 +1,7 @@
 import { readLocalPhoto } from "./bookImages";
 import { prepareReferencePhotos } from "./referencePhotos";
 import { resumePhotoUploads } from "./photoCloud";
-import { callStoryImages, newImageRequestId, StoryImageJob, StoryImageServiceError, storyImageApi } from './storyImageService';
+import { callStoryImages, submitPaidImage, StoryImageJob, StoryImageServiceError, storyImageApi } from './storyImageService';
 
 export interface CoverSources {
   storyId: string; title: string; revisionId: string; version: number; coverImageId: string;
@@ -34,8 +34,8 @@ async function submit(input: CoverInput): Promise<StoryImageJob> {
   }));
   if (!allowed) throw new StoryImageServiceError('CONSENT_DECLINED', '本次没有生成封面');
   await prepareReferencePhotos(input.referencePhotoIds, 'small');
-  const result = await callStoryImages<{job: StoryImageJob}>('submit', {
-    ...input, purpose: 'cover', coverConsent: true, requestId: input.requestId ?? newImageRequestId(),
+  const result = await submitPaidImage<{job: StoryImageJob}>({
+    ...input, purpose: 'cover', coverConsent: true,
   });
   const job = result.job;
   if (!job || job.purpose !== 'cover' || !job.jobId || !job.status) throw new Error('封面服务返回内容不完整');

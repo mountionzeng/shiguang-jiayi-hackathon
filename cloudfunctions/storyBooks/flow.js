@@ -1,8 +1,10 @@
-const {revisionAttribution,draftSummary}=require('./revisionAttribution');
+const {revisionAttribution,draftSummary,summarizeChanges}=require('./revisionAttribution');
+const {moduleChanges}=require('./article');
 const core = require('./core');
 const { measurePerformance } = require('./performance');
 const { ownNamesByAccount } = require('./displayNames');
 const { assertLegacyWritable, protocolError } = require('./provenance');
+const {getMemory}=require('./memoryExports');
 const docId = (familyId,id) => familyId+'_'+id;
 const MIGRATION_BATCH_SIZE=80;
 const memberForClient = member => ({
@@ -39,8 +41,9 @@ const contributionForClient = (memory,member,ownName) => ({
   aiRevisions:memory.aiRevisions,
   deletedAt:memory.deletedAt,
   photoIds:memory.photoIds,
+  materialCaptureId:memory.materialCaptureId,
 });
-function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null, now = ()=>new Date().toISOString()} = {}) {
+function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null, now = ()=>new Date().toISOString(), publishLetters} = {}) {
   const memberError = (code,message) => { throw Object.assign(new Error(message),{code}); };
   const memberId = value => {
     const id=String(value || '').trim();
@@ -384,8 +387,20 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
     const input={...event,familyId:ctx.familyId};
     // Saving edits only needs current manuscripts. Keep all memory provenance,
     // and point-read the submitted revision ID to preserve collision rejection.
-    const previous=await load(ctx,{home:input.action==='save' && !input.restoreRevisionId,keepMemoryHistory:true});
-    if(input.action==='save' && typeof input.revision?.id==='string') {
+    const writesManuscript=input.action==='save' || input.action==='create' && Boolean(input.revision);
+    // Soft deletion changes only this book's metadata. Never fetch every
+    // manuscript and memory just to mark one book deleted.
+    let previous;
+    if (input.action==='delete') {
+      const [family,story]=await Promise.all([
+        repo.get('families',ctx.familyId),
+        repo.get('stories',docId(ctx.familyId,String(input.storyId || ''))),
+      ]);
+      previous={storyMigration:family?.storyBooks,stories:story?.familyId===ctx.familyId && story.id===input.storyId ? [story] : [],manuscriptRevisions:[]};
+    } else {
+      previous=await load(ctx,{home:writesManuscript && !input.restoreRevisionId,keepMemoryHistory:true});
+    }
+    if(writesManuscript && typeof input.revision?.id==='string') {
       const existing=await repo.get('biography_drafts',docId(ctx.familyId,input.revision.id));
       if(existing?.revision && !previous.manuscriptRevisions.some(r=>r.id===existing.revision.id)) {
         previous.manuscriptRevisions.push(existing.revision);
@@ -453,9 +468,17 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
         return {ok:true,storyId:retry.storyId};
       }
       let stored=await tx.get('stories',docId(ctx.familyId,story.id));
-      stored=await repairMissingRevision(tx,ctx.familyId,stored);
+      if (input.action!=='delete') stored=await repairMissingRevision(tx,ctx.familyId,stored);
       if (guardsContent) await assertLegacyTransaction(tx,ctx.familyId,stored);
       if((before && (!stored || stored.version!==before.version)) || (!before && stored))throw new Error('故事已有更新，请刷新后重试');
+      if(input.action==='create' && input.revision) {
+        const owner=previous.members.find(m=>!m.deletedAt && m.kind!=='person' && (m.role==='owner' || m.relation==='自己'));
+        for(const id of story.memoryIds) {
+          const memory=await getMemory(tx,ctx.familyId,id);
+          if(!memory || memory.deletedAt || memory.scope!=='personal' || !owner || memory.authorMemberId!==owner.id ||
+            memory.sourcePolicyRequired || memory.sourceIds || memory.sourceSystem)throw new Error('故事来源已变化，请重新打开材料');
+        }
+      }
       for(const id of imageRefs) {
         const image=await tx.get('story_images',id);
         const link=await tx.get('story_image_links',docId(ctx.familyId,core.hash(story.id+'|'+id)));
@@ -491,13 +514,26 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       }
       if(newRevision && await tx.get('biography_drafts',docId(ctx.familyId,newRevision.id)))throw new Error('版本编号冲突');
       if(newRevision)delete newRevision.receivedFromName; // Own edits must not inherit a client-supplied source signature.
-      if(newRevision)Object.assign(newRevision,await revisionAttribution(tx,ctx,newRevision.kind==='restore'?'恢复历史版本':draftSummary(previous.manuscriptRevisions?.find(r=>r.id===before?.currentRevisionId)?.draft,newRevision.draft)));
+      const previousDraft=previous.manuscriptRevisions?.find(r=>r.id===before?.currentRevisionId)?.draft;
+      if(newRevision)Object.assign(newRevision,await revisionAttribution(tx,ctx,newRevision.kind==='restore'?'恢复历史版本':draftSummary(previousDraft,newRevision.draft)));
       if(newRevision)await tx.set('biography_drafts',docId(ctx.familyId,newRevision.id),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision:newRevision});
       await tx.set('stories',docId(ctx.familyId,story.id),story);
       if (core.isEmptyStoryCreate(input) && family.storyBooks?.status!=='active') {
         await tx.set('families',ctx.familyId,{...family,independentStoryVersion:(family.independentStoryVersion || 0)+1});
       }
       await tx.set('story_operations',opId,{familyId:ctx.familyId,fingerprint:core.stable(input),storyId:story.id});
+      if(publishLetters && newRevision && previousDraft) {
+        const oldChapters = new Map(previousDraft.chapters.map(chapter => [chapter.id, chapter]));
+        const titleChanged = previousDraft.title !== newRevision.draft.title;
+        const updates = newRevision.draft.chapters.flatMap(chapter => {
+          const old = oldChapters.get(chapter.id);
+          if (!old) return [];
+          const changes = moduleChanges(old, chapter);
+          const summary = [titleChanged && '修改文章标题', changes.length > 0 && summarizeChanges(changes)].filter(Boolean).join('，');
+          return summary ? [{ chapterId: chapter.id, summary }] : [];
+        });
+        await publishLetters(tx,ctx,story,newRevision,updates);
+      }
       return {ok:true,storyId:story.id};
     });
   }

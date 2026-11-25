@@ -86,4 +86,17 @@ async function prepareDesktopBody(repo,event,context,options={}){
   });
 }
 
-module.exports={prepareDesktopBody};
+/** A login proves identity, not a request to copy any manuscript. Only a scoped
+ * server-side identity binding is prepared; the website asks for content later. */
+async function prepareWebImportIdentity(repo, context, options={}) {
+  const {subjectFor}=require('./core');
+  return repo.transaction(async tx=>{
+    const {familyId,principalId}=await ownedSpace(tx,context,options);
+    if(!principalId)fail('IDENTITY_UNLINKED');
+    const grantId='desktop-grant-'+hash('web-import:'+subjectFor(context.APPID,context.OPENID));
+    const now=options.now?options.now():Date.now();
+    await tx.set('story_desktop_grants',grantId,{grantId,kind:'web-import',status:'active',familyId,principalId,
+      createdAtMs:now,expiresAtMs:now+30*24*60*60*1000});
+  });
+}
+module.exports={prepareDesktopBody,prepareWebImportIdentity};

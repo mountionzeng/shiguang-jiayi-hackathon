@@ -127,3 +127,30 @@ test('source rejection stops before any cloud command', async () => {
   }), /dirty source/);
   assert.equal(called, false);
 });
+
+test('authority deploy uses an isolated package with its sibling dependencies and cleans it on success or failure', async () => {
+  for (const fails of [false, true]) {
+    let packagedPath;
+    const operation = run(['--execute', '--env', 'test-env', '--only', 'storyDesktopAccess', '--only', 'drinkingTimeBridge'], {
+      rootDir: root,
+      inspectSource: () => ({ commit: 'checked-commit' }),
+      runner: async (_command, args) => {
+        if (args[2] === 'info') return { exitCode: 0, stdout: `${args.at(-1)} Active` };
+        assert.equal(args.includes('--names'), false);
+        const targets = args.slice(args.indexOf('--paths') + 1);
+        packagedPath = targets[0];
+        assert.notEqual(packagedPath, path.join(root, 'cloudfunctions/storyDesktopAccess'));
+        assert.equal(targets[1], path.join(root, 'cloudfunctions/drinkingTimeBridge'));
+        assert.ok(fs.existsSync(path.join(packagedPath, 'modules/storyBooks/provenance.js')));
+        assert.ok(fs.existsSync(path.join(packagedPath, 'modules/storyDesktopAccess/webLoginQr.js')));
+        assert.equal(fs.existsSync(path.join(packagedPath, '.env')), false);
+        assert.equal(fs.existsSync(path.join(packagedPath, 'modules/storyBooks/index.js')), false);
+        return { exitCode: fails ? 1 : 0, stdout: fails ? 'Error' : 'accepted' };
+      },
+      stdout: { write() {} },
+    });
+    if (fails) await assert.rejects(operation, /reported a failure/);
+    else assert.deepEqual((await operation).verified, ['storyDesktopAccess', 'drinkingTimeBridge']);
+    assert.equal(fs.existsSync(packagedPath), false);
+  }
+});

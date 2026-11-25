@@ -37,47 +37,200 @@ test('typing updates layout geometry without resetting the native textarea value
   assert.equal(context.data.current.content[0].text, '第二句' + '文字'.repeat(5));
 });
 
-test('Return creates a sized next paragraph and focuses its caret at the end', async () => {
-  const definition = await loadComponentDefinition();
-  const chapter = articleChapter({ id: 'chapter-return', title: '回车测试', memoryIds: [], content: [{ text: '第一句' }] });
-  const context: any = {
-    data: { current: chapter, pages: [], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 0.4, note: '' },
-    properties: { paths: {}, width: 360 },
-    setData(patch: Record<string, unknown>) { Object.assign(this.data, patch); },
-    triggerEvent() {},
-  };
-  Object.assign(context, definition.methods);
-  definition.methods.render.call(context);
-  const longLine = '新段落不能裁切'.repeat(8);
-  definition.methods.change.call(context, {
-    currentTarget: { dataset: { block: chapter.content[0].blockId } },
-    detail: { value: `第一句\n${longLine}`, cursor: longLine.length + 4 },
-  });
-
-  const added = context.data.current.content[1];
-  const module = context.data.current.layout.pages.flatMap((page: any) => page.modules)
-    .find((item: any) => item.kind === 'text' && 'blockId' in item.bind && item.bind.blockId === added.blockId);
-  assert.equal(context.data.focusRequest, added.blockId);
-  assert.equal(context.data.cursor, longLine.length);
-  assert.ok(module.rect.height > 130);
-  assert.equal(context.data.pages.flatMap((page: any) => page.modules).find((item: any) => item.blockId === added.blockId).text, longLine);
+test('Return inserts a new module immediately after the source and focuses its beginning', async () => {
+  const definition=await loadComponentDefinition();
+  const chapter=articleChapter({id:'chapter-return',title:'',memoryIds:[],content:[{text:'first\nlast'},{text:'next block'}]});
+  const patches:Array<Record<string,unknown>>=[];
+  const context:any={data:{current:chapter,pages:[],scale:.4,textHeights:{}},properties:{paths:{},width:360},
+    setData(patch:Record<string,unknown>,callback?:()=>void){patches.push(patch);Object.assign(this.data,patch);callback?.();},triggerEvent(){}};
+  Object.assign(context,definition.methods);context.render();patches.length=0;
+  const block=chapter.content[0].blockId;
+  const previous=(globalThis as any).wx;let focus:()=>void=()=>{};
+  (globalThis as any).wx={nextTick:(callback:()=>void)=>{focus=callback;}};
+  try {context.change({currentTarget:{dataset:{block}},detail:{value:'first\n\nlast',cursor:7}});}
+  finally {(globalThis as any).wx=previous;}
+  assert.equal(context.data.focusRequest,'');focus();
+  assert.deepEqual(context.data.current.content.map((b:any)=>b.text),['first\n','last','next block']);
+  const newBlock=context.data.current.content[1].blockId;
+  assert.equal(context.data.editingBlock,newBlock);assert.equal(context.data.caretCursor,0);
+  assert.equal(context.data.focusRequest,newBlock);assert.equal(context.data.selectionCursor,0);
+  assert.equal(context.data.current.content[0].blockId,block);
+  context.change({currentTarget:{dataset:{block:newBlock}},detail:{value:'新last',cursor:1}});
+  assert.equal(context.data.current.content[1].text,'新last');
+  assert.equal(context.data.selectionCursor,-1);
 });
 
-test('a caret before the remaining text stays at that offset after Return splits the paragraph', async () => {
+test('native height changes patch geometry without replacing input, and stale measurements are ignored', async () => {
   const definition = await loadComponentDefinition();
-  const chapter = articleChapter({ id: 'chapter-return-middle', title: '回车光标测试', memoryIds: [], content: [{ text: '前后文字' }] });
-  const context: any = {
-    data: { current: chapter, pages: [], selected: '', focused: '', focusRequest: '', cursor: 0, scale: 0.4, note: '' },
-    properties: { paths: {}, width: 360 },
-    setData(patch: Record<string, unknown>) { Object.assign(this.data, patch); },
-    triggerEvent() {},
-  };
-  Object.assign(context, definition.methods);
-  definition.methods.render.call(context);
-  definition.methods.change.call(context, {
-    currentTarget: { dataset: { block: chapter.content[0].blockId } },
-    detail: { value: '前\n后文字', cursor: 2 },
-  });
+  const chapter = articleChapter({id:'native-height',title:'',memoryIds:[],content:[{text:'文字'.repeat(80)}]});
+  const patches: Array<Record<string,unknown>> = [];
+  const context:any = {data:{current:chapter,pages:[],scale:.4,textHeights:{}},properties:{paths:{}},
+    setData(patch:Record<string,unknown>) {patches.push(patch);Object.assign(this.data,patch);}};
+  Object.assign(context,definition.methods);
+  context.render();patches.length=0;
+  const module=context.data.pages[0].modules[0];
+  context.textLineChange({currentTarget:{dataset:{id:module.id,measure:module.measurementKey}},detail:{height:400}});
+  assert.ok(patches.length);
+  assert.ok(!patches.some(patch => 'pages' in patch || Object.keys(patch).some(key=>/\.text$/.test(key))));
+  const measurement=context.data.textHeights[module.id];
+  context.textLineChange({currentTarget:{dataset:{id:module.id,measure:'old-width-or-text'}},detail:{height:10}});
+  assert.equal(context.data.textHeights[module.id],measurement);
+});
 
-  assert.equal(context.data.cursor, 0, 'the new paragraph caret belongs before its remaining text');
+
+async function caretEditor() {
+  const definition = await loadComponentDefinition();
+  const chapter = articleChapter({id:'caret-scroll',title:'',memoryIds:[],content:[{text:'开头，中间，最后一行'}]});
+  const queries:Array<{selectors:string[];callback:(results:any[])=>void}>=[];
+  const events:any[]=[];
+  const context:any={data:{...structuredClone(definition.data),current:chapter,scale:.4},
+    properties:{paths:{},keyboardHeight:300},
+    setData(patch:any,callback?:()=>void){Object.assign(this.data,patch);callback?.();},
+    triggerEvent(name:string,detail:any){events.push({name,detail});},
+    createSelectorQuery(){const selectors:string[]=[];return {select(selector:string){selectors.push(selector);return this;},boundingClientRect(){return this;},exec(callback:any){queries.push({selectors,callback});}};}};
+  Object.assign(context,definition.methods);context.render();
+  return {context,chapter,queries,events,definition};
+}
+
+test('focused article measures the prefix at the native cursor, not the end of a long paragraph', async () => {
+  const {context,chapter,queries,events}=await caretEditor();
+  const previous=(globalThis as any).wx;
+  (globalThis as any).wx={getSelectedTextRange:({success}:any)=>success({start:3,end:3})};
+  try {context.beginEditing({currentTarget:{dataset:{block:chapter.content[0].blockId}}});}
+  finally {(globalThis as any).wx=previous;}
+  assert.equal(context.data.caretMeasureText,'开头，\u200b');
+  const query=queries[queries.length - 1];
+  assert.match(query.selectors[0],/^#article-input-text-/);
+  query.callback([{top:400,height:120},{height:30.72}]);
+  const event=events.find(item=>item.name==='caret');
+  assert.equal(event.detail.chapterId,chapter.id);
+  assert.equal(event.detail.top,400);
+  assert.equal(event.detail.bottom,430.72);
+});
+
+test('Return measures the actual caret prefix, including earlier newlines', async () => {
+  const {context,chapter,queries,events}=await caretEditor();
+  const block=chapter.content[0].blockId;
+  context.change({currentTarget:{dataset:{block}},detail:{value:'first\n\nlast',cursor:7}});
+  assert.equal(context.data.editingBlock,block);
+  assert.equal(context.data.caretMeasureText,'first\n\n\u200b');
+  queries[queries.length-1].callback([{top:480,height:90},{height:61.44}]);
+  assert.equal(events.filter(e=>e.name==='caret').slice(-1)[0].detail.bottom,541.44);
+});
+
+test('outdated caret geometry and delayed focus ranges cannot override newer typing or blur', async () => {
+  const {context,chapter,queries,events}=await caretEditor();
+  const block=chapter.content[0].blockId;
+  const previous=(globalThis as any).wx;let focusRange:any;
+  (globalThis as any).wx={getSelectedTextRange:({success}:any)=>{focusRange=success;}};
+  try {context.beginEditing({currentTarget:{dataset:{block}}});}
+  finally {(globalThis as any).wx=previous;}
+  context.change({currentTarget:{dataset:{block}},detail:{value:'新输入的文字',cursor:6}});
+  const first=queries[queries.length - 1];
+  focusRange({start:0,end:0});
+  assert.equal(context.data.caretCursor,6);
+  context.change({currentTarget:{dataset:{block}},detail:{value:'继续输入的文字',cursor:7}});
+  first.callback([{top:500,height:60},{height:60}]);
+  assert.equal(events.filter(item=>item.name==='caret').length,0);
+  context.finishEditing({currentTarget:{dataset:{block}}});
+  queries[queries.length - 1].callback([{top:500,height:60},{height:60}]);
+  assert.equal(events.filter(item=>item.name==='caret').length,0);
+});
+
+
+test('dismissing the keyboard cancels delayed caret work without losing module selection',async()=>{
+ const {context,chapter,queries,events}=await caretEditor();
+ context.data.editingBlock=chapter.content[0].blockId;
+ context.data.focusRequest=chapter.content[0].blockId;
+ context.data.selected='selected-module';context.data.caretCursor=2;
+ context.revealCaret();
+ context.dismissKeyboard();
+ assert.equal(context.data.focusRequest,'');assert.equal(context.data.editingBlock,'');
+ assert.equal(context.data.selected,'selected-module');
+ for(const query of queries)query.callback([{top:100,height:200},{height:100}]);
+ assert.equal(events.length,0);
+});
+
+for (const blurFirst of [true, false]) {
+  test(`switching from the lower text to the upper text keeps native focus (blur first: ${blurFirst})`, async () => {
+    const {context} = await caretEditor();
+    const chapter = articleChapter({id:'switch-focus',title:'',memoryIds:[],content:[{text:'上方文字'},{text:'下方文字'}]});
+    context.data.current = chapter; context.render();
+    const [upper, lower] = chapter.content;
+    context.data.editingBlock = lower.blockId;
+    context.data.focusRequest = lower.blockId;
+    context.data.caretCursor = 4;
+    const patches:any[] = [];
+    context.setData = function(patch:any, callback?:()=>void) {patches.push(patch);Object.assign(this.data,patch);callback?.();};
+    const previous = (globalThis as any).wx;
+    (globalThis as any).wx = {getSelectedTextRange:({success}:any)=>success({start:1,end:1})};
+    try {
+      const blur = () => context.finishEditing({currentTarget:{dataset:{block:lower.blockId}}});
+      if (blurFirst) blur();
+      context.beginEditing({currentTarget:{dataset:{block:upper.blockId,id:context.data.pages[0].modules[0].id}}});
+      if (!blurFirst) blur();
+      assert.ok(!patches.some(patch=>'pages' in patch), 'blur must not rewrite every native textarea');
+      assert.notEqual(context.data.focusRequest, lower.blockId, 'the old Return focus request must not remain active');
+      assert.equal(context.data.editingBlock, upper.blockId);
+      assert.equal(context.data.caretCursor, 1);
+      assert.equal(context.data.focused, upper.blockId);
+    } finally {(globalThis as any).wx = previous;}
+  });
+}
+
+test('keyboard Done cancels even a pending Return focus before it can reopen the keyboard', async () => {
+  const {context,chapter} = await caretEditor();
+  let pendingFocus = () => {};
+  const previous = (globalThis as any).wx;
+  (globalThis as any).wx = {nextTick:(callback:()=>void)=>{pendingFocus=callback;}};
+  try {
+    const block = chapter.content[0].blockId;
+    context.change({currentTarget:{dataset:{block}},detail:{value:'开头，\n中间，最后一行',cursor:4}});
+    const selected = context.data.selected;
+    context.confirmEditing();
+    pendingFocus();
+    assert.equal(context.data.focusRequest,'');
+    assert.equal(context.data.editingBlock,'');
+    assert.equal(context.data.selected,selected,'Done closes input, without losing the module');
+    assert.deepEqual(context.data.current.content.map((b:any)=>b.text),['开头，','中间，最后一行']);
+  } finally {(globalThis as any).wx=previous;}
+});
+
+
+test('two-block selection exposes merge, survives scrolling, publishes once and never requests focus',async()=>{
+ const {context,events}=await caretEditor();
+ context.data.current=articleChapter({id:'chapter-merge-ui',title:'',memoryIds:[],content:[{text:'甲'},{text:'乙'}]});context.render();
+ const [a,b]=context.data.pages[0].modules;
+ const previous=(globalThis as any).wx;(globalThis as any).wx={hideKeyboard(){}};
+ try {
+  context.beginMerge({currentTarget:{dataset:{id:a.id,block:a.blockId}}});
+  assert.deepEqual(context.data.mergeIds,[a.blockId]);assert.equal(context.data.mergeMenu,'');
+  context.clear({preserveMerge:true});assert.deepEqual(context.data.mergeIds,[a.blockId]);
+  context.select({currentTarget:{dataset:{id:b.id,block:b.blockId}}});
+  assert.equal(context.data.mergeMenu,b.id);assert.equal(context.data.focusRequest,'');
+  context.mergeText();
+  assert.deepEqual(context.data.current.content.map((b:any)=>b.text),['甲\n乙']);
+  assert.deepEqual(context.data.mergeIds,[]);assert.equal(context.data.mergeMenu,'');
+  assert.equal(context.data.focusRequest,'');assert.equal(context.data.editingBlock,'');
+  assert.equal(events.filter(e=>e.name==='change').length,1);
+ } finally {(globalThis as any).wx=previous;}
+});
+test('deselecting, background tap and chapter switch cancel merge without modifying text',async()=>{
+ const {context,definition,events}=await caretEditor();
+ const chapter=articleChapter({id:'chapter-merge-ui',title:'',memoryIds:[],content:[{text:'甲'},{text:'乙'}]});
+ context.data.current=chapter;context.render();const [a,b]=context.data.pages[0].modules;
+ const previous=(globalThis as any).wx;(globalThis as any).wx={hideKeyboard(){}};
+ try {
+  context.beginMerge({currentTarget:{dataset:{id:a.id,block:a.blockId}}});
+  context.select({currentTarget:{dataset:{id:b.id,block:b.blockId}}});
+  context.select({currentTarget:{dataset:{id:b.id,block:b.blockId}}});
+  assert.equal(context.data.mergeMenu,'');assert.deepEqual(context.data.mergeIds,[a.blockId]);
+  context.clear();assert.deepEqual(context.data.mergeIds,[]);
+  context.beginMerge({currentTarget:{dataset:{id:a.id,block:a.blockId}}});
+  events.length=0;
+  definition.observers['chapter, paths, width, audioAtTop'].call(context,{...chapter,id:'chapter-new'}, {},360);
+  assert.equal(events.length,0,'chapter observer must not recursively notify its updating parent');
+  assert.deepEqual(context.data.mergeIds,[]);assert.equal(events.filter(e=>e.name==='change').length,0);
+  assert.deepEqual(chapter.content.map(b=>b.text),['甲','乙']);
+ } finally {(globalThis as any).wx=previous;}
 });

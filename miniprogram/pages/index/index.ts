@@ -1,4 +1,5 @@
 import { loadAccountActivity, type AccountActivity } from '../../services/accountActivity';
+import { sharedReadPath, storySharing, type FriendLetter } from '../../services/storySharing';
 import {dailyQuestionAvailable, dailyQuestionCache, generateDailyQuestion} from "../../services/dailyQuestion";
 import {homeReturnNotice, loadPendingReturns} from "../../services/storyReturnsInbox";
 import {hasAiConsent} from "../../services/aiConsent";
@@ -48,6 +49,7 @@ interface RecentStoryView {
 interface StoryOptionView {
   key: string;
   title: string;
+  displayTitle: string;
   label: string;
   avatarText: string;
   selected: boolean;
@@ -138,14 +140,16 @@ function storyOptionsFor(shelf: ShelfStory[], currentTitle: string): StoryOption
   const options = shelf.map((story) => ({
     key: story.key,
     title: story.title,
+    displayTitle: story.bookTitle || story.title,
     label: shelfStoryLabel(story),
-    avatarText: Array.from(story.title)[0] ?? "故",
+    avatarText: Array.from(story.bookTitle || story.title)[0] ?? "故",
     selected: story.title === currentTitle,
   }));
   if (currentTitle && !options.some((option) => option.selected)) {
     options.unshift({
       key: `new:${currentTitle}`,
       title: currentTitle,
+      displayTitle: currentTitle,
       label: "还没开始聊",
       avatarText: Array.from(currentTitle)[0] ?? "故",
       selected: true,
@@ -343,12 +347,28 @@ Page({
     hasRecommendedQuestion: false,
     returnNotice: "",
     returnNoticeChapterId: "",
+    friendLetters: [] as FriendLetter[],
     sharedArticles: [] as AccountActivity[], sharesError: '',
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
   },
 
   sharesSequence: 0,
+  friendLettersSequence: 0,
+  async refreshFriendLetters() {
+    const sequence = ++this.friendLettersSequence;
+    this.setData({ friendLetters: [] });
+    try {
+      const letters = await storySharing.friendLetters();
+      if (sequence === this.friendLettersSequence) this.setData({ friendLetters: letters });
+    } catch (error) {
+      if (sequence === this.friendLettersSequence) logLoadError("friend-letters", error);
+    }
+  },
+  openFriendLetter(event: { currentTarget: { dataset: { id: string } } }) {
+    const letter = this.data.friendLetters.find(item => item.id === event.currentTarget.dataset.id);
+    if (letter) wx.navigateTo({ url: sharedReadPath(letter.familyId, letter.storyId, letter.chapterId) });
+  },
   async refreshShares() {
     const sequence = ++this.sharesSequence;
     try { const events = await loadAccountActivity(); if (sequence === this.sharesSequence) this.setData({ sharedArticles: events.slice(0, 3), sharesError: '' }); }
@@ -358,12 +378,17 @@ Page({
     wx.navigateTo({ url: '/pages/room/room?account=' + encodeURIComponent(event.currentTarget.dataset.account) });
   },
   onShow() {
+    void this.refreshFriendLetters();
     void this.refreshShares();
     this.setData({ bookOpening: false });
     void this.refresh().catch(() => undefined);
   },
 
-  onHide() { this.sharesSequence++; this.dailyRequestId += 1; },
+  onHide() {
+    this.friendLettersSequence++;
+    this.sharesSequence++;
+    this.dailyRequestId += 1;
+  },
 
   async refresh(state?: FamilyRoomState) {
     this.dailyRequestId += 1;
@@ -450,7 +475,7 @@ Page({
       bookSlides,
       storyOptions: storyOptionsFor(shelf, currentStoryTitle),
       currentStoryTitle,
-      currentStoryLabel: activeBook?.storyTitle || "先随便聊聊",
+      currentStoryLabel: activeBook?.title || "先随便聊聊",
       // 这个故事还没有记忆可接着问时，用当天的共用题目；聊天页开场用同一个种子，问的是同一题。
       dailyQuestion: dailyQuestionFor(this.recommendationOffset),
       recommendedQuestionLabel: recommendedQuestion?.label ?? "",
@@ -577,7 +602,7 @@ Page({
       storyPeopleCount: slide.peopleCount,
       storyManuscriptMemberId: slide.manuscriptMemberId,
       currentStoryTitle: slide.storyTitle,
-      currentStoryLabel: slide.storyTitle || "先随便聊聊",
+      currentStoryLabel: slide.title || "先随便聊聊",
       storyOptions: this.data.storyOptions.map(option => ({ ...option, selected: option.key === slide.key })),
       dailyQuestion: dailyQuestionFor(this.recommendationOffset),
       recommendedQuestionLabel: recommended?.label ?? "",
@@ -734,8 +759,8 @@ Page({
     const requestId = ++this.dailyRequestId;
     this.setData({dailyLoading:true, dailyStatus:""});
     try {
-      const question = await dailyQuestionCache.get(scope, version, sharedQuestionSeed(), manual, previous =>
-        generateDailyQuestion(story ? {storyId:story.id} : {memoryId}, previous, manual));
+      const question = await dailyQuestionCache.get(scope, version, sharedQuestionSeed(), manual, (previous,topics) =>
+        generateDailyQuestion(story ? {storyId:story.id} : {memoryId}, previous, manual,topics));
       if (requestId !== this.dailyRequestId) return;
       this.setData({dailyAi:true, hasRecommendedQuestion:true, recommendedQuestion:question.text,
         recommendedSourceId:question.sourceId, recommendedDimension:question.dimension,

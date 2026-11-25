@@ -89,7 +89,7 @@ test('clone voice provider identity and generation are snapshotted only on the p
 
 test('capabilities fail closed without verified pricing and never expose secrets',()=>{
   assert.deepEqual(core.publicCapabilities({ttsEnabled:true,tencentSecretId:'secret'}),{
-    apiVersion:1,provider:'tencent-cloud',voiceClone:{enabled:false,reason:'not_verified'},voiceEnrollment:{enabled:false,reason:'not_verified'},tts:{enabled:false,reason:'pricing_not_configured'},timestamps:{enabled:false,reason:'not_verified'},mixing:{enabled:false,reason:'not_verified'},video:{enabled:false,reason:'not_verified'},submission:{enabled:false,reason:'implementation_not_ready'},pricingVersion:null,
+    apiVersion:1,fullArticleAudio:true,provider:'tencent-cloud',voiceClone:{enabled:false,reason:'not_verified'},voiceEnrollment:{enabled:false,reason:'not_verified'},tts:{enabled:false,reason:'pricing_not_configured'},timestamps:{enabled:false,reason:'not_verified'},mixing:{enabled:false,reason:'not_verified'},video:{enabled:false,reason:'not_verified'},submission:{enabled:false,reason:'implementation_not_ready'},pricingVersion:null,
   });
 });
 
@@ -111,4 +111,33 @@ test('official TTS opens automatically only inside a credentialed Tencent runtim
   assert.deepEqual(config.officialVoices.map(item=>item.id),['101001','101002']);
   assert.equal(JSON.stringify(config).includes('temporary-'),false);
   assert.equal(runtimeCapabilityConfig({TENCENTCLOUD_SECRETID:'temporary-id',TENCENTCLOUD_SECRETKEY:'temporary-key',STORY_AUDIO_TTS_ENABLED:'false'}).submissionEnabled,false);
+});
+
+
+test('selected block narration reads only that exact saved text and rejects restricted sources',()=>{
+ const blockId='block-'+'a'.repeat(64);
+ const revision={id:'revision-test',storyId:'story-test',draft:{title:'Book',provenanceVersion:1,chapters:[{id:'chapter-test',title:'Title',content:[{blockId,text:'Exact original.\nSecond line.',sourceIds:[]},{blockId:'block-'+'b'.repeat(64),text:'Do not read me'}]}]}};
+ const input={familyId:'family-test',story:{id:'story-test'},revision,chapterId:'chapter-test',blockId};
+ assert.equal(core.sourceSnapshot(input).text,'Exact original.\nSecond line.');
+ assert.equal(core.sourceSnapshot(input).blocks.length,1);
+ revision.draft.chapters[0].content[0].sourceIds=['source-locked'];
+ assert.throws(()=>core.sourceSnapshot(input),{code:'STORY_PROTOCOL_REQUIRED'});
+});
+
+test('full article audio includes every text block in order and preserves paragraph breaks',()=>{
+ const draft=structuredClone(revision);draft.draft.provenanceVersion=1;
+ draft.draft.chapters[0].content.forEach((b,i)=>{b.blockId='block-'+String(i).repeat(64);});
+ const input={familyId,story:{id:storyId},revision:draft,chapterId,blockId:draft.draft.chapters[0].content[0].blockId,scope:'chapter'};
+ const result=core.sourceSnapshot(input);
+ assert.equal(result.text,'第一句。\n\n第二句！\n第三段。');assert.equal(result.blocks.length,2);
+ assert.equal(result.scope,'chapter');
+ draft.draft.chapters[0].content[2].sourceIds=['restricted-source'];
+ assert.throws(()=>core.sourceSnapshot(input),{code:'STORY_PROTOCOL_REQUIRED'});
+});
+test('full article scope is validated and participates in request fingerprint',()=>{
+ const input={requestId:'audio-full-1',storyId,revisionId,chapterId,blockId:'block-'+'a'.repeat(64),voice:{kind:'official',id:'voice-one'}};
+ const single=core.normalizeCreateInput(input),full=core.normalizeCreateInput({...input,scope:'chapter'});
+ assert.equal(full.scope,'chapter');assert.notEqual(core.digest(single),core.digest(full));
+ assert.throws(()=>core.normalizeCreateInput({...input,scope:'everything'}),{code:'INVALID_INPUT'});
+ assert.throws(()=>core.normalizeCreateInput({...input,scope:'chapter',blockId:undefined}),{code:'INVALID_INPUT'});
 });

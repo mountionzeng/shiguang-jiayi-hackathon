@@ -29,6 +29,18 @@ test('prepared invitation keeps moderation, account scope and transactional vers
   await assert.rejects(createStoryService(f.repo,options)(context,{...input,inviteeName:'Changed'}),{code:'VERSION_CONFLICT'});
   assert.equal(count(),1);
 });
+test('preparing the same whole-book invitation again replaces the unaccepted card',async()=>{
+  const f=await setup();
+  const {descriptor}=await previewBookExport(f.repo,f.owner,f.input,{approve});
+  const service=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,invitationsEnabled:true,copyReceiveEnabled:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner'],approveShareCard:approve});
+  const input={action:'invitePrepare',selection:{...f.input,descriptorId:descriptor.id},expectedAccountScope:JSON.stringify(['owner','family_owner']),inviteeName:'Test'};
+  const ctx={APPID:'wx-original',OPENID:'owner'};
+  const first=await service(ctx,input), second=await service(ctx,input);
+  assert.notEqual(first.token,second.token);
+  assert.equal(f.tables.get('story_invitations:'+first.invitationId).status,'revoked');
+  assert.equal(f.tables.get('story_invitations:'+second.invitationId).status,'pending');
+  assert.equal(second.descriptorId,descriptor.id);
+});
 async function setup(text = '原文🌿\n\n完整正文') {
   const f = fixture(); f.account('owner'); f.account('reader');
   const identity = OPENID => resolveStoryIdentity(f.repo, { APPID: 'wx-original', OPENID }, { bootstrapAppId: 'wx-original' });
@@ -246,4 +258,13 @@ test('memory export rebuilds the descriptor from the saved memory source and rej
   assert.equal(servicePreview.descriptor.targetTextImageCount, 3);
   f.tables.get('memories:family_owner_memory-one').aiRevisions[0].text = '后来修改的记忆。';
   await assert.rejects(previewBookExport(f.repo, owner, input, { approve }), { code:'VERSION_CONFLICT' });
+});
+
+test('image export reuses the post-moderation material and still reloads after signing',async()=>{
+  const f=await setup();
+  const {descriptor}=await previewBookExport(f.repo,f.owner,f.input,{approve});
+  const transaction=f.repo.transaction;let storyReads=0;
+  f.repo.transaction=fn=>transaction(tx=>fn({...tx,get:async(table,id)=>{if(table==='stories')storyReads++;return tx.get(table,id);}}));
+  await exportBookImages(f.repo,f.owner,{...f.input,descriptorId:descriptor.id},{approve});
+  assert.equal(storyReads,3,'before moderation, after moderation, after external signing');
 });

@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {saveArticle} from '../miniprogram/services/articleService';
+
+test('cloud error envelopes preserve the conflict code needed for automatic recovery',async()=>{
+ (globalThis as any).wx={cloud:{callFunction:async()=>({result:{error:'STORY_BOOK_ERROR',code:'VERSION_CONFLICT',message:'文章已在别处修改'}})}};
+ await assert.rejects(saveArticle({chapter:{id:'chapter-a',title:'a',content:[],layout:{}},requestId:'request-test'} as any),{code:'VERSION_CONFLICT'});
+});
+import {articleChapter} from '../miniprogram/services/articleModules';
+
+test('article save sends stable source IDs alongside text and refuses unconfirmed saves',async context=>{
+ const prior=Object.getOwnPropertyDescriptor(globalThis,'wx');
+ context.after(()=>{if(prior)Object.defineProperty(globalThis,'wx',prior);else delete (globalThis as any).wx;});
+ let payload:any;
+ Object.defineProperty(globalThis,'wx',{configurable:true,value:{cloud:{callFunction:async({data}:any)=>{payload=data;return {result:{revisionId:'revision-next',version:2}};}}}});
+ const chapter=articleChapter({id:'chapter-one',title:'合写的文章',memoryIds:['memory-one','memory-two','memory-one'],content:[{text:'正文'}]});
+ const request={requestId:'request-reuse-001',storyId:'story-one',revisionId:'revision-before',expectedVersion:1,chapter,sourceMemoryIds:chapter.memoryIds};
+ await saveArticle(request);
+ assert.deepEqual(payload.chapter.memoryIds,['memory-one','memory-two']);assert.equal(payload.action,'articleSave');assert.equal(payload.chapter.content[0].text,'正文');
+ assert.deepEqual(chapter.memoryIds,['memory-one','memory-two','memory-one']);
+ const {sourceMemoryIds,...oldPending}=request;await saveArticle(oldPending);
+ assert.ok(!('memoryIds' in payload.chapter),'a persisted pre-upgrade request keeps its original retry fingerprint');
+ assert.ok(!('sourceMemoryIds' in payload));
+ assert.equal(JSON.stringify(payload),JSON.stringify({...oldPending,action:'articleSave',chapter:{
+  id:chapter.id,title:chapter.title,content:chapter.content.map(block=>({blockId:block.blockId,text:block.text})),layout:chapter.layout,packageAssets:{},
+ }}),'legacy payload property order also matters to the server request hash');
+ wx.cloud.callFunction=(async()=>({result:{error:'INVALID_INPUT',message:'云端暂不支持此保存格式'}})) as any;
+ await assert.rejects(saveArticle(request),/云端暂不支持/);
+});
+
+
+test('merge saves block ancestry but never sends client source permissions',async context=>{
+ const previous=(globalThis as any).wx;context.after(()=>{(globalThis as any).wx=previous;});let sent:any;
+ (globalThis as any).wx={cloud:{callFunction:async({data}:any)=>{sent=data;return {result:{revisionId:'revision-next',version:2}};}}};
+ const chapter=articleChapter({id:'chapter-merge',title:'',memoryIds:[],content:[{text:'合并正文',sourceIds:['private-source']}]});
+ chapter.content[0].mergeSourceBlockIds=[chapter.content[0].blockId];
+ await saveArticle({chapter,requestId:'request-merge-test',storyId:'story-test',revisionId:'revision-old',expectedVersion:1});
+ assert.deepEqual(sent.chapter.content[0].mergeSourceBlockIds,chapter.content[0].mergeSourceBlockIds);
+ assert.ok(!('sourceIds' in sent.chapter.content[0]));
+});

@@ -14,10 +14,14 @@
     "pages/room/room",
     "pages/review/review",
     "pages/book/book",
-    "pages/story-images/story-images",
     "pages/story-cover/story-cover"
   ],
   "subPackages": [
+    {
+      "root": "pages/story-images",
+      "name": "story-images",
+      "pages": ["story-images"]
+    },
     {
       "root": "packages/story-sharing",
       "name": "story-sharing",
@@ -44,6 +48,13 @@
       "name": "web-login",
       "pages": [
         "pages/confirm/index"
+      ]
+    },
+    {
+      "root": "packages/web-mailbox",
+      "name": "web-mailbox",
+      "pages": [
+        "pages/index/index"
       ]
     }
   ],

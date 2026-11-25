@@ -1,0 +1,26 @@
+<view class="page">
+ <view wx:if="{{error}}" class="error">{{error}}</view>
+ <view wx:if="{{busy}}" class="hint">正在读取…</view>
+ <view wx:if="{{preview}}">
+  <view class="title">{{preview.title}}</view>
+  <view class="hint">先将这个网页账号关联到你的小程序接收身份，再保存这份内容。两个账号的原稿和算力不变。</view>
+  <button bindtap="confirm" disabled="{{busy}}">接收到我的小程序</button>
+ </view>
+ <block wx:elif="{{document}}">
+  <view class="title">{{document.title}}</view>
+  <view class="hint">{{document.mine ? '本次接收是独立副本，后续新版需要从网页再次发送。' : '朋友分享的故事'}}</view>
+  <view wx:for="{{document.chapters}}" wx:key="index" class="chapter"><view class="chapter-title">{{item.title}}</view><text user-select="true">{{item.text}}</text></view>
+  <image wx:for="{{document.images}}" wx:key="*this" src="{{item}}" mode="widthFix" class="picture" />
+  <view wx:for="{{document.media}}" wx:key="url" class="media"><view>{{item.label}}</view><video wx:if="{{item.kind === 'video'}}" src="{{item.url}}" controls="true" class="video" /><audio wx:else src="{{item.url}}" name="{{item.label}}" controls="true" /></view>
+  <block wx:if="{{document.mine}}">
+   <button wx:if="{{!shareToken}}" bindtap="prepareShare" disabled="{{busy}}">转给微信朋友</button>
+   <button wx:else open-type="share">选择微信朋友</button>
+   <button wx:if="{{document.shared}}" bindtap="stopSharing" disabled="{{busy}}" class="secondary">停止这份故事的分享</button>
+  </block>
+ </block>
+ <block wx:else>
+  <view wx:for="{{stories}}" wx:key="id" data-id="{{item.id}}" bindtap="open" class="story" role="button">{{item.title}}</view>
+ </block>
+ <view wx:if="{{!preview && !document && !stories.length && !busy}}" class="hint">从网页邮箱选择内容，选择“微信小程序”，再用本人的微信扫码接收。</view>
+ <button wx:if="{{!busy}}" bindtap="refresh" class="secondary">重新读取</button>
+</view>

@@ -34,7 +34,7 @@ async function setup(){
   return {...f,reader,grantId,files,copies,storage,input,operation};
 }
 test('copied photos are private independent objects and remain readable after source deletion',async()=>{
-  const f=await setup();await receiveMediaCopy(f.repo,f.reader,f.input,f.storage);
+  const f=await setup();await receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true});
   const story=f.tables.get('stories:family_reader_story-copy'),draft=f.tables.get('biography_drafts:family_reader_'+story.currentRevisionId).revision.draft;
   assert.equal(draft.chapters[0].content.length,3);assert.notEqual(draft.chapters[0].content[1].photoId,'photo-one');
   for(const [key] of [...f.tables])if(key.startsWith('photos:family_owner') || key.startsWith('stories:family_owner') || key.startsWith('biography_drafts:family_owner') || key.startsWith('story_grants:'))f.tables.delete(key);
@@ -42,11 +42,11 @@ test('copied photos are private independent objects and remain readable after so
   const request={familyId:'family_reader',storyId:'story-copy',chapterId:draft.chapters[0].id,photoId:draft.chapters[0].content[1].photoId,purpose:'view'};
   const result=await readStoryMedia(f.repo,f.reader,request,async fileID=>{assert.equal(f.files.has(fileID),true);return 'https://example.com/private';});
   assert.equal(result.url,'https://example.com/private');
-  assert.equal((await receiveMediaCopy(f.repo,f.reader,f.input,f.storage)).alreadyReceived,true);assert.equal(f.copies.length,2);
+  assert.equal((await receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true})).alreadyReceived,true);assert.equal(f.copies.length,2);
   await assert.rejects(readStoryMedia(f.repo,f.reader,{...request,purpose:'export'},async()=>{throw new Error('must not sign');}));
 });
 test('public copy dispatcher detects photos and completes independent media retention',async()=>{
-  const f=await setup(),service=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,copyStorage:f.storage,
+  const f=await setup(),service=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,copyStorage:f.storage,
     bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner','family_reader']});
   const result=await service({APPID:'wx-original',OPENID:'reader'},{action:'copyReceive',...f.input});
   assert.equal(result.storyId,'story-copy');assert.equal(f.copies.length,2);
@@ -58,15 +58,15 @@ test('public copy dispatcher detects photos and completes independent media rete
 test('storage failure leaves no half story and retry reuses already recorded copies',async()=>{
   const f=await setup(),copy=f.storage.copy;let fail=true;
   f.storage.copy=async(source,dest)=>{if(fail && source.includes('photo-two'))throw new Error('offline');return copy(source,dest);};
-  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage),/offline/);
+  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true}),/offline/);
   assert.equal(f.tables.has('stories:family_reader_story-copy'),false);assert.equal(f.operation().status,'pending');
-  fail=false;await receiveMediaCopy(f.repo,f.reader,f.input,f.storage);
+  fail=false;await receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true});
   assert.equal(f.copies.filter(([id])=>id.includes('photo-one')).length,1);assert.equal(f.operation().status,'complete');
 });
 test('revocation during file copy prevents activation; explicit cleanup removes only operation files',async()=>{
   const f=await setup(),copy=f.storage.copy;
   f.storage.copy=async(source,dest)=>{const result=await copy(source,dest);f.tables.get('story_grants:'+f.grantId).status='revoked';return result;};
-  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage),{code:'STORY_FORBIDDEN'});
+  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true}),{code:'STORY_FORBIDDEN'});
   assert.equal(f.tables.has('stories:family_reader_story-copy'),false);
   await cleanupMediaCopy(f.repo,f.reader,f.operation().id,f.storage);
   assert.equal([...f.files.keys()].some(id=>id.includes('/story-sharing/')),false);
@@ -77,11 +77,11 @@ test('lease prevents concurrent workers and stale workers cannot activate after 
   const f=await setup(),copy=f.storage.copy;let unblock,started;const waiting=new Promise(resolve=>{started=resolve;});
   let first=true,nowMs=1000;
   f.storage.copy=async(source,dest)=>{if(first){first=false;started();await new Promise(resolve=>{unblock=resolve;});}return copy(source,dest);};
-  const stale=receiveMediaCopy(f.repo,f.reader,f.input,f.storage,{nowMs:()=>nowMs});
+  const stale=receiveMediaCopy(f.repo,f.reader,f.input,f.storage,{approveText:async()=>true,nowMs:()=>nowMs});
   await waiting;
-  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage,{nowMs:()=>nowMs}),{code:'STORY_COPY_BUSY'});
+  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage,{approveText:async()=>true,nowMs:()=>nowMs}),{code:'STORY_COPY_BUSY'});
   nowMs+=180000;
-  await receiveMediaCopy(f.repo,f.reader,f.input,f.storage,{nowMs:()=>nowMs});
+  await receiveMediaCopy(f.repo,f.reader,f.input,f.storage,{approveText:async()=>true,nowMs:()=>nowMs});
   unblock();await assert.rejects(stale,{code:'STORY_COPY_BUSY'});
   const active=[...f.tables].filter(([key])=>key.startsWith('story_copy_assets:')).map(([,asset])=>asset.fileID);
   await cleanupMediaCopy(f.repo,f.reader,f.operation().id,f.storage);
@@ -93,38 +93,97 @@ test('source photo change, deletion or failed verification prevents final public
     const f=await setup(),copy=f.storage.copy;
     if(mode==='verify')f.storage.verify=async()=>{throw new Error('lost copied object');};
     else f.storage.copy=async(source,dest)=>{const result=await copy(source,dest);if(mode==='delete')f.tables.delete('photos:family_owner__photo-one');else f.tables.get('photos:family_owner__photo-one').moderation={ok:false,suggest:'review'};return result;};
-    await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage));assert.equal(f.tables.has('stories:family_reader_story-copy'),false);
+    await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true}));assert.equal(f.tables.has('stories:family_reader_story-copy'),false);
   }
 });
 test('unreviewed photos, guessed source files and unsupported backdrops cause no storage calls',async()=>{
   for(const mutate of [f=>{f.tables.get('photos:family_owner__photo-one').moderation.ok=false;},f=>{f.tables.get('photos:family_owner__photo-one').displayFileID='cloud://env.bucket/user-photos/family_other/photo-one/display.jpg';},f=>{f.tables.get('biography_drafts:family_owner_revision-a').revision.draft.chapters[0].backdropImageId='family_owner_img_req-example12';}]){
-    const f=await setup();mutate(f);await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage));assert.equal(f.copies.length,0);
+    const f=await setup();mutate(f);await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true}));assert.equal(f.copies.length,0);
   }
 });
 test('lost upload acknowledgement leaves a durable candidate that cancellation can repeatedly clean',async()=>{
   const f=await setup(),copy=f.storage.copy;f.storage.copy=async(source,dest)=>{await copy(source,dest);throw new Error('ack lost');};
-  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage),/ack lost/);
+  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true}),/ack lost/);
   const id=f.operation().id;await cleanupMediaCopy(f.repo,f.reader,id,f.storage);
   assert.equal([...f.files.keys()].some(id=>id.includes('/story-sharing/')),false);
   // A delayed provider write may arrive after cleanup; the tombstone preserves
   // candidate paths so a subsequent sweep removes it without touching originals.
   const late=f.operation().candidates[0];f.files.set(late.fileID,'late bytes');
   await cleanupMediaCopy(f.repo,f.reader,id,f.storage);assert.equal(f.files.has(late.fileID),false);
-  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage));
+  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true}));
 });
 test('late database failure leaves only retryable private files, never active assets or a half manuscript',async()=>{
   const f=await setup(),transaction=f.repo.transaction;
   f.repo.transaction=fn=>transaction(tx=>fn({...tx,set:async(table,id,value)=>{if(table==='story_copy_requests')throw new Error('commit unavailable');return tx.set(table,id,value);}}));
-  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage),/commit unavailable/);
+  await assert.rejects(receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true}),/commit unavailable/);
   assert.equal(f.operation().status,'pending');assert.equal(f.tables.has('stories:family_reader_story-copy'),false);
   assert.equal([...f.tables.keys()].some(key=>key.startsWith('story_copy_assets:')),false);
-  f.repo.transaction=transaction;await receiveMediaCopy(f.repo,f.reader,f.input,f.storage);assert.equal(f.copies.length,2);
+  f.repo.transaction=transaction;await receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true});assert.equal(f.copies.length,2);
 });
 test('copied asset access is rechecked during signing and is unavailable through old photo records',async()=>{
-  const f=await setup();await receiveMediaCopy(f.repo,f.reader,f.input,f.storage);
+  const f=await setup();await receiveMediaCopy(f.repo,f.reader,f.input,f.storage, {approveText:async()=>true});
   const story=f.tables.get('stories:family_reader_story-copy'),draft=f.tables.get('biography_drafts:family_reader_'+story.currentRevisionId).revision.draft;
   const photoId=draft.chapters[0].content[1].photoId,key='story_copy_assets:family_reader__'+photoId;
   assert.equal(f.tables.has('photos:family_reader__'+photoId),false);
   const request={familyId:'family_reader',storyId:'story-copy',chapterId:draft.chapters[0].id,photoId,purpose:'view'};
   await assert.rejects(readStoryMedia(f.repo,f.reader,request,async()=>{f.tables.get(key).status='disabled';return 'https://example.com/private';}),{code:'STORY_FORBIDDEN'});
+});
+
+
+test('whole-story receive retains the cover, ordered images and only linked memories after reopening',async()=>{
+  const f=await setup();
+  const story=f.tables.get('stories:family_owner_story-a');
+  story.coverImageId='family_owner_img_req-cover0001';
+  const fileID='cloud://env.bucket/story-images/family_owner/story-a/cover.png';
+  f.tables.set('story_images:'+story.coverImageId,{familyId:'family_owner',storyId:'story-a',purpose:'cover',moderation:'pass',fileID});
+  f.files.set(fileID,'cover-image');
+  const draft=f.tables.get('biography_drafts:family_owner_revision-a').revision.draft;
+  draft.chapters[0].memoryIds=['memory-one','memory-two'];story.memoryIds=['memory-one','memory-two'];
+  f.tables.set('memories:family_owner_memory-two',{id:'memory-two',familyId:'family_owner',reviewStatus:'confirmed',text:'第二段相关记忆',photoIds:[]});
+  f.tables.set('memories:family_owner_memory-one',{id:'memory-one',familyId:'family_owner',scope:'personal',reviewStatus:'confirmed',text:'相关记忆原文',title:'记忆标题',photoIds:['photo-two']});
+  f.tables.set('memories:family_owner_private',{id:'private',familyId:'family_owner',reviewStatus:'confirmed',text:'不要传的记忆',photoIds:[]});
+  const service=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,copyStorage:f.storage,
+    bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner','family_reader'],signMedia:async file=>'https://example.com/'+encodeURIComponent(file)});
+  const read=await service({APPID:'wx-original',OPENID:'reader'},{action:'sharedRead',familyId:'family_owner',storyId:'story-a'});
+  assert.ok(read.coverUrl.includes('cover.png'));
+  assert.deepEqual(read.chapters[0].content,[{text:'我们的夏天'},{photoId:'photo-one'},{photoId:'photo-two'}]);
+  assert.deepEqual(read.memories.map(m=>m.id),['memory-one','memory-two']);assert.equal(read.memories[0].text,'相关记忆原文');
+  assert.ok(read.media['photo-two']);assert.ok(!JSON.stringify(read).includes('不要传'));
+  const result=await service({APPID:'wx-original',OPENID:'reader'},{action:'copyReceive',...f.input});
+  const received=f.tables.get('stories:family_reader_'+result.storyId);
+  const saved=f.tables.get('biography_drafts:family_reader_'+received.currentRevisionId).revision.draft;
+  const chapter=saved.chapters[0];
+  const cover=chapter.packageAssets[chapter.packageCoverAssetId].photoId;
+  assert.match(cover,/^photo-copy-/);
+  assert.equal(chapter.content[0].text,'我们的夏天');
+  assert.equal(chapter.memoryIds.length,2);
+  const memory=f.tables.get('memories:family_reader_'+chapter.memoryIds[0]);
+  assert.equal(memory.text,'相关记忆原文');
+  assert.equal(memory.photoIds[0],chapter.content[2].photoId);
+  assert.ok(received.memoryIds.includes(memory.id));
+  const copies=f.copies.length;
+  await service({APPID:'wx-original',OPENID:'reader'},{action:'copyReceive',...f.input});
+  assert.equal(f.copies.length,copies);
+  for(const [key] of f.tables)if(key.includes(':family_owner'))f.tables.delete(key);
+  const urls=await service({APPID:'wx-original',OPENID:'reader'},{action:'copyMediaRead',photoIds:[cover,...memory.photoIds]});
+  assert.ok(urls.urls[cover]);assert.ok(urls.urls[memory.photoIds[0]]);
+  await assert.rejects(service({APPID:'wx-original',OPENID:'owner'},{action:'copyMediaRead',photoIds:[cover]}));
+});
+
+test('shared image URLs are not released when access is revoked during signing',async()=>{
+  const f=await setup();
+  const service=createStoryService(f.repo,{approveChapterText:async()=>true,accessEnabled:true,rulesReady:true,copyReceiveEnabled:true,
+    bootstrapAppId:'wx-original',sharedReadFamilyIds:['family_owner','family_reader'],signMedia:async()=>{
+      f.tables.get('story_grants:'+f.grantId).status='revoked';return 'https://example.com/photo';}});
+  await assert.rejects(service({APPID:'wx-original',OPENID:'reader'},{action:'sharedRead',familyId:'family_owner',storyId:'story-a'}));
+});
+
+test('recipient photo batch rejects a policy revoked while URLs are signed',async()=>{
+  const f=await setup();await receiveMediaCopy(f.repo,f.reader,f.input,f.storage,{approveText:async()=>true});
+  const asset=[...f.tables].find(([key])=>key.startsWith('story_copy_assets:'))[1];
+  const service=createStoryService(f.repo,{bootstrapAppId:'wx-original',signMedia:async()=>{
+    f.tables.get('story_copy_assets:family_reader__'+asset.photoId).status='disabled';
+    return 'https://example.com/private';
+  }});
+  await assert.rejects(service({APPID:'wx-original',OPENID:'reader'},{action:'copyMediaRead',photoIds:[asset.photoId]}),{code:'STORY_FORBIDDEN'});
 });

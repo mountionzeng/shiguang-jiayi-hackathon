@@ -16,7 +16,8 @@ const signFile=async fileID=>{
 const repo=createStoryAudioRepository(db,{signFile});
 const runtime=createCloudAudioRuntime({cloud,db});
 const capabilityConfig=runtime.capabilityConfig||capabilityConfigFromEnv();
-const handlers=createStoryAudioHandlers({repo,capabilityConfig,processOperation:runtime.processOperation});
+const music=require('./music').createMusicService({repo,workerRepo:require('./narrationRepository').createNarrationWorkerRepository({db,command:db.command}),storage:require('./cloudRuntime').createCloudStorage(cloud)});
+const handlers=createStoryAudioHandlers({repo,capabilityConfig,processOperation:op=>op.kind==='music'?music.process(op):runtime.processOperation(op)});
 const voiceHandlers=createVoiceProfileHandlers({repo,capabilityConfig});
 
 async function advanceVoice(ctx,profileId) {
@@ -38,6 +39,7 @@ exports.main=async (event={},context={})=>{
     const ctx=await resolveStoryAudioIdentity(db,openid);
     const action=String(event?.action || '');
     if(action==='capabilities')return handlers.capabilities(ctx);
+    if(action==='createMusic'){const result=await music.create(ctx,event);return {operation:require('./core').publicOperation(result.operation)};}
     if(action==='create')return handlers.create(ctx,event);
     if(action==='status')return handlers.status(ctx,event);
     if(action==='voicePrepare'){

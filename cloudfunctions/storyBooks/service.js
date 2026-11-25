@@ -20,6 +20,7 @@ const { memoryExportSource } = require('./memoryExports');
 const { encodeStateResponse } = require('./stateTransport');
 const { readHistory } = require('./history');
 const { prepareInvitation } = require('./prepareInvitation');
+const { listFriendLetters, publishFriendLetters } = require('./friendLetters');
 
 function accessError(code) {
   return Object.assign(new Error(code === 'STORY_ACCESS_NOT_READY' ? '故事权限服务尚未准备好' : '故事共享尚未开放'), { code });
@@ -35,8 +36,13 @@ async function approveArticleImage(repo, ctx, id, storyId, chapterId, purpose = 
       ['png','jpg','jpeg','webp'].some(ext => image.fileID.endsWith(`/story-images/${ctx.familyId}/${storyId}/${id.slice(9)}.${ext}`)));
   }
   const photo = await repo.get('photos', `${ctx.familyId}__${id}`);
-  return Boolean(photo && photo.familyId === ctx.familyId && photo._openid === ctx.verifiedOpenid && !photo.deletedAt &&
-    !photo.sourcePolicyRequired && photo.sourceIds === undefined && photo.moderation?.ok === true && photo.moderation?.suggest === 'pass');
+  // This gate only saves the owner's private manuscript. Uploaded photos are
+  // checked asynchronously; that result must not discard accompanying text.
+  // Distribution and shared media reads retain their own moderation gates.
+  return Boolean(photo && photo.familyId === ctx.familyId && photo.photoId === id && photo._openid === ctx.verifiedOpenid && !photo.deletedAt &&
+    !photo.sourcePolicyRequired && photo.sourceIds === undefined &&
+    typeof photo.displayFileID === 'string' && photo.displayFileID.startsWith('cloud://') &&
+    photo.displayFileID.endsWith(`/user-photos/${ctx.familyId}/${id}/display.jpg`));
 }
 
 function createStoryService(repo, options = {}) {
@@ -56,6 +62,14 @@ function createStoryService(repo, options = {}) {
       ? {...await measure('state.identity',()=>resolveStoryIdentity(repo, context, { bootstrapAppId: options.bootstrapAppId })),verifiedOpenid:context.OPENID}
       : { familyId: `family_${context.OPENID}`, verifiedOpenid: context.OPENID };
     const action = String(event?.action || '');
+    if (action === 'checkOutgoingText') {
+      if(!accessEnabled)throw accessError('STORY_ACCESS_DISABLED');
+      await assertSpaceOwner(repo,ctx);
+      if(typeof event.text!=='string'||Buffer.byteLength(event.text)>240000)throw Object.assign(new Error('分享内容格式不正确'),{code:'INVALID_INPUT'});
+      if(typeof options.approveChapterText!=='function')throw Object.assign(new Error('分享检查暂时不可用，请稍后重试'),{code:'MODERATION_UNAVAILABLE'});
+      if(await options.approveChapterText(event.text,ctx.verifiedOpenid,'分享故事')!==true)throw Object.assign(new Error('内容未通过分享检查'),{code:'CONTENT_REJECTED'});
+      return {ok:true};
+    }
     if (action === 'capabilities') {
       const inRollout = accessEnabled && await rolledOut(ctx.familyId);
       return { apiVersion: 1, independentStories: true, identityVersion: accessEnabled ? 1 : 0,
@@ -82,25 +96,47 @@ function createStoryService(repo, options = {}) {
       return invitations(ctx, event.action === 'inviteManage' && event.includePeople === true
         ? {...event,familyId:ctx.familyId} : event);
     }
+    if (action === 'copyMediaRead') {
+      await require('./identity').assertSpaceOwner(repo,ctx);
+      if(!Array.isArray(event.photoIds) || event.photoIds.length>100 || event.photoIds.some(id=>!/^photo-copy-[a-f0-9]{64}$/.test(id)))throw accessError('STORY_FORBIDDEN');
+      const readFiles=()=>Promise.all([...new Set(event.photoIds)].map(async id=>{
+        const asset=await repo.get('story_copy_assets',`${ctx.familyId}__${id}`);
+        if(!asset || asset.familyId!==ctx.familyId || asset.photoId!==id || asset.status!=='active' || !asset.sourceIds?.length ||
+          !require('./copyAssets').copiedPath.test(asset.fileID || '') || !await require('./provenance').allowsSources(repo,asset.sourceIds,'view'))throw accessError('STORY_FORBIDDEN');
+        const story=await repo.get('stories',`${ctx.familyId}_${asset.storyId}`);
+        if(!story || story.deletedAt)throw accessError('STORY_FORBIDDEN');
+        return asset;
+      }));
+      const files=await readFiles();
+      const urls={};
+      for(let i=0;i<files.length;i+=4)await Promise.all(files.slice(i,i+4).map(async asset=>{urls[asset.photoId]=await options.signMedia(asset.fileID,300);}));
+      await require('./identity').assertSpaceOwner(repo,ctx);
+      if(JSON.stringify(await readFiles())!==JSON.stringify(files))throw accessError('STORY_FORBIDDEN');
+      return {urls};
+    }
     if (action === 'sharedMedia') {
       if (!accessEnabled || options.sharedMediaEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return readStoryMedia(repo,ctx,event,options.signMedia);
     }
     if (action === 'sharedRead') {
       if (!accessEnabled || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
-      const result = await readAuthorizedStory(repo, ctx, event, {sharedEditEnabled:options.sharedEditEnabled === true,copyReceiveEnabled:options.copyReceiveEnabled === true});
+      const result = await readAuthorizedStory(repo, ctx, event, {approveText:options.approveChapterText,sharedEditEnabled:options.sharedEditEnabled === true,copyReceiveEnabled:options.copyReceiveEnabled === true,signMedia:options.signMedia});
       result.capabilities.requestInvitation = options.invitationsEnabled === true && result.capabilities.requestInvitation;
       return result;
+    }
+    if (action === 'friendLetters') {
+      if (!accessEnabled || !await rolledOut(ctx.familyId)) return { letters: [] };
+      return listFriendLetters(repo, ctx, canaryFamilies, options.approveChapterText);
     }
     if (action === 'copyReceive') {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.sourceFamilyId)) throw accessError('STORY_ACCESS_DISABLED');
       const input={sourceFamilyId:event.sourceFamilyId,sourceStoryId:event.sourceStoryId,sourceRevisionId:event.sourceRevisionId,
         chapterIds:event.chapterIds,requestId:event.requestId,target:event.target};
-      try{return await receiveTextCopy(repo,ctx,input,{now:options.now});}
+      try{return await receiveTextCopy(repo,ctx,input,{now:options.now,approveText:options.approveChapterText});}
       catch(error){
         if(error?.code!=='STORY_COPY_MEDIA_PENDING')throw error;
         if(!options.copyStorage)throw accessError('STORY_ACCESS_NOT_READY');
-        return receiveMediaCopy(repo,ctx,input,options.copyStorage,{nowMs:options.nowMs});
+        return receiveMediaCopy(repo,ctx,input,options.copyStorage,{nowMs:options.nowMs,approveText:options.approveChapterText});
       }
     }
     if (action === 'chapterPackageImport') {
@@ -125,11 +161,13 @@ function createStoryService(repo, options = {}) {
       if (!accessEnabled) throw accessError('STORY_ACCESS_DISABLED');
       return accountActivity(repo,ctx);
     }
+    if (action === 'audioPlayback') return require('./articleAudio').readArticleAudio(repo,ctx,event,options.signMedia);
     if (action === 'articleSave') {
       // Saving one's own article is core writing, independent of sharing rollout.
-      // saveArticle still checks space ownership, sources, moderation and versions.
+      // saveArticle still checks space ownership, sources, images and versions.
       if (!accessEnabled) throw accessError('STORY_ACCESS_DISABLED');
-      return saveArticle(repo,ctx,event,{now:options.now,approveText:options.approveChapterText,
+      return saveArticle(repo,ctx,event,{now:options.now,
+        publishLetters:canaryFamilies.has(ctx.familyId) ? publishFriendLetters : undefined,
         approveImage:(c,id)=>approveArticleImage(repo,c,id,event.storyId,event.chapter?.id),
         approveBackdrop:(c,id)=>id.startsWith(c.familyId+'_img_') && approveArticleImage(repo,c,'photo-ai-'+id.slice(id.lastIndexOf('_img_')+5),event.storyId,event.chapter?.id,'backdrop')});
     }
@@ -148,7 +186,7 @@ function createStoryService(repo, options = {}) {
     if (action === 'copyReturnOwn') {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return sendOwnReturn(repo,ctx,{storyId:event.storyId,revisionId:event.revisionId,expectedVersion:event.expectedVersion,
-        chapterId:event.chapterId,requestId:event.requestId},{now:options.now});
+        chapterId:event.chapterId,requestId:event.requestId},{now:options.now,approveText:options.approveChapterText});
     }
     if (action === 'copyReturns') {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
@@ -166,7 +204,7 @@ function createStoryService(repo, options = {}) {
       if (!accessEnabled || options.sharedEditEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return editAuthorizedChapter(repo,ctx,{familyId:event.familyId,storyId:event.storyId,chapterId:event.chapterId,
         revisionId:event.revisionId,expectedVersion:event.expectedVersion,requestId:event.requestId,title:event.title,textBlocks:event.textBlocks},
-      {approve:options.approveSharedEdit});
+      {approve:options.approveSharedEdit,publishLetters:publishFriendLetters});
     }
     if (action === 'shareExcerpt') {
       if (!accessEnabled || options.excerptSharingEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
@@ -231,7 +269,8 @@ function createStoryService(repo, options = {}) {
       await assertSpaceOwner(tx, ctx);
       return operation(tx);
     }) } : repo;
-    const handlers = createHandlers(guardedRepo, options);
+    const handlers = createHandlers(guardedRepo, { ...options,
+      publishLetters:accessEnabled && action === 'save' && canaryFamilies.has(ctx.familyId) ? publishFriendLetters : undefined });
     let result;
     if (action === 'state') result = await measure('state.load',()=>handlers.state(ctx,{view:event.view}));
     else if (action === 'history' || action === 'revision') result = await readHistory(guardedRepo,ctx,event);
@@ -245,6 +284,12 @@ function createStoryService(repo, options = {}) {
     else {
       // Response shape is not part of a write's idempotency fingerprint.
       const {returnState, ...command} = event;
+      if (action === 'create' && command.revision) {
+        const draft=command.revision.draft;
+        const text=[command.title,draft?.title,...(draft?.chapters || []).flatMap(c=>[c.title,...(c.content || []).map(b=>b.text || '')])].join('\n');
+        if(typeof options.approveChapterText!=='function')throw Object.assign(new Error('内容检查暂时不可用'),{code:'MODERATION_UNAVAILABLE'});
+        if(!await options.approveChapterText(text,ctx.verifiedOpenid,'生成故事'))throw Object.assign(new Error('文字未通过内容检查'),{code:'CONTENT_REJECTED'});
+      }
       result = await handlers.command(ctx, command);
       if (action === 'save' && returnState === 'home' && result?.ok === true) {
         try {

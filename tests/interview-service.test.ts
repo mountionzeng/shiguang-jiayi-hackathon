@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { generateInterviewPrompt } from "../miniprogram/services/interviewService";
+import { clearAiConsent } from "../miniprogram/services/aiConsent";
 
 const interviewCloud = require("../cloudfunctions/chatInterview/index.js");
 import {
@@ -34,6 +35,36 @@ function silenceExpectedWarnings(): () => void {
     console.warn = previous;
   };
 }
+
+test("declining AI gives the real reason and a working recovery path without sending words", async context => {
+  let allow = false;
+  let modelCalls = 0;
+  let prompts = 0;
+  const restoreGetApp = installGlobal("getApp", () => ({ globalData: { cloudReady: true, aiReady: true } }));
+  const restoreWx = installGlobal("wx", {
+    showModal: ({ success }: any) => { prompts++; success({ confirm: allow }); },
+    cloud: { callFunction: async ({ name }: any) => {
+      if (name === "chatInterview") modelCalls++;
+      return { result: { dimension: "event", text: "笔记本的第一页画了什么？" } };
+    } },
+  });
+  clearAiConsent();
+  context.after(() => { clearAiConsent(); restoreWx(); restoreGetApp(); });
+  const input = { answer: "【虚构验收】小禾带来绿色笔记本。", askedDimensions: [] };
+  for (let i = 0; i < 2; i++) {
+    const result = await generateInterviewPrompt(input);
+    assert.equal(result.fallbackReason, "consent-declined");
+    assert.match(result.text, /我的.*在线 AI 授权/);
+    assert.doesNotMatch(result.text, /没连上|暂时没能接上/);
+  }
+  assert.equal(modelCalls, 0);
+  assert.equal(prompts, 1, "respect the stored denial instead of nagging on every send");
+  allow = true;
+  clearAiConsent(); // The existing My → online AI permission action resets the decision.
+  const recovered = await generateInterviewPrompt(input);
+  assert.equal(recovered.generationMode, "cloud-ai");
+  assert.equal(modelCalls, 1);
+});
 
 test("cloud interview prompt uses chatInterview when available", async (context) => {
   let requestData: unknown;
@@ -106,7 +137,7 @@ test("coediting interview includes only the displayed memory and disables unrela
   assert.equal(requestData.sourceOnly, true);
 });
 
-test("cloud interview prompt uses an honest local template when cloud fails", async (context) => {
+test("cloud interview failure preserves the words without disguising a template as a follow-up", async (context) => {
   const restoreWarnings = silenceExpectedWarnings();
   const restoreGetApp = installGlobal("getApp", () => ({
     globalData: { cloudReady: true, aiReady: true },
@@ -133,6 +164,8 @@ test("cloud interview prompt uses an honest local template when cloud fails", as
   assert.equal(prompt.generationMode, "local-fallback");
   assert.equal(prompt.fallbackReason, "function-error");
   assert.match(prompt.text, /这句话/);
+  assert.match(prompt.text, /暂时没能接上回答/);
+  assert.doesNotMatch(prompt.text, /[？?]/);
 });
 
 test("cloud-ready preview does not call interview AI before release", async (context) => {
@@ -206,7 +239,8 @@ test("declining one topic does not end the local conversation", async context =>
   const restoreWx = installGlobal("wx", {});
   context.after(() => { restoreWx(); restoreGetApp(); });
   const result = await generateInterviewPrompt({ answer:"我不想聊那个人，想说说我后来怎样决定离开的。", askedDimensions:[] });
-  assert.match(result.text, /[？?]/);
+  assert.match(result.text, /可以继续补充/);
+  assert.doesNotMatch(result.text, /先停在这里/);
 });
 
 test("邀请短笺 AI 只返回可编辑的短标题和短正文", () => {

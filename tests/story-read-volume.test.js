@@ -61,7 +61,7 @@ function measuredReads(f) {
 test('home database reads stay small as memory revision history grows, with archives retained',async t=>{
   const f=fixture();f.account('owner');
   for(let index=0;index<120;index++)f.tables.set('memories:memory-'+index,{
-    familyId:'family_owner',id:'memory-'+index,text:'虚构当前记忆',photoIds:['photo-'+index],
+    familyId:'family_owner',id:'memory-'+index,text:'虚构当前记忆',photoIds:['photo-'+index],materialCaptureId:'capture-'+index,
     aiRevisions:Array.from({length:10},(_,revision)=>({id:revision,text:'虚构旧稿'.repeat(100)})),
   });
   const stored=structuredClone(f.tables),m=measuredReads(f);
@@ -76,6 +76,10 @@ test('home database reads stay small as memory revision history grows, with arch
   assert.deepEqual(f.tables,stored);
   const editor=await createHandlers(f.repo).state({familyId:'family_owner'},{view:'memories'});
   assert.equal(editor.contributions[0].aiRevisions.length,10);
+  for (const state of [home, editor]) {
+    assert.ok(state.contributions.every(memory=>memory.materialCaptureId==='capture-'+memory.id.slice('memory-'.length)),
+      'reopening and continuing a captured memory must retain its original-message session link');
+  }
   t.diagnostic('synthetic memory DB bytes: '+JSON.stringify({before,after}));
 });
 

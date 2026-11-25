@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { storyCommand } from '../miniprogram/services/storyBooks';
+import { createStoryBook, linkStoryMemories, storyCommand } from '../miniprogram/services/storyBooks';
 import { SavedRefreshError } from '../miniprogram/services/serviceFailure';
 const { createHandlers } = require('../cloudfunctions/storyBooks/flow');
 
@@ -20,12 +20,14 @@ function install(t: test.TestContext) {
   const handlers = createHandlers(repo);
   let failRead = false, response: any, failWrite: unknown;
   let writes = 0;
+  const stateViews: unknown[] = [];
   const wxBefore = Object.getOwnPropertyDescriptor(globalThis, 'wx');
   const appBefore = Object.getOwnPropertyDescriptor(globalThis, 'getApp');
   Object.defineProperty(globalThis, 'getApp', {configurable:true,value:()=>({globalData:{cloudReady:true}})});
   Object.defineProperty(globalThis, 'wx', {configurable:true,value:{cloud:{callFunction:async ({name,data}:any)=>{
     if(name==='getOpenId') return {result:{openid:'test'}};
     if(data.action==='state') {
+      stateViews.push(data.view);
       if(failRead) throw {errCode:-501000,errMsg:'response size exceeded 1048576 bytes'};
       return {result:await handlers.state({familyId:'family_test'},data)};
     }
@@ -38,9 +40,18 @@ function install(t: test.TestContext) {
       if(old) Object.defineProperty(globalThis,key,old); else delete (globalThis as any)[key];
     }
   });
-  return {tables, writes:()=>writes, failRead:(value:boolean)=>{failRead=value;}, receipt:(value:any)=>{response=value;}, failWrite:(value:unknown)=>{failWrite=value;}};
+  return {tables, stateViews, writes:()=>writes, failRead:(value:boolean)=>{failRead=value;}, receipt:(value:any)=>{response=value;}, failWrite:(value:unknown)=>{failWrite=value;}};
 }
 const command = {action:'create',storyId:'story-recovery',title:'恢复测试',writingMode:'objective',memoryIds:[],requestId:'create-recovery-0001'};
+
+test('creating an empty book reads its current state without downloading every historical manuscript', async t => {
+  const fixture=install(t);
+  const result=await createStoryBook({title:'虚构新书',writingMode:'objective',memoryIds:[],storyId:command.storyId,requestId:command.requestId});
+  assert.equal(result.story.id, command.storyId);
+  assert.equal(result.story.title, '虚构新书');
+  assert.deepEqual(fixture.stateViews,['home']);
+  assert.equal(fixture.writes(),1);
+});
 
 test('acknowledged write followed by failed read stays saved and same-request retry is idempotent', async t => {
   const fixture=install(t); fixture.failRead(true);
@@ -66,4 +77,14 @@ test('unknown receipts and write timeouts never claim saved; server refusal reta
   const timeout={errCode:-504003};fixture.failWrite(timeout);
   await assert.rejects(storyCommand(command), error=>error===timeout);
   assert.equal(fixture.tables.has('stories:family_test_story-recovery'),false);
+});
+
+test('linking a saved fragment can refresh current stories without historical manuscripts', async t => {
+  const fixture=install(t);
+  const created=await createStoryBook({title:'Fragment test',writingMode:'objective',memoryIds:[],storyId:command.storyId,requestId:command.requestId});
+  fixture.tables.set('memories:family_test_fragment', {familyId:'family_test',frontendContributionId:'fragment',authorMemberId:'owner',scope:'personal',visibility:'private',text:'Fictional paper boat',title:'Boat'});
+  fixture.stateViews.length=0;
+  const state=await linkStoryMemories(created.story,['fragment'],'link-fragment-test',{view:'home'});
+  assert.ok(state.stories?.find(story=>story.id===created.story.id)?.memoryIds.includes('fragment'));
+  assert.deepEqual(fixture.stateViews,['home']);
 });

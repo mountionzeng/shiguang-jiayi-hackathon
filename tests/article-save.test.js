@@ -11,12 +11,12 @@ async function setup(){const f=fixture();f.account('owner');const ctx=await reso
  const chapter=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft.chapters[0];
  return {...f,ctx,chapter,input:{requestId:'request-article-001',storyId:'story-article',revisionId:result.revisionId,expectedVersion:1,chapter:{id:chapter.id,title:chapter.title,content:chapter.content.map(({blockId,text})=>({blockId,text})),layout:chapter.layout,packageAssets:{}}}};}
 const options={approveText:async()=>true,approveImage:async()=>true};
-test('own article saves outside sharing rollout while moderation and cross-account boundaries remain enforced',async()=>{
+test('own article saves outside sharing rollout without text moderation while cross-account boundaries remain enforced',async()=>{
  const {createStoryService}=require('../cloudfunctions/storyBooks/service');
  const f=await setup();
  const config={accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original',sharedReadFamilyIds:[],chapterPackageEnabled:false,approveChapterText:async()=>true};
  const service=createStoryService(f.repo,config),context={APPID:'wx-original',OPENID:'owner'};
- await assert.rejects(createStoryService(f.repo,{...config,approveChapterText:async()=>false})(context,{...f.input,action:'articleSave'}),{code:'CONTENT_REJECTED'});
+ config.approveChapterText=async()=>{throw new Error('private saves must not call moderation');};
  f.account('other');
  await assert.rejects(service({APPID:'wx-original',OPENID:'other'},{...f.input,action:'articleSave'}));
  const result=await service(context,{...f.input,action:'articleSave'});
@@ -33,11 +33,11 @@ test('direct edits, line splits and resize save one retry-safe version retaining
  assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,options),result);
  await assert.rejects(saveArticle(f.repo,f.ctx,{...f.input,requestId:'request-article-002'},options),{code:'VERSION_CONFLICT'});
 });
-test('rejects spoofed sources, missing parents, unapproved photos and moderation failures without writes',async()=>{const f=await setup(),before=structuredClone(f.tables);
+test('rejects spoofed sources, missing parents, unapproved photos without writes',async()=>{const f=await setup(),before=structuredClone(f.tables);
  const spoof=structuredClone(f.input);spoof.chapter.content[0].sourceIds=[];await assert.rejects(saveArticle(f.repo,f.ctx,spoof,options));
  const parent=structuredClone(f.input);parent.chapter.content.push({blockId:bid('b'),parentBlockId:bid('f'),text:'x'});await assert.rejects(saveArticle(f.repo,f.ctx,parent,options));
  const image=structuredClone(f.input);image.chapter.content.push({blockId:bid('b'),photoId:'photo-other'});await assert.rejects(saveArticle(f.repo,f.ctx,image,{...options,approveImage:async()=>false}));
- await assert.rejects(saveArticle(f.repo,f.ctx,f.input,{...options,approveText:async()=>false}),{code:'CONTENT_REJECTED'});assert.deepEqual(f.tables,before);
+ assert.deepEqual(f.tables,before);
 });
 test('activity is owner scoped, groups by trusted account and distinguishes missing comparison',async()=>{const f=await setup();
  for(const [id,senderKey] of [['one','account-a'],['two','account-b']])f.tables.set('account_message_receipts:'+id,{familyId:'family_owner',deliveryId:'delivery-'+id,direction:'received',senderKey,senderName:'同名',createdAt:'2026-10-25',kind:'return',package:{storyTitle:'纸船',lineage:{parentPackageId:'missing'},chapters:[{blocks:[{type:'text',text:'收到文字'}]}],assets:[]}});
@@ -82,4 +82,180 @@ test('saved edit records trusted editor and change summary, ignoring forged clie
  const result=await saveArticle(f.repo,f.ctx,f.input,options);
  const r=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision;
  assert.equal(r.editorName,'小禾');assert.equal(r.editedByPrincipalId,f.ctx.principalId);assert.match(r.changeSummary,/修改 1 段文字/);
+});
+
+function seedArticleMemory(f,id,patch={}){
+ f.tables.set('family_members:family_owner_owner',{familyId:'family_owner',id:'owner',memberId:'owner',role:'owner',relation:'自己'});
+ const memory={familyId:'family_owner',id,authorMemberId:'owner',scope:'personal',text:'【虚构】'+id,reviewStatus:'confirmed',...patch};
+ f.tables.set('memories:family_owner_'+id,memory);return memory;
+}
+test('article save atomically adds reusable sources, preserves originals and earlier articles across retry and reopen',async()=>{
+ const f=await setup();const m1=seedArticleMemory(f,'memory-one'),m2=seedArticleMemory(f,'memory-two');
+ const row=f.tables.get('biography_drafts:family_owner_'+f.input.revisionId);
+ row.revision.draft.chapters.push({id:'chapter-earlier',title:'旧文章',memoryIds:['memory-one'],content:[{text:'原来的文章。'}]});
+ const earlier=structuredClone(row.revision.draft.chapters[1]);
+ f.tables.get('stories:family_owner_story-article').memoryIds=['memory-one'];
+ f.input.chapter.memoryIds=['memory-one','memory-two','memory-one'];
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ const saved=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft;
+ assert.deepEqual(saved.chapters[0].memoryIds,['memory-one','memory-two']);
+ assert.deepEqual(saved.chapters[1],earlier);assert.equal(saved.sourceCount,2);
+ assert.deepEqual(f.tables.get('stories:family_owner_story-article').memoryIds,['memory-one','memory-two']);
+ assert.deepEqual(f.tables.get('memories:family_owner_memory-one'),m1);assert.deepEqual(f.tables.get('memories:family_owner_memory-two'),m2);
+ assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,options),result);
+ const legacy={...f.input,requestId:'request-legacy-001',revisionId:result.revisionId,expectedVersion:result.version,chapter:{...f.input.chapter}};
+ delete legacy.chapter.memoryIds;
+ const edited=await saveArticle(f.repo,f.ctx,legacy,options);
+ assert.deepEqual(f.tables.get('biography_drafts:family_owner_'+edited.revisionId).revision.draft.chapters[0].memoryIds,['memory-one','memory-two'],'old clients preserve associations');
+});
+test('article references may reuse the same memory in another book without moving its first link',async()=>{
+ const f=await setup();seedArticleMemory(f,'memory-shared');
+ f.tables.set('stories:family_owner_story-earlier',{familyId:'family_owner',id:'story-earlier',memoryIds:['memory-shared']});
+ const before=structuredClone(f.tables.get('stories:family_owner_story-earlier'));
+ f.input.chapter.memoryIds=['memory-shared'];await saveArticle(f.repo,f.ctx,f.input,options);
+ assert.deepEqual(f.tables.get('stories:family_owner_story-earlier'),before);
+ assert.deepEqual(f.tables.get('stories:family_owner_story-article').memoryIds,['memory-shared']);
+});
+test('unavailable or foreign sources fail atomically without changing text, source links or revisions',async()=>{
+ for(const patch of [null,{deletedAt:'today'},{familyId:'family_other'},{authorMemberId:'other'},{scope:'family'},{sourcePolicyRequired:true},{sourceIds:['received']}]){
+  const f=await setup();seedArticleMemory(f,'memory-good');if(patch)seedArticleMemory(f,'memory-bad',patch);
+  f.input.chapter.memoryIds=['memory-good','memory-bad'];const before=structuredClone(f.tables);
+  await assert.rejects(saveArticle(f.repo,f.ctx,f.input,options),{code:'STORY_NOT_FOUND'});assert.deepEqual(f.tables,before);
+ }
+});
+
+test('invalid reference lists are rejected and an existing deleted source does not prevent editing the saved article',async()=>{
+ const f=await setup();seedArticleMemory(f,'memory-one');f.input.chapter.memoryIds=['memory-one'];
+ for(const memoryIds of [['../memory'],[''],[3],{},Array(501).fill('memory-one')]){
+  await assert.rejects(saveArticle(f.repo,f.ctx,{...f.input,chapter:{...f.input.chapter,memoryIds}},options),{code:'INVALID_INPUT'});
+ }
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ f.tables.get('memories:family_owner_memory-one').deletedAt='today';
+ const edited=await saveArticle(f.repo,f.ctx,{...f.input,requestId:'request-edited-002',revisionId:result.revisionId,expectedVersion:result.version},options);
+ assert.deepEqual(f.tables.get('biography_drafts:family_owner_'+edited.revisionId).revision.draft.chapters[0].memoryIds,['memory-one']);
+});
+
+test('confirmed article receipt is replayed before moderation so a lost success cannot turn into a rejection',async()=>{
+ const f=await setup();const first=await saveArticle(f.repo,f.ctx,f.input,options);
+ let checks=0;
+ const rejecting={...options,approveText:async()=>{checks++;return false;}};
+ assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,rejecting),first);
+ assert.equal(checks,0);
+ await assert.rejects(saveArticle(f.repo,f.ctx,{...f.input,chapter:{...f.input.chapter,title:'不同内容'}},rejecting),{code:'VERSION_CONFLICT'});
+ const family=f.tables.get('families:family_owner');family.ownerAccountId='account_'+'0'.repeat(24);
+ await assert.rejects(saveArticle(f.repo,f.ctx,f.input,rejecting),{code:'STORY_FORBIDDEN'});
+});
+
+test('private edits save the newest title and text even when external moderation requires review',async()=>{
+ const f=await setup();let checks=0;
+ f.input.chapter.title='解放';f.input.chapter.content[0].text='修改后的完整文章';
+ const saved=await saveArticle(f.repo,f.ctx,f.input,{...options,approveText:async()=>{checks++;throw Object.assign(new Error('review'),{code:'MODERATION_REVIEW'});}});
+ const story=f.tables.get('stories:family_owner_story-article');
+ const reopened=f.tables.get('biography_drafts:family_owner_'+story.currentRevisionId).revision;
+ assert.equal(story.currentRevisionId,saved.revisionId);assert.equal(reopened.draft.chapters[0].title,'解放');
+ assert.equal(reopened.draft.chapters[0].content[0].text,'修改后的完整文章');assert.equal(checks,0);
+ assert.ok(f.tables.get('biography_drafts:family_owner_'+f.input.revisionId));
+});
+
+test('a privately saved revision is readable by its owner but an existing reader grant cannot bypass outgoing checks',async()=>{
+ const {readAuthorizedStory,grantIdFor}=require('../cloudfunctions/storyBooks/access');
+ const f=await setup();f.account('reader');
+ const reader=await resolveStoryIdentity(f.repo,{APPID:'wx-original',OPENID:'reader'},{bootstrapAppId:'wx-original'});
+ f.input.chapter.title='新标题';f.input.chapter.content[0].text='最新正文';
+ const saved=await saveArticle(f.repo,f.ctx,f.input,options);
+ const input={familyId:f.ctx.familyId,storyId:f.input.storyId};
+ f.tables.set('story_grants:'+grantIdFor(f.ctx.familyId,f.input.storyId,reader.principalId),{familyId:f.ctx.familyId,storyId:f.input.storyId,principalId:reader.principalId,ownerPrincipalId:f.ctx.principalId,status:'active',version:1,scope:{type:'story'},permissions:{read:true}});
+ assert.equal((await readAuthorizedStory(f.repo,f.ctx,input)).revisionId,saved.revisionId);
+ await assert.rejects(readAuthorizedStory(f.repo,reader,input),{code:'MODERATION_UNAVAILABLE'});
+ await assert.rejects(readAuthorizedStory(f.repo,reader,input,{approveText:async()=>false}),{code:'CONTENT_REJECTED'});
+ let checked='';const shared=await readAuthorizedStory(f.repo,reader,input,{approveText:async(text)=>{checked=text;return true;}});
+ assert.match(checked,/新标题/);assert.match(checked,/最新正文/);assert.equal(shared.revisionId,saved.revisionId);
+});
+
+
+test('uploaded owner photos preserve private edits before asynchronous moderation completes',async()=>{
+ const {createStoryService}=require('../cloudfunctions/storyBooks/service');
+ const {publicPhoto}=require('../cloudfunctions/photoAccess/core');
+ for(const suggest of ['review','risky','pass']) {
+  const f=await setup(),photoId='photo-private-001';
+  const photo={familyId:'family_owner',photoId,_openid:'owner',displayFileID:`cloud://env/user-photos/family_owner/${photoId}/display.jpg`,moderation:{ok:suggest==='pass',suggest}};
+  f.tables.set(`photos:family_owner__${photoId}`,photo);
+  f.input.chapter.title='她';
+  f.input.chapter.content[0].text='本机修改的正文';
+  f.input.chapter.content.push({blockId:bid('b'),photoId});
+  const service=createStoryService(f.repo,{accessEnabled:true,rulesReady:true,bootstrapAppId:'wx-original'});
+  const result=await service({APPID:'wx-original',OPENID:'owner'},{...f.input,action:'articleSave'});
+  const draft=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft;
+  assert.equal(draft.chapters[0].title,'她');
+  assert.equal(draft.chapters[0].content[0].text,'本机修改的正文');
+  assert.equal(draft.chapters[0].content[1].photoId,photoId);
+  assert.ok(f.tables.get('biography_drafts:family_owner_'+f.input.revisionId));
+  if(suggest!=='pass') assert.equal(publicPhoto(photo,{familyId:'family_owner',photoId,purpose:'view'},'other',[{photoIds:[photoId]}]).status,'forbidden');
+ }
+});
+
+test('private photo saves still reject foreign, missing, deleted and source-bound assets',async()=>{
+ const {approveArticleImage}=require('../cloudfunctions/storyBooks/service');
+ const ctx={familyId:'family_owner',verifiedOpenid:'owner'},id='photo-private-001';
+ const photo={familyId:ctx.familyId,photoId:id,_openid:'owner',displayFileID:`cloud://env/user-photos/family_owner/${id}/display.jpg`,moderation:{ok:false,suggest:'review'}};
+ for(const patch of [{_openid:'other'},{familyId:'other'},{photoId:'photo-other'},{deletedAt:1},{sourcePolicyRequired:true},{sourceIds:[]},{displayFileID:undefined},{displayFileID:'cloud://env/user-photos/other/photo-private-001/display.jpg'}]) {
+  assert.equal(await approveArticleImage({get:async()=>({...photo,...patch})},ctx,id,'story-test','chapter-test'),false,JSON.stringify(patch));
+ }
+ assert.equal(await approveArticleImage({get:async()=>null},ctx,id,'story-test','chapter-test'),false);
+});
+
+test('article save accepts an empty audio list from draft merge and keeps text and receipt stable',async()=>{
+ const f=await setup();f.input.chapter.audioModules=[];
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,options),result);
+ const saved=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft.chapters[0];
+ assert.deepEqual(saved.content,f.chapter.content);
+ assert.deepEqual(saved.audioModules,[]);
+});
+
+
+async function mergeFixture(){
+ const f=await setup(),row=f.tables.get('biography_drafts:family_owner_'+f.input.revisionId);
+ const chapter=row.revision.draft.chapters[0],sourceA=chapter.content[0].sourceIds[0],sourceB='source-'+ 'b'.repeat(64);
+ f.tables.set('story_source_policies:'+sourceB,{...structuredClone(f.tables.get('story_source_policies:'+sourceA)),id:sourceB});
+ chapter.content.push({blockId:bid('b'),text:'第二段',sourceIds:[sourceB]});chapter.layout=layout([bid('a'),bid('b')]);
+ Object.assign(row.revision.draft,require('../cloudfunctions/storyBooks/core').flatten(row.revision.draft.chapters));
+ f.input.chapter.content=[{blockId:bid('a'),text:'原文\n第二段',mergeSourceBlockIds:[bid('a'),bid('b')]}];
+ f.input.chapter.layout=layout([bid('a')]);
+ return {...f,sourceA,sourceB};
+}
+test('merged article preserves both trusted sources across retries, later saves and splits',async()=>{
+ const f=await mergeFixture(),result=await saveArticle(f.repo,f.ctx,f.input,options);
+ const read=r=>f.tables.get('biography_drafts:family_owner_'+r.revisionId).revision.draft.chapters[0];
+ const expected=[f.sourceA,f.sourceB];
+ assert.deepEqual(read(result).content[0].sourceIds,expected);
+ assert.equal(read(result).content[0].text,'原文\n第二段');
+ assert.ok(!('mergeSourceBlockIds' in read(result).content[0]),'transient ancestry is not persisted into authoritative blocks');
+ assert.deepEqual(await saveArticle(f.repo,f.ctx,f.input,options),result);
+ const next={...f.input,requestId:'request-merge-next',revisionId:result.revisionId,expectedVersion:result.version};
+ const again=await saveArticle(f.repo,f.ctx,next,options);
+ assert.deepEqual(read(again).content[0].sourceIds,expected,'retired ancestry cannot strip the retained block');
+ const split=structuredClone(next);Object.assign(split,{requestId:'request-merge-split',revisionId:again.revisionId,expectedVersion:again.version});
+ split.chapter.content.push({blockId:bid('c'),parentBlockId:bid('a'),text:'拆开'});split.chapter.layout=layout([bid('a'),bid('c')]);
+ const last=await saveArticle(f.repo,f.ctx,split,options);
+ assert.deepEqual(read(last).content[1].sourceIds,expected);
+});
+test('merging an unsaved split keeps the root and independently typed text is allowed',async()=>{
+ const f=await mergeFixture();
+ f.input.chapter.content=[{blockId:bid('c'),parentBlockId:bid('a'),mergeSourceBlockIds:[bid('c'),bid('a'),bid('b'),bid('d')],text:'刚拆出的文字与第二段及新文字'}];
+ f.input.chapter.layout=layout([bid('c')]);
+ const result=await saveArticle(f.repo,f.ctx,f.input,options);
+ const block=f.tables.get('biography_drafts:family_owner_'+result.revisionId).revision.draft.chapters[0].content[0];
+ assert.deepEqual(block.sourceIds,[f.sourceA,f.sourceB]);
+});
+test('merge cannot drop either source policy or accept malformed ancestry',async()=>{
+ const f=await mergeFixture();
+ f.tables.get('story_source_policies:'+f.sourceB).permissions.view=false;
+ const before=structuredClone(f.tables);
+ await assert.rejects(saveArticle(f.repo,f.ctx,f.input,options));
+ assert.deepEqual(f.tables,before);
+ for(const refs of [null,'bad',['bad'],[bid('a'),bid('a')],Array(513).fill(bid('a'))]){
+  const input=structuredClone(f.input);input.chapter.content[0].mergeSourceBlockIds=refs;
+  await assert.rejects(saveArticle(f.repo,f.ctx,input,options));
+ }
 });

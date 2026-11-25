@@ -25,6 +25,7 @@ export const INTERVIEW_DIMENSIONS: InterviewDimension[] = [
  */
 export const CLOUD_FOLLOW_UP_LABEL = "小忆认真想过了";
 export const FOLLOW_UP_LABEL = "小忆暂时没连上，先陪你聊";
+export const CONSENT_REQUIRED_FOLLOW_UP_LABEL = "尚未允许在线处理";
 export const QUOTA_EXHAUSTED_FOLLOW_UP_LABEL = "小忆今天有点迟钝，先按常问的陪你说";
 
 /** 五个方向都问过一轮后，只顺着经过和心里的感受往下聊，不再回头问事实。 */
@@ -196,7 +197,7 @@ export interface InterviewPrompt {
   dimension: InterviewDimension;
   text: string;
   generationMode?: "cloud-ai" | "local-fallback";
-  fallbackReason?: "cloud-not-ready" | "function-error" | "invalid-result" | "moderation-quota-exhausted";
+  fallbackReason?: "cloud-not-ready" | "consent-declined" | "function-error" | "invalid-result" | "moderation-quota-exhausted";
 }
 
 export interface NextPromptInput {

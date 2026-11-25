@@ -54,7 +54,7 @@ function webLoginBody(event, context, options = {}) {
   if (!appid) throw new Error("APPID_NOT_AVAILABLE");
   const code = String(event && event.code || "").trim().toUpperCase().replace(/[\s-]/g, "");
   const decision = String(event && event.decision || "");
-  if (!/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(code) || !WEB_LOGIN_DECISIONS.includes(decision)) throw new Error("invalid_input");
+  if (!/^(?:[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}|[A-F0-9]{28})$/.test(code) || !WEB_LOGIN_DECISIONS.includes(decision)) throw new Error("invalid_input");
   return { subject: subjectFor(appid, openid), code, decision };
 }
 function webLoginResultShapeError(contentType, data) {

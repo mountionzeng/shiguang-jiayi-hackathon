@@ -9,7 +9,7 @@
   <view class="archive-empty" wx:if="{{loadError}}">{{loadError}}<button bindtap="retryLoad">重新加载</button></view>
   <view class="memory-editor" wx:if="{{editingId}}">
     <view class="memory-document-card">
-      <view class="editor-label">正在阅读已保存的记忆</view>
+      <view class="memory-document-tools"><view class="editor-label">正在阅读已保存的记忆</view><button class="memory-delete-visible" data-id="{{editingId}}" data-title="{{editTitle}}" bindtap="deleteMemory" disabled="{{savingPhotos || savingEdit || organizingPreview || chatAsking || !!deletingItemId}}">删除这段记忆</button></view>
       <view class="memory-document-title serif">{{editTitle || '一段记忆'}}</view>
       <view class="ai-label" wx:if="{{editAiLabel}}">{{editAiLabel}}</view>
       <view class="memory-document-text serif">{{editText}}</view>
@@ -89,7 +89,10 @@
     </view>
     <view class="coediting-panel">
       <view class="editor-label">这篇想怎么写（可不填）</view>
-      <view class="photo-notice">成文以你的原稿和补充为准。有照片时参考前 3 张用户照片，先核对画面描述；AI 配图不会作为真实经历的依据。</view>
+      <view class="photo-notice">先提取全部原照片上的文字，再结合你的表达整理。书中作者的经历不会写成你的亲历；照片画面保留作配图参考。</view>
+      <button wx:if="{{memoryPhotos.length}}" class="btn btn-ghost" bindtap="viewMaterialReading" disabled="{{organizingPreview || chatAsking || savingPhotos || savingEdit}}">读取 / 核对照片文字</button>
+      <view wx:if="{{materialReadText}}"><button class="btn btn-ghost" bindtap="toggleMaterialReading">{{materialReadOpen ? '收起提取文字' : '查看提取文字'}}</button><text wx:if="{{materialReadOpen}}" selectable>{{materialReadText}}</text></view>
+      <view class="photo-notice" wx:if="{{previewNotice && !previewOpen}}">{{previewNotice}}</view>
       <textarea class="coediting-input" value="{{documentWritingInstruction}}" maxlength="300" auto-height placeholder="例如：保留我的口气，把刚聊到的细节融进去" bindinput="onDocumentWritingInstruction" disabled="{{savingPhotos || savingEdit || organizingPreview}}" cursor-spacing="48" />
       <button wx:if="{{!isEditingDocument}}" class="btn btn-jade" bindtap="createDocumentPreview" loading="{{organizingPreview}}" disabled="{{savingPhotos || savingEdit || organizingPreview || chatAsking}}">生成成文预览</button>
     </view>
@@ -99,6 +102,7 @@
       <button class="btn btn-ghost" bindtap="toggleHistory" disabled="{{savingPhotos || savingEdit}}" wx:if="{{historyItems.length}}">{{showHistory ? '收起修改历史' : '查看修改历史'}}</button>
     </view>
     <view class="ai-original-text" wx:if="{{showOriginal}}">{{originalText}}</view>
+    <button wx:if="{{materialCaptureId}}" class="btn btn-ghost" bindtap="openMaterialSources">查看原始记录（文字、照片、录音）</button>
     <view class="ai-history-list" wx:if="{{showHistory}}">
       <button class="memory-version-choice {{item.id === selectedRevisionId ? 'memory-version-selected' : ''}}" wx:for="{{historyItems}}" wx:key="id" data-id="{{item.id}}" bindtap="selectMemoryRevision" aria-label="选择{{item.kindLabel}}，{{item.dateLabel}}">
         <view class="ai-history-meta">{{item.kindLabel}} · {{item.dateLabel}}{{item.current ? ' · 当前版本' : ''}}</view>
@@ -168,12 +172,13 @@
             <view class="note-title serif">{{item.title}}</view>
             <view class="note-excerpt">{{item.excerpt}}</view>
             <view class="note-archive">{{item.archiveLabel}} · 点开阅读全文</view>
+            <view class="note-visible-actions"><button class="memory-open-visible" data-id="{{item.id}}" catchtap="openMemory">阅读全文</button><button class="memory-delete-visible" data-id="{{item.id}}" data-title="{{item.title}}" catchtap="deleteMemory" disabled="{{savingPhotos || !!deletingItemId}}" aria-label="删除记忆：{{item.title}}">删除</button></view>
           </view>
         </view>
       </view>
     </block>
     <view class="archive-empty" wx:else><view class="archive-empty-title serif">从一句话开始</view><view class="archive-empty-note">随手记和慢慢聊留下的记录，都在这里。</view></view>
-    <view class="archive-version-note">点开可编辑与归类，左滑可删除。删掉的记忆在人生之书的「最近删除」里，可以恢复。</view>
+    <view class="archive-version-note">点开可编辑与归类，点「删除」可移入最近删除，也可左滑删除。删掉的记忆在人生之书的「最近删除」里，可以恢复。</view>
     <button class="btn btn-jade record-button" bindtap="startRecording">记录一段记忆</button>
   </block>
 </view>

@@ -12,6 +12,7 @@ export interface ImportFileLike {
 
 export interface ClassifiedImportFiles {
   images: ImportFileLike[];
+  audio: ImportFileLike[];
   text?: ImportFileLike;
   unsupportedNames: string[];
 }
@@ -22,12 +23,15 @@ function extension(name = ""): string {
 
 export function classifyImportFiles(files: ImportFileLike[]): ClassifiedImportFiles {
   const images: ImportFileLike[] = [];
+  const audio: ImportFileLike[] = [];
   const texts: ImportFileLike[] = [];
   const unsupportedNames: string[] = [];
   for (const file of files) {
     const ext = extension(file.name);
     if (file.type === "image" || ["jpg", "jpeg", "png", "webp", "gif", "heic"].includes(ext)) {
       images.push(file);
+    } else if (["mp3", "m4a", "wav", "ogg"].includes(ext)) {
+      audio.push(file);
     } else if (["txt", "md"].includes(ext)) {
       texts.push(file);
     } else {
@@ -36,7 +40,7 @@ export function classifyImportFiles(files: ImportFileLike[]): ClassifiedImportFi
   }
   if (texts.length > 1) throw new Error("一次只能导入一个文字文件");
   if (images.length > 9) throw new Error("一次最多导入 9 张照片");
-  return { images, text: texts[0], unsupportedNames };
+  return { images, audio, text: texts[0], unsupportedNames };
 }
 
 function markdownText(text: string): string {

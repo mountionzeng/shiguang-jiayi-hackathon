@@ -660,3 +660,28 @@ test('save uses a complete inline state and falls back safely for old or incompl
     await assert.rejects(saveStoryRevision({id:'revision-inline',storyId:'story-fixture'} as any,'previous'),(error:any)=>error.code==='WRITE_UNCONFIRMED');
   } finally {f.restore();}
 });
+
+
+test('whole-book deletion uses only home projections and preserves version checks', async () => {
+  const f=fixture();
+  try {
+    const calls:any[]=[];
+    (globalThis as any).wx.cloud.callFunction=async ({name,data}:any)=>{
+      if(name==='getOpenId')return {result:{openid:'fixture-user'}};
+      calls.push(data);
+      if(data.action==='delete')return {result:{ok:true,storyId:data.storyId}};
+      return {result:{...createEmptyRoomState(),roomStateVersion:1,stories:[{id:'story-delete-fast',title:'测试',version:7}],manuscriptRevisions:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}}};
+    };
+    await localRepository.deleteStoryRemoteFirst('story-delete-fast','测试');
+    assert.deepEqual(calls.map(c=>[c.action,c.view]),[['state','home'],['delete',undefined],['state','home']]);
+    assert.equal(calls[1].expectedVersion,7);
+    calls.length=0;
+    (globalThis as any).wx.cloud.callFunction=async ({data}:any)=>{
+      calls.push(data);
+      if(data.action==='delete')throw new Error('故事已有更新，请刷新后重试');
+      return {result:{...createEmptyRoomState(),roomStateVersion:1,stories:[{id:'story-delete-fast',title:'测试',version:7}],manuscriptRevisions:[],deletedStories:[],personalDrafts:{},personalDraftSourceFingerprints:{}}};
+    };
+    await assert.rejects(localRepository.deleteStoryRemoteFirst('story-delete-fast','测试'),/已有更新/);
+    assert.equal(calls.filter(c=>c.action==='state').length,1);
+  } finally {f.restore();}
+});

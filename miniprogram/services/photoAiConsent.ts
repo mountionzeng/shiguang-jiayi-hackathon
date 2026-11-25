@@ -1,4 +1,4 @@
-export type PhotoAiConsentPurpose = "caption" | "illustration-reference";
+export type PhotoAiConsentPurpose = "caption" | "illustration-reference" | "material-reading";
 
 const decisions: Partial<Record<PhotoAiConsentPurpose, boolean>> = {};
 const pending = new Map<PhotoAiConsentPurpose, Promise<boolean>>();
@@ -18,8 +18,8 @@ export async function requestPhotoAiConsent(photoCount: number, purpose: PhotoAi
   if (existing) return existing;
   const usage = purpose === "illustration-reference"
     ? "用来提取主体外观、画风、配色和关键物件，并作为回忆或故事配图的参考生成新画面"
-    : "只用来帮你起草一句话";
-  const cancelText = purpose === "illustration-reference" ? "不用照片" : "自己写";
+    : purpose === "material-reading" ? "读取其中可见的文字、描述画面，供你核对后继续整理" : "只用来帮你起草一句话";
+  const cancelText = purpose === "illustration-reference" ? "不用照片" : purpose === "material-reading" ? "只存原件" : "自己写";
   const request = new Promise<boolean>(resolve => wx.showModal({
     title: "让 AI 看看这几张照片？",
     content: `会把这 ${photoCount} 张照片的压缩图发给腾讯云 TokenHub 上的 AI 服务，${usage}，不识别照片里的人是谁。服务商的日志留存政策仍适用。不同意就不会发送照片。`,

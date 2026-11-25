@@ -1,25 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto} from '../miniprogram/services/articleModules';
+import {articleChapter,appendArticleText,changeArticleText,moveArticleModule,removeArticleModule,addArticlePhoto,insertArticlePhotoAfter,mergeArticleTextModules} from '../miniprogram/services/articleModules';
+import { articleEditorPages } from '../miniprogram/services/articleEditorLayout';
 import {groupAccountActivity} from '../miniprogram/services/accountActivity';
 const base=()=>articleChapter({id:'chapter-test',title:'纸船',memoryIds:[],content:[{text:'第一句'}]});
-test('return creates distinct editable blocks, including duplicate and empty lines',()=>{
+test('multiline updates without a Return cursor preserve existing line breaks',()=>{
  const before=base(),id=before.content[0].blockId;
- const {chapter}=changeArticleText(before,id,'第一句\n第二句\n第二句\n');
- assert.deepEqual(chapter.content.map(b=>b.text),['第一句','第二句','第二句','']);
- assert.equal(new Set(chapter.content.map(b=>b.blockId)).size,4);
- assert.equal(chapter.content[0].blockId,id);assert.equal(chapter.content[1].parentBlockId,id);
- assert.equal(before.content.length,1);
+ const value='first\nsecond\nsecond\n';
+ const {chapter,focused}=changeArticleText(before,id,value);
+ assert.equal(chapter.content.length,1);assert.equal(chapter.content[0].text,value);
+ assert.equal(chapter.content[0].blockId,id);assert.equal(focused,id);
+ assert.equal(before.content[0].text,'第一句');
+ assert.equal(articleChapter(chapter).content[0].text,value,'reopening preserves trailing newlines');
 });
-test('each paragraph created by Return grows to fit wrapped text instead of clipping at the starter height',()=>{
- const before=base(),originalId=before.content[0].blockId,longLine='上下移动和光标定位'.repeat(8);
- const {chapter}=changeArticleText(before,originalId,`原文\n${longLine}`);
- const added=chapter.content[1],module=chapter.layout.pages.flatMap(page=>page.modules).find(item=>item.kind==='text'&&'blockId'in item.bind&&item.bind.blockId===added.blockId);
- if(!module||module.kind!=='text')throw new Error('expected the new paragraph to have a text module');
- assert.equal(chapter.content[0].blockId,originalId);
- assert.ok(module&&module.rect.height>130,'wrapped paragraph must be taller than the 130px starter box');
- assert.equal(module.contentHeight,module.rect.height);
- assert.equal(before.content.length,1,'the prior revision remains unchanged');
+test('typing preserves the editor hierarchy while print layout repaginates',()=>{
+ const before=articleChapter({id:'chapter-many',title:'',memoryIds:[],content:[{text:'a'},{text:'b'},{text:'c'}]});
+ const id=before.content[1].blockId;
+ const positions=articleEditorPages(before,.4,{}).map(p=>({id:p.id,modules:p.modules.map(m=>m.id)}));
+ const {chapter}=changeArticleText(before,id,'middle\n'+'long text '.repeat(300));
+ assert.deepEqual(articleEditorPages(chapter,.4,{}).map(p=>({id:p.id,modules:p.modules.map(m=>m.id)})),positions);
+ assert.ok(chapter.layout.pages.length>before.layout.pages.length);
+ assert.equal(chapter.content[2].text,'c');assert.equal(chapter.content.length,3);
 });
 test('move and resize preserve content and clamp geometry to the page',()=>{
  const before=base(),id=before.layout.pages[0].modules[0].id;
@@ -74,3 +75,112 @@ test('typing preserves manually arranged image and text geometry',()=>{
  assert.ok(modules[modules.length-1].rect.height>110);
  assert.equal(before.content.length,1);
  });
+
+for (const at of [0, 2, 4]) test(`Return at ${at} splits in place and survives reopening`,()=>{
+ const before=articleChapter({id:'chapter-split',title:'',memoryIds:[],content:[{text:'前段后段'},{photoId:'photo-next'},{text:'末尾'}]});
+ const id=before.content[0].blockId, original=before.content[0].text!;
+ const value=original.slice(0,at)+'\n'+original.slice(at);
+ const result=changeArticleText(before,id,value,at+1), after=result.chapter;
+ assert.deepEqual(after.content.map(b=>b.text ?? b.photoId),[original.slice(0,at),original.slice(at),'photo-next','末尾']);
+ assert.equal(after.content[0].blockId,id);assert.equal(result.focused,after.content[1].blockId);
+ assert.equal(after.content[1].parentBlockId,id);
+ assert.deepEqual(articleChapter(after).content,after.content);
+ assert.deepEqual(articleEditorPages(after,.4,{}).flatMap(p=>p.modules).filter(m=>m.blockId).map(m=>m.blockId),[id,result.focused,after.content[3].blockId]);
+ const again=changeArticleText(after,result.focused,'\n'+original.slice(at),1);
+ assert.equal(again.chapter.content[2].parentBlockId,id);
+ assert.equal(again.chapter.content[2].text,original.slice(at));
+ assert.equal(before.content.length,3);
+});
+test('Return replaces a selection but multiline paste does not split modules',()=>{
+ const before=articleChapter({id:'chapter-select',title:'',memoryIds:[],content:[{text:'abcdef'}]}),id=before.content[0].blockId;
+ assert.deepEqual(changeArticleText(before,id,'ab\nef',3).chapter.content.map(b=>b.text),['ab','ef']);
+ assert.equal(changeArticleText(before,id,'abX\nYcdef',5).split,false);
+});
+
+test('splitting near the bottom of positioned print layout stays inside the canvas',()=>{
+ const before=base(),id=before.content[0].blockId;
+ const module=before.layout.pages[0].modules[0];module.positioned=true;module.rect.y=1050;
+ const after=changeArticleText(before,id,'第\n一句',2).chapter;
+ assert.equal(after.layout.pages.length,2);
+ for(const page of after.layout.pages)for(const m of page.modules)assert.ok(m.rect.y+m.rect.height<=1200);
+ assert.equal(after.content[1].text,'一句');
+});
+
+
+test('Return preserves visual image order even when storage order differs',()=>{
+ const before=articleChapter({id:'chapter-order',title:'',memoryIds:[],content:[{text:'前后'},{photoId:'photo-middle'},{text:'结尾'}]});
+ const [first,image,last]=before.layout.pages[0].modules;
+ before.layout.pages[0].modules=[first,last,image];
+ const after=changeArticleText(before,before.content[0].blockId,'前\n后',2).chapter;
+ const modules=after.layout.pages.flatMap(p=>p.modules);
+ assert.deepEqual(modules.map(m=>m.kind==='image'?'image':('blockId' in m.bind ? m.bind.blockId : 'title')),[before.content[0].blockId,after.content[1].blockId,'image',before.content[2].blockId]);
+ assert.equal(before.layout.pages[0].modules[2].id,image.id);
+});
+
+test('generated picture inserts below its source in the latest draft without moving surrounding images to the end',()=>{
+ const before=articleChapter({id:'chapter-generated',title:'',memoryIds:[],content:[{text:'source'},{photoId:'photo-existing'},{text:'last'}]});
+ const edited=changeArticleText(before,before.content[0].blockId,'source edited').chapter;
+ const next=insertArticlePhotoAfter(edited,before.content[0].blockId,'photo-generated');
+ assert.deepEqual(next.content.map(b=>b.text || b.photoId),['source edited','photo-generated','photo-existing','last']);
+ assert.deepEqual(next.layout.pages.flatMap(p=>p.modules).map(m=>m.kind),['text','image','image','text']);
+ assert.equal(insertArticlePhotoAfter(next,before.content[0].blockId,'photo-generated'),next);
+ assert.throws(()=>insertArticlePhotoAfter(before,'missing','photo-new'),/已删除/);
+ assert.equal(before.content.length,3);
+});
+
+test('audio modules retain order, do not change original text, and survive reopening',async()=>{
+ const {insertArticleAudioAfter}=await import('../miniprogram/services/articleModules');
+ const before=articleChapter({id:'chapter-audio',title:'',memoryIds:[],content:[{text:'first'},{photoId:'photo-next'},{text:'last'}]});
+ const source=before.content[0].blockId;
+ const next=insertArticleAudioAfter(before,source,'family_owner_audio-test123','music');
+ assert.deepEqual(next.content,before.content);
+ const reopened=articleChapter(JSON.parse(JSON.stringify(next)));
+ assert.deepEqual(reopened.audioModules,next.audioModules);
+ const page=articleEditorPages(reopened,.4,{})[0];
+ const first=page.modules.find(m=>m.blockId===source)!;
+ const audio=page.modules.find(m=>m.kind==='audio')!;
+ const image=page.modules.find(m=>m.kind==='image')!;
+ assert.ok(audio.top>=first.top+first.height);assert.ok(image.top>=audio.top+audio.height);
+ const removed=removeArticleModule(reopened,audio.id);
+ assert.equal(removed.audioModules?.length,0);assert.deepEqual(removed.content,before.content);
+ assert.equal(insertArticleAudioAfter(next,source,'family_owner_audio-test123','music'),next);
+});
+
+
+test('merge follows reading order, retains paragraphs, images, audio and source ancestry',()=>{
+ const before=articleChapter({id:'chapter-merge',title:'合并',memoryIds:['memory-a','memory-b'],content:[
+  {text:'前段\n',sourceIds:['source-a']},{photoId:'photo-between'},{text:'后段',sourceIds:['source-b']},{text:'末尾'}]});
+ before.content[0].text='前段\n';
+ const [a,photo,b,last]=before.content;
+ before.audioModules=[{id:'audio-one',afterBlockId:b.blockId,operationId:'operation-one',kind:'narration'}];
+ const snapshot=structuredClone(before);
+ const merged=mergeArticleTextModules(before,[b.blockId,a.blockId]);
+ assert.deepEqual(merged.content.map(b=>b.text??b.photoId),['前段\n\n后段','photo-between','末尾']);
+ assert.equal(merged.content[0].blockId,a.blockId);
+ assert.deepEqual(merged.content[0].sourceIds,['source-a','source-b']);
+ assert.deepEqual(merged.content[0].mergeSourceBlockIds,[a.blockId,b.blockId]);
+ assert.deepEqual(merged.memoryIds,before.memoryIds);
+ assert.deepEqual(merged.packageAssets,before.packageAssets);
+ assert.deepEqual(merged.audioModules,[{...before.audioModules[0],afterBlockId:a.blockId}]);
+ assert.deepEqual(articleChapter(merged).content,merged.content);
+ assert.deepEqual(merged.layout.pages.flatMap(p=>p.modules).map(m=>m.kind==='text'&&'blockId'in m.bind?m.bind.blockId:m.kind),[a.blockId,'image',last.blockId]);
+ assert.deepEqual(before,snapshot);
+});
+test('merge retains unsaved split and repeated merge ancestry, then Return still splits normally',()=>{
+ const before=articleChapter({id:'chapter-merge',title:'',memoryIds:[],content:[{text:'甲乙'},{text:'丙'}]});
+ const a=before.content[0].blockId,c=before.content[1].blockId;
+ const split=changeArticleText(before,a,'甲\n乙',2).chapter,b=split.content[1].blockId;
+ const once=mergeArticleTextModules(split,[b,c]);
+ const twice=mergeArticleTextModules(once,[a,b]);
+ assert.equal(twice.content[0].text,'甲\n乙\n丙');
+ assert.ok(twice.content[0].mergeSourceBlockIds?.includes(a));
+ assert.ok(twice.content[0].mergeSourceBlockIds?.includes(c));
+ const again=changeArticleText(twice,a,'甲\n\n乙\n丙',2);
+ assert.deepEqual(again.chapter.content.map(b=>b.text),['甲','\n乙\n丙']);
+});
+test('invalid or oversized merges leave the original untouched',()=>{
+ const before=articleChapter({id:'chapter-merge',title:'',memoryIds:[],content:[{text:'甲'.repeat(15000)},{text:'乙'.repeat(6000)}]});
+ const [a,b]=before.content.map(b=>b.blockId),snapshot=structuredClone(before);
+ for(const ids of [[a],[a,a],[a,'missing'],[a,b]])assert.throws(()=>mergeArticleTextModules(before,ids));
+ assert.deepEqual(before,snapshot);
+});

@@ -65,17 +65,16 @@ export function draftWithChapters(base: BiographyDraft, chapters: ManuscriptChap
   return { ...base, chapters: chapters.map(copyChapter), ...flattenChapters(chapters) };
 }
 
-/** Adds a chapter at the end. A memory lives in one chapter, so the listed memories move here. */
+/** Adds a chapter with reusable source references; earlier articles keep their sources. */
 export function addChapter(chapters: ManuscriptChapter[], title = "", memoryIds: string[] = [], id = newChapterId()): ManuscriptChapter[] {
   if (chapters.length >= MAX_CHAPTERS) throw new Error("一本书稿最多 " + MAX_CHAPTERS + " 章");
-  const moving = new Set(memoryIds);
   return [
-    ...chapters.map(chapter => ({ ...copyChapter(chapter), memoryIds: chapter.memoryIds.filter(memoryId => !moving.has(memoryId)) })),
-    { id, title: title.trim().slice(0, 40), memoryIds: [...moving], content: [] },
+    ...chapters.map(copyChapter),
+    { id, title: title.trim().slice(0, 40), memoryIds: [...new Set(memoryIds)], content: [] },
   ];
 }
 
-/** Removing a chapter only affects the next version; its memories become unassigned. */
+/** Removing a chapter only affects the next version; other source references remain. */
 export function removeChapter(chapters: ManuscriptChapter[], id: string): ManuscriptChapter[] {
   if (chapters.length <= 1) throw new Error("至少要保留一章");
   return chapters.filter(chapter => chapter.id !== id).map(copyChapter);
@@ -88,15 +87,6 @@ export function moveChapter(chapters: ManuscriptChapter[], id: string, offset: n
   if (from < 0 || to < 0 || to >= next.length) return next;
   [next[from], next[to]] = [next[to], next[from]];
   return next;
-}
-
-/** Puts a memory into one chapter (or none, with an empty chapter id); text is not touched. */
-export function assignMemory(chapters: ManuscriptChapter[], memoryId: string, chapterId: string): ManuscriptChapter[] {
-  return chapters.map(chapter => {
-    const memoryIds = chapter.memoryIds.filter(id => id !== memoryId);
-    if (chapter.id === chapterId) memoryIds.push(memoryId);
-    return { ...copyChapter(chapter), memoryIds };
-  });
 }
 
 /**
@@ -126,7 +116,7 @@ export function placeMemoryInChapter(
   chapterId: string,
 ): ManuscriptChapter[] {
   const target = chapters.find(chapter => chapter.id === chapterId);
-  const next = assignMemory(chapters, memory.id, chapterId);
+  const next = addMemoryToChapter(chapters, memory.id, chapterId);
   const memoryText = memory.text.trim();
   if (!target) return next;
 
@@ -459,14 +449,14 @@ export function organizedChapterTitle(aiTitle: string) {
 
 /**
  * Writes an organized text into one chapter (or a new one). Only that chapter's text
- * changes: its pictures stay after the new text in their order, the chosen memories move
- * into it, and every other chapter is copied unchanged.
+ * changes: its pictures stay after the new text in their order, the chosen memories are
+ * referenced by it, and every other chapter is copied unchanged.
  */
 export function applyOrganized(chapters: ManuscriptChapter[], targetId: string, organized: BiographyDraft, memoryIds: string[], memoryPhotoIds: string[] = []) {
   const creating = !chapters.some(chapter => chapter.id === targetId);
   let next = creating ? addChapter(chapters, organizedChapterTitle(organized.title), memoryIds) : chapters.map(copyChapter);
   const chapterId = creating ? next[next.length - 1].id : targetId;
-  for (const memoryId of memoryIds) next = assignMemory(next, memoryId, chapterId);
+  for (const memoryId of memoryIds) next = addMemoryToChapter(next, memoryId, chapterId);
   let keptPhotoIds: string[] = [];
   let keptImages: ManuscriptContent[] = [];
   next = next.map(chapter => {

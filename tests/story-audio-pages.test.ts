@@ -172,3 +172,58 @@ test('unavailable voice page offers a working exit even when opened directly',()
   assert.match(template,/wx:elif="{{available}}"[^>]*bindtap="beginRecording"/);
   assert.doesNotMatch(template,/暂未开放录音/);
 });
+
+
+test('audio transport failure hides technical details and never labels a submission as rejected',async context=>{
+  const previous=(globalThis as any).wx;
+  (globalThis as any).wx={cloud:{callFunction:async()=>{throw new Error('cloud.callFunction:fail ESOCKETTIMEDOUT private trace');}}};
+  context.after(()=>{(globalThis as any).wx=previous;});
+  await assert.rejects(storyAudioApi.status('audio-existing'),(error:unknown)=>error instanceof StoryAudioServiceError&&error.code==='AUDIO_STATUS_UNAVAILABLE'&&!error.message.includes('ESOCKET'));
+  await assert.rejects(storyAudioApi.createMusic({requestId:'audio-existing',storyId:'story-a',revisionId:'revision-a',chapterId:'chapter-a',blockId:'block-a'}),(error:unknown)=>error instanceof StoryAudioServiceError&&error.code==='AUDIO_REQUEST_UNCONFIRMED'&&!error.message.includes('private'));
+});
+
+test('chapter rollout recovers a lost acknowledgement after reopening without switching namespaces',async context=>{
+  const previous=(globalThis as any).wx;
+  const storage=new Map<string,unknown>(), requests:Array<{name:string;data:any}>=[];
+  let admitted=true;
+  const caps={accountScope:'a'.repeat(24),voiceClone:{enabled:false},voiceEnrollment:{enabled:false},
+    tts:{enabled:true},video:{enabled:false},submission:{enabled:true}};
+  (globalThis as any).wx={
+    cloud:{callFunction:async(request:{name:string;data:any})=>{
+      requests.push(request);
+      if(request.data.action==='capabilities'){
+        return {result:{...caps,...(request.name==='storyAudio'&&admitted?{chapterRoute:'canary'}:{})}};
+      }
+      if(request.data.action==='create'&&requests.filter(x=>x.data.action==='create').length===1)throw new Error('lost ack');
+      return {result:{operation:{status:'queued',snapshot:{title:'fixture'}}}};
+    }},
+    getStorageSync:(key:string)=>storage.get(key),
+    setStorageSync:(key:string,value:unknown)=>storage.set(key,value),
+    removeStorageSync:(key:string)=>storage.delete(key),
+    navigateTo:({success}:{success:()=>void})=>success(),
+  };
+  context.after(()=>{(globalThis as any).wx=previous;});
+  const route={storyId:'story-a',revisionId:'revision-a',chapterId:'chapter-a'};
+  const page=instance(createDefinition);
+  page.onLoad(route);await page.refreshCapabilities();
+  page.setData({selectedVoice:{kind:'official',id:'original',label:'fixture'}});
+  await page.startCreate();
+  assert.equal(storage.size,1);
+  admitted=false;
+  const reopened=instance(createDefinition);
+  reopened.onLoad(route);await reopened.refreshCapabilities();
+  reopened.setData({selectedVoice:{kind:'official',id:'changed',label:'fixture'}});
+  assert.equal(reopened.data.hasPending,true);
+  await reopened.startCreate();
+  const creates=requests.filter(x=>x.data.action==='create');
+  assert.equal(creates.length,2);
+  assert.equal(creates[0].name,'storyAudioCanary');
+  assert.deepEqual(creates[1],creates[0]);
+  await storyAudioApi.status(creates[0].data.requestId);
+  await storyAudioApi.advance(creates[0].data.requestId);
+  await storyAudioApi.advance('audio-old-fixture');
+  assert.deepEqual(requests.slice(-3).map(x=>[x.name,x.data.action]),[
+    ['storyAudioCanary','status'],['storyAudioCanary','advance'],['storyAudio','status'],
+  ]);
+  assert.equal(storage.size,0);
+});

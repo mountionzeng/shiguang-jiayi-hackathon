@@ -1,3 +1,6 @@
+const {storyMaterials}=require('./sharedMaterials');
+const {getOwnerMemberId}=require('./memoryExports');
+const {approveOutgoingText}=require('./outgoingText');
 const {revisionAttribution}=require('./revisionAttribution');
 const crypto=require('node:crypto');
 const core=require('./core');
@@ -73,8 +76,19 @@ async function loadCopySource(tx,ctx,input){
 // wired to dispatch or advertised as a capability. ctx must be server-resolved.
 // Media requires a server-issued lease and verified private copies. This final
 // transaction never performs external storage I/O or drops unsupported images.
-async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTicket}={}){
+async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTicket,approveText}={}){
   const input=normalize(raw),stamp=now();
+  await assertSpaceOwner(repo,ctx);
+  const completed=await repo.get('story_copies',copyKeys(ctx,input).copyId);
+  let approvedSnapshot;
+  let ownerMemberId='owner';
+  if(!completed){
+    const source=await loadCopySource(repo,ctx,input);
+    const materials=await storyMaterials(repo,source,'copy');
+    if(materials.memories.length)ownerMemberId=await getOwnerMemberId(repo,ctx.familyId) || 'owner';
+    await approveOutgoingText(approveText,ctx,source.source.bookTitle||source.source.title,[...source.selected,...materials.memories.map(m=>({title:m.title,content:[{text:m.text}]}))]);
+    approvedSnapshot=digest([source.source.bookTitle||source.source.title,source.selected,materials.digest]);
+  }
   return repo.transaction(async tx=>{
     await assertSpaceOwner(tx,ctx);
     const recipient=await tx.get('families',ctx.familyId);
@@ -91,9 +105,11 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     }
     if(request)throw protocolError();
     const sourceContext=await loadCopySource(tx,ctx,input),{space,source,grant,sourceRevision,selected,permitted}=sourceContext;
+    const materials=await storyMaterials(tx,sourceContext,'copy');
+    if(approvedSnapshot!==digest([source.bookTitle||source.title,selected,materials.digest]))conflict();
     let media;
-    if(mediaTicket)media=await readyMedia(tx,ctx,input,sourceContext,copyId,fingerprint,mediaTicket);
-    if(selected.some(chapter=>chapter.backdropImageId || chapter.content.some(block=>typeof block.text!=='string' && !media?.assets.some(asset=>asset.sourcePhotoId===block.photoId))))throw error('STORY_COPY_MEDIA_PENDING','这些图片尚未完成独立保留，故事没有保存');
+    if(mediaTicket)media=await readyMedia(tx,ctx,input,sourceContext,copyId,fingerprint,mediaTicket,materials);
+    if(materials.assets.some(expected=>!media?.assets.some(asset=>asset.sourcePhotoId===expected.key)))throw error('STORY_COPY_MEDIA_PENDING','这些图片尚未完成独立保留，故事没有保存');
 
     const targetId=docId(ctx.familyId,input.target.storyId),existing=await tx.get('stories',targetId);
     let story,base;
@@ -117,6 +133,9 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     const nameId=docId(ctx.familyId,core.hash(story.title)),name=await tx.get('story_names',nameId);
     if(name && name.storyId!==story.id)throw error('DUPLICATE_TITLE','已有同名故事，请换一个名称');
     const receipts=[],receivedSources=[];
+    const copiedPhoto=key=>media?.assets.find(asset=>asset.sourcePhotoId===key)?.photoId;
+    const memoryMap=new Map(materials.memories.map(m=>[m.id,'memory-copy-'+digest([copyId,m.id])]));
+    story.memoryIds=[...new Set([...(story.memoryIds || []),...memoryMap.values()])];
     for(const chapter of selected){
       const parents=[...new Set(chapter.content.flatMap(block=>block.sourceIds))].sort();
       if(parents.length>16 || !await allowsSources(tx,parents,'copy'))throw identityError();
@@ -133,8 +152,14 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
         sourceRevisionId:sourceRevision.id,sourceChapterId:chapter.id,sourceOwnerPrincipalId:space.principalId,
         senderName:senderName(sourceContext.invitation,ctx.principalId),
         senderMemberId:senderMemberId(grant.invitationId)});
-      base.chapters.push({id:destinationChapterId,title:chapter.title,memoryIds:[],
-        content:chapter.content.map((block,index)=>({...(typeof block.text==='string'?{text:block.text}:{photoId:media.assets.find(asset=>asset.sourcePhotoId===block.photoId).photoId}),blockId:'block-'+digest([copyId,chapter.id,index]),sourceIds:[sourceId]}))});
+      const content=chapter.content.map((block,index)=>({...(typeof block.text==='string'?{text:block.text}:{photoId:copiedPhoto(block.photoId)}),blockId:'block-'+digest([copyId,chapter.id,index]),sourceIds:[sourceId]}));
+      if(chapter.backdropImageId)content.unshift({photoId:copiedPhoto('backdrop:'+chapter.id),blockId:'block-'+digest([copyId,chapter.id,'backdrop']),sourceIds:[sourceId]});
+      const inheritedCover=chapter.packageCoverAssetId?chapter.packageAssets?.[chapter.packageCoverAssetId]?.photoId:'';
+      const cover=materials.coverKey || inheritedCover;
+      const blockMap=new Map(chapter.content.map((b,i)=>[b.blockId,'block-'+digest([copyId,chapter.id,i])]));
+      const audioModules=(chapter.audioModules || []).map(m=>({...m,afterBlockId:blockMap.get(m.afterBlockId)||m.afterBlockId}));
+      base.chapters.push({id:destinationChapterId,title:chapter.title,...(audioModules.length?{audioModules}:{}),memoryIds:(chapter.memoryIds || []).map(id=>memoryMap.get(id)).filter(Boolean),
+        ...(cover?{packageCoverAssetId:'cover',packageAssets:{cover:{photoId:copiedPhoto(cover),aiGenerated:!!materials.coverKey}}}:{}),content});
     }
     const pendingPolicies=new Map(receipts),policyReader={get:(table,id)=>table==='story_source_policies' && pendingPolicies.has(id)?pendingPolicies.get(id):tx.get(table,id)};
     // Validate the resulting graph, not just its parents: adding a receipt must
@@ -153,10 +178,17 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
       receivedSources:[...(Array.isArray(story.receivedSources)?story.receivedSources:[]),...receivedSources],updatedAt:stamp};
     if(media){
       for(const asset of media.assets){
-        const sourceIds=[...new Set(base.chapters.flatMap(chapter=>chapter.content.filter(block=>block.photoId===asset.photoId).flatMap(block=>block.sourceIds)))];
+        const sourceIds=roots;
         await tx.set('story_copy_assets',`${ctx.familyId}__${asset.photoId}`,{familyId:ctx.familyId,storyId:story.id,photoId:asset.photoId,status:'active',sourcePolicyRequired:true,sourceIds,fileID:asset.fileID,sha256:asset.sha256,bytes:asset.bytes,operationId:copyId});
       }
       await tx.set('story_copy_media',copyId,{...media,status:'complete',leaseToken:'',leaseUntilMs:0,completedAt:stamp});
+    }
+    for(const memory of materials.memories){
+      const id=memoryMap.get(memory.id);
+      await tx.set('memories',docId(ctx.familyId,id),{...memory,id,frontendContributionId:id,familyId:ctx.familyId,
+        authorMemberId:ownerMemberId,authorName:'亲友分享',relation:'亲友',scope:'personal',visibility:'private',reviewStatus:'confirmed',
+        photoIds:memory.photoIds.map(copiedPhoto),sourcePolicyRequired:true,sourceIds:roots,
+        createdAt:stamp,sourceMemoryId:memory.id,sourceFamilyId:input.sourceFamilyId,storyTitle:story.title});
     }
     for(const [id,receipt] of receipts)await tx.set('story_source_policies',id,receipt);
     await tx.set('biography_drafts',docId(ctx.familyId,revisionId),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision});
@@ -167,7 +199,7 @@ async function commitCopy(repo,ctx,raw,{now=()=>new Date().toISOString(),mediaTi
     return {ok:true,storyId:story.id,revisionId,alreadyReceived:false};
   });
 }
-const receiveTextCopy=(repo,ctx,input,{now}={})=>commitCopy(repo,ctx,input,{now});
+const receiveTextCopy=(repo,ctx,input,{now,approveText}={})=>commitCopy(repo,ctx,input,{now,approveText});
 function normalizeAppend(input){
   if(!exact(input,['storyId','revisionId','expectedVersion','chapterId','text','requestId']) ||
     !core.STORY_ID.test(input.storyId || '') || !REVISION.test(input.revisionId || '') ||

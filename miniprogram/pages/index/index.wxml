@@ -167,7 +167,7 @@
         role="button"
         aria-label="回答每日一问"
       >
-        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryTitle + '》' : currentStoryLabel}}</view>
+        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryLabel + '》' : currentStoryLabel}}</view>
         <view class="recommended-context">{{recommendedQuestionContext}}</view>
         <view class="recommended-question">{{recommendedQuestion}}</view>
         <view class="recommended-action">回答这一问</view>
@@ -179,10 +179,29 @@
         role="button"
         aria-label="回答每日一问：{{currentStoryLabel}}"
       >
-        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryTitle + '》' : currentStoryLabel}}</view>
+        <view class="recommended-label">{{currentStoryTitle ? '《' + currentStoryLabel + '》' : currentStoryLabel}}</view>
         <view class="recommended-question">{{dailyQuestion}}</view>
         <view class="recommended-action">回答这一问</view>
       </view>
+    </view>
+
+    <view wx:if="{{friendLetters.length}}" class="friend-letters">
+      <text class="recommended-title serif">好友来信</text>
+      <button
+        wx:for="{{friendLetters}}"
+        wx:key="id"
+        class="friend-letter"
+        data-id="{{item.id}}"
+        bindtap="openFriendLetter"
+        hover-class="friend-letter-pressed"
+        aria-label="{{item.editorName}}更新了《{{item.storyTitle}}》，{{item.chapterTitle}}，{{item.summary}}。打开原稿"
+      >
+        <view class="friend-letter-copy">
+          <view class="friend-letter-title serif">{{item.editorName}}更新了《{{item.storyTitle}}》</view>
+          <view class="friend-letter-summary">{{item.chapterTitle}} · {{item.summary}}</view>
+        </view>
+        <text class="friend-letter-arrow" aria-hidden="true">›</text>
+      </button>
     </view>
 
     <view class="recent" wx:if="{{hasRecentStories || sharedArticles.length || sharesError}}">
@@ -220,7 +239,7 @@
               <view class="story-excerpt">{{item.excerpt}}</view>
               <view class="story-meta">{{item.countLabel}}</view>
             </view>
-            <view class="story-continue">继续聊</view>
+            <button class="story-continue" data-id="{{item.id}}" data-title="{{item.storyTitle}}" catchtap="continueStory" aria-label="继续聊{{item.title}}">继续聊 ›</button>
           </view>
         </view>
       </view>
@@ -243,11 +262,11 @@
     data-key="{{item.key}}"
     bindtap="chooseStory"
     hover-class="none"
-    aria-label="换到{{item.title}}"
+    aria-label="换到{{item.displayTitle}}"
   >
     <view class="story-menu-avatar serif">{{item.avatarText}}</view>
     <view class="story-menu-copy">
-      <text class="story-menu-name">{{item.title}}</text>
+      <text class="story-menu-name">{{item.displayTitle}}</text>
       <text class="story-menu-relation">{{item.label}}</text>
     </view>
     <text class="story-menu-check">{{item.selected ? '✓' : ''}}</text>

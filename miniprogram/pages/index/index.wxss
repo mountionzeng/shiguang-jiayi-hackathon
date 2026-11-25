@@ -755,6 +755,39 @@
   text-align: right;
 }
 
+.friend-letters {
+  margin-top: 28rpx;
+}
+
+.friend-letters .friend-letter.friend-letter {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  width: 100%;
+  max-width: none;
+  margin: 12rpx 0 0;
+  padding: 20rpx 24rpx;
+  border: 2rpx solid rgba(181, 145, 82, 0.28);
+  border-radius: 22rpx;
+  background: rgba(255, 254, 251, 0.78);
+  color: var(--ink);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.friend-letter::after { border: 0; }
+.friend-letter-pressed { transform: translateY(2rpx) scale(0.99); }
+
+.friend-letter-copy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.friend-letter-title { font-size: 28rpx; font-weight: 600; }
+.friend-letter-summary { margin-top: 4rpx; color: var(--ink-soft); font-size: 24rpx; font-weight: normal; }
+.friend-letter-arrow { color: var(--jade); font-size: 35rpx; }
+
 @keyframes book-cover-open {
   0% { transform: translateX(0) rotateY(0deg) scale(1); filter: brightness(1); }
   45% { transform: translateX(-18rpx) rotateY(-38deg) scale(1.025); filter: brightness(1.03); }
@@ -1198,9 +1231,8 @@
   font-weight: 500;
 }
 
-.story-continue::after {
-  content: " ›";
-}
+button.story-continue { width: auto; min-width: 0; margin: 0; padding: 14rpx 0 14rpx 12rpx; background: transparent; line-height: 1.5; border-radius: 0; }
+button.story-continue::after { border: 0; }
 
 .home-empty {
   margin-top: 64rpx;

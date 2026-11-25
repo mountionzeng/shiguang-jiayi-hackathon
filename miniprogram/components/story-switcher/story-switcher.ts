@@ -71,7 +71,7 @@ Component({
     /** 随手记：直接开一段新的，不用先挑。 */
     startQuickNote() {
       this.setData({ chooserOpen: false, memoirOpen: false });
-      wx.navigateTo({ url: "/pages/interview/interview?memoryType=note" });
+      wx.navigateTo({ url: "/pages/interview/interview?memoryType=note&capture=1" });
     },
 
     /** 回忆录：先想起哪一段，再接着聊。 */

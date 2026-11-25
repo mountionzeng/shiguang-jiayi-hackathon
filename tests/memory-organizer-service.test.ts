@@ -66,7 +66,10 @@ test("organizeMemory uses the cloud function when available", async (context) =>
   assert.equal(draft.generationMode, "cloud-ai");
   assert.equal(draft.title, "外公护着我");
   assert.deepEqual(draft.people, ["外公", "父母"]);
-  assert.deepEqual(requestData, {
+  const sent = requestData as { computeRequestId?: string };
+  assert.match(sent.computeRequestId || "", /^cmp-[A-Za-z0-9_-]{8,}$/);
+  delete sent.computeRequestId;
+  assert.deepEqual(sent, {
     memoryId: "memory-1",
     memoryType: "note",
     memberName: "林岚",
@@ -152,4 +155,14 @@ test('inline dialogue organization sends all explicit user segments as editable 
   assert.equal(result?.generationMode,'cloud-ai');
   assert.deepEqual(sent.transcript,material);
   assert.equal(sent.inlineAnswer,true);
+});
+
+
+test('article clarification is a distinct result only for the requested guidance flow',async context=>{
+ context.after(installGlobal('getApp',()=>({globalData:{cloudReady:true,aiReady:true}})));
+ const {clearAiConsent}=await import('../miniprogram/services/aiConsent');clearAiConsent();context.after(clearAiConsent);
+ let request:any;
+ context.after(installGlobal('wx',{cloud:{callFunction:async(r:any)=>{request=r;return {result:r.name==='recordAiConsent'?{}:{clarification:'想写感受，还是介绍原文？',body:'',generationMode:'cloud-ai'}};}}}));
+ const result=await organizeMemory({memoryId:'m1',transcript:['我读了一篇文章'],memoryType:'note',expectedSavedText:'我读了一篇文章',writingMode:'compose',articleGuidance:true});
+ assert.equal(result.body,'');assert.match(result.clarification || '',/想写感受/);assert.equal(result.fallbackReason,undefined);assert.equal(request.data.articleGuidance,true);
 });

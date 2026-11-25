@@ -1,0 +1,54 @@
+.page {
+  padding: 32rpx 32rpx 80rpx;
+  background: #fbf8f1;
+  min-height: 100vh;
+  box-sizing: border-box;
+  color: #34322f;
+}
+.title {
+  font-size: 44rpx;
+  line-height: 1.4;
+  margin-bottom: 24rpx;
+}
+.hint {
+  color: #74706a;
+  font-size: 26rpx;
+  line-height: 1.7;
+  margin: 20rpx 0;
+}
+.chapter {
+  white-space: pre-wrap;
+  font-size: 32rpx;
+  line-height: 1.9;
+  margin: 32rpx 0;
+}
+.chapter-title {
+  font-size: 36rpx;
+  margin-bottom: 16rpx;
+}
+.picture,
+.video {
+  width: 100%;
+  margin: 20rpx 0;
+}
+.media {
+  margin: 24rpx 0;
+}
+.story {
+  padding: 28rpx 0;
+  border-bottom: 1rpx solid #ddd6ca;
+}
+button {
+  margin-top: 24rpx;
+  font-size: 28rpx;
+  background: #596b59;
+  color: white;
+}
+.secondary {
+  background: transparent;
+  color: #596b59;
+}
+.error {
+  color: #a13833;
+  line-height: 1.6;
+}
