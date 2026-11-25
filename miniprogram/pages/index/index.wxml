@@ -185,6 +185,25 @@
       </view>
     </view>
 
+    <view wx:if="{{friendLetters.length}}" class="friend-letters">
+      <text class="recommended-title serif">好友来信</text>
+      <button
+        wx:for="{{friendLetters}}"
+        wx:key="id"
+        class="friend-letter"
+        data-id="{{item.id}}"
+        bindtap="openFriendLetter"
+        hover-class="friend-letter-pressed"
+        aria-label="{{item.editorName}}更新了《{{item.storyTitle}}》，{{item.chapterTitle}}，{{item.summary}}。打开原稿"
+      >
+        <view class="friend-letter-copy">
+          <view class="friend-letter-title serif">{{item.editorName}}更新了《{{item.storyTitle}}》</view>
+          <view class="friend-letter-summary">{{item.chapterTitle}} · {{item.summary}}</view>
+        </view>
+        <text class="friend-letter-arrow" aria-hidden="true">›</text>
+      </button>
+    </view>
+
     <view class="recent" wx:if="{{hasRecentStories || sharedArticles.length || sharesError}}">
       <view class="recent-head">
         <text class="recent-title serif">最近聊过</text>

@@ -45,8 +45,8 @@ function normalize(input){
 function moduleChanges(before,after){
   const previous=new Map(before.content.map((b,i)=>[b.blockId||'legacy-'+i,b]));
   const changes=[];
-  for(const block of after.content){const old=previous.get(block.blockId);previous.delete(block.blockId);
-    if(!old||old.text!==block.text||old.photoId!==block.photoId)changes.push({kind:block.photoId?'image':'text',action:old?'changed':'added',blockId:block.blockId,before:old?.text||old?.photoId||'',after:block.text||block.photoId||''});}
+  for(const [index,block] of after.content.entries()){const blockId=block.blockId||'legacy-'+index,old=previous.get(blockId);previous.delete(blockId);
+    if(!old||old.text!==block.text||old.photoId!==block.photoId)changes.push({kind:block.photoId?'image':'text',action:old?'changed':'added',blockId,before:old?.text||old?.photoId||'',after:block.text||block.photoId||''});}
   for(const [blockId,old] of previous)changes.push({kind:old.photoId?'image':'text',action:'removed',blockId,before:old.text||old.photoId||'',after:''});
   const oldAudio=new Map((before.audioModules || []).map(m=>[m.id,m]));
   for(const audio of after.audioModules || []){const old=oldAudio.get(audio.id);oldAudio.delete(audio.id);
@@ -57,7 +57,7 @@ function moduleChanges(before,after){
   if(core.stable(before.layout||null)!==core.stable(after.layout||null))changes.push({kind:'layout',action:'changed',before:'',after:''});
   return changes;
 }
-async function saveArticle(repo,ctx,raw,{approveImage,approveBackdrop,now=()=>new Date().toISOString()}={}){
+async function saveArticle(repo,ctx,raw,{approveImage,approveBackdrop,publishLetters,now=()=>new Date().toISOString()}={}){
   const input=normalize(raw),stamp=now(),receipt='article-'+hash([ctx.principalId,input.requestId]),fingerprint=hash(input);
   await repo.ensureCollection?.('story_chapter_edits');
   // An immutable acknowledgement is authoritative even if the checker is now
@@ -139,6 +139,7 @@ async function saveArticle(repo,ctx,raw,{approveImage,approveBackdrop,now=()=>ne
     await tx.set('biography_drafts',`${ctx.familyId}_${revisionId}`,{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision});
     await tx.set('stories',`${ctx.familyId}_${story.id}`,{...story,version,currentRevisionId:revisionId,updatedAt:stamp});
     await tx.set('story_chapter_edits',receipt,{familyId:ctx.familyId,principalId:ctx.principalId,storyId:story.id,chapterId:after.id,revisionId,sourceRevisionId:input.revisionId,createdAt:stamp,fingerprint,changes,result});
+    if(changes.length)await publishLetters?.(tx,ctx,story,revision,[{chapterId:after.id,summary:revision.changeSummary}]);
     return result;
   });
 }

@@ -29,7 +29,7 @@ function evaluateStoryAccess({ principalId, ownerPrincipalId, story, grant, acti
   return grant.scope?.type === 'chapters' && validChapterIds(grant.scope.chapterIds) && chapterIds.every(id => grant.scope.chapterIds.includes(id));
 }
 
-async function readAuthorizedStory(repo, ctx, input, { approveText, now = Date.now, sharedEditEnabled = false, copyReceiveEnabled = false, signMedia } = {}) {
+async function readAuthorizedStory(repo, ctx, input, { approveText, now = Date.now, sharedEditEnabled = false, copyReceiveEnabled = false, signMedia, expectedShare } = {}) {
   if (!input || !FAMILY_ID.test(input.familyId || '') || !STORY_ID.test(input.storyId || '') ||
       (input.chapterIds !== undefined && !validChapterIds(input.chapterIds))) throw identityError();
   let requiresCheck=false;
@@ -41,6 +41,8 @@ async function readAuthorizedStory(repo, ctx, input, { approveText, now = Date.n
     const story = await tx.get('stories', `${input.familyId}_${input.storyId}`);
     if (!story || story.id !== input.storyId || story.familyId !== input.familyId || story.deletedAt) throw identityError();
     const grant = await tx.get('story_grants', grantIdFor(input.familyId, input.storyId, ctx.principalId));
+    if (expectedShare && (expectedShare.ownerPrincipalId !== space.principalId ||
+        expectedShare.invitationId !== (ctx.principalId === space.principalId ? null : grant?.invitationId))) throw identityError();
     // Check the grant before loading any manuscript, even for callers guessing
     // valid revision IDs. Only the current revision is ever considered.
     const preliminaryIds = input.chapterIds || (grant?.scope?.type === 'chapters' ? grant.scope.chapterIds : ['chapter-check']);

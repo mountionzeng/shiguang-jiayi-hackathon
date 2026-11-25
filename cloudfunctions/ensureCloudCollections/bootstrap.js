@@ -15,6 +15,7 @@ const CORE_COLLECTIONS = [
   "story_identity_aliases",
   "story_principal_spaces",
   "story_grants",
+  "story_friend_letter_inboxes",
   "story_source_policies",
   "story_copies",
   "story_excerpt_operations",

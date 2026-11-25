@@ -8,14 +8,14 @@ Page({
   data:{loading:false,title:'',coverUrl:'',media:{} as Record<string,string>,memories:[] as Array<{id:string;title:string;text:string;photoIds:string[]}>,chapters:[] as SharedChapter[],notice:'',canInvite:false,canEdit:false,canCopy:false,busy:false,shareReady:false,
     editChapterId:'',editTitle:'',editBlocks:[] as EditBlock[]},
   keepRequestId:'',keepStoryId:'',
-  familyId:'',storyId:'',revisionId:'',version:0,draftScope:'',epoch:0,hidden:false,shareToken:'',editRequestId:'',editBaseRevisionId:'',editBaseVersion:0,
-  onLoad(options:{familyId?:string;storyId?:string}={}){this.familyId=options.familyId || '';this.storyId=options.storyId || '';wx.hideShareMenu();},
+  familyId:'',storyId:'',chapterId:'',revisionId:'',version:0,draftScope:'',epoch:0,hidden:false,shareToken:'',editRequestId:'',editBaseRevisionId:'',editBaseVersion:0,
+  onLoad(options:{familyId?:string;storyId?:string;chapterId?:string}={}){this.familyId=options.familyId || '';this.storyId=options.storyId || '';this.chapterId=options.chapterId || '';wx.hideShareMenu();},
   onShow(){this.hidden=false;if(!this.data.editChapterId)void this.refresh();},
   onHide(){this.hidden=true;this.epoch++;this.shareToken='';this.revisionId='';this.version=0;this.draftScope='';this.setData({title:'',coverUrl:'',media:{},memories:[],chapters:[],loading:false,canInvite:false,canEdit:false,canCopy:false,busy:false,shareReady:false,editChapterId:'',editTitle:'',editBlocks:[]});},
   onUnload(){this.onHide();},
   async refresh(){
     const epoch=++this.epoch;this.shareToken='';this.setData({loading:true,title:'',coverUrl:'',media:{},memories:[],chapters:[],notice:'',canInvite:false,canEdit:false,canCopy:false,shareReady:false});
-    try {const result=await storySharing.read(this.familyId,this.storyId);if(this.hidden || epoch!==this.epoch)return;
+    try {const result=await storySharing.read(this.familyId,this.storyId,this.chapterId);if(this.hidden || epoch!==this.epoch)return;
       this.revisionId=result.revisionId;this.version=result.story.version;this.draftScope=result.draftScope;
       this.setData({title:result.story.title,coverUrl:result.coverUrl || '',media:result.media || {},memories:result.memories || [],chapters:result.chapters,canInvite:result.capabilities?.requestInvitation===true,
         canEdit:result.capabilities?.sharedEdit===true,canCopy:result.capabilities?.copy===true});}

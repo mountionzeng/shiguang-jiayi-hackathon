@@ -20,6 +20,7 @@ const { memoryExportSource } = require('./memoryExports');
 const { encodeStateResponse } = require('./stateTransport');
 const { readHistory } = require('./history');
 const { prepareInvitation } = require('./prepareInvitation');
+const { listFriendLetters, publishFriendLetters } = require('./friendLetters');
 
 function accessError(code) {
   return Object.assign(new Error(code === 'STORY_ACCESS_NOT_READY' ? '故事权限服务尚未准备好' : '故事共享尚未开放'), { code });
@@ -123,6 +124,10 @@ function createStoryService(repo, options = {}) {
       result.capabilities.requestInvitation = options.invitationsEnabled === true && result.capabilities.requestInvitation;
       return result;
     }
+    if (action === 'friendLetters') {
+      if (!accessEnabled || !await rolledOut(ctx.familyId)) return { letters: [] };
+      return listFriendLetters(repo, ctx, canaryFamilies, options.approveChapterText);
+    }
     if (action === 'copyReceive') {
       if (!accessEnabled || options.copyReceiveEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.sourceFamilyId)) throw accessError('STORY_ACCESS_DISABLED');
       const input={sourceFamilyId:event.sourceFamilyId,sourceStoryId:event.sourceStoryId,sourceRevisionId:event.sourceRevisionId,
@@ -162,6 +167,7 @@ function createStoryService(repo, options = {}) {
       // saveArticle still checks space ownership, sources, images and versions.
       if (!accessEnabled) throw accessError('STORY_ACCESS_DISABLED');
       return saveArticle(repo,ctx,event,{now:options.now,
+        publishLetters:canaryFamilies.has(ctx.familyId) ? publishFriendLetters : undefined,
         approveImage:(c,id)=>approveArticleImage(repo,c,id,event.storyId,event.chapter?.id),
         approveBackdrop:(c,id)=>id.startsWith(c.familyId+'_img_') && approveArticleImage(repo,c,'photo-ai-'+id.slice(id.lastIndexOf('_img_')+5),event.storyId,event.chapter?.id,'backdrop')});
     }
@@ -198,7 +204,7 @@ function createStoryService(repo, options = {}) {
       if (!accessEnabled || options.sharedEditEnabled !== true || !await rolledOut(ctx.familyId) || !canaryFamilies.has(event.familyId)) throw accessError('STORY_ACCESS_DISABLED');
       return editAuthorizedChapter(repo,ctx,{familyId:event.familyId,storyId:event.storyId,chapterId:event.chapterId,
         revisionId:event.revisionId,expectedVersion:event.expectedVersion,requestId:event.requestId,title:event.title,textBlocks:event.textBlocks},
-      {approve:options.approveSharedEdit});
+      {approve:options.approveSharedEdit,publishLetters:publishFriendLetters});
     }
     if (action === 'shareExcerpt') {
       if (!accessEnabled || options.excerptSharingEnabled !== true || !canaryFamilies.has(ctx.familyId)) throw accessError('STORY_ACCESS_DISABLED');
@@ -263,7 +269,8 @@ function createStoryService(repo, options = {}) {
       await assertSpaceOwner(tx, ctx);
       return operation(tx);
     }) } : repo;
-    const handlers = createHandlers(guardedRepo, options);
+    const handlers = createHandlers(guardedRepo, { ...options,
+      publishLetters:accessEnabled && action === 'save' && canaryFamilies.has(ctx.familyId) ? publishFriendLetters : undefined });
     let result;
     if (action === 'state') result = await measure('state.load',()=>handlers.state(ctx,{view:event.view}));
     else if (action === 'history' || action === 'revision') result = await readHistory(guardedRepo,ctx,event);

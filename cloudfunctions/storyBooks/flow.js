@@ -1,4 +1,5 @@
-const {revisionAttribution,draftSummary}=require('./revisionAttribution');
+const {revisionAttribution,draftSummary,summarizeChanges}=require('./revisionAttribution');
+const {moduleChanges}=require('./article');
 const core = require('./core');
 const { measurePerformance } = require('./performance');
 const { ownNamesByAccount } = require('./displayNames');
@@ -42,7 +43,7 @@ const contributionForClient = (memory,member,ownName) => ({
   photoIds:memory.photoIds,
   materialCaptureId:memory.materialCaptureId,
 });
-function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null, now = ()=>new Date().toISOString()} = {}) {
+function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null, now = ()=>new Date().toISOString(), publishLetters} = {}) {
   const memberError = (code,message) => { throw Object.assign(new Error(message),{code}); };
   const memberId = value => {
     const id=String(value || '').trim();
@@ -513,13 +514,26 @@ function createHandlers(repo, {migrationReady = false, migrationFamilyIds = null
       }
       if(newRevision && await tx.get('biography_drafts',docId(ctx.familyId,newRevision.id)))throw new Error('版本编号冲突');
       if(newRevision)delete newRevision.receivedFromName; // Own edits must not inherit a client-supplied source signature.
-      if(newRevision)Object.assign(newRevision,await revisionAttribution(tx,ctx,newRevision.kind==='restore'?'恢复历史版本':draftSummary(previous.manuscriptRevisions?.find(r=>r.id===before?.currentRevisionId)?.draft,newRevision.draft)));
+      const previousDraft=previous.manuscriptRevisions?.find(r=>r.id===before?.currentRevisionId)?.draft;
+      if(newRevision)Object.assign(newRevision,await revisionAttribution(tx,ctx,newRevision.kind==='restore'?'恢复历史版本':draftSummary(previousDraft,newRevision.draft)));
       if(newRevision)await tx.set('biography_drafts',docId(ctx.familyId,newRevision.id),{familyId:ctx.familyId,storyId:story.id,draftType:'story-revision',revision:newRevision});
       await tx.set('stories',docId(ctx.familyId,story.id),story);
       if (core.isEmptyStoryCreate(input) && family.storyBooks?.status!=='active') {
         await tx.set('families',ctx.familyId,{...family,independentStoryVersion:(family.independentStoryVersion || 0)+1});
       }
       await tx.set('story_operations',opId,{familyId:ctx.familyId,fingerprint:core.stable(input),storyId:story.id});
+      if(publishLetters && newRevision && previousDraft) {
+        const oldChapters = new Map(previousDraft.chapters.map(chapter => [chapter.id, chapter]));
+        const titleChanged = previousDraft.title !== newRevision.draft.title;
+        const updates = newRevision.draft.chapters.flatMap(chapter => {
+          const old = oldChapters.get(chapter.id);
+          if (!old) return [];
+          const changes = moduleChanges(old, chapter);
+          const summary = [titleChanged && '修改文章标题', changes.length > 0 && summarizeChanges(changes)].filter(Boolean).join('，');
+          return summary ? [{ chapterId: chapter.id, summary }] : [];
+        });
+        await publishLetters(tx,ctx,story,newRevision,updates);
+      }
       return {ok:true,storyId:story.id};
     });
   }

@@ -1,4 +1,5 @@
 import { loadAccountActivity, type AccountActivity } from '../../services/accountActivity';
+import { sharedReadPath, storySharing, type FriendLetter } from '../../services/storySharing';
 import {dailyQuestionAvailable, dailyQuestionCache, generateDailyQuestion} from "../../services/dailyQuestion";
 import {homeReturnNotice, loadPendingReturns} from "../../services/storyReturnsInbox";
 import {hasAiConsent} from "../../services/aiConsent";
@@ -346,12 +347,28 @@ Page({
     hasRecommendedQuestion: false,
     returnNotice: "",
     returnNoticeChapterId: "",
+    friendLetters: [] as FriendLetter[],
     sharedArticles: [] as AccountActivity[], sharesError: '',
     recentStories: [] as RecentStoryView[],
     hasRecentStories: false,
   },
 
   sharesSequence: 0,
+  friendLettersSequence: 0,
+  async refreshFriendLetters() {
+    const sequence = ++this.friendLettersSequence;
+    this.setData({ friendLetters: [] });
+    try {
+      const letters = await storySharing.friendLetters();
+      if (sequence === this.friendLettersSequence) this.setData({ friendLetters: letters });
+    } catch (error) {
+      if (sequence === this.friendLettersSequence) logLoadError("friend-letters", error);
+    }
+  },
+  openFriendLetter(event: { currentTarget: { dataset: { id: string } } }) {
+    const letter = this.data.friendLetters.find(item => item.id === event.currentTarget.dataset.id);
+    if (letter) wx.navigateTo({ url: sharedReadPath(letter.familyId, letter.storyId, letter.chapterId) });
+  },
   async refreshShares() {
     const sequence = ++this.sharesSequence;
     try { const events = await loadAccountActivity(); if (sequence === this.sharesSequence) this.setData({ sharedArticles: events.slice(0, 3), sharesError: '' }); }
@@ -361,12 +378,17 @@ Page({
     wx.navigateTo({ url: '/pages/room/room?account=' + encodeURIComponent(event.currentTarget.dataset.account) });
   },
   onShow() {
+    void this.refreshFriendLetters();
     void this.refreshShares();
     this.setData({ bookOpening: false });
     void this.refresh().catch(() => undefined);
   },
 
-  onHide() { this.sharesSequence++; this.dailyRequestId += 1; },
+  onHide() {
+    this.friendLettersSequence++;
+    this.sharesSequence++;
+    this.dailyRequestId += 1;
+  },
 
   async refresh(state?: FamilyRoomState) {
     this.dailyRequestId += 1;

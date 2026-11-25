@@ -2,6 +2,8 @@ const crypto = require('node:crypto');
 const core = require('./core');
 const { assertCurrentIdentity, identityError, FAMILY_ID } = require('./identity');
 const { evaluateStoryAccess, grantIdFor } = require('./access');
+const { moduleChanges } = require('./article');
+const { revisionAttribution, summarizeChanges } = require('./revisionAttribution');
 
 const STORY_ID = /^story-[a-z0-9-]{1,100}$/;
 const CHAPTER_ID = /^chapter-[a-z0-9-]{1,60}$/;
@@ -29,7 +31,7 @@ function normalize(input) {
     title:input.title, textBlocks };
 }
 
-async function editAuthorizedChapter(repo, ctx, rawInput, { now = () => new Date().toISOString(), approve = async () => true } = {}) {
+async function editAuthorizedChapter(repo, ctx, rawInput, { now = () => new Date().toISOString(), approve = async () => true, publishLetters } = {}) {
   const input = normalize(rawInput);
   const fingerprint = core.stable(input);
   const operationId = digest(JSON.stringify([ctx.principalId, input.familyId, input.storyId, input.requestId]));
@@ -77,6 +79,7 @@ async function editAuthorizedChapter(repo, ctx, rawInput, { now = () => new Date
     const checked = await authorized(tx);
     if (checked.receipt) return checked.receipt.result;
     const { story, record, draft, chapter } = checked;
+    const before = { ...chapter, content: [...chapter.content] };
     chapter.title = input.title;
     for (const block of input.textBlocks) chapter.content[block.index] = { ...chapter.content[block.index], text:block.text };
     Object.assign(draft, core.flatten(draft.chapters));
@@ -85,7 +88,8 @@ async function editAuthorizedChapter(repo, ctx, rawInput, { now = () => new Date
     const existing = await tx.get('biography_drafts', `${input.familyId}_${revisionId}`);
     if (existing) fail('VERSION_CONFLICT', '版本编号冲突，请重新打开章节');
     core.validateDraft(draft, story);
-    const revision = { ...record.revision, id:revisionId, storyId:story.id, savedAt, draft,
+    const attribution = await revisionAttribution(tx, ctx, summarizeChanges(moduleChanges(before, chapter)));
+    const revision = { ...record.revision, ...attribution, id:revisionId, storyId:story.id, savedAt, draft,
       kind:'draft', label:'亲友编辑', sourceRevisionId:input.revisionId, expectedStoryVersion:story.version,
       editedByPrincipalId:ctx.principalId, editedChapterIds:[input.chapterId] };
     const nextStory = { ...story, currentRevisionId:revisionId, version:story.version + 1, updatedAt:savedAt };
@@ -94,6 +98,7 @@ async function editAuthorizedChapter(repo, ctx, rawInput, { now = () => new Date
     await tx.set('stories', `${input.familyId}_${story.id}`, nextStory);
     await tx.set('story_collaboration_operations', operationId, { familyId:input.familyId, storyId:story.id,
       principalId:ctx.principalId, requestId:input.requestId, fingerprint, result, createdAt:savedAt });
+    await publishLetters?.(tx,ctx,story,revision,[{chapterId:chapter.id,summary:revision.changeSummary}]);
     return result;
   });
 }

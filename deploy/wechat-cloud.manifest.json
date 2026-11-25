@@ -387,6 +387,7 @@
     "story_desktop_nonces": [],
     "story_desktop_operations": [],
     "story_excerpt_operations": [],
+    "story_friend_letter_inboxes": [],
     "story_grants": [
       "principal_status_story: principalId, status, storyId",
       "family_story_status: familyId, storyId, status"

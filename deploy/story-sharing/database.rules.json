@@ -5,6 +5,7 @@
     "story_identity_aliases": { "read": false, "write": false },
     "story_principal_spaces": { "read": false, "write": false },
     "story_grants": { "read": false, "write": false },
+    "story_friend_letter_inboxes": { "read": false, "write": false },
     "story_source_policies": { "read": false, "write": false },
     "story_copies": { "read": false, "write": false },
     "story_excerpt_operations": { "read": false, "write": false },
