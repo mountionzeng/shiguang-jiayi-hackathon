@@ -11,6 +11,8 @@ import {
 } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
+import { withComputeRequest } from "./computeRequest";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 import { measurePerformance } from "./performanceLog";
 
 interface CloudInterviewResult {
@@ -89,23 +91,24 @@ export async function generateInterviewPrompt(
   if (!await requestAiConsent()) return localFallbackPrompt(input, "consent-declined");
 
   try {
-    const response = await measurePerformance("ai.interview", () => wx.cloud.callFunction({
+    const data = {
+      answer: input.answer,
+      askedDimensions: input.askedDimensions,
+      mode: input.mode ?? "personal",
+      memoryType: input.memoryType ?? "note",
+      memberName: input.memberName,
+      storyTitle: input.storyTitle,
+      storyId: input.storyId,
+      previousAnswers: input.previousAnswers ?? [],
+      conversation: input.conversation ?? [],
+      ...(input.replyIntent ? { replyIntent: input.replyIntent } : {}),
+      ...(input.sourceText !== undefined ? { sourceText: input.sourceText } : {}),
+      ...(input.sourceOnly === true ? { sourceOnly: true } : {}),
+    };
+    const response = await withComputeRequest(`interview:${JSON.stringify(data)}`, (computeRequestId) => measurePerformance("ai.interview", () => wx.cloud.callFunction({
       name: "chatInterview",
-      data: {
-        answer: input.answer,
-        askedDimensions: input.askedDimensions,
-        mode: input.mode ?? "personal",
-        memoryType: input.memoryType ?? "note",
-        memberName: input.memberName,
-        storyTitle: input.storyTitle,
-        storyId: input.storyId,
-        previousAnswers: input.previousAnswers ?? [],
-        conversation: input.conversation ?? [],
-        ...(input.replyIntent ? { replyIntent: input.replyIntent } : {}),
-        ...(input.sourceText !== undefined ? { sourceText: input.sourceText } : {}),
-        ...(input.sourceOnly === true ? { sourceOnly: true } : {}),
-      },
-    }));
+      data: { ...data, computeRequestId },
+    })));
 
     if (isCloudInterviewResult(response.result)) {
       return {
@@ -118,6 +121,7 @@ export async function generateInterviewPrompt(
     console.warn("AI 追问返回格式不完整，将使用本地追问规则");
     return localFallbackPrompt(input, "invalid-result");
   } catch (error) {
+    promptComputeBillingFailure(error);
     logServiceFailure('chatInterview', 'ai', error);
     console.warn("AI 追问不可用，将使用本地追问规则");
     const failure = error as { code?: unknown; errMsg?: unknown; message?: unknown } | undefined;

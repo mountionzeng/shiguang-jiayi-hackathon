@@ -62,12 +62,13 @@ export function loadCurrentAccount(): Promise<ShiguangAccount> {
   return request;
 }
 
-export async function loadSharedComputeBalance(): Promise<number> {
+export async function loadSharedComputeBalance(): Promise<number | null> {
   if (!wx.cloud) throw new Error("算力暂不可用");
   const response = await wx.cloud.callFunction({
     name: "getOpenId", data: { action: "computeBalance" },
   });
-  const result = response.result as { version?: number; unit?: string; availableMicros?: number };
+  const result = response.result as { version?: number; unit?: string; availableMicros?: number; status?: string };
+  if (result?.version === 1 && result.unit === "compute" && result.status === "registration_required") return null;
   if (result?.version !== 1 || result.unit !== "compute" ||
       !Number.isSafeInteger(result.availableMicros) || Number(result.availableMicros) < 0)
     throw new Error("算力暂不可用");

@@ -17,7 +17,10 @@ test('cancelled public search sends nothing; confirmed query sends only its revi
   assert.equal(await requestWritingSearch('搜满城'),undefined);assert.equal(requests.length,0);
   confirm=true;await requestWritingSearch('搜满城');
   const search=requests.find(item=>item.name==='chatInterview');
-  assert.deepEqual(search.data,{action:'writingSearch',query:'河北满城公开街道资料',searchConsent:true});
+  assert.equal(search.data.action,'writingSearch');
+  assert.equal(search.data.query,'河北满城公开街道资料');
+  assert.equal(search.data.searchConsent,true);
+  assert.match(search.data.computeRequestId,/^cmp-[A-Za-z0-9_-]{8,}$/);
 });
 test('preference editing displays the stored value and clears with a revision checked save',async context=>{
   const requests:any[]=[];

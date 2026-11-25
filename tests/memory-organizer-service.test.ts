@@ -66,7 +66,10 @@ test("organizeMemory uses the cloud function when available", async (context) =>
   assert.equal(draft.generationMode, "cloud-ai");
   assert.equal(draft.title, "外公护着我");
   assert.deepEqual(draft.people, ["外公", "父母"]);
-  assert.deepEqual(requestData, {
+  const sent = requestData as { computeRequestId?: string };
+  assert.match(sent.computeRequestId || "", /^cmp-[A-Za-z0-9_-]{8,}$/);
+  delete sent.computeRequestId;
+  assert.deepEqual(sent, {
     memoryId: "memory-1",
     memoryType: "note",
     memberName: "林岚",

@@ -55,6 +55,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_input: "这篇故事暂时无法传到电脑，请刷新后重试",
   not_configured: "电脑登录码服务还没有配置好",
   rate_limited: "生成得太频繁了，请稍后再试",
+  registration_required: "请先在网页扫码注册或绑定微信账号，再把故事传到电脑",
   replayed_request: "这次请求已经处理，请重新选择故事",
   unavailable: "电脑端暂时不可用",
 };
@@ -79,6 +80,7 @@ async function call(action: string, data: Record<string, unknown> = {}): Promise
   try {
     const response = await wx.cloud.callFunction({ name: "drinkingTimeBridge", data: { action, ...data } });
     if (!response.result || typeof response.result !== "object") throw new Error("bridge_unavailable");
+    if ((response.result as { code?: unknown }).code === "registration_required") throw new Error("registration_required");
     return response.result;
   } catch (error) {
     throw friendlyBridgeError(error, action);

@@ -1,4 +1,5 @@
 import type { ShiguangAppOptions } from "../app";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 
 export interface AudioCapability { enabled: boolean; reason?: string }
 export interface StoryAudioCapabilities {
@@ -14,6 +15,7 @@ export interface StoryAudioCapabilities {
   pricingVersion: string | null;
   accountScope: string;
   fullArticleAudio?:boolean;
+  chapterRoute?: 'canary';
   officialVoices?:Array<{id:string;label:string}>;
 }
 export interface StoryAudioPlayback {
@@ -41,30 +43,40 @@ function assertAudioReady():void {
   if(!app?.globalData?.cloudReady||!app.globalData.aiReady)throw new StoryAudioServiceError('STORY_AUDIO_NOT_READY','有声故事尚未开放');
 }
 
-async function call<T>(action:string,data:Record<string,unknown>={}):Promise<T> {
+async function call<T>(action:string,data:Record<string,unknown>={},name:'storyAudio'|'storyAudioCanary'='storyAudio'):Promise<T> {
   assertAudioReady();
+  const computeRequestId = typeof data.computeRequestId === "string" ? data.computeRequestId : typeof data.requestId === "string" ? data.requestId : undefined;
   let response:Awaited<ReturnType<typeof wx.cloud.callFunction>>;
-  try {response=await wx.cloud.callFunction({name:'storyAudio',data:{...data,action}});}
-  catch {
-    throw new StoryAudioServiceError(action==='status'?'AUDIO_STATUS_UNAVAILABLE':'AUDIO_REQUEST_UNCONFIRMED',
-      action==='status'?'暂时没能读到声音结果，已保留任务，正在继续查询':'暂时没能确认声音请求，已保留任务；重新打开本章可继续查询');
+  try {response=await wx.cloud.callFunction({name,data:{...data,action,...(computeRequestId?{computeRequestId}:{})}});}
+  catch (error) {
+    if (action === "create" || action === "createMusic") promptComputeBillingFailure(error);
+    const polling = action === "status" || action === "advance";
+    throw new StoryAudioServiceError(polling?'AUDIO_STATUS_UNAVAILABLE':'AUDIO_REQUEST_UNCONFIRMED',
+      polling?'暂时没能读到声音结果，已保留任务，正在继续查询':'暂时没能确认声音请求，已保留任务；重新打开本章可继续查询');
   }
   const result=response.result as ({error?:string;code?:string;message?:string}&T)|undefined;
-  if(!result||result.error)throw new StoryAudioServiceError(result?.code || 'STORY_AUDIO_ERROR',result?.message || '声音服务暂不可用，请稍后重试');
+  if(!result||result.error){
+    const failure=new StoryAudioServiceError(result?.code || 'STORY_AUDIO_ERROR',result?.message || '声音服务暂不可用，请稍后重试');
+    if (action === "create" || action === "createMusic") promptComputeBillingFailure(failure);
+    throw failure;
+  }
   return result;
 }
-export const newAudioRequestId=()=>`audio-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
+export const newAudioRequestId=(canary=false)=>`audio-${canary?'canary-v1-':''}${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
 export const newVoiceProfileId=()=>`voice-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
 export const audioCreatePath=(input:{storyId:string;revisionId:string;chapterId:string})=>'/packages/audio/pages/create/create?'+[
   'storyId='+encodeURIComponent(input.storyId),
   'revisionId='+encodeURIComponent(input.revisionId),
   'chapterId='+encodeURIComponent(input.chapterId),
 ].join('&');
+const chapterFunction=(requestId:string)=>requestId.startsWith('audio-canary-v1-')?'storyAudioCanary':'storyAudio';
 export const storyAudioApi={
+  canaryCapabilities:()=>call<StoryAudioCapabilities>('capabilities',{},'storyAudioCanary'),
   capabilities:()=>call<StoryAudioCapabilities>('capabilities'),
-  create:(input:{requestId:string;storyId:string;revisionId:string;chapterId:string;blockId?:string;scope?:'chapter';voice:{kind:'official'|'clone';id:string};background?:{id:string;volume:number}})=>call<{operation:StoryAudioOperation}>('create',input),
+  create:(input:{requestId:string;storyId:string;revisionId:string;chapterId:string;blockId?:string;scope?:'chapter';voice:{kind:'official'|'clone';id:string};background?:{id:string;volume:number}})=>call<{operation:StoryAudioOperation}>('create',input,chapterFunction(input.requestId)),
   createMusic:(input:{requestId:string;storyId:string;revisionId:string;chapterId:string;blockId:string;scope?:'chapter'})=>call<{operation:StoryAudioOperation}>('createMusic',input),
-  status:(requestId:string)=>call<{operation:StoryAudioOperation}>('status',{requestId}),
+  status:(requestId:string)=>call<{operation:StoryAudioOperation}>('status',{requestId},chapterFunction(requestId)),
+  advance:(requestId:string)=>call<{operation:StoryAudioOperation}>(chapterFunction(requestId)==='storyAudioCanary'?'advance':'status',{requestId},chapterFunction(requestId)),
   prepareVoice:(input:{requestId:string;profileId:string;consentVersion:string;voiceGender:1|2})=>call<{profile:VoiceProfile;upload:{cloudPath:string}}>('voicePrepare',input),
   registerVoiceSample:(input:{profileId:string;fileID:string})=>call<{profile:VoiceProfile}>('voiceRegisterSample',input),
   voiceStatus:(profileId:string)=>call<{profile:VoiceProfile}>('voiceStatus',{profileId}),

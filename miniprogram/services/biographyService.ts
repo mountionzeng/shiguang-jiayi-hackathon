@@ -11,6 +11,8 @@ import {
 import type { ShiguangAppOptions } from "../app";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { requestAiConsent } from "./aiConsent";
+import { withComputeRequest } from "./computeRequest";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
 
 interface CloudBiographyResult {
   title?: unknown;
@@ -86,18 +88,19 @@ export async function generateBiographyWithStatus(
   else if (!await requestAiConsent()) fallbackReason = "consent-declined";
   else {
     try {
-      const response = await measurePerformance("ai.biography", () => wx.cloud.callFunction({
+      const data = {
+        protagonistName: member.name,
+        // The server reloads these sources under the authenticated family.
+        // Never let a client-supplied memory body become model input.
+        memoryIds: personal.map((memory) => memory.id),
+        ...(chapter?.storyId ? { storyId: chapter.storyId } : {}),
+        ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),
+        ...(chapter?.writingInstruction !== undefined ? { writingInstruction: chapter.writingInstruction } : {}),
+      };
+      const response = await withComputeRequest(`biography:${JSON.stringify(data)}`, (computeRequestId) => measurePerformance("ai.biography", () => wx.cloud.callFunction({
         name: "generateBiography",
-        data: {
-          protagonistName: member.name,
-          // The server reloads these sources under the authenticated family.
-          // Never let a client-supplied memory body become model input.
-          memoryIds: personal.map((memory) => memory.id),
-          ...(chapter?.storyId ? { storyId: chapter.storyId } : {}),
-          ...(chapter ? { chapterTitle: chapter.chapterTitle ?? "", existingText } : {}),
-          ...(chapter?.writingInstruction !== undefined ? { writingInstruction: chapter.writingInstruction } : {}),
-        },
-      }));
+        data: { ...data, computeRequestId },
+      })));
 
       if (isCloudBiographyResult(response.result)) {
         return { draft: response.result };
@@ -106,6 +109,7 @@ export async function generateBiographyWithStatus(
       console.warn("云函数返回格式不完整，将使用本地草稿");
       fallbackReason = "malformed";
     } catch (error) {
+      promptComputeBillingFailure(error);
       console.warn("AI 云生成不可用，将使用本地草稿");
       fallbackReason = failureReason(error);
     }

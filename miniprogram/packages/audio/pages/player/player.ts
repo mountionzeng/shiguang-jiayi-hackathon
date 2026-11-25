@@ -25,7 +25,7 @@ Page({
   async refresh(){
     const token=++this.refreshToken;
     try{
-      const {operation}=await storyAudioApi.status(this.requestId);
+      const {operation}=await storyAudioApi.advance(this.requestId);
       if(this.unloaded||this.hidden||token!==this.refreshToken)return;
       const playback=operation.status==='ready'&&playable(operation.playback)?operation.playback:undefined;
       if(!playback){this.setData({ready:false,notice:operation.error?.message||messageFor(operation.status)});if(['queued','claimed','submitted','processing','storing'].includes(operation.status))this.scheduleRefresh();return;}

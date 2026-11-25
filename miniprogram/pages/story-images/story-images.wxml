@@ -67,6 +67,10 @@
     <view class="job-row {{job.active ? 'is-active' : ''}}" wx:for="{{group.pending}}" wx:key="jobId" wx:for-item="job">
       <generation-status wx:if="{{job.active}}" kind="image" text="{{job.purposeLabel + ' · ' + job.message}}" />
       <text wx:else>{{job.purposeLabel}} · {{job.message}}</text>
+      <view class="group-actions" wx:if="{{job.status === 'unknown'}}">
+        <button class="tool-button" data-id="{{group.id}}" data-purpose="{{job.purpose}}" data-job-id="{{job.jobId}}" bindtap="generate" disabled="{{submitting || savingBackdrop}}">查看原任务</button>
+        <button class="tool-button" data-id="{{group.id}}" data-purpose="{{job.purpose}}" data-job-id="{{job.jobId}}" data-new-task="{{true}}" bindtap="generate" disabled="{{submitting || savingBackdrop}}">另开一单</button>
+      </view>
     </view>
     <view class="image-grid" wx:if="{{group.images.length}}">
       <view class="image-card" wx:for="{{group.images}}" wx:key="imageId" wx:for-item="image">

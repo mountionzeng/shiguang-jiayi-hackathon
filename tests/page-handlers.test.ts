@@ -2749,7 +2749,12 @@ test("saved-memory learning is nonblocking, sends only an id and respects local 
   learnFromSavedMemory(memory); assert.equal(calls.length,0);
   wx.setStorageSync("aiConsentDecision",{granted:true,version:1});
   assert.equal(learnFromSavedMemory(memory),undefined);
-  assert.deepEqual(calls,[{name:"personalMemory",data:{action:"extract",memoryId:memory.id}}]);
+  assert.equal(calls.length,1);
+  const sent = calls[0] as { name: string; data: { action: string; memoryId: string; computeRequestId?: string } };
+  assert.equal(sent.name, "personalMemory");
+  assert.equal(sent.data.action, "extract");
+  assert.equal(sent.data.memoryId, memory.id);
+  assert.match(sent.data.computeRequestId || "", /^cmp-[A-Za-z0-9_-]{8,}$/);
   finish?.({result:{status:"complete"}});
 });
 

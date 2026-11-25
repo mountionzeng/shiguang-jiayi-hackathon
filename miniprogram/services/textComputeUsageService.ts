@@ -39,6 +39,11 @@ export function parseTextComputeView(value: unknown): TextComputeView {
   });
   return { enabled: data.enabled, rows };
 }
+export function textComputeHint(view: TextComputeView): string {
+  if (!view.enabled) return "文字用量记录尚未开启";
+  if (!view.rows.length) return "暂无已记录的文字调用";
+  return "文字用量预估（非账户流水），按 2026-09-23 价格估算，不是扣费记录";
+}
 export async function loadTextComputeUsage(): Promise<TextComputeView> {
   if (!wx.cloud) throw new Error("算力用量暂不可用");
   const response = await wx.cloud.callFunction({ name: "getOpenId", data: { action: "textComputeUsage" } });

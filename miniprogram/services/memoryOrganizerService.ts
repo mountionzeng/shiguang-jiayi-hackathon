@@ -10,6 +10,8 @@ import {
 import { draftTitleFromAnswers } from "../domain/interview";
 import { CLOUD_AI_ENABLED } from "../config/runtime";
 import { currentConsentVersion, requestAiConsent } from "./aiConsent";
+import { promptComputeBillingFailure } from "./computeBillingPrompt";
+import { withComputeRequest } from "./computeRequest";
 
 export interface WritingOptions {
   writingMode?: "polish" | "compose";
@@ -152,28 +154,29 @@ export async function organizeMemory(
   if (!await requestAiConsent()) return { ...fallback, fallbackReason: "consent-declined" };
 
   try {
-    const response = await measurePerformance("ai.organize", () => wx.cloud.callFunction({
+    const data = {
+      memoryId: input.memoryId,
+      ...(input.articleGuidance ? {articleGuidance:true} : {}),
+      ...(input.materialSourceId ? {materialSourceId:input.materialSourceId} : {}),
+      memoryType: input.memoryType,
+      memberName: input.memberName,
+      storyTitle: input.storyTitle,
+      consentVersion: currentConsentVersion(),
+      ...(input.writingMode ? { writingMode: input.writingMode } : {}),
+      ...(input.writingInstruction !== undefined ? { writingInstruction: input.writingInstruction } : {}),
+      ...(input.expectedSavedText !== undefined ? {
+        sourceOnly: true,
+        expectedText: input.expectedSavedText,
+        sourceRevisionId: input.expectedSourceRevisionId,
+        transcript,
+        ...(input.photoReference ? {photoReference: input.photoReference} : {}),
+        ...(input.conversation ? { conversation: input.conversation } : {}),
+      } : {}),
+    };
+    const response = await withComputeRequest(`organizeMemory:${JSON.stringify(data)}`, (computeRequestId) => measurePerformance("ai.organize", () => wx.cloud.callFunction({
       name: "organizeMemory",
-      data: {
-        memoryId: input.memoryId,
-        ...(input.articleGuidance ? {articleGuidance:true} : {}),
-        ...(input.materialSourceId ? {materialSourceId:input.materialSourceId} : {}),
-        memoryType: input.memoryType,
-        memberName: input.memberName,
-        storyTitle: input.storyTitle,
-        consentVersion: currentConsentVersion(),
-        ...(input.writingMode ? { writingMode: input.writingMode } : {}),
-        ...(input.writingInstruction !== undefined ? { writingInstruction: input.writingInstruction } : {}),
-        ...(input.expectedSavedText !== undefined ? {
-          sourceOnly: true,
-          expectedText: input.expectedSavedText,
-          sourceRevisionId: input.expectedSourceRevisionId,
-          transcript,
-          ...(input.photoReference ? {photoReference: input.photoReference} : {}),
-          ...(input.conversation ? { conversation: input.conversation } : {}),
-        } : {}),
-      },
-    }));
+      data: { ...data, computeRequestId },
+    })));
     if (input.materialSourceId && (response.result as CloudOrganizedMemoryResult | undefined)?.materialReadingApplied !== true) {
       throw new Error('材料文字尚未得到云端确认，不能生成成文预览');
     }
@@ -184,6 +187,7 @@ export async function organizeMemory(
     if (cloudDraft) return cloudDraft;
     console.warn("AI 整理返回格式不完整，将保留原话草稿");
   } catch (error) {
+    promptComputeBillingFailure(error);
     logServiceFailure('organizeMemory', 'ai', error);
     console.warn("AI 整理不可用，将保留原话草稿");
     return { ...fallback, fallbackReason: "request-failed" };
@@ -203,7 +207,7 @@ export async function organizeInlineAnswer(
   const fallback = localOrganizedDraft([answer], input.memoryType ?? "note");
 
   try {
-    const response = await measurePerformance("ai.organize", () => wx.cloud.callFunction({
+    const response = await withComputeRequest(`organizeInline:${answer}`, (computeRequestId) => measurePerformance("ai.organize", () => wx.cloud.callFunction({
       name: "organizeMemory",
       data: {
         inlineAnswer: true,
@@ -217,11 +221,13 @@ export async function organizeInlineAnswer(
         ...(input.writingInstruction !== undefined ? { writingInstruction: input.writingInstruction } : {}),
         ...(input.basisText !== undefined ? { basisText: input.basisText } : {}),
         ...(input.conversation ? { conversation: input.conversation } : {}),
+        computeRequestId,
       },
-    }));
+    })));
     const cloudDraft = parseCloudDraft(response.result, fallback);
     return cloudDraft?.generationMode === "cloud-ai" ? cloudDraft : undefined;
   } catch (error) {
+    promptComputeBillingFailure(error);
     logServiceFailure('organizeMemory', 'ai', error);
     console.warn("就地小忆整理不可用，将保留原话");
     return undefined;

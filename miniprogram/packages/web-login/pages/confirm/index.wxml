@@ -7,8 +7,8 @@
       <button class="primary" bindtap="lookup" disabled="{{busy || !code}}">{{busy ? '读取中…' : '重新读取'}}</button>
     </block>
     <block wx:else>
-    <view class="note">在电脑上打开拾光网页登录页，选择“使用微信登录”，再用微信扫一扫。</view>
-    <view class="note">扫码后确认，即可用这个微信账号登录网页。无需输入六位码。</view>
+    <view class="note">请先在电脑网页打开登录或绑定页，用微信扫那个二维码。不要使用邮箱来稿码或故事电脑码。</view>
+    <view class="note">扫码并确认后，可用这个微信登录网页，并与网页共用同一份网站算力。绑定不会再领注册赠送。</view>
     <button wx:if="{{!legacyInput}}" class="ghost" bindtap="showLegacyInput">使用旧版登录码</button>
     <block wx:if="{{legacyInput}}">
     <view class="note">仅适用于电脑上仍显示六位码的旧版登录页。</view>
@@ -21,11 +21,11 @@
   <block wx:elif="{{step==='confirm'}}">
     <view class="card">
       <view class="device">{{clientHint}}</view>
-      <view class="note">{{mode==='bind' ? '这台电脑想把你的微信绑定到它当前登录的账号。' : '这台电脑想用你的微信账号登录。'}}</view>
-      <view class="warn">请确认这台电脑就在你面前。不是你本人操作的，请点拒绝。</view>
+      <view class="note">{{mode==='bind' ? '这台电脑想把你的微信绑定到它当前登录的账号，之后共用同一份网站算力。绑定不会再领取注册赠送。若已有两个独立账号，将提示无法自动合并（merge_required），原余额和预占保持不变。' : '这台电脑想用你的微信账号登录。若微信还没有网站账号，确认后将新开账号并赠送 5 算力；已有网页账号请先登录网页，再从算力绑定入口扫码。'}}</view>
+      <view class="warn">请确认这台电脑就在你面前，且二维码来自网页登录或绑定页，而不是邮箱来稿或故事电脑码。不是你本人操作的，请点拒绝。</view>
     </view>
     <view class="error" wx:if="{{error}}">{{error}}</view>
-    <button class="primary" bindtap="decide" data-decision="confirm" disabled="{{busy}}">确认登录</button>
+    <button class="primary" bindtap="decide" data-decision="confirm" disabled="{{busy}}">{{mode==='bind' ? '确认绑定并共用算力' : '确认登录'}}</button>
     <button class="ghost" bindtap="decide" data-decision="deny" disabled="{{busy}}">拒绝</button>
   </block>
   <block wx:else>

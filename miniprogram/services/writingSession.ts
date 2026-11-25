@@ -1,5 +1,7 @@
 import {cachedAccountScope, currentFamilyId} from './cloudRoomStorage';
 import type {WritingSource} from './writingSupport';
+import {computeOperationId, noteComputeOperationOutcome} from './computeRequest';
+import {promptComputeBillingFailure} from './computeBillingPrompt';
 export interface WritingSnapshot {
   messages:Array<{id:string;kind:'opening'|'followup'|'answer'|'research'|'request';text:string;label:string;sources?:WritingSource[]}>;
   answers:string[];askedDimensions:string[];inputText:string;draftTitle:string;draftText:string;draftSummary:string;
@@ -23,7 +25,12 @@ export class WritingSession {
   private constructor(private memoryId:string, private familyId:string, private notice:(text:string)=>void) {this.key=`writing-session:v1:${cachedAccountScope()}:${familyId}:${memoryId}`;}
   private async call(data:Record<string,unknown>):Promise<Receipt> {
     if(await currentFamilyId()!==this.familyId)throw new Error('账号已切换，请重新打开会话');
-    const result=(await wx.cloud.callFunction({name:'chatInterview',data:{action:'writingSession',memoryId:this.memoryId,expectedFamilyId:this.familyId,...data}})).result as Receipt;
+    const actionKey=typeof data.mutationId==='string'?`writingSession:${data.mutationId}`:`writingSession:${this.memoryId}:${String(data.operation||'op')}`;
+    const computeRequestId=typeof data.computeRequestId==='string'?data.computeRequestId:computeOperationId(actionKey);
+    let response;
+    try { response=await wx.cloud.callFunction({name:'chatInterview',data:{action:'writingSession',memoryId:this.memoryId,expectedFamilyId:this.familyId,...data,computeRequestId}}); noteComputeOperationOutcome(actionKey); }
+    catch(error){ noteComputeOperationOutcome(actionKey, error); promptComputeBillingFailure(error); throw error; }
+    const result=response.result as Receipt;
     if(await currentFamilyId()!==this.familyId)throw new Error('账号已切换，请重新打开会话');
     if(!result || !Number.isSafeInteger(result.revision) || typeof result.memoryId!=='string')throw new Error('会话同步入口尚未就绪');
     return result;

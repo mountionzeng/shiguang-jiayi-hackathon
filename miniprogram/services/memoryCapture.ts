@@ -4,6 +4,8 @@ import {requestPhotoAiConsent} from './photoAiConsent';
 import {saveLocalPhoto} from './bookImages';
 import {ensurePhotoUploads} from './photoCloud';
 import {classifyImportFiles,readImportTextFile,type ImportFileLike} from './memoryImport';
+import {computeOperationId, noteComputeOperationOutcome} from './computeRequest';
+import {promptComputeBillingFailure} from './computeBillingPrompt';
 
 export interface CaptureAudioFile {id:string;name:string;path:string;bytes:number;extension:string;fileID?:string}
 export interface MemoryCaptureDraft {id:string;sessionId?:string;familyId:string;composerText?:string;submittedText?:string;text:string;photoIds:string[];photoPaths:string[];audio:CaptureAudioFile[];submitted?:boolean}
@@ -16,8 +18,19 @@ export async function assertCaptureScope(familyId:string){if(await currentFamily
 async function call<T>(action:string,data:Record<string,unknown>={},familyId?:string):Promise<T>{
   const expectedFamilyId=familyId || await currentFamilyId();
   await assertCaptureScope(expectedFamilyId);
-  const result=(await wx.cloud.callFunction({name:'organizeMemory',data:{action,...data,expectedFamilyId}})).result as T & {error?:{message?:string}};
-  if(result?.error)throw new Error(result.error.message || '素材服务尚未就绪');
+  let response;
+  const actionKey=`capture:${expectedFamilyId}:${action}:${String(data.id||data.sessionId||data.draftId||data.memoryId||'')}`;
+  const computeRequestId=typeof data.computeRequestId==='string'?data.computeRequestId:computeOperationId(actionKey);
+  try { response=await wx.cloud.callFunction({name:'organizeMemory',data:{action,...data,expectedFamilyId,computeRequestId}}); }
+  catch(error){ noteComputeOperationOutcome(actionKey, error, computeRequestId); if(action==='captureProcess'||action==='captureReadMaterials')promptComputeBillingFailure(error); throw error; }
+  const result=response.result as T & {error?:{message?:string;code?:string}};
+  if(result?.error){
+    const failure=Object.assign(new Error(result.error.message || '素材服务尚未就绪'), {code:result.error.code});
+    noteComputeOperationOutcome(actionKey, failure, computeRequestId);
+    if(action==='captureProcess'||action==='captureReadMaterials')promptComputeBillingFailure(failure);
+    throw failure;
+  }
+  noteComputeOperationOutcome(actionKey, undefined, computeRequestId);
   await assertCaptureScope(expectedFamilyId);
   return result;
 }

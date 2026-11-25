@@ -33,7 +33,15 @@ Page({
     let scene = "";
     try { scene = decodeURIComponent(rawScene); } catch { /* Invalid scenes never trigger a request. */ }
     const match = /^wl_([A-F0-9]{28})$/.exec(scene);
-    if (!match) { this.setData({ error: "登录二维码无效，请在网页重新生成。" }); return; }
+    if (!match) {
+      const mailbox = /^wm_/i.test(scene);
+      this.setData({
+        error: mailbox
+          ? "这是邮箱来稿码，不能用来绑定或授权算力钱包。请从电脑网页的登录或绑定页重新扫码。"
+          : "登录二维码无效。请从电脑网页的登录或绑定页扫码。邮箱来稿码和故事电脑码不能用来绑定钱包。",
+      });
+      return;
+    }
     this.setData({ code: match[1], fromQr: true });
     // Scanning only previews the device; the user must still tap confirmation.
     void this.lookup();
@@ -66,11 +74,14 @@ Page({
     try {
       const outcome = await decideWebLogin(this.data.code, event.currentTarget.dataset.decision);
       if (revision !== this.requestRevision) return;
+      const bind = this.data.mode === "bind";
       const text = outcome === "confirmed"
-        ? "已确认，电脑网页会自动登录。"
+        ? (bind
+          ? "已确认绑定。手机和电脑将共用同一份网站算力；绑定不会再领取注册赠送。"
+          : "已确认，电脑网页会自动登录。手机和电脑将共用同一份网站算力。")
         : outcome === "denied"
-          ? "已拒绝，电脑不会登录。"
-          : "这个微信已经有一个拾光账号，本次没有绑定。";
+          ? (bind ? "已拒绝，这次没有绑定。" : "已拒绝，电脑不会登录。")
+          : "无法自动合并（merge_required）。这个微信已有独立账号，本次没有绑定，两边的原余额和预占都保持不变。";
       this.setData({ step: "done", resultText: text });
     } catch (error) {
       if (revision !== this.requestRevision) return;
