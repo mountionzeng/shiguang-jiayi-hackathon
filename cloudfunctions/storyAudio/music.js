@@ -45,7 +45,8 @@ function createMusicService({repo,workerRepo,storage,env=process.env,fetchBytes=
   async function create(ctx,event){
     if(!ctx?.openid||!ctx.familyId)throw new StoryAudioError('AUTH_REQUIRED','请重新登录');
     if(!validRequestId(event.requestId)||!/^block-[a-f0-9]{64}$/.test(event.blockId||'')||!/^story-[a-z0-9-]+$/.test(event.storyId||'')||!/^revision-[a-zA-Z0-9-]+$/.test(event.revisionId||'')||!/^chapter-[a-z0-9-]+$/.test(event.chapterId||''))throw new StoryAudioError('INVALID_INPUT','请选择已保存的文字模块');
-    const input={requestId:event.requestId,storyId:event.storyId,revisionId:event.revisionId,chapterId:event.chapterId,blockId:event.blockId};
+    if(event.scope!==undefined && event.scope!=='chapter')throw new StoryAudioError('INVALID_INPUT','声音生成范围无效');
+    const input={requestId:event.requestId,storyId:event.storyId,revisionId:event.revisionId,chapterId:event.chapterId,blockId:event.blockId,...(event.scope?{scope:event.scope}:{})};
     const id=ctx.familyId+'_'+input.requestId,fingerprint=digest({kind:'music',...input}),existing=await repo.getOperation(id);
     if(existing){if(existing.fingerprint!==fingerprint||existing.requesterOpenid!==ctx.openid)throw new StoryAudioError('REQUEST_CONFLICT','声音请求已变化');return {operation:existing};}
     if(!musicConfigured(env))throw new StoryAudioError('MUSIC_NOT_CONFIGURED','纯音乐服务尚未配置');
@@ -69,13 +70,31 @@ function createMusicService({repo,workerRepo,storage,env=process.env,fetchBytes=
       await workerRepo.assertNarrationSource(operation);
       // Claim before POST. An interrupted POST is never automatically submitted again.
       if(!await workerRepo.updateOperation(operation.id,{status:'queued'},{status:'submitted',updatedAt:now()}))return repo.getOperation(operation.id);
+      let stage='provider',providerStatus=null;
       try {
         const body=JSON.stringify({model:MODEL,prompt:'Create instrumental music only, no vocals, no spoken words. Match the mood and setting of this passage: '+operation.snapshot.text,lyrics:'[Intro]\n[Inst]\n[Outro]',stream:false,output_format:'url',audio_setting:{sample_rate:44100,bitrate:128000,format:'mp3'}});
-        const payload=JSON.parse((await fetchBytes('https://api.302.ai/minimaxi/v1/music_generation',{body,headers:{Authorization:'Bearer '+env.STORY_MUSIC_302_KEY,'Content-Type':'application/json'}})).toString('utf8'));
+        const payload=await require('./computeBilling').billAs({
+          operationType:'storyAudio', stableId:operation.id,
+          context:require('./computeBilling').contextForOpenid(operation.requesterOpenid, env), env,
+        }, () => require('./computeBilling').billCall({
+          model:MODEL, url:'https://api.302.ai/minimaxi/v1/music_generation', body,
+          call: async () => JSON.parse((await fetchBytes('https://api.302.ai/minimaxi/v1/music_generation',{body,headers:{Authorization:'Bearer '+env.STORY_MUSIC_302_KEY,'Content-Type':'application/json'}})).toString('utf8')),
+        }));
+        providerStatus=Number.isInteger(payload?.base_resp?.status_code)?payload.base_resp.status_code:null;
+        stage='response';
         const sourceUrl=safeAudioUrl(resultUrl(payload));
+        stage='persist';
         await workerRepo.updateOperation(operation.id,{status:'submitted'},{status:'storing',sourceUrl,updatedAt:now()});
-      } catch {
-        await workerRepo.updateOperation(operation.id,{status:'submitted'},{status:'unknown',error:{code:'MUSIC_RESULT_UNKNOWN',message:'配乐结果尚未确认，已保留请求，不会重复扣费'},updatedAt:now()});
+      } catch (error) {
+        // Never log provider bodies, URLs, passage text or credentials.
+        const rawCode=error?.code||error?.message;
+        const code=/^(AUDIO_HTTP_[0-9]{3}|AUDIO_TIMEOUT|AUDIO_TOO_LARGE|AUDIO_DOWNLOAD_HOST|ERR_INVALID_URL|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN)$/.test(rawCode)?rawCode:'UNCLASSIFIED';
+        console.warn('[storyAudio.music]',JSON.stringify({requestId:operation.requestId,stage,code,providerStatus}));
+        if (error?.definitelyNotSubmitted) {
+          await workerRepo.updateOperation(operation.id,{status:'submitted'},{status:'failed',error:{code:error.code||'MUSIC_NOT_SUBMITTED',message:error.message||'配乐还没有提交'},updatedAt:now()});
+        } else {
+          await workerRepo.updateOperation(operation.id,{status:'submitted'},{status:'unknown',error:{code:'MUSIC_RESULT_UNKNOWN',message:'配乐结果尚未确认，已保留请求，不会重复扣费'},updatedAt:now()});
+        }
       }
       // Persist the provider result first; download in the next invocation.
       return repo.getOperation(operation.id);

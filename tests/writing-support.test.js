@@ -30,7 +30,7 @@ test('citation links reject executable schemes, credentials, private addresses a
 test('writing guide handles unknowns, article author identity, current corrections and honest search boundaries',()=>{
   const messages=chat._test.buildOutputMessages({answer:'我没有概念',history:[],memoryType:'note'});
   const system=messages[0].content;
-  assert.match(system,/一次只问一个/);assert.match(system,/主动给出/);assert.match(system,/属于原作者/);
+  assert.match(system,/只有推进确实需要时才问.*一次最多一个/);assert.match(system,/主动给出/);assert.match(system,/属于原作者/);
   assert.match(system,/本轮立即调整/);assert.match(system,/没有联网工具/);
   assert.equal(chat._test.parseInterviewPrompt(JSON.stringify({dimension:'event',text:'甲'.repeat(500)}),'event').text.length,500);
 });

@@ -64,7 +64,7 @@ function writingContext(event) {
     mode,
     instruction,
     // sourceOnly already includes the whole draft as transcript[0]; send it once.
-    basis: event.inlineAnswer === true ? boundedText(event.basisText, 500, "WRITING_BASIS_TOO_LONG") : "",
+    basis: event.inlineAnswer === true ? boundedText(event.basisText, event.articleContext === true ? 40000 : 500, "WRITING_BASIS_TOO_LONG") : "",
     conversation: messages,
   };
 }

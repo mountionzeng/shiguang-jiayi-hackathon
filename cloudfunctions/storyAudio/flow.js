@@ -29,7 +29,7 @@ function createStoryAudioHandlers({repo,capabilityConfig={},processOperation,now
     if(!story||story.deletedAt)throw new core.StoryAudioError('STORY_NOT_FOUND','这本故事书已不可用');
     if(story.currentRevisionId!==input.revisionId)throw new core.StoryAudioError('REVISION_CHANGED','书稿版本已经变化，请重新制作');
     const revision=await repo.getRevision(ctx.familyId,input.revisionId);
-    const snapshot=core.sourceSnapshot({familyId:ctx.familyId,story,revision,chapterId:input.chapterId,blockId:input.blockId});
+    const snapshot=core.sourceSnapshot({familyId:ctx.familyId,story,revision,chapterId:input.chapterId,blockId:input.blockId,scope:input.scope});
     const stamp=now();
     const operation={id:operationId,kind:'narration',generation:1,familyId:ctx.familyId,requesterOpenid:ctx.openid,...input,voice:resolvedVoice,fingerprint,snapshot,status:'queued',pricingVersion:available.pricingVersion,createdAt:stamp,updatedAt:stamp};
     const created=await repo.createOperation(operationId,operation);

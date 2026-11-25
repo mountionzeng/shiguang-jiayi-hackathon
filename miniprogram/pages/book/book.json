@@ -4,5 +4,6 @@
   "usingComponents": {
     "generation-status": "/components/generation-status/generation-status",
     "article-editor": "/components/article-editor/article-editor"
-  }
+  },
+  "navigationStyle": "custom"
 }

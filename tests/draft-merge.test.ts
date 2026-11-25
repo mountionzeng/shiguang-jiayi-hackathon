@@ -44,3 +44,18 @@ test('deletion versus later edits is a real conflict, not permission to resurrec
  const base=draft([chapter()]),local=draft([]),remote=structuredClone(base);remote.chapters![0].title='改过的章名';
  assert.throws(()=>mergeBookChanges(base,local,remote),{code:'DRAFT_MERGE_CONFLICT'});
 });
+
+test('different paragraphs and text versus layout merge without a false whole-body conflict',()=>{
+ const base=articleChapter({id:'chapter-many',title:'多段',memoryIds:[],content:[{text:'第一段'},{text:'第二段'}]});
+ const local=structuredClone(base),remote=structuredClone(base);
+ local.content[0].text='手机改第一段';remote.content[1].text='云端改第二段';
+ remote.layout.pages[0].modules[0].rect.width=700;
+ const merged=mergeArticleChanges(base,local,remote);
+ assert.deepEqual(merged.content.map(b=>b.text),['手机改第一段','云端改第二段']);
+ assert.equal(merged.layout.pages[0].modules[0].rect.width,700);
+});
+test('deleting a paragraph concurrently edited remotely remains a conflict',()=>{
+ const base=articleChapter({id:'chapter-many',title:'多段',memoryIds:[],content:[{text:'第一段'},{text:'第二段'}]});
+ const local=structuredClone(base),remote=structuredClone(base);local.content.pop();remote.content[1].text='云端新增细节';
+ assert.throws(()=>mergeArticleChanges(base,local,remote),{code:'DRAFT_MERGE_CONFLICT'});
+});

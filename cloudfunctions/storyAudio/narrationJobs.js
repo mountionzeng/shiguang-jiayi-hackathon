@@ -158,7 +158,11 @@ function createNarrationJobProcessor({repo,provider,storage,publisher,inspectWav
     }
     const submitting={...segment,status:'submitting'};
     try{
-      const result=await provider.synthesize({text:segment.text,sessionId:segment.sessionId,...voice,speed:Number(operation.speed||0)});
+      const billing=require('./computeBilling');
+      const result=await billing.billAs({
+        operationType:'storyAudio', stableId:segment.sessionId,
+        context:billing.contextForOpenid(operation.requesterOpenid),
+      }, () => provider.synthesize({text:segment.text,sessionId:segment.sessionId,...voice,speed:Number(operation.speed||0)}));
       const artifact=await persistArtifact({operation,segment,storage,inspectWav,result});
       const accepted=await finishSegment(operation,submitting,artifact);
       return accepted?{...segment,status:'ready',...artifact}:{status:'stale'};

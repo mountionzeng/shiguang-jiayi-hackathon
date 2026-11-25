@@ -21,6 +21,7 @@ function publicCapabilities(config={}) {
   const officialVoices=Array.isArray(config.officialVoices)?config.officialVoices.filter(item=>item&&typeof item.id==='string'&&typeof item.label==='string').map(item=>({id:item.id,label:item.label})):[];
   return {
     apiVersion:1,
+    fullArticleAudio:true,
     provider:'tencent-cloud',
     voiceClone:capability(Boolean(config.voiceCloneEnabled)),
     voiceEnrollment:capability(Boolean(config.voiceEnrollmentEnabled),'not_verified'),
@@ -72,19 +73,30 @@ function selectedBlockSnapshot({familyId,story,revision,chapterId,blockId}) {
   const snapshot={familyId,storyId:story.id,revisionId:revision.id,chapterId,blockId,title:String(chapter.title||''),bookTitle:String(draft.title||''),text:block.text,blocks:[{kind:'text',text:block.text}]};
   return {...snapshot,digest:digest(snapshot)};
 }
-function sourceSnapshot(input) { return input.blockId ? selectedBlockSnapshot(input) : chapterSnapshot(input); }
+function articleSnapshot(input) {
+  // Validate the anchor and every spoken block with the existing source policy.
+  const anchor=selectedBlockSnapshot(input);
+  const chapter=input.revision.draft.chapters.find(c=>c.id===input.chapterId);
+  const texts=chapter.content.filter(b=>typeof b.text==='string'&&b.text.trim()).map(block=>
+    selectedBlockSnapshot({...input,blockId:block.blockId}).text);
+  const {digest:oldDigest,...base}=anchor;
+  const snapshot={...base,scope:'chapter',text:texts.join('\n\n'),blocks:texts.map(text=>({kind:'text',text}))};
+  return {...snapshot,digest:digest(snapshot)};
+}
+function sourceSnapshot(input) { return input.scope==='chapter' ? articleSnapshot(input) : input.blockId ? selectedBlockSnapshot(input) : chapterSnapshot(input); }
 
 function normalizeCreateInput(event={}) {
   if(!validRequestId(event.requestId))fail('INVALID_INPUT','声音请求编号无效');
   if(!validId(event.storyId,'story-',120)||!validId(event.revisionId,'revision-',140)||!validId(event.chapterId,'chapter-',100))fail('INVALID_INPUT','故事或版本信息无效');
   if(event.blockId!==undefined&&!/^block-[a-f0-9]{64}$/.test(event.blockId))fail('INVALID_INPUT','文字模块编号无效');
+  if(event.scope!==undefined && (event.scope!=='chapter'||!event.blockId))fail('INVALID_INPUT','声音生成范围无效');
   const voice=event.voice;
   if(!voice||!['official','clone'].includes(voice.kind)||typeof voice.id!=='string'||!voice.id.trim()||voice.id.length>120)fail('INVALID_INPUT','请选择可用的声音');
   const background=event.background;
   if(background!==undefined) {
     if(!background||typeof background.id!=='string'||!background.id.trim()||background.id.length>80||!Number.isFinite(background.volume)||background.volume<0||background.volume>0.4)fail('INVALID_INPUT','背景音设置无效');
   }
-  return {requestId:event.requestId,storyId:event.storyId,revisionId:event.revisionId,chapterId:event.chapterId,...(event.blockId?{blockId:event.blockId}:{}),voice:{kind:voice.kind,id:voice.id.trim()},...(background?{background:{id:background.id.trim(),volume:background.volume}}:{})};
+  return {requestId:event.requestId,storyId:event.storyId,revisionId:event.revisionId,chapterId:event.chapterId,...(event.blockId?{blockId:event.blockId}:{}),...(event.scope?{scope:event.scope}:{}),voice:{kind:voice.kind,id:voice.id.trim()},...(background?{background:{id:background.id.trim(),volume:background.volume}}:{})};
 }
 
 function publicOperation(operation,playback){return {id:operation.id,storyId:operation.storyId,revisionId:operation.revisionId,chapterId:operation.chapterId,status:operation.status,createdAt:operation.createdAt,updatedAt:operation.updatedAt,snapshot:{title:operation.snapshot.title,bookTitle:operation.snapshot.bookTitle,digest:operation.snapshot.digest},voice:{kind:operation.voice.kind},...(operation.background?{background:operation.background}:{}),...(playback?{playback}:{}),...(operation.error?{error:operation.error}:{})};}

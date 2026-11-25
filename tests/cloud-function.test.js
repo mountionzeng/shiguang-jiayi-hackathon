@@ -1163,3 +1163,15 @@ test("interview follow-up preserves negation and a feeling that has ended", () =
   assert.match(messages[0].content, /不能把已经否定或结束的感受当成仍在发生/);
   assert.ok(messages[1].content.includes(answer));
 });
+
+
+test('article composition receives the entire explicit context and rejects oversize instead of truncating',async context=>{
+ const old={...process.env},fetch=global.fetch;process.env.ORGANIZE_AI_API_KEY='test';process.env.ORGANIZE_AI_MODEL='test';
+ context.after(()=>{global.fetch=fetch;for(const k of ['ORGANIZE_AI_API_KEY','ORGANIZE_AI_MODEL']){if(old[k]===undefined)delete process.env[k];else process.env[k]=old[k];}});
+ let payload;global.fetch=async(_url,options)=>{payload=JSON.parse(options.body);return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({title:'纸船',body:'虚构纸船顺流而去。',summary:'纸船',emotions:[],people:[],places:[]})}}]})};};
+ const basis='开头不可丢'+ '甲'.repeat(1000)+'结尾不可丢';
+ const event={inlineAnswer:true,articleContext:true,transcript:['请写下一段'],writingMode:'compose',basisText:basis};
+ await organizeMemoryMain(event);assert.ok(JSON.stringify(payload.messages).includes(basis));
+ await assert.rejects(organizeMemoryMain({...event,basisText:'甲'.repeat(40001)}),/WRITING_BASIS_TOO_LONG/);
+ await assert.rejects(organizeMemoryMain({...event,articleContext:false}),/WRITING_BASIS_TOO_LONG/);
+});

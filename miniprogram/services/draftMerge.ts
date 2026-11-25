@@ -25,6 +25,25 @@ function body(chapter: ArticleChapter) {
   return {content:chapter.content.map(b => ({blockId:b.blockId,
     ...(typeof b.text === 'string' ? {text:b.text} : {photoId:b.photoId})})), layout:chapter.layout, audioModules:chapter.audioModules || [], packageAssets:chapter.packageAssets || {}};
 }
+function mergeKeyed<T>(base:T[],local:T[],remote:T[],key:(item:T)=>string,label:string):T[] {
+  const order=field(base.map(key),local.map(key),remote.map(key),label+'顺序');
+  const read=(items:T[],id:string)=>items.find(item=>key(item)===id);
+  // A deletion versus an edit must still conflict, even though absent from order.
+  for(const item of base.filter(item=>!order.includes(key(item))))
+    field(item,read(local,key(item)),read(remote,key(item)),label);
+  return order.map(id=>field(read(base,id),read(local,id),read(remote,id),label)).filter((item):item is T=>item!==undefined);
+}
+function mergeBody(base:ArticleChapter,local:ArticleChapter,remote:ArticleChapter) {
+  const b=body(base),l=body(local),r=body(remote),label=`“${local.title || remote.title}”的正文或排版`;
+  if(sameDraftValue(l,b)||sameDraftValue(l,r))return r;
+  if(sameDraftValue(r,b))return l;
+  const content=mergeKeyed(b.content,l.content,r.content,item=>item.blockId,label);
+  // Layout stays atomic: concurrent incompatible rearrangements need a choice.
+  // Text edits in separate stable blocks do not conflict with a layout-only change.
+  return {content,layout:field(b.layout,l.layout,r.layout,label),
+    audioModules:mergeKeyed(b.audioModules,l.audioModules,r.audioModules,item=>item.id,'声音模块'),
+    packageAssets:field(b.packageAssets,l.packageAssets,r.packageAssets,'图片资源')};
+}
 function normalized(chapter: ManuscriptChapter): ArticleChapter {
   const result=articleChapter(chapter);
   // Native legacy editor adds one terminal newline; already assigned article
@@ -38,7 +57,7 @@ function normalized(chapter: ManuscriptChapter): ArticleChapter {
 export function mergeArticleChanges(base: ManuscriptChapter, local: ManuscriptChapter, remote: ManuscriptChapter): ArticleChapter {
   if (base.id !== local.id || remote.id !== local.id) throw new DraftMergeConflict('章节');
   const b=normalized(base), l=normalized(local), r=normalized(remote);
-  const selected=field(body(b),body(l),body(r),`“${local.title || remote.title}”的正文或排版`);
+  const selected=mergeBody(b,l,r);
   return {...r, title:field(b.title,l.title,r.title,'章节标题'), ...selected,
     backdropImageId:field(b.backdropImageId || '',l.backdropImageId || '',r.backdropImageId || '','章节底图'),
     memoryIds:[...new Set([...r.memoryIds,...l.memoryIds])],

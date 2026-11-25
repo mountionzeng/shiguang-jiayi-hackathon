@@ -33,7 +33,7 @@ function createNarrationWorkerRepository({db,command}) {
         if(current?.familyId!==familyId||current.revision?.id!==story.currentRevisionId||current.revision?.storyId!==storyId)denied();
         if(operation.blockId)sourceSnapshot({...operation,story,revision:current.revision});
         else assertUnrestrictedStory(story,current.revision.draft);
-        const snapshot=sourceSnapshot({familyId,story,revision:record.revision,chapterId,blockId:operation.blockId});
+        const snapshot=sourceSnapshot({familyId,story,revision:record.revision,chapterId,blockId:operation.blockId,scope:operation.scope});
         if(stable(snapshot)!==stable(operation.snapshot))denied();
       });
     },

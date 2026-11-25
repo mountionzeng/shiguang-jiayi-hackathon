@@ -528,3 +528,70 @@ test('opening WeChat sharing dismisses the old claim sheet so another send prepa
   p.sendCurrentArticle();
   assert.equal(sends,1);
 });
+
+test('full article media waits for actual save acknowledgment and fixes complete source and options',async()=>{
+ const {p,stored,requests}=await setup();await open(p,'a');
+ p.selectComponent=()=>({dismissKeyboard(){}});
+ p.data.article=articleChapter({...p.data.article,content:[{text:'第一段'},{text:'第二段'}]});p.chapters[0]=p.data.article;
+ p.data.mediaSelectedBlock=p.data.article.content[1].blockId;
+ p.openArticleMediaPanel({currentTarget:{dataset:{kind:'music'}}});
+ assert.equal(p.data.mediaPanelText,'第一段\n\n第二段');
+ type(p,'最新第一段');let release:any;let task:any;
+ (wx as any).cloud.callFunction=async({data}:any)=>{requests.push(data);return new Promise(resolve=>{release=resolve;});};
+ p.processArticleMedia=async(t:any)=>{task=structuredClone(t);};
+ const pending=p.generateArticleMedia({currentTarget:{dataset:{kind:'music'}}});
+ while(!release)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(Boolean(task),false);release({result:{revisionId:'revision-confirmed',version:3}});await pending;
+ assert.equal(task.scope,'chapter');assert.equal(task.text,'最新第一段\n\n第二段');assert.equal(task.revisionId,'revision-confirmed');
+ assert.equal(task.blockId,p.data.article.content[0].blockId);assert.equal(stored.get(p.mediaTaskKey())[0].requestId,task.requestId);
+});
+test('image requirements and phone references are frozen into the durable task without adding manuscript photos',async()=>{
+ const {p}=await setup();await open(p,'a');p.selectComponent=()=>({dismissKeyboard(){}});
+ p.data.mediaSelectedBlock=p.data.article.content[0].blockId;p.openArticleMediaPanel({currentTarget:{dataset:{kind:'image'}}});
+ p.onMediaArtDirection({detail:{value:'暖色水彩'}});p.data.mediaReferences=[{id:'photo-reference',path:'/local/ref.jpg'}];
+ let task:any;p.processArticleMedia=async(t:any)=>{task=structuredClone(t);};
+ await p.generateArticleMedia({currentTarget:{dataset:{kind:'image'}}});
+ assert.equal(task.artDirection,'暖色水彩');assert.deepEqual(task.referencePhotoIds,['photo-reference']);assert.deepEqual(task.phoneReferencePhotoIds,['photo-reference']);
+ assert.equal(p.data.article.content.some((b:any)=>b.photoId==='photo-reference'),false);
+ p.openArticleMediaPanel({currentTarget:{dataset:{kind:'music'}}});assert.equal(p.data.mediaArtDirection,'');assert.deepEqual(p.data.mediaReferences,[]);
+});
+test('failed save exposes its actual conflict and never submits media',async()=>{
+ const {p}=await setup();await open(p,'a');type(p,'本机修改');p.loadArticleRecovery=async()=>{throw new Error('同一段在两处修改，请核对');};
+ p.processArticleMedia=async()=>assert.fail('must not generate from an unsaved version');
+ await p.generateArticleMedia({currentTarget:{dataset:{kind:'narration'}}});
+ assert.match(p.data.mediaStatus,/同一段在两处修改/);assert.equal(p.articlePending.content[0].text,'本机修改');
+});
+
+test('reference picker survives native hide and cancel without changing manuscript or losing requirements',async()=>{
+ const {p}=await setup();await open(p,'a');p.selectComponent=()=>({dismissKeyboard(){}});
+ p.data.mediaSelectedBlock=p.data.article.content[0].blockId;p.openArticleMediaPanel({currentTarget:{dataset:{kind:'image'}}});
+ p.onMediaArtDirection({detail:{value:'保留暖色'}});const before=JSON.stringify(p.data.article);let cancel:any;
+ (wx as any).chooseMedia=({fail}:any)=>{cancel=fail;};
+ const pending=p.addMediaReference();assert.equal(p.data.mediaPickingReference,true);p.onHide();
+ assert.equal(p.data.mediaPanelKind,'image');cancel({errMsg:'chooseMedia:fail cancel'});await pending;
+ assert.equal(p.data.mediaPickingReference,false);assert.equal(p.data.mediaPanelNotice,'');assert.equal(p.data.mediaArtDirection,'保留暖色');assert.equal(JSON.stringify(p.data.article),before);
+});
+
+test('inline audio reflects playback events and resumes without requesting a new URL',async t=>{
+  const {p}=await setup();p.data.view='chapter';p.data.storyId='story-test';p.flushArticle=async()=>true;
+  const handlers:Record<string,()=>void>={};let requests=0,plays=0,destroyed=0;
+  const player={src:'',paused:true,destroy(){destroyed++;},play(){plays++;this.paused=false;handlers.play();},pause(){this.paused=true;handlers.pause();},onPlay(fn:()=>void){handlers.play=fn;},onPause(fn:()=>void){handlers.pause=fn;},onEnded(fn:()=>void){handlers.ended=fn;},onError(fn:()=>void){handlers.error=fn;}};
+  const old=(globalThis as any).wx;
+  (globalThis as any).wx={...old,createInnerAudioContext:()=>player,cloud:{callFunction:async()=>{requests++;return {result:{url:'https://example.test/audio.wav'}};}}};
+  t.after(()=>{(globalThis as any).wx=old;});
+  const event={currentTarget:{dataset:{id:'audio-module'}}};
+  await p.playArticleAudio(event);assert.equal(p.data.mediaAudioState,'playing');
+  await p.playArticleAudio(event);assert.equal(p.data.mediaAudioState,'paused');
+  await p.playArticleAudio(event);assert.equal(p.data.mediaAudioState,'playing');assert.equal(requests,1);assert.equal(plays,2);
+  p.releaseArticleAudio();handlers.play();assert.equal(p.data.mediaAudioState,'idle');assert.equal(destroyed,1);
+});
+
+test('leaving inline audio while its URL loads prevents stale playback',async t=>{
+  const {p}=await setup();p.data.view='chapter';p.data.storyId='story-test';p.flushArticle=async()=>true;
+  let resolve:any,created=0;const old=(globalThis as any).wx;
+  (globalThis as any).wx={...old,createInnerAudioContext:()=>{created++;throw Error('stale playback');},cloud:{callFunction:()=>new Promise(r=>{resolve=r;})}};
+  t.after(()=>{(globalThis as any).wx=old;});
+  const running=p.playArticleAudio({currentTarget:{dataset:{id:'audio-module'}}});await Promise.resolve();
+  p.releaseArticleAudio();resolve({result:{url:'https://example.test/audio.wav'}});await running;
+  assert.equal(created,0);assert.equal(p.data.mediaAudioState,'idle');
+});

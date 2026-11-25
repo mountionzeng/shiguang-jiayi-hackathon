@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "collections": {"article_chat_turns": {"read": false, "write": false}},
+  "note": "部署前创建集合并应用、验证禁止客户端直接读写规则。只有云函数按认证账号读写轮次回执。"
+}
