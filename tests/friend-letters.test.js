@@ -76,7 +76,7 @@ test('already shared original: saves coalesce across families, the letter opens 
   await call('owner', 'articleSave', article(publicId, 'request-rejected', '审核拒绝'));
   assert.deepEqual(await call('friend', 'friendLetters'), { letters: [] });
   await assert.rejects(read(), { code: 'CONTENT_REJECTED' });
-  await call('owner', 'articleSave', article(publicId, 'request-allowed', second.chapter.content[0].text));
+  await call('owner', 'articleSave', article(publicId, 'request-allowed-again', second.chapter.content[0].text));
 
   const { letters } = await call('friend', 'friendLetters', { principalId: 'owner', familyId: source.familyId });
   assert.equal(letters.length, 1);

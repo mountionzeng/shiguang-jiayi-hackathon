@@ -1,5 +1,6 @@
 // Deployed independently with each text function. Keep copies byte-identical.
 const { randomUUID, createHash } = require('node:crypto');
+const { instrumentFetch } = require('./computeBilling');
 const COLLECTION = 'text_compute_operations';
 const PRICE_VERSION = 'tokenhub-console-2026-09-23-estimate-v1';
 const KINDS = ['chatInterview', 'organizeMemory', 'generateBiography'];
@@ -56,13 +57,14 @@ function createTextMeter({ db, identity, kind, model, baseUrl, fetcher, env = pr
       receiptWriteMs: timing.receiptWriteMs,
     })); } catch { /* Diagnostics must never change the request outcome. */ }
   }
+  const guardedFetcher = instrumentFetch(fetcher);
   if (!enabled) return {
     snapshot: () => null,
     async fetch(url, options) {
       const timing = timings();
       const started = Date.now();
       let response;
-      try { response = await fetcher(url, options); }
+      try { response = await guardedFetcher(url, options); }
       catch (error) { timing.providerMs = elapsed(started); logTiming(timing); throw error; }
       if (!response.ok) { timing.providerMs = elapsed(started); logTiming(timing); return response; }
       // Match the metered response contract; include body delivery/parsing in
@@ -103,7 +105,7 @@ function createTextMeter({ db, identity, kind, model, baseUrl, fetcher, env = pr
         }
         const providerStarted = Date.now();
         try {
-          response = await fetcher(url, { ...options, headers: { ...options.headers, 'X-Request-ID': attempt.requestId } });
+          response = await guardedFetcher(url, { ...options, headers: { ...options.headers, 'X-Request-ID': attempt.requestId } });
           attempt.httpStatus = response.status;
           attempt.providerRequestId = safeId(response.headers?.get('x-request-id'));
           payload = await response.json(); parsed = true;
